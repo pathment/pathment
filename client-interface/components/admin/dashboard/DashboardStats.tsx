@@ -1,43 +1,35 @@
 'use client';
 
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, TrendingUp, BookOpen, Award } from 'lucide-react';
-
-interface StatsCardProps {
-  title: string;
-  value: string;
-  icon: React.ElementType;
-  change: string;
-}
-
-function StatsCard({ title, value, icon: Icon, change }: StatsCardProps) {
-  return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium">{title}</CardTitle>
-        <Icon className="h-4 w-4 text-muted-foreground" />
-      </CardHeader>
-      <CardContent>
-        <div className="text-2xl font-bold">{value}</div>
-        <p className="text-xs text-muted-foreground mt-1">{change}</p>
-      </CardContent>
-    </Card>
-  );
-}
+import { BookOpen, Users, UserCheck, TrendingUp, ArrowUpRight } from 'lucide-react';
 
 export function DashboardStats() {
   const stats = [
-    { title: 'Total Programs', value: '12', icon: BookOpen, change: '+2 this month' },
-    { title: 'Active Mentors', value: '45', icon: Users, change: '+5 this week' },
-    { title: 'Total Mentees', value: '248', icon: TrendingUp, change: '+18 this month' },
-    { title: 'Success Rate', value: '94%', icon: Award, change: '+2% from last month' },
+    { label: 'Total Programs', value: '24', change: '+12%', icon: BookOpen, color: 'indigo' },
+    { label: 'Active Mentees', value: '156', change: '+8%', icon: Users, color: 'green' },
+    { label: 'Active Mentors', value: '42', change: '+5%', icon: UserCheck, color: 'purple' },
+    { label: 'Completion Rate', value: '87%', change: '+3%', icon: TrendingUp, color: 'blue' },
   ];
 
   return (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-      {stats.map((stat) => (
-        <StatsCard key={stat.title} {...stat} />
-      ))}
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+      {stats.map((stat) => {
+        const Icon = stat.icon;
+        return (
+          <div key={stat.label} className="bg-white rounded-2xl p-6 border border-slate-200">
+            <div className="flex items-start justify-between mb-4">
+              <div className={`w-12 h-12 bg-${stat.color}-100 rounded-xl flex items-center justify-center`}>
+                <Icon className={`w-6 h-6 text-${stat.color}-600`} />
+              </div>
+              <span className="text-green-600 text-sm flex items-center gap-1">
+                <ArrowUpRight className="w-4 h-4" />
+                {stat.change}
+              </span>
+            </div>
+            <div className="text-slate-600 text-sm mb-1">{stat.label}</div>
+            <div className="text-slate-900 text-2xl">{stat.value}</div>
+          </div>
+        );
+      })}
     </div>
   );
 }

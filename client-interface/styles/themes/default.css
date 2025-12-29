@@ -11,47 +11,63 @@
     --popover-foreground: 222.2 84% 4.9%;
     
     /* Primary Colors - Customizable per organization */
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
+    --primary: 250 95% 63%;
+    --primary-foreground: 0 0% 100%;
     
     /* Secondary Colors */
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 240 5% 96%;
+    --secondary-foreground: 240 6% 10%;
     
     /* Muted Colors */
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted: 240 5% 96%;
+    --muted-foreground: 240 4% 46%;
     
     /* Accent Colors */
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --accent: 240 5% 96%;
+    --accent-foreground: 240 6% 10%;
     
     /* Destructive Colors */
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
     
     /* Border Colors */
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
+    --border: 240 6% 90%;
+    --input: 240 6% 90%;
+    --ring: 250 95% 63%;
     
     /* Chart Colors */
-    --chart-1: 12 76% 61%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
+    --chart-1: 250 95% 63%;
+    --chart-2: 142 71% 45%;
+    --chart-3: 24 95% 53%;
+    --chart-4: 197 92% 61%;
+    --chart-5: 271 76% 53%;
     
     /* Radius */
-    --radius: 0.5rem;
+    --radius: 0.75rem;
     
     /* Status Colors */
-    --success: 142.1 76.2% 36.3%;
+    --success: 142 71% 45%;
     --success-foreground: 0 0% 100%;
-    --warning: 38 92% 50%;
+    --success-light: 142 71% 95%;
+    --warning: 24 95% 53%;
     --warning-foreground: 0 0% 100%;
-    --info: 199 89% 48%;
+    --warning-light: 24 95% 95%;
+    --info: 197 92% 61%;
     --info-foreground: 0 0% 100%;
+    --info-light: 197 92% 95%;
+    --pending: 38 92% 50%;
+    --pending-foreground: 0 0% 100%;
+    --pending-light: 38 92% 95%;
+    
+    /* Card Background Colors for Stats */
+    --card-purple: 250 100% 97%;
+    --card-purple-icon: 250 95% 63%;
+    --card-green: 142 76% 96%;
+    --card-green-icon: 142 71% 45%;
+    --card-blue: 197 92% 96%;
+    --card-blue-icon: 197 92% 61%;
+    --card-orange: 24 100% 96%;
+    --card-orange-icon: 24 95% 53%;
   }
 
   [data-theme="dark"] {
@@ -64,36 +80,60 @@
     --popover-foreground: 210 40% 98%;
     
     /* Primary Colors - Dark Mode */
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
+    --primary: 250 95% 63%;
+    --primary-foreground: 0 0% 100%;
     
     /* Secondary Colors - Dark Mode */
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
+    --secondary: 240 4% 16%;
+    --secondary-foreground: 0 0% 98%;
     
     /* Muted Colors - Dark Mode */
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
+    --muted: 240 4% 16%;
+    --muted-foreground: 240 5% 65%;
     
     /* Accent Colors - Dark Mode */
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
+    --accent: 240 4% 16%;
+    --accent-foreground: 0 0% 98%;
     
     /* Destructive Colors - Dark Mode */
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 63% 31%;
+    --destructive-foreground: 0 0% 98%;
     
     /* Border Colors - Dark Mode */
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
+    --border: 240 4% 16%;
+    --input: 240 4% 16%;
+    --ring: 250 95% 63%;
     
     /* Chart Colors - Dark Mode */
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
+    --chart-1: 250 95% 63%;
+    --chart-2: 142 71% 45%;
+    --chart-3: 24 95% 53%;
+    --chart-4: 197 92% 61%;
+    --chart-5: 271 76% 53%;
+    
+    /* Status Colors - Dark Mode */
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+    --success-light: 142 71% 15%;
+    --warning: 24 95% 53%;
+    --warning-foreground: 0 0% 100%;
+    --warning-light: 24 95% 15%;
+    --info: 197 92% 61%;
+    --info-foreground: 0 0% 100%;
+    --info-light: 197 92% 15%;
+    --pending: 38 92% 50%;
+    --pending-foreground: 0 0% 100%;
+    --pending-light: 38 92% 15%;
+    
+    /* Card Background Colors for Stats - Dark Mode */
+    --card-purple: 250 50% 12%;
+    --card-purple-icon: 250 95% 63%;
+    --card-green: 142 40% 12%;
+    --card-green-icon: 142 71% 45%;
+    --card-blue: 197 50% 12%;
+    --card-blue-icon: 197 92% 61%;
+    --card-orange: 24 50% 12%;
+    --card-orange-icon: 24 95% 53%;
   }
 }
 

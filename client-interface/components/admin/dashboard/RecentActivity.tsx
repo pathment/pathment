@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { StatusBadge } from '@/components/shared/StatusBadge';
 import { ArrowRight } from 'lucide-react';
 
 export function RecentActivity() {
@@ -57,9 +57,7 @@ export function RecentActivity() {
                 <div className="text-sm text-muted-foreground">{activity.description}</div>
                 <div className="text-xs text-muted-foreground mt-1">{activity.time}</div>
               </div>
-              <Badge variant={activity.status === 'pending' ? 'secondary' : 'default'}>
-                {activity.status}
-              </Badge>
+              <StatusBadge status={activity.status as 'pending' | 'completed'} />
             </div>
           ))}
         </div>

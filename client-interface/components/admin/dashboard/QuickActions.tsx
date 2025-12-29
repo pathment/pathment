@@ -12,28 +12,32 @@ export function QuickActions() {
       description: 'Set up a new mentorship program',
       icon: Plus,
       href: '/admin/programs/create',
-      color: 'text-blue-500',
+      bgColor: 'bg-blue-100',
+      iconColor: 'text-blue-600',
     },
     {
       title: 'Generate Roadmap',
       description: 'AI-powered learning path creation',
       icon: GitBranch,
       href: '/admin/roadmap/generate',
-      color: 'text-green-500',
+      bgColor: 'bg-green-100',
+      iconColor: 'text-green-600',
     },
     {
       title: 'View Enrollments',
       description: 'Manage student enrollments',
       icon: Users,
       href: '/admin/enrollment/overview',
-      color: 'text-purple-500',
+      bgColor: 'bg-purple-100',
+      iconColor: 'text-purple-600',
     },
     {
       title: 'Match Mentors',
       description: 'AI mentor-mentee matching',
       icon: UserCheck,
       href: '/admin/matching/mentor-assignment',
-      color: 'text-orange-500',
+      bgColor: 'bg-orange-100',
+      iconColor: 'text-orange-600',
     },
   ];
 
@@ -41,14 +45,16 @@ export function QuickActions() {
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
       {actions.map((action) => (
         <Link key={action.title} href={action.href}>
-          <Card className="hover:shadow-md transition-shadow cursor-pointer h-full">
-            <CardHeader>
-              <action.icon className={`h-8 w-8 mb-2 ${action.color}`} />
-              <CardTitle className="text-base">{action.title}</CardTitle>
-              <p className="text-sm text-muted-foreground mt-2">
+          <Card className="hover:shadow-md transition-shadow cursor-pointer h-full border-border">
+            <CardContent className="pt-6">
+              <div className={`h-12 w-12 rounded-xl ${action.bgColor} flex items-center justify-center mb-4`}>
+                <action.icon className={`h-6 w-6 ${action.iconColor}`} />
+              </div>
+              <h3 className="font-semibold text-foreground mb-2">{action.title}</h3>
+              <p className="text-sm text-muted-foreground">
                 {action.description}
               </p>
-            </CardHeader>
+            </CardContent>
           </Card>
         </Link>
       ))}

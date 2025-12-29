@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { StatusBadge } from '@/components/shared/StatusBadge';
 import { ArrowRight } from 'lucide-react';
 
 interface Program {
@@ -44,7 +44,7 @@ export function ProgramListCard({ programs }: { programs?: Program[] }) {
                   {program.enrolled}/{program.maxEnrollments} enrolled
                 </div>
               </div>
-              <Badge variant="default">{program.status}</Badge>
+              <StatusBadge status={program.status as 'active' | 'pending' | 'completed'} />
             </div>
           ))}
         </div>

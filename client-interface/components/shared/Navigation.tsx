@@ -110,7 +110,7 @@ export default function Navigation({ role }: NavigationProps) {
       </div>
 
       {/* Mobile Header */}
-      <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-card border-b border-border px-4 py-3 flex items-center justify-between">
+      <div className="lg:hidden fixed top-0 left-0 right-0 z-[60] bg-card border-b border-border px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="flex items-center justify-center w-8 h-8 bg-primary rounded-lg">
             <span className="text-primary-foreground font-bold text-sm">P</span>
@@ -127,9 +127,17 @@ export default function Navigation({ role }: NavigationProps) {
         </Button>
       </div>
 
+      {/* Mobile Menu Backdrop */}
+      {mobileMenuOpen && (
+        <div 
+          className="lg:hidden fixed inset-0 z-40 bg-black/50"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
+
       {/* Mobile Menu */}
       {mobileMenuOpen && (
-        <div className="lg:hidden fixed inset-0 z-40 bg-background">
+        <div className="lg:hidden fixed inset-0 z-50 bg-background overflow-y-auto">
           <div className="pt-16 px-4 py-6 space-y-1">
             {links.map((link) => {
               const Icon = iconMap[link.icon] || LayoutDashboard;
