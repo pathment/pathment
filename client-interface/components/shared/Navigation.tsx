@@ -43,7 +43,7 @@ export default function Navigation({ role }: NavigationProps) {
 
   const menteeLinks = [
     { path: '/mentee/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-    { path: '/mentee/tasks/list', icon: ClipboardList, label: 'My Tasks' },
+    { path: '/mentee/tasks', icon: ClipboardList, label: 'My Tasks' },
   ];
 
   const links = role === 'admin' ? adminLinks : role === 'mentor' ? mentorLinks : menteeLinks;

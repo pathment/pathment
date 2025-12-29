@@ -2,258 +2,356 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { ArrowLeft, Save, CalendarIcon, Plus, X } from 'lucide-react';
-import Link from 'next/link';
-import { format } from 'date-fns';
+import {
+  ArrowLeft,
+  Plus,
+  BookOpen,
+  User,
+  Calendar,
+  Flag,
+  Link as LinkIcon,
+  X,
+  Send
+} from 'lucide-react';
 
 export default function TaskAssignment() {
   const router = useRouter();
-  const [deadline, setDeadline] = useState<Date>();
-  const [formData, setFormData] = useState({
+  const [taskType, setTaskType] = useState<'roadmap' | 'custom'>('roadmap');
+  const [selectedMentee, setSelectedMentee] = useState('');
+  const [selectedRoadmapTask, setSelectedRoadmapTask] = useState('');
+  const [customTask, setCustomTask] = useState({
     title: '',
     description: '',
-    menteeId: '',
-    type: '',
-    difficulty: '',
-    estimatedHours: '',
-    resources: [] as string[],
+    dueDate: '',
+    priority: 'medium',
+    resources: ['']
   });
-  const [resourceInput, setResourceInput] = useState('');
 
   const mentees = [
-    { id: '1', name: 'Alice Johnson', program: 'Full Stack Dev', progress: 45 },
-    { id: '2', name: 'Bob Williams', program: 'Data Science', progress: 60 },
-    { id: '3', name: 'Carol Davis', program: 'UI/UX Design', progress: 30 },
+    { id: '1', name: 'Alex Thompson', program: 'Full Stack Development' },
+    { id: '2', name: 'Maria Garcia', program: 'Full Stack Development' },
+    { id: '3', name: 'James Wilson', program: 'Full Stack Development' }
   ];
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    console.log('Task assignment:', { ...formData, deadline });
-    router.push('/mentor/dashboard');
-  };
+  const roadmapTasks = [
+    {
+      id: '1',
+      week: 3,
+      title: 'Build a React component library',
+      description: 'Create reusable React components with TypeScript',
+      estimatedHours: 8
+    },
+    {
+      id: '2',
+      week: 3,
+      title: 'Implement user authentication',
+      description: 'Add JWT-based authentication to your application',
+      estimatedHours: 6
+    },
+    {
+      id: '3',
+      week: 4,
+      title: 'Create REST API endpoints',
+      description: 'Build CRUD operations for your application',
+      estimatedHours: 10
+    },
+    {
+      id: '4',
+      week: 4,
+      title: 'Database design and schema',
+      description: 'Design and implement PostgreSQL database schema',
+      estimatedHours: 8
+    }
+  ];
 
   const addResource = () => {
-    if (resourceInput.trim() && !formData.resources.includes(resourceInput.trim())) {
-      setFormData({ ...formData, resources: [...formData.resources, resourceInput.trim()] });
-      setResourceInput('');
-    }
+    setCustomTask({ ...customTask, resources: [...customTask.resources, ''] });
   };
 
-  const removeResource = (resource: string) => {
-    setFormData({ ...formData, resources: formData.resources.filter(r => r !== resource) });
+  const updateResource = (index: number, value: string) => {
+    const newResources = [...customTask.resources];
+    newResources[index] = value;
+    setCustomTask({ ...customTask, resources: newResources });
+  };
+
+  const removeResource = (index: number) => {
+    setCustomTask({ ...customTask, resources: customTask.resources.filter((_, i) => i !== index) });
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    router.push('/mentor/dashboard');
   };
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Link href="/mentor/dashboard">
-          <Button variant="outline" size="sm">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back
-          </Button>
-        </Link>
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Assign Task</h1>
-          <p className="text-muted-foreground mt-1">
-            Create and assign a new task to your mentees
-          </p>
-        </div>
+      {/* Header */}
+      <button
+        onClick={() => router.push('/mentor/dashboard')}
+        className="inline-flex items-center gap-2 text-slate-600 hover:text-slate-900"
+      >
+        <ArrowLeft className="w-5 h-5" />
+        Back to Dashboard
+      </button>
+
+      <div>
+        <h1 className="text-slate-900 mb-2">Assign Task</h1>
+        <p className="text-slate-600">Assign tasks from the roadmap or create custom assignments</p>
       </div>
 
       <form onSubmit={handleSubmit}>
-        <div className="grid gap-6 lg:grid-cols-3">
-          {/* Main Form */}
-          <div className="lg:col-span-2 space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Task Details</CardTitle>
-                <CardDescription>Define the task requirements and objectives</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="space-y-2">
-                  <Label htmlFor="title">Task Title</Label>
-                  <Input
-                    id="title"
-                    placeholder="e.g., Build a REST API with Express"
-                    value={formData.title}
-                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="description">Description</Label>
-                  <Textarea
-                    id="description"
-                    placeholder="Provide detailed instructions, requirements, and learning objectives..."
-                    rows={6}
-                    value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    required
-                  />
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="type">Task Type</Label>
-                    <Select value={formData.type} onValueChange={(value) => setFormData({ ...formData, type: value })}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="project">Project</SelectItem>
-                        <SelectItem value="exercise">Exercise</SelectItem>
-                        <SelectItem value="reading">Reading</SelectItem>
-                        <SelectItem value="research">Research</SelectItem>
-                        <SelectItem value="presentation">Presentation</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="difficulty">Difficulty</Label>
-                    <Select value={formData.difficulty} onValueChange={(value) => setFormData({ ...formData, difficulty: value })}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select difficulty" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="beginner">Beginner</SelectItem>
-                        <SelectItem value="intermediate">Intermediate</SelectItem>
-                        <SelectItem value="advanced">Advanced</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="estimatedHours">Estimated Hours</Label>
-                    <Input
-                      id="estimatedHours"
-                      type="number"
-                      placeholder="e.g., 8"
-                      value={formData.estimatedHours}
-                      onChange={(e) => setFormData({ ...formData, estimatedHours: e.target.value })}
-                      required
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Deadline</Label>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button variant="outline" className="w-full justify-start text-left font-normal">
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {deadline ? format(deadline, 'PPP') : <span>Pick a date</span>}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0">
-                        <Calendar mode="single" selected={deadline} onSelect={setDeadline} initialFocus />
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="resources">Resources & Links</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="resources"
-                      placeholder="Add documentation links, tutorials, or reference materials"
-                      value={resourceInput}
-                      onChange={(e) => setResourceInput(e.target.value)}
-                      onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addResource())}
-                    />
-                    <Button type="button" onClick={addResource} variant="outline">
-                      <Plus className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    {formData.resources.map((resource) => (
-                      <Badge key={resource} variant="secondary" className="gap-1">
-                        {resource}
-                        <X className="h-3 w-3 cursor-pointer" onClick={() => removeResource(resource)} />
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+        {/* Select Mentee */}
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 mb-6">
+          <label className="block text-slate-900 mb-3">
+            Select Mentee <span className="text-red-600">*</span>
+          </label>
+          <div className="relative">
+            <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+            <select
+              value={selectedMentee}
+              onChange={(e) => setSelectedMentee(e.target.value)}
+              className="w-full pl-11 pr-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent appearance-none"
+              required
+            >
+              <option value="">Choose a mentee...</option>
+              {mentees.map((mentee) => (
+                <option key={mentee.id} value={mentee.id}>
+                  {mentee.name} - {mentee.program}
+                </option>
+              ))}
+            </select>
           </div>
+        </div>
 
-          {/* Sidebar */}
-          <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Assign To</CardTitle>
-                <CardDescription>Select mentee for this task</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <Select value={formData.menteeId} onValueChange={(value) => setFormData({ ...formData, menteeId: value })}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Choose mentee" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {mentees.map((mentee) => (
-                      <SelectItem key={mentee.id} value={mentee.id}>
-                        <div className="flex flex-col">
-                          <span>{mentee.name}</span>
-                          <span className="text-xs text-muted-foreground">{mentee.program}</span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+        {/* Task Type Selection */}
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 mb-6">
+          <label className="block text-slate-900 mb-3">Task Type</label>
+          <div className="grid sm:grid-cols-2 gap-4">
+            <button
+              type="button"
+              onClick={() => setTaskType('roadmap')}
+              className={`p-4 border-2 rounded-xl transition-all text-left ${
+                taskType === 'roadmap'
+                  ? 'border-indigo-600 bg-indigo-50'
+                  : 'border-slate-200 hover:border-slate-300'
+              }`}
+            >
+              <BookOpen className={`w-6 h-6 mb-2 ${taskType === 'roadmap' ? 'text-indigo-600' : 'text-slate-600'}`} />
+              <div className={`mb-1 ${taskType === 'roadmap' ? 'text-indigo-900' : 'text-slate-900'}`}>
+                From Roadmap
+              </div>
+              <div className={`text-sm ${taskType === 'roadmap' ? 'text-indigo-700' : 'text-slate-600'}`}>
+                Choose from program curriculum
+              </div>
+            </button>
 
-                {formData.menteeId && (
-                  <div className="pt-4 border-t">
-                    <h4 className="text-sm font-medium mb-2">Mentee Progress</h4>
-                    <div className="space-y-2">
-                      {mentees
-                        .filter((m) => m.id === formData.menteeId)
-                        .map((mentee) => (
-                          <div key={mentee.id}>
-                            <div className="flex items-center justify-between text-sm mb-1">
-                              <span className="text-muted-foreground">{mentee.program}</span>
-                              <span className="font-medium">{mentee.progress}%</span>
-                            </div>
-                            <div className="h-2 bg-secondary rounded-full overflow-hidden">
-                              <div className="h-full bg-primary" style={{ width: `${mentee.progress}%` }} />
-                            </div>
-                          </div>
-                        ))}
+            <button
+              type="button"
+              onClick={() => setTaskType('custom')}
+              className={`p-4 border-2 rounded-xl transition-all text-left ${
+                taskType === 'custom'
+                  ? 'border-indigo-600 bg-indigo-50'
+                  : 'border-slate-200 hover:border-slate-300'
+              }`}
+            >
+              <Plus className={`w-6 h-6 mb-2 ${taskType === 'custom' ? 'text-indigo-600' : 'text-slate-600'}`} />
+              <div className={`mb-1 ${taskType === 'custom' ? 'text-indigo-900' : 'text-slate-900'}`}>
+                Custom Task
+              </div>
+              <div className={`text-sm ${taskType === 'custom' ? 'text-indigo-700' : 'text-slate-600'}`}>
+                Create your own assignment
+              </div>
+            </button>
+          </div>
+        </div>
+
+        {/* Roadmap Tasks */}
+        {taskType === 'roadmap' && (
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 mb-6">
+            <label className="block text-slate-900 mb-3">
+              Select Task from Roadmap <span className="text-red-600">*</span>
+            </label>
+            <div className="space-y-3">
+              {roadmapTasks.map((task) => (
+                <label
+                  key={task.id}
+                  className={`block p-4 border-2 rounded-xl cursor-pointer transition-all ${
+                    selectedRoadmapTask === task.id
+                      ? 'border-indigo-600 bg-indigo-50'
+                      : 'border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="roadmapTask"
+                    value={task.id}
+                    checked={selectedRoadmapTask === task.id}
+                    onChange={(e) => setSelectedRoadmapTask(e.target.value)}
+                    className="sr-only"
+                  />
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className={`px-2 py-0.5 bg-slate-100 text-slate-700 rounded text-xs`}>
+                          Week {task.week}
+                        </span>
+                        <h3 className={selectedRoadmapTask === task.id ? 'text-indigo-900' : 'text-slate-900'}>
+                          {task.title}
+                        </h3>
+                      </div>
+                      <p className={`text-sm mb-2 ${selectedRoadmapTask === task.id ? 'text-indigo-700' : 'text-slate-600'}`}>
+                        {task.description}
+                      </p>
+                      <span className={`text-xs ${selectedRoadmapTask === task.id ? 'text-indigo-600' : 'text-slate-500'}`}>
+                        Estimated: {task.estimatedHours} hours
+                      </span>
                     </div>
                   </div>
-                )}
-              </CardContent>
-            </Card>
+                </label>
+              ))}
+            </div>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Quick Tips</CardTitle>
-              </CardHeader>
-              <CardContent className="text-sm text-muted-foreground space-y-2">
-                <p>• Be specific with task requirements</p>
-                <p>• Set realistic deadlines</p>
-                <p>• Provide helpful resources</p>
-                <p>• Match difficulty to mentee's level</p>
-              </CardContent>
-            </Card>
-
-            <Button type="submit" className="w-full" size="lg">
-              <Save className="h-4 w-4 mr-2" />
-              Assign Task
-            </Button>
+            {/* Due Date */}
+            <div className="mt-6">
+              <label className="block text-slate-900 mb-2">
+                Due Date <span className="text-red-600">*</span>
+              </label>
+              <div className="relative">
+                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                <input
+                  type="date"
+                  className="w-full pl-11 pr-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  required
+                />
+              </div>
+            </div>
           </div>
+        )}
+
+        {/* Custom Task */}
+        {taskType === 'custom' && (
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 mb-6 space-y-6">
+            {/* Task Title */}
+            <div>
+              <label className="block text-slate-900 mb-2">
+                Task Title <span className="text-red-600">*</span>
+              </label>
+              <input
+                type="text"
+                value={customTask.title}
+                onChange={(e) => setCustomTask({ ...customTask, title: e.target.value })}
+                className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                placeholder="e.g., Build a weather dashboard"
+                required
+              />
+            </div>
+
+            {/* Description */}
+            <div>
+              <label className="block text-slate-900 mb-2">
+                Description <span className="text-red-600">*</span>
+              </label>
+              <textarea
+                value={customTask.description}
+                onChange={(e) => setCustomTask({ ...customTask, description: e.target.value })}
+                rows={5}
+                className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
+                placeholder="Describe the task, requirements, and expectations..."
+                required
+              />
+            </div>
+
+            {/* Due Date & Priority */}
+            <div className="grid sm:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-slate-900 mb-2">
+                  Due Date <span className="text-red-600">*</span>
+                </label>
+                <div className="relative">
+                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                  <input
+                    type="date"
+                    value={customTask.dueDate}
+                    onChange={(e) => setCustomTask({ ...customTask, dueDate: e.target.value })}
+                    className="w-full pl-11 pr-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-900 mb-2">Priority</label>
+                <div className="relative">
+                  <Flag className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                  <select
+                    value={customTask.priority}
+                    onChange={(e) => setCustomTask({ ...customTask, priority: e.target.value })}
+                    className="w-full pl-11 pr-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent appearance-none"
+                  >
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Resources */}
+            <div>
+              <label className="block text-slate-900 mb-2">Learning Resources</label>
+              <div className="space-y-3">
+                {customTask.resources.map((resource, index) => (
+                  <div key={index} className="flex gap-2">
+                    <div className="relative flex-1">
+                      <LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                      <input
+                        type="url"
+                        value={resource}
+                        onChange={(e) => updateResource(index, e.target.value)}
+                        className="w-full pl-11 pr-12 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        placeholder="https://..."
+                      />
+                      {customTask.resources.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeResource(index)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-red-600"
+                        >
+                          <X className="w-5 h-5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={addResource}
+                  className="text-indigo-600 hover:text-indigo-700 text-sm flex items-center gap-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  Add resource link
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="flex gap-4">
+          <button
+            type="submit"
+            className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition-colors flex items-center gap-2"
+          >
+            <Send className="w-5 h-5" />
+            Assign Task
+          </button>
+          <button
+            type="button"
+            onClick={() => router.push('/mentor/dashboard')}
+            className="px-6 py-3 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl transition-colors"
+          >
+            Cancel
+          </button>
         </div>
       </form>
     </div>
