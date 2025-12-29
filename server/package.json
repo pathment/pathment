@@ -6,21 +6,36 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon --watch src --exec node src/index.js",
+    "db:create": "node scripts/createTables.js",
+    "db:sync": "node scripts/syncDatabase.js",
+    "db:sync:alter": "node scripts/syncDatabase.js --alter",
+    "db:reset": "node scripts/resetDatabase.js",
     "migrate": "sequelize db:migrate",
-    "seed": "sequelize db:seed:all"
+    "seed": "sequelize db:seed:all",
+    "seed:admin": "node scripts/seedAdmin.js",
+    "test:db": "node scripts/testDbConnection.js",
+    "check:tables": "node scripts/checkTables.js"
   },
   "dependencies": {
+    "axios": "^1.13.2",
+    "bcrypt": "^5.1.1",
+    "bull": "^4.16.5",
+    "cors": "^2.8.5",
+    "dotenv": "^16.0.3",
     "express": "^4.18.2",
-    "sequelize": "^6.32.1",
+    "joi": "^18.0.1",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.0.2",
+    "nodemailer": "^7.0.10",
+    "openai": "^6.9.1",
     "pg": "^8.11.0",
     "pg-hstore": "^2.3.4",
-    "dotenv": "^16.0.3",
-    "bcrypt": "^5.1.1",
-    "jsonwebtoken": "^9.0.2",
-    "cors": "^2.8.5"
+    "sequelize": "^6.32.1",
+    "socket.io": "^4.8.1",
+    "winston": "^3.18.3"
   },
   "devDependencies": {
-    "sequelize-cli": "^6.6.0",
-    "nodemon": "^2.0.22"
+    "nodemon": "^2.0.22",
+    "sequelize-cli": "^6.6.0"
   }
 }

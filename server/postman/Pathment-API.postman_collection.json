@@ -1,0 +1,667 @@
+{
+  "info": {
+    "name": "Pathment API - Complete Collection",
+    "_postman_id": "pathment-api-collection",
+    "description": "Complete API collection for Pathment mentorship platform with Development and Production environments included. Import this single file to get everything!\n\n## Quick Start:\n1. Import this collection\n2. Select 'Pathment Development' environment from dropdown\n3. Run 'Health Check' to verify server\n4. Run 'Register Mentee' to create user\n5. Run 'Login' - tokens auto-save!\n6. Test protected endpoints with saved token\n\n## Features:\n- Auto-save tokens on login\n- Auto-refresh access token\n- Pre-configured requests\n- Development & Production environments\n- Comprehensive test coverage",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register Mentee",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Jane\",\n  \"lastName\": \"Smith\",\n  \"email\": \"jane.smith@example.com\",\n  \"password\": \"SecurePass123!\",\n  \"confirmPassword\": \"SecurePass123!\",\n  \"role\": \"mentee\",\n  \"phoneNumber\": \"+1234567890\",\n  \"dateOfBirth\": \"1995-05-15\",\n  \"bio\": \"Aspiring full-stack developer passionate about learning\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/register",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "register"]
+            },
+            "description": "Register a new mentee user"
+          },
+          "response": []
+        },
+        {
+          "name": "Register Mentor",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"John\",\n  \"lastName\": \"Mentor\",\n  \"email\": \"john.mentor@example.com\",\n  \"password\": \"MentorPass123!\",\n  \"confirmPassword\": \"MentorPass123!\",\n  \"role\": \"mentor\",\n  \"phoneNumber\": \"+1987654321\",\n  \"bio\": \"Senior software engineer with 10+ years of experience in full-stack development\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/register",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "register"]
+            },
+            "description": "Register a new mentor user"
+          },
+          "response": []
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// Save tokens to environment variables",
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    pm.environment.set('access_token', response.data.tokens.accessToken);",
+                  "    pm.environment.set('refresh_token', response.data.tokens.refreshToken);",
+                  "    pm.environment.set('user_id', response.data.user.id);",
+                  "    console.log('Tokens saved to environment');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"jane.smith@example.com\",\n  \"password\": \"SecurePass123!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "login"]
+            },
+            "description": "Login with email and password. Automatically saves tokens to environment variables."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Current User",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/auth/me",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "me"]
+            },
+            "description": "Get authenticated user profile (requires access token)"
+          },
+          "response": []
+        },
+        {
+          "name": "Refresh Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// Update access token in environment",
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    pm.environment.set('access_token', response.data.accessToken);",
+                  "    console.log('Access token refreshed');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refresh_token}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/refresh",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "refresh"]
+            },
+            "description": "Get new access token using refresh token. Automatically updates access token in environment."
+          },
+          "response": []
+        },
+        {
+          "name": "Verify Email",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"verification_token_from_email\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/verify-email",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "verify-email"]
+            },
+            "description": "Verify user email with token received via email"
+          },
+          "response": []
+        },
+        {
+          "name": "Forgot Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"jane.smith@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/forgot-password",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "forgot-password"]
+            },
+            "description": "Request password reset email"
+          },
+          "response": []
+        },
+        {
+          "name": "Reset Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"reset_token_from_email\",\n  \"password\": \"NewSecurePass123!\",\n  \"confirmPassword\": \"NewSecurePass123!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/reset-password",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "reset-password"]
+            },
+            "description": "Reset password using token from email"
+          },
+          "response": []
+        },
+        {
+          "name": "Change Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"SecurePass123!\",\n  \"newPassword\": \"NewSecurePass456!\",\n  \"confirmPassword\": \"NewSecurePass456!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/change-password",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "change-password"]
+            },
+            "description": "Change password for authenticated user"
+          },
+          "response": []
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refresh_token}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/logout",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "logout"]
+            },
+            "description": "Logout user and revoke refresh token"
+          },
+          "response": []
+        }
+      ],
+      "description": "Authentication endpoints for user registration, login, token management, and password operations"
+    },
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Server Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/health",
+              "host": ["{{base_url}}"],
+              "path": ["api", "health"]
+            },
+            "description": "Check if server is running and healthy"
+          },
+          "response": []
+        },
+        {
+          "name": "Root Endpoint",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/",
+              "host": ["{{base_url}}"],
+              "path": [""]
+            },
+            "description": "Get server information"
+          },
+          "response": []
+        }
+      ],
+      "description": "Health check and server status endpoints"
+    },
+    {
+      "name": "Programs",
+      "item": [
+        {
+          "name": "Create Program",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// Save program ID to environment",
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    pm.environment.set('program_id', response.data.program.id);",
+                  "    console.log('Program ID saved:', response.data.program.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Full-Stack Development Mentorship\",\n  \"description\": \"Comprehensive 12-week program covering frontend and backend development with hands-on projects\",\n  \"type\": \"mentorship\",\n  \"status\": \"published\",\n  \"totalDurationWeeks\": 12,\n  \"estimatedHoursPerWeek\": 10,\n  \"startDate\": \"2025-12-01\",\n  \"endDate\": \"2026-02-28\",\n  \"maxEnrollments\": 50,\n  \"tags\": [\"javascript\", \"nodejs\", \"react\", \"mentorship\"],\n  \"learningOutcomes\": [\n    \"Build full-stack web applications\",\n    \"Master React and Node.js\",\n    \"Deploy applications to production\"\n  ],\n  \"prerequisites\": \"Basic programming knowledge required\",\n  \"targetAudience\": \"Beginner to intermediate developers\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/programs",
+              "host": ["{{base_url}}"],
+              "path": ["api", "programs"]
+            },
+            "description": "Create a new program (Admin or Mentor only)"
+          },
+          "response": []
+        },
+        {
+          "name": "Get All Programs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/programs",
+              "host": ["{{base_url}}"],
+              "path": ["api", "programs"]
+            },
+            "description": "Get all published programs (public access)"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Programs with Filters",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/programs?type=mentorship&status=published&page=1&limit=10&sortBy=createdAt&sortOrder=DESC",
+              "host": ["{{base_url}}"],
+              "path": ["api", "programs"],
+              "query": [
+                {
+                  "key": "type",
+                  "value": "mentorship",
+                  "description": "Filter by program type (mentorship, internship, training, onboarding)"
+                },
+                {
+                  "key": "status",
+                  "value": "published",
+                  "description": "Filter by status (draft, published, archived, completed)"
+                },
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Page number"
+                },
+                {
+                  "key": "limit",
+                  "value": "10",
+                  "description": "Items per page (max 100)"
+                },
+                {
+                  "key": "sortBy",
+                  "value": "createdAt",
+                  "description": "Sort field (createdAt, name, rating, currentEnrollments, startDate)"
+                },
+                {
+                  "key": "sortOrder",
+                  "value": "DESC",
+                  "description": "Sort order (ASC or DESC)"
+                },
+                {
+                  "key": "search",
+                  "value": "",
+                  "description": "Search in name and description",
+                  "disabled": true
+                },
+                {
+                  "key": "tags",
+                  "value": "",
+                  "description": "Filter by tags (comma-separated)",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Get programs with various filters and pagination"
+          },
+          "response": []
+        },
+        {
+          "name": "Search Programs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/programs?search=full-stack",
+              "host": ["{{base_url}}"],
+              "path": ["api", "programs"],
+              "query": [
+                {
+                  "key": "search",
+                  "value": "full-stack"
+                }
+              ]
+            },
+            "description": "Search programs by name or description"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Program by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/programs/{{program_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "programs", "{{program_id}}"]
+            },
+            "description": "Get program details by ID"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Program",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"maxEnrollments\": 100,\n  \"estimatedHoursPerWeek\": 15,\n  \"status\": \"published\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/programs/{{program_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "programs", "{{program_id}}"]
+            },
+            "description": "Update program (Admin or Creator only)"
+          },
+          "response": []
+        },
+        {
+          "name": "Clone Program",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Full-Stack Development Mentorship Q2 2026\",\n  \"startDate\": \"2026-04-01\",\n  \"endDate\": \"2026-06-30\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/programs/{{program_id}}/clone",
+              "host": ["{{base_url}}"],
+              "path": ["api", "programs", "{{program_id}}", "clone"]
+            },
+            "description": "Clone/duplicate a program with optional customizations (Admin or Mentor)"
+          },
+          "response": []
+        },
+        {
+          "name": "Enroll in Program",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/programs/{{program_id}}/enroll",
+              "host": ["{{base_url}}"],
+              "path": ["api", "programs", "{{program_id}}", "enroll"]
+            },
+            "description": "Enroll in a program (Mentee only)"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Program Enrollments",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/programs/{{program_id}}/enrollments",
+              "host": ["{{base_url}}"],
+              "path": ["api", "programs", "{{program_id}}", "enrollments"]
+            },
+            "description": "Get all enrollments for a program (Admin or Creator only)"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Program Statistics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/programs/{{program_id}}/stats",
+              "host": ["{{base_url}}"],
+              "path": ["api", "programs", "{{program_id}}", "stats"]
+            },
+            "description": "Get program statistics and analytics (Admin or Creator only)"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Program",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/programs/{{program_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "programs", "{{program_id}}"]
+            },
+            "description": "Delete a program (Admin or Creator only). Cannot delete programs with active enrollments."
+          },
+          "response": []
+        }
+      ],
+      "description": "Program management endpoints - Create, read, update, delete programs. Includes enrollment, cloning, and statistics."
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Global pre-request script",
+          "console.log('Request to: ' + pm.request.url);"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Global test script",
+          "console.log('Response status: ' + pm.response.code);",
+          "",
+          "// Log errors if any",
+          "if (pm.response.code >= 400) {",
+          "    console.log('Error response:', pm.response.json());",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:5000",
+      "type": "string"
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refresh_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "user_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "program_id",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}
