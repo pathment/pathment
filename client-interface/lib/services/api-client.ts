@@ -52,10 +52,11 @@ class ApiClient {
               { refreshToken },
               { headers: { 'Content-Type': 'application/json' } }
             );
-
-            // Extract new token from response
-            const newToken = response.data?.data?.token || response.data?.token;
+            console.log('Token refreshed successfully', response.data);
+            // Extract new token from response - backend returns accessToken in data object
+            const newToken = response.data?.data?.accessToken || response.data?.accessToken || response.data?.data?.token || response.data?.token;
             if (!newToken) {
+              console.error('Refresh response:', response.data);
               throw new Error('No token in refresh response');
             }
 
@@ -103,6 +104,7 @@ class ApiClient {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('token');
       localStorage.removeItem('refreshToken');
+      localStorage.removeItem('user');
     }
   }
 

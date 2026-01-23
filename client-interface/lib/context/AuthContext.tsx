@@ -28,6 +28,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const checkAuth = async () => {
     try {
       const token = localStorage.getItem('token');
+      const cachedUser = localStorage.getItem('user');
+      
+      // If user exists but no token, clear everything (corrupted state)
+      if (cachedUser && !token) {
+        console.warn('Auth state corrupted: user exists but no token. Clearing...');
+        localStorage.removeItem('user');
+        setUser(null);
+        setIsLoading(false);
+        return;
+      }
+      
       if (token) {
         // Try to get user from API
         try {
@@ -36,7 +47,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           localStorage.setItem('user', JSON.stringify(response.data.user));
         } catch (apiError) {
           // If API fails, try to get from localStorage cache
-          const cachedUser = localStorage.getItem('user');
           if (cachedUser) {
             setUser(JSON.parse(cachedUser));
           } else {
@@ -84,7 +94,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     try {
-      await apiClient.post(apiConfig.endpoints.logout);
+      const refreshToken = localStorage.getItem('refreshToken');
+      if (refreshToken) {
+        await apiClient.post(apiConfig.endpoints.logout, { refreshToken });
+      }
     } catch (error) {
       console.error('Logout error:', error);
     } finally {
