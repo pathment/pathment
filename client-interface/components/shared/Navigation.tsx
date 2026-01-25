@@ -43,6 +43,7 @@ export default function Navigation({ role }: NavigationProps) {
 
   const menteeLinks = [
     { path: '/mentee/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+    { path: '/mentee/programs', icon: BookOpen, label: 'Browse Programs' },
     { path: '/mentee/tasks', icon: ClipboardList, label: 'My Tasks' },
   ];
 

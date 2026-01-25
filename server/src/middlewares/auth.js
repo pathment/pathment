@@ -39,9 +39,9 @@ const authenticate = catchAsync(async (req, res, next) => {
 
 /**
  * Authorize user by role
- * @param  {...String} roles - Allowed roles
+ * @param {Array<String>} roles - Allowed roles
  */
-const authorize = (...roles) => {
+const authorize = (roles) => {
   return (req, res, next) => {
     if (!req.user) {
       throw new AuthenticationError('You must be logged in to access this resource');

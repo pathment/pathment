@@ -29,6 +29,7 @@ export default function RoadmapGenerator() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [loading, setLoading] = useState(true);
   const [roadmap, setRoadmap] = useState<any[]>([]);
+  const [roadmapId, setRoadmapId] = useState<string>('');
   const [levels, setLevels] = useState<any[]>([]);
   const [selectedLevelId, setSelectedLevelId] = useState<string>(levelParam || '');
   const [editingWeek, setEditingWeek] = useState<number | null>(null);
@@ -71,7 +72,9 @@ export default function RoadmapGenerator() {
       const roadmapData = response?.data?.roadmap || response?.roadmap || response;
       
       if (roadmapData?.weeks) {
+        setRoadmapId(roadmapData.id);
         const formattedWeeks = roadmapData.weeks.map((week: any) => ({
+          id: week.id,
           week: week.weekNumber,
           title: week.title,
           objectives: week.objectives || [],
@@ -84,15 +87,18 @@ export default function RoadmapGenerator() {
         }));
         setRoadmap(formattedWeeks);
       } else {
+        setRoadmapId('');
         setRoadmap([]);
       }
     } catch (error: any) {
       // 404 is expected when no roadmap exists for this level
       if (error.response?.status === 404) {
+        setRoadmapId('');
         setRoadmap([]);
       } else {
         console.error('Failed to fetch roadmap:', error);
         toast.error('Failed to load roadmap');
+        setRoadmapId('');
         setRoadmap([]);
       }
     } finally {
@@ -147,27 +153,104 @@ export default function RoadmapGenerator() {
     }
   };
 
-  const addWeek = () => {
-    const newWeek = {
-      week: roadmap.length + 1,
-      title: 'New Week',
-      objectives: [],
-      tasks: []
-    };
-    setRoadmap([...roadmap, newWeek]);
-    setEditingWeek(newWeek.week);
+  const addWeek = async () => {
+    if (!roadmapId) {
+      toast.error('Roadmap not found. Please generate a roadmap first.');
+      return;
+    }
+
+    try {
+      const newWeekData = {
+        weekNumber: roadmap.length + 1,
+        title: `Week ${roadmap.length + 1}`,
+        objectives: [],
+      };
+      
+      const response = await programManagementApi.roadmaps.addWeek(roadmapId, newWeekData);
+      const newWeek = response?.data?.week || response?.week || response;
+      
+      toast.success('Week added successfully');
+      await fetchRoadmap(); // Refresh to get updated data
+      if (newWeek?.id) {
+        setEditingWeek(newWeek.weekNumber);
+      }
+    } catch (error: any) {
+      console.error('Failed to add week:', error);
+      toast.error(error.response?.data?.message || 'Failed to add week');
+    }
   };
 
-  const addTask = (weekIndex: number) => {
-    const newRoadmap = [...roadmap];
-    const newTask = {
-      id: `temp-${Math.random()}`,
-      title: 'New Task',
-      description: '',
-      resources: []
-    };
-    newRoadmap[weekIndex].tasks.push(newTask);
-    setRoadmap(newRoadmap);
+  const addTask = async (weekIndex: number) => {
+    const week = roadmap[weekIndex];
+    if (!week?.id) {
+      toast.error('Week not found');
+      return;
+    }
+
+    try {
+      const newTaskData = {
+        title: 'New Task',
+        description: 'Click edit to add description',
+        resources: []
+      };
+      
+      await programManagementApi.roadmaps.addTask(week.id, newTaskData);
+      toast.success('Task added successfully');
+      await fetchRoadmap(); // Refresh to get updated data
+    } catch (error: any) {
+      console.error('Failed to add task:', error);
+      toast.error(error.response?.data?.message || 'Failed to add task');
+    }
+  };
+
+  const deleteTask = async (taskId: string) => {
+    const confirmDelete = confirm('Are you sure you want to delete this task?');
+    if (!confirmDelete) return;
+
+    try {
+      await programManagementApi.roadmaps.deleteTask(taskId);
+      toast.success('Task deleted successfully');
+      await fetchRoadmap(); // Refresh to get updated data
+    } catch (error: any) {
+      console.error('Failed to delete task:', error);
+      toast.error(error.response?.data?.message || 'Failed to delete task');
+    }
+  };
+
+  const updateTask = async (taskId: string, updates: any) => {
+    try {
+      await programManagementApi.roadmaps.updateTask(taskId, updates);
+      toast.success('Task updated successfully');
+      await fetchRoadmap(); // Refresh to get updated data
+    } catch (error: any) {
+      console.error('Failed to update task:', error);
+      toast.error(error.response?.data?.message || 'Failed to update task');
+    }
+  };
+
+  const deleteWeek = async (weekId: string) => {
+    const confirmDelete = confirm('Are you sure you want to delete this week and all its tasks?');
+    if (!confirmDelete) return;
+
+    try {
+      await programManagementApi.roadmaps.deleteWeek(weekId);
+      toast.success('Week deleted successfully');
+      await fetchRoadmap(); // Refresh to get updated data
+    } catch (error: any) {
+      console.error('Failed to delete week:', error);
+      toast.error(error.response?.data?.message || 'Failed to delete week');
+    }
+  };
+
+  const updateWeek = async (weekId: string, updates: any) => {
+    try {
+      await programManagementApi.roadmaps.updateWeek(weekId, updates);
+      toast.success('Week updated successfully');
+      await fetchRoadmap(); // Refresh to get updated data
+    } catch (error: any) {
+      console.error('Failed to update week:', error);
+      toast.error(error.response?.data?.message || 'Failed to update week');
+    }
   };
 
   const handleLevelChange = (levelId: string) => {
@@ -332,7 +415,17 @@ export default function RoadmapGenerator() {
                       type="text"
                       defaultValue={week.title}
                       className="w-full text-slate-900 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-3"
-                      onBlur={() => setEditingWeek(null)}
+                      onBlur={(e) => {
+                        if (e.target.value !== week.title && week.id) {
+                          updateWeek(week.id, { title: e.target.value });
+                        }
+                        setEditingWeek(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.currentTarget.blur();
+                        }
+                      }}
                       autoFocus
                     />
                   ) : (
@@ -352,12 +445,20 @@ export default function RoadmapGenerator() {
                     </div>
                   </div>
                 </div>
-                <button
-                  onClick={() => setEditingWeek(week.week)}
-                  className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-                >
-                  <Edit2 className="w-5 h-5 text-slate-600" />
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setEditingWeek(week.week)}
+                    className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+                  >
+                    <Edit2 className="w-5 h-5 text-slate-600" />
+                  </button>
+                  <button
+                    onClick={() => week.id && deleteWeek(week.id)}
+                    className="p-2 hover:bg-red-50 rounded-lg transition-colors"
+                  >
+                    <Trash2 className="w-5 h-5 text-red-600" />
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -389,10 +490,19 @@ export default function RoadmapGenerator() {
                       )}
                     </div>
                     <div className="flex gap-2">
-                      <button className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
+                      <button 
+                        onClick={() => {
+                          // TODO: Implement task editing modal
+                          toast.info('Task editing modal coming soon');
+                        }}
+                        className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+                      >
                         <Edit2 className="w-4 h-4 text-slate-600" />
                       </button>
-                      <button className="p-2 hover:bg-red-50 rounded-lg transition-colors">
+                      <button 
+                        onClick={() => deleteTask(task.id)}
+                        className="p-2 hover:bg-red-50 rounded-lg transition-colors"
+                      >
                         <Trash2 className="w-4 h-4 text-red-600" />
                       </button>
                     </div>

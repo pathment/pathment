@@ -21,9 +21,9 @@ module.exports = (sequelize, DataTypes) => {
     },
     status: {
       type: DataTypes.STRING(20),
-      defaultValue: 'pending_match',
+      defaultValue: 'pending_approval',
       validate: {
-        isIn: [['pending_match', 'matched', 'active', 'level_completed', 'program_completed', 'dropped']]
+        isIn: [['pending_approval', 'approved', 'rejected', 'pending_match', 'matched', 'active', 'level_completed', 'program_completed', 'dropped']]
       }
     },
     currentWeek: {
@@ -108,7 +108,7 @@ module.exports = (sequelize, DataTypes) => {
   Enrollment.associate = (models) => {
     Enrollment.belongsTo(models.User, { foreignKey: 'mentee_id', as: 'mentee' });
     Enrollment.belongsTo(models.Program, { foreignKey: 'program_id', as: 'program' });
-    // Enrollment.belongsTo(models.ProgramLevel, { foreignKey: 'current_level_id', as: 'currentLevel' });
+    Enrollment.belongsTo(models.ProgramLevel, { foreignKey: 'current_level_id', as: 'currentLevel' });
   };
 
   return Enrollment;

@@ -118,8 +118,8 @@ module.exports = (sequelize, DataTypes) => {
   Program.associate = (models) => {
     Program.belongsTo(models.User, { foreignKey: 'created_by', as: 'creator' });
     Program.belongsTo(models.Program, { foreignKey: 'cloned_from', as: 'parent' });
-    // Program.hasMany(models.ProgramLevel, { foreignKey: 'program_id', as: 'levels' });
-    // Program.hasMany(models.Roadmap, { foreignKey: 'program_id', as: 'roadmaps' });
+    Program.hasMany(models.ProgramLevel, { foreignKey: 'program_id', as: 'levels' });
+    Program.hasMany(models.Roadmap, { foreignKey: 'program_id', as: 'roadmaps' });
     Program.hasMany(models.Enrollment, { foreignKey: 'program_id', as: 'enrollments' });
   };
 

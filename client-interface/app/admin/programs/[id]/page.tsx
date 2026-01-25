@@ -8,6 +8,7 @@ import {
   Edit,
   Users,
   UserCheck,
+  UserPlus,
   Clock,
   CheckCircle2,
   Circle,
@@ -21,6 +22,8 @@ import {
   GripVertical
 } from 'lucide-react';
 import { programManagementApi } from '@/lib/services/program-api';
+import { levelMentorApi } from '@/lib/services/level-mentor-api';
+import { enrollmentApi } from '@/lib/services/enrollment-api';
 import { toast } from 'sonner';
 
 export default function ProgramDetails() {
@@ -34,17 +37,23 @@ export default function ProgramDetails() {
   const [roadmap, setRoadmap] = useState<any>(null);
   const [loadingRoadmap, setLoadingRoadmap] = useState(false);
   const [generatingRoadmap, setGeneratingRoadmap] = useState(false);
+  const [assignedMentors, setAssignedMentors] = useState<any[]>([]);
+  const [enrollments, setEnrollments] = useState<any[]>([]);
+  const [loadingEnrollments, setLoadingEnrollments] = useState(false);
 
   useEffect(() => {
     if (id) {
       fetchProgram();
       fetchLevels();
+      fetchMentorAssignments();
     }
   }, [id]);
 
   useEffect(() => {
     if (activeTab === 'levels' && selectedLevelId) {
       fetchRoadmap();
+    } else if (activeTab === 'enrollments') {
+      fetchEnrollments();
     }
   }, [activeTab, selectedLevelId]);
 
@@ -74,6 +83,66 @@ export default function ProgramDetails() {
       }
     } catch (error: any) {
       console.error('Failed to fetch levels:', error);
+    }
+  };
+
+  const fetchMentorAssignments = async () => {
+    try {
+      const response = await levelMentorApi.getProgramMentorAssignments(id);
+      const assignments = response?.data?.assignments || response?.assignments || [];
+      
+      // Flatten mentors from all levels
+      const mentorsFlat = assignments.flatMap((assignment: any) => 
+        assignment.mentors.map((mentor: any) => ({
+          id: mentor.id,
+          name: `${mentor.firstName} ${mentor.lastName}`,
+          mentees: mentor.mentorProfile?.currentMenteeCount || 0,
+          expertise: mentor.mentorProfile?.specialization?.[0] || 'General',
+          title: mentor.mentorProfile?.title || 'Mentor'
+        }))
+      );
+      
+      setAssignedMentors(mentorsFlat);
+    } catch (error: any) {
+      console.error('Failed to fetch mentor assignments:', error);
+      // Don't show error toast as this is not critical
+    }
+  };
+
+  const fetchEnrollments = async () => {
+    try {
+      setLoadingEnrollments(true);
+      const response = await enrollmentApi.getAll({ programId: id });
+      const enrollmentList = response?.data?.enrollments || response?.enrollments || [];
+      setEnrollments(enrollmentList);
+    } catch (error: any) {
+      console.error('Failed to fetch enrollments:', error);
+      toast.error('Failed to load enrollments');
+    } finally {
+      setLoadingEnrollments(false);
+    }
+  };
+
+  const handleApproveEnrollment = async (enrollmentId: string) => {
+    try {
+      await enrollmentApi.approve(enrollmentId);
+      toast.success('Enrollment approved successfully');
+      fetchEnrollments(); // Refresh list
+    } catch (error: any) {
+      console.error('Failed to approve enrollment:', error);
+      toast.error(error.response?.data?.message || 'Failed to approve enrollment');
+    }
+  };
+
+  const handleRejectEnrollment = async (enrollmentId: string) => {
+    const reason = prompt('Reason for rejection (optional):');
+    try {
+      await enrollmentApi.reject(enrollmentId, reason || undefined);
+      toast.success('Enrollment rejected');
+      fetchEnrollments(); // Refresh list
+    } catch (error: any) {
+      console.error('Failed to reject enrollment:', error);
+      toast.error(error.response?.data?.message || 'Failed to reject enrollment');
     }
   };
 
@@ -151,12 +220,6 @@ export default function ProgramDetails() {
       </div>
     );
   }
-
-  const assignedMentors = [
-    { id: 1, name: 'Sarah Johnson', mentees: 6, expertise: 'Frontend Development', rating: 4.9 },
-    { id: 2, name: 'Michael Chen', mentees: 5, expertise: 'Backend Development', rating: 4.8 },
-    { id: 3, name: 'Emma Wilson', mentees: 7, expertise: 'Full Stack', rating: 4.9 },
-  ];
 
   return (
     <>
@@ -374,7 +437,7 @@ export default function ProgramDetails() {
                   <div key={mentor.id} className="flex items-center gap-3">
                     <div className="w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center shrink-0">
                       <span className="text-slate-600 text-sm">
-                        {mentor.name.split(' ').map(n => n[0]).join('')}
+                        {mentor.name.split(' ').map((n: string) => n[0]).join('')}
                       </span>
                     </div>
                     <div className="flex-1 min-w-0">
@@ -385,7 +448,7 @@ export default function ProgramDetails() {
                 ))}
               </div>
               <Link
-                href="/admin/matching/mentor-assignment"
+                href={`/admin/programs/${id}/mentors`}
                 className="mt-4 text-indigo-600 hover:text-indigo-700 text-sm block text-center"
               >
                 Manage Mentors
@@ -476,7 +539,7 @@ export default function ProgramDetails() {
           ) : (
             <>
               {/* AI Info Banner */}
-              <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-2xl p-6">
+              <div className="bg-linear-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-2xl p-6">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex items-start gap-4 flex-1">
                     <div className="w-12 h-12 bg-indigo-600 rounded-xl flex items-center justify-center shrink-0">
@@ -645,6 +708,142 @@ export default function ProgramDetails() {
                     </div>
                   </div>
                 ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'mentors' && (
+        <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center">
+          <div className="max-w-lg mx-auto">
+            <div className="w-20 h-20 bg-indigo-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
+              <Users className="w-10 h-10 text-indigo-600" />
+            </div>
+            <h2 className="text-2xl font-bold text-slate-900 mb-3">
+              Assign Mentors to Levels
+            </h2>
+            <p className="text-slate-600 mb-8">
+              Before you can match mentees to mentors, you need to assign mentors to specific program levels. 
+              This allows the system to suggest the best mentor matches based on level expertise.
+            </p>
+            <Link
+              href={`/admin/programs/${id}/mentors`}
+              className="inline-flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition-colors"
+            >
+              <UserPlus className="w-5 h-5" />
+              Manage Level Mentors
+            </Link>
+            <div className="mt-8 pt-8 border-t border-slate-200">
+              <p className="text-slate-500 text-sm">
+                After assigning mentors to levels, you can match them with mentees from the{' '}
+                <Link href="/admin/matching/mentor-assignment" className="text-indigo-600 hover:underline">
+                  Mentor Assignment
+                </Link>{' '}
+                page.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'enrollments' && (
+        <div className="space-y-6">
+          {loadingEnrollments ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+            </div>
+          ) : enrollments.length === 0 ? (
+            <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center">
+              <Users className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+              <h3 className="text-slate-900 mb-2">No Enrollments Yet</h3>
+              <p className="text-slate-600">
+                Mentees haven't enrolled in this program yet.
+              </p>
+            </div>
+          ) : (
+            <>
+              {/* Pending Approvals */}
+              {enrollments.filter((e: any) => e.status === 'pending_approval').length > 0 && (
+                <div className="bg-white rounded-2xl border border-slate-200 p-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Clock className="w-5 h-5 text-amber-600" />
+                    <h3 className="text-slate-900">Pending Approvals ({enrollments.filter((e: any) => e.status === 'pending_approval').length})</h3>
+                  </div>
+                  <div className="space-y-3">
+                    {enrollments
+                      .filter((e: any) => e.status === 'pending_approval')
+                      .map((enrollment: any) => (
+                        <div key={enrollment.id} className="p-4 border border-amber-200 bg-amber-50 rounded-xl">
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="text-slate-900 mb-1">
+                                {enrollment.mentee?.firstName} {enrollment.mentee?.lastName}
+                              </div>
+                              <div className="text-slate-600 text-sm">{enrollment.mentee?.email}</div>
+                              <div className="text-slate-500 text-xs mt-1">
+                                Requested {new Date(enrollment.enrolledAt).toLocaleDateString()}
+                              </div>
+                            </div>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => handleApproveEnrollment(enrollment.id)}
+                                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm transition-colors"
+                              >
+                                Approve
+                              </button>
+                              <button
+                                onClick={() => handleRejectEnrollment(enrollment.id)}
+                                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm transition-colors"
+                              >
+                                Reject
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+
+              {/* All Enrollments */}
+              <div className="bg-white rounded-2xl border border-slate-200 p-6">
+                <h3 className="text-slate-900 mb-4">All Enrollments ({enrollments.length})</h3>
+                <div className="space-y-2">
+                  {enrollments.map((enrollment: any) => (
+                    <div key={enrollment.id} className="p-4 border border-slate-200 rounded-xl hover:border-indigo-300 transition-colors">
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3">
+                            <div className="text-slate-900">
+                              {enrollment.mentee?.firstName} {enrollment.mentee?.lastName}
+                            </div>
+                            <span className={`px-2 py-1 rounded text-xs ${
+                              enrollment.status === 'pending_approval' ? 'bg-amber-100 text-amber-700' :
+                              enrollment.status === 'approved' ? 'bg-blue-100 text-blue-700' :
+                              enrollment.status === 'pending_match' ? 'bg-purple-100 text-purple-700' :
+                              enrollment.status === 'matched' ? 'bg-green-100 text-green-700' :
+                              enrollment.status === 'active' ? 'bg-indigo-100 text-indigo-700' :
+                              enrollment.status === 'rejected' ? 'bg-red-100 text-red-700' :
+                              'bg-slate-100 text-slate-700'
+                            }`}>
+                              {enrollment.status.replace(/_/g, ' ')}
+                            </span>
+                          </div>
+                          <div className="text-slate-600 text-sm mt-1">{enrollment.mentee?.email}</div>
+                        </div>
+                        {enrollment.status === 'approved' && (
+                          <Link
+                            href={`/admin/matching/mentor-assignment?enrollmentId=${enrollment.id}`}
+                            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm transition-colors"
+                          >
+                            Match Mentor
+                          </Link>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </>
           )}
