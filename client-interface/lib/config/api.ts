@@ -26,21 +26,22 @@ export const apiConfig = {
     // Enrollment
     enrollments: '/enrollments',
     enrollmentById: (id: string) => `/enrollments/${id}`,
-    enrollInProgram: '/enrollments',
+    enrollmentStatus: (id: string) => `/enrollments/${id}/status`,
     
     // Matching
-    matchSuggestions: '/matching/suggestions',
-    createMatch: '/matching/create',
+    matches: '/matches',
+    matchById: (id: string) => `/matches/${id}`,
+    matchStatus: (id: string) => `/matches/${id}/status`,
+    matchSuggestions: (enrollmentId: string) => `/matches/suggestions/${enrollmentId}`,
+    levelMentors: (levelId: string) => `/matches/levels/${levelId}/mentors`,
     
-    // Tasks
-    tasks: '/tasks',
-    taskById: (id: string) => `/tasks/${id}`,
-    assignTask: '/tasks/assign',
-    submitTask: (id: string) => `/tasks/${id}/submit`,
-    reviewSubmission: (id: string) => `/tasks/submissions/${id}/review`,
+    // Level Mentor Assignments
+    programMentorAssignments: (programId: string) => `/programs/${programId}/mentor-assignments`,
+    assignMentorToLevel: (programId: string, levelId: string) => `/programs/${programId}/levels/${levelId}/mentors`,
+    getLevelMentorAssignments: (programId: string, levelId: string) => `/programs/${programId}/levels/${levelId}/mentors`,
+    removeMentorFromLevel: (programId: string, levelId: string, mentorId: string) => `/programs/${programId}/levels/${levelId}/mentors/${mentorId}`,
     
-    // Notifications
-    notifications: '/notifications',
-    markAsRead: (id: string) => `/notifications/${id}/read`,
+    // Mentors
+    mentors: '/mentors',
   },
 };
