@@ -116,6 +116,8 @@ export default function CreateProgramFlow() {
 
   // Step 2: Program Levels
   const [levels, setLevels] = useState<LevelData[]>([]);
+  const [editingLevelIndex, setEditingLevelIndex] = useState<number | null>(null);
+  const [editingLevelId, setEditingLevelId] = useState<string | null>(null);
   const [currentLevel, setCurrentLevel] = useState<LevelData>({
     name: '',
     description: '',
@@ -184,8 +186,8 @@ export default function CreateProgramFlow() {
     }
   };
 
-  // Step 2: Add Level
-  const handleAddLevel = () => {
+  // Step 2: Add or Update Level
+  const handleAddLevel = async () => {
     if (!currentLevel.name || !currentLevel.durationWeeks) {
       toast({
         title: 'Validation Error',
@@ -195,7 +197,116 @@ export default function CreateProgramFlow() {
       return;
     }
 
-    setLevels([...levels, { ...currentLevel, orderIndex: levels.length }]);
+    try {
+      setLoading(true);
+
+      if (editingLevelId) {
+        // Update existing level in backend
+        const response = await programManagementApi.levels.update(editingLevelId, currentLevel);
+        const updatedLevel = response.data?.level || response.level || response;
+        
+        // Update in createdLevels state
+        setCreatedLevels(createdLevels.map(level => 
+          level.id === editingLevelId ? updatedLevel : level
+        ));
+        
+        toast({
+          title: 'Success!',
+          description: 'Level updated successfully',
+        });
+      } else if (createdProgramId) {
+        // Save new level immediately to backend
+        const levelData = { ...currentLevel, orderIndex: createdLevels.length + levels.length };
+        const response = await programManagementApi.levels.create(createdProgramId, levelData);
+        const savedLevel = response.data?.level || response.level || response;
+        
+        setCreatedLevels([...createdLevels, savedLevel]);
+        
+        toast({
+          title: 'Success!',
+          description: 'Level added successfully',
+        });
+      } else {
+        // No program yet - add to local state (for initial flow)
+        if (editingLevelIndex !== null) {
+          const updatedLevels = [...levels];
+          updatedLevels[editingLevelIndex] = { ...currentLevel, orderIndex: editingLevelIndex };
+          setLevels(updatedLevels);
+        } else {
+          setLevels([...levels, { ...currentLevel, orderIndex: levels.length }]);
+        }
+      }
+
+      // Reset form
+      setCurrentLevel({
+        name: '',
+        description: '',
+        orderIndex: 0,
+        durationWeeks: 4,
+        learningOutcomes: [],
+        prerequisites: [],
+        isOptional: false,
+      });
+      setEditingLevelIndex(null);
+      setEditingLevelId(null);
+      setLevelOutcomeInput('');
+      setLevelPrerequisiteInput('');
+    } catch (error: any) {
+      console.error('Level save error:', error);
+      toast({
+        title: 'Error',
+        description: error.response?.data?.message || 'Failed to save level',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRemoveLevel = async (index: number, levelId?: string) => {
+    if (levelId) {
+      // Delete from backend
+      try {
+        setLoading(true);
+        await programManagementApi.levels.delete(levelId);
+        setCreatedLevels(createdLevels.filter(level => level.id !== levelId));
+        toast({
+          title: 'Success!',
+          description: 'Level deleted successfully',
+        });
+      } catch (error: any) {
+        toast({
+          title: 'Error',
+          description: error.response?.data?.message || 'Failed to delete level',
+          variant: 'destructive',
+        });
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      // Remove from local state
+      setLevels(levels.filter((_, i) => i !== index));
+    }
+  };
+
+  const handleEditLevel = (index: number, level: any, levelId?: string) => {
+    setCurrentLevel({
+      name: level.name,
+      description: level.description || '',
+      orderIndex: level.orderIndex || level.levelOrder || index,
+      durationWeeks: level.durationWeeks,
+      learningOutcomes: level.learningOutcomes || [],
+      prerequisites: level.prerequisites || [],
+      isOptional: level.isOptional || false,
+    });
+    setEditingLevelIndex(levelId ? null : index);
+    setEditingLevelId(levelId || null);
+    
+    // Scroll to form
+    window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+  };
+
+  const handleCancelEdit = () => {
     setCurrentLevel({
       name: '',
       description: '',
@@ -205,16 +316,16 @@ export default function CreateProgramFlow() {
       prerequisites: [],
       isOptional: false,
     });
+    setEditingLevelIndex(null);
+    setEditingLevelId(null);
     setLevelOutcomeInput('');
     setLevelPrerequisiteInput('');
   };
 
-  const handleRemoveLevel = (index: number) => {
-    setLevels(levels.filter((_, i) => i !== index));
-  };
-
   const handleSaveLevels = async () => {
-    if (levels.length === 0) {
+    const totalLevels = createdLevels.length + levels.length;
+    
+    if (totalLevels === 0) {
       toast({
         title: 'Validation Error',
         description: 'Please add at least one level',
@@ -223,39 +334,37 @@ export default function CreateProgramFlow() {
       return;
     }
 
-    try {
-      setLoading(true);
-      const savedLevels = [];
+    // If there are unsaved local levels, save them first
+    if (levels.length > 0 && createdProgramId) {
+      try {
+        setLoading(true);
+        const savedLevels = [];
 
-      for (const level of levels) {
-        const response = await programManagementApi.levels.create(createdProgramId!, level);
-        // Response format: { success: true, data: { level: {...} } }
-        const savedLevel = response.data?.level || response.level || response;
-        console.log('Saved level:', savedLevel); // Debug log
-        savedLevels.push(savedLevel);
+        for (const level of levels) {
+          const response = await programManagementApi.levels.create(createdProgramId, level);
+          const savedLevel = response.data?.level || response.level || response;
+          savedLevels.push(savedLevel);
+        }
+
+        setCreatedLevels([...createdLevels, ...savedLevels]);
+        setLevels([]);
+      } catch (error: any) {
+        console.error('Level save error:', error);
+        toast({
+          title: 'Error',
+          description: error.response?.data?.message || 'Failed to save levels',
+          variant: 'destructive',
+        });
+        setLoading(false);
+        return;
+      } finally {
+        setLoading(false);
       }
-
-      setCreatedLevels(savedLevels);
-      
-      // Update URL with new step
-      router.push(`/admin/programs/create?programId=${createdProgramId}&step=3`);
-      
-      toast({
-        title: 'Success!',
-        description: `${savedLevels.length} level(s) added to the program`,
-      });
-
-      setCurrentStep(3);
-    } catch (error: any) {
-      console.error('Level save error:', error);
-      toast({
-        title: 'Error',
-        description: error.response?.data?.message || 'Failed to save levels',
-        variant: 'destructive',
-      });
-    } finally {
-      setLoading(false);
     }
+
+    // Navigate to next step
+    router.push(`/admin/programs/create?programId=${createdProgramId}&step=3`);
+    setCurrentStep(3);
   };
 
   // Step 3: Generate Roadmap
@@ -466,6 +575,7 @@ export default function CreateProgramFlow() {
       {currentStep === 2 && (
         <ProgramLevels
           levels={levels}
+          createdLevels={createdLevels}
           currentLevel={currentLevel}
           setCurrentLevel={setCurrentLevel}
           levelOutcomeInput={levelOutcomeInput}
@@ -478,9 +588,13 @@ export default function CreateProgramFlow() {
           removeLevelPrerequisite={removeLevelPrerequisite}
           onAddLevel={handleAddLevel}
           onRemoveLevel={handleRemoveLevel}
+          onEditLevel={handleEditLevel}
+          onCancelEdit={handleCancelEdit}
           onBack={() => setCurrentStep(1)}
           onNext={handleSaveLevels}
           loading={loading}
+          editingLevelIndex={editingLevelIndex}
+          editingLevelId={editingLevelId}
         />
       )}
 
@@ -706,42 +820,102 @@ function ProgramBasicInfo({ programData, setProgramData, tagInput, setTagInput, 
 }
 
 // Component for Step 2 - Program Levels
-function ProgramLevels({ levels, currentLevel, setCurrentLevel, levelOutcomeInput, setLevelOutcomeInput, addLevelOutcome, removeLevelOutcome, levelPrerequisiteInput, setLevelPrerequisiteInput, addLevelPrerequisite, removeLevelPrerequisite, onAddLevel, onRemoveLevel, onBack, onNext, loading }: any) {
+function ProgramLevels({ levels, createdLevels, currentLevel, setCurrentLevel, levelOutcomeInput, setLevelOutcomeInput, addLevelOutcome, removeLevelOutcome, levelPrerequisiteInput, setLevelPrerequisiteInput, addLevelPrerequisite, removeLevelPrerequisite, onAddLevel, onRemoveLevel, onEditLevel, onCancelEdit, onBack, onNext, loading, editingLevelIndex, editingLevelId }: any) {
+  const allLevels = [...createdLevels, ...levels];
+  const totalLevels = allLevels.length;
+
   return (
     <div className="space-y-6">
       {/* Added Levels */}
-      {levels.length > 0 && (
+      {totalLevels > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Added Levels ({levels.length})</CardTitle>
+            <CardTitle>Program Levels ({totalLevels})</CardTitle>
             <CardDescription>Levels will be executed in this order</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {levels.map((level: LevelData, index: number) => (
-              <div key={index} className="flex items-start justify-between p-4 border rounded-lg">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <Badge>Level {index + 1}</Badge>
-                    <h4 className="font-semibold">{level.name}</h4>
-                    {level.isOptional && <Badge variant="outline">Optional</Badge>}
+            {/* Saved levels from backend */}
+            {createdLevels.map((level: any, index: number) => {
+              const isEditing = editingLevelId === level.id;
+              return (
+                <div key={level.id} className={`flex items-start justify-between p-4 border rounded-lg ${isEditing ? 'border-primary bg-primary/5' : ''}`}>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="default">Level {index + 1}</Badge>
+                      <h4 className="font-semibold">{level.name}</h4>
+                      {level.isOptional && <Badge variant="outline">Optional</Badge>}
+                      <Badge variant="secondary" className="text-xs">Saved</Badge>
+                    </div>
+                    <p className="text-sm text-muted-foreground mt-1">{level.description}</p>
+                    <p className="text-xs text-muted-foreground mt-1">Duration: {level.durationWeeks} weeks</p>
+                    {level.learningOutcomes && level.learningOutcomes.length > 0 && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Outcomes: {level.learningOutcomes.length} items
+                      </p>
+                    )}
                   </div>
-                  <p className="text-sm text-muted-foreground mt-1">{level.description}</p>
-                  <p className="text-xs text-muted-foreground mt-1">Duration: {level.durationWeeks} weeks</p>
-                  {level.learningOutcomes.length > 0 && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Outcomes: {level.learningOutcomes.length} items
-                    </p>
-                  )}
+                  <div className="flex gap-2 ml-4">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onEditLevel(index, level, level.id)}
+                      disabled={loading}
+                    >
+                      <Edit className="h-4 w-4 text-blue-600" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onRemoveLevel(index, level.id)}
+                      disabled={loading}
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => onRemoveLevel(index)}
-                >
-                  <Trash2 className="h-4 w-4 text-destructive" />
-                </Button>
-              </div>
-            ))}
+              );
+            })}
+            
+            {/* Unsaved levels (local state) */}
+            {levels.map((level: LevelData, index: number) => {
+              const isEditing = editingLevelIndex === index;
+              const actualIndex = createdLevels.length + index;
+              return (
+                <div key={`local-${index}`} className={`flex items-start justify-between p-4 border rounded-lg border-dashed ${isEditing ? 'border-primary bg-primary/5' : ''}`}>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline">Level {actualIndex + 1}</Badge>
+                      <h4 className="font-semibold">{level.name}</h4>
+                      {level.isOptional && <Badge variant="outline">Optional</Badge>}
+                      <Badge variant="secondary" className="text-xs">Not saved</Badge>
+                    </div>
+                    <p className="text-sm text-muted-foreground mt-1">{level.description}</p>
+                    <p className="text-xs text-muted-foreground mt-1">Duration: {level.durationWeeks} weeks</p>
+                    {level.learningOutcomes.length > 0 && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Outcomes: {level.learningOutcomes.length} items
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex gap-2 ml-4">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onEditLevel(index, level)}
+                    >
+                      <Edit className="h-4 w-4 text-blue-600" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onRemoveLevel(index)}
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
           </CardContent>
         </Card>
       )}
@@ -749,8 +923,17 @@ function ProgramLevels({ levels, currentLevel, setCurrentLevel, levelOutcomeInpu
       {/* Add New Level Form */}
       <Card>
         <CardHeader>
-          <CardTitle>Add Level</CardTitle>
-          <CardDescription>Define the structure and progression of your program</CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>{editingLevelId || editingLevelIndex !== null ? 'Edit Level' : 'Add New Level'}</CardTitle>
+              <CardDescription>Define the structure and progression of your program</CardDescription>
+            </div>
+            {(editingLevelId || editingLevelIndex !== null) && (
+              <Button variant="outline" size="sm" onClick={onCancelEdit}>
+                Cancel Edit
+              </Button>
+            )}
+          </div>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="grid gap-6 md:grid-cols-2">
@@ -854,9 +1037,28 @@ function ProgramLevels({ levels, currentLevel, setCurrentLevel, levelOutcomeInpu
             variant="outline"
             className="w-full"
             onClick={onAddLevel}
+            disabled={loading}
           >
-            <Plus className="h-4 w-4 mr-2" />
-            Add Level to Program
+            {loading ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                {editingLevelId || editingLevelIndex !== null ? 'Updating...' : 'Saving...'}
+              </>
+            ) : (
+              <>
+                {editingLevelId || editingLevelIndex !== null ? (
+                  <>
+                    <Check className="h-4 w-4 mr-2" />
+                    Update Level
+                  </>
+                ) : (
+                  <>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Level to Program
+                  </>
+                )}
+              </>
+            )}
           </Button>
         </CardContent>
       </Card>
@@ -867,11 +1069,11 @@ function ProgramLevels({ levels, currentLevel, setCurrentLevel, levelOutcomeInpu
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back
         </Button>
-        <Button onClick={onNext} disabled={loading || levels.length === 0} size="lg">
+        <Button onClick={onNext} disabled={loading || totalLevels === 0} size="lg">
           {loading ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Saving Levels...
+              Saving...
             </>
           ) : (
             <>
