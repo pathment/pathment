@@ -9,6 +9,14 @@ const { authenticate, authorize } = require('../middlewares/auth');
  * All admin routes require authentication and admin role
  */
 
+// Get dashboard statistics
+router.get(
+  '/dashboard/stats',
+  authenticate,
+  authorize('admin'),
+  adminController.getDashboardStats
+);
+
 // Create new admin (only admins with 'manage_users' or 'all' permissions)
 router.post(
   '/create',

@@ -45,6 +45,21 @@ class AdminController {
   });
 
   /**
+   * Get dashboard statistics
+   * GET /api/admin/dashboard/stats
+   */
+  getDashboardStats = catchAsync(async (req, res) => {
+    const stats = await adminService.getDashboardStats();
+
+    res.status(200).json(
+      successResponse(
+        'Dashboard statistics retrieved successfully',
+        stats
+      )
+    );
+  });
+
+  /**
    * Recalculate all mentor mentee counts
    * POST /api/admin/recalculate-mentor-counts
    */

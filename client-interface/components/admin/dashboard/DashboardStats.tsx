@@ -1,18 +1,47 @@
 'use client';
 
-import { BookOpen, Users, UserCheck, TrendingUp, ArrowUpRight } from 'lucide-react';
+import { BookOpen, Users, UserCheck, TrendingUp } from 'lucide-react';
 
-export function DashboardStats() {
-  const stats = [
-    { label: 'Total Programs', value: '24', change: '+12%', icon: BookOpen, color: 'indigo' },
-    { label: 'Active Mentees', value: '156', change: '+8%', icon: Users, color: 'green' },
-    { label: 'Active Mentors', value: '42', change: '+5%', icon: UserCheck, color: 'purple' },
-    { label: 'Completion Rate', value: '87%', change: '+3%', icon: TrendingUp, color: 'blue' },
+interface DashboardStatsProps {
+  stats?: {
+    totalPrograms: number;
+    activeMentees: number;
+    activeMentors: number;
+    completionRate: number;
+  };
+}
+
+export function DashboardStats({ stats }: DashboardStatsProps) {
+  const statsData = [
+    { 
+      label: 'Total Programs', 
+      value: stats?.totalPrograms?.toString() || '0', 
+      icon: BookOpen, 
+      color: 'indigo' 
+    },
+    { 
+      label: 'Active Mentees', 
+      value: stats?.activeMentees?.toString() || '0', 
+      icon: Users, 
+      color: 'green' 
+    },
+    { 
+      label: 'Active Mentors', 
+      value: stats?.activeMentors?.toString() || '0', 
+      icon: UserCheck, 
+      color: 'purple' 
+    },
+    { 
+      label: 'Avg Completion', 
+      value: `${stats?.completionRate || 0}%`, 
+      icon: TrendingUp, 
+      color: 'blue' 
+    },
   ];
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-      {stats.map((stat) => {
+      {statsData.map((stat) => {
         const Icon = stat.icon;
         return (
           <div key={stat.label} className="bg-white rounded-2xl p-6 border border-slate-200">
@@ -20,10 +49,6 @@ export function DashboardStats() {
               <div className={`w-12 h-12 bg-${stat.color}-100 rounded-xl flex items-center justify-center`}>
                 <Icon className={`w-6 h-6 text-${stat.color}-600`} />
               </div>
-              <span className="text-green-600 text-sm flex items-center gap-1">
-                <ArrowUpRight className="w-4 h-4" />
-                {stat.change}
-              </span>
             </div>
             <div className="text-slate-600 text-sm mb-1">{stat.label}</div>
             <div className="text-slate-900 text-2xl">{stat.value}</div>

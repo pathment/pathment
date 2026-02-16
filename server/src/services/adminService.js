@@ -102,6 +102,154 @@ class AdminService {
 
     return adminProfile;
   }
+
+  /**
+   * Get dashboard statistics for admin
+   */
+  async getDashboardStats() {
+    // Get total programs count
+    const totalPrograms = await models.Program.count({
+      where: { status: 'published' }
+    });
+
+    // Get active mentees count (enrolled and active status)
+    const activeMentees = await models.User.count({
+      where: { 
+        role: 'mentee',
+        status: 'active'
+      }
+    });
+
+    // Get active mentors count
+    const activeMentors = await models.User.count({
+      where: { 
+        role: 'mentor',
+        status: 'active'
+      }
+    });
+
+    // Get completion rate (average of all active enrollments)
+    const completionResult = await models.Enrollment.findOne({
+      attributes: [
+        [sequelize.fn('AVG', sequelize.col('overall_progress_percentage')), 'avgCompletion']
+      ],
+      where: {
+        status: ['active', 'matched']
+      },
+      raw: true
+    });
+
+    const completionRate = completionResult?.avgCompletion 
+      ? Math.round(parseFloat(completionResult.avgCompletion))
+      : 0;
+
+    // Get recent programs (top 4 active programs)
+    const recentPrograms = await models.Program.findAll({
+      where: { status: 'published' },
+      include: [
+        {
+          model: models.Enrollment,
+          as: 'enrollments',
+          attributes: ['id'],
+          required: false
+        }
+      ],
+      order: [['createdAt', 'DESC']],
+      limit: 4
+    });
+
+    // Format programs with mentor counts
+    const programsWithStats = await Promise.all(
+      recentPrograms.map(async (program) => {
+        const mentorCount = await models.LevelMentorAssignment.count({
+          distinct: true,
+          col: 'mentor_id',
+          where: { isActive: true },
+          include: [{
+            model: models.ProgramLevel,
+            as: 'level',
+            where: { programId: program.id },
+            attributes: [],
+            required: true
+          }]
+        });
+
+        return {
+          id: program.id,
+          name: program.name,
+          status: program.status,
+          enrollments: program.enrollments?.length || 0,
+          mentors: mentorCount,
+          completion: 0, // TODO: Calculate per program
+          startDate: program.startDate || program.createdAt
+        };
+      })
+    );
+
+    // Get pending mentor matches (approved enrollments without mentor assignment)
+    const pendingMatches = await models.Enrollment.findAll({
+      where: {
+        status: ['approved', 'pending_match']
+      },
+      include: [
+        {
+          model: models.User,
+          as: 'mentee',
+          attributes: ['id', 'firstName', 'lastName', 'email']
+        },
+        {
+          model: models.Program,
+          as: 'program',
+          attributes: ['id', 'name']
+        }
+      ],
+      order: [['enrolledAt', 'ASC']],
+      limit: 5
+    });
+
+    const formattedPendingMatches = pendingMatches.map(enrollment => ({
+      id: enrollment.id,
+      mentee: {
+        id: enrollment.mentee.id,
+        name: `${enrollment.mentee.firstName} ${enrollment.mentee.lastName}`,
+        email: enrollment.mentee.email
+      },
+      program: enrollment.program.name,
+      enrolledAt: enrollment.enrolledAt,
+      waitTime: this.calculateWaitTime(enrollment.enrolledAt)
+    }));
+
+    return {
+      stats: {
+        totalPrograms,
+        activeMentees,
+        activeMentors,
+        completionRate
+      },
+      recentPrograms: programsWithStats,
+      pendingMatches: formattedPendingMatches
+    };
+  }
+
+  /**
+   * Helper to calculate wait time
+   */
+  calculateWaitTime(enrolledAt) {
+    const now = new Date();
+    const enrolled = new Date(enrolledAt);
+    const diffMs = now - enrolled;
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffDays > 0) {
+      return `${diffDays} day${diffDays > 1 ? 's' : ''}`;
+    } else if (diffHours > 0) {
+      return `${diffHours} hour${diffHours > 1 ? 's' : ''}`;
+    } else {
+      return 'Just now';
+    }
+  }
 }
 
 module.exports = new AdminService();
+
