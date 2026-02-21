@@ -178,7 +178,9 @@ class RoadmapService {
 
     const task = await models.RoadmapTask.create({
       ...data,
-      weekId
+      roadmapWeekId: weekId,
+      taskOrder: data.taskOrder || data.orderIndex || 1,
+      deliverable: data.deliverable || 'Complete the assigned task'
     });
 
     return task;
@@ -246,6 +248,11 @@ class RoadmapService {
       throw new ForbiddenError('You do not have permission to delete this task');
     }
 
+    // Delete associated resources, skills, analytics, and assigned tasks
+    await models.TaskResource.destroy({ where: { roadmapTaskId: taskId } });
+    await models.TaskSkill.destroy({ where: { roadmapTaskId: taskId } });
+    await models.TaskAnalytics.destroy({ where: { roadmapTaskId: taskId } });
+    await models.AssignedTask.destroy({ where: { roadmapTaskId: taskId } });
     await task.destroy();
     return { message: 'Task deleted successfully' };
   }
@@ -281,7 +288,7 @@ class RoadmapService {
 
     const resource = await models.TaskResource.create({
       ...data,
-      taskId
+      roadmapTaskId: taskId
     });
 
     return resource;
@@ -364,15 +371,15 @@ class RoadmapService {
         if (sourceWeek.tasks) {
           for (const sourceTask of sourceWeek.tasks) {
             await models.RoadmapTask.create({
-              weekId: clonedWeek.id,
+              roadmapWeekId: clonedWeek.id,
               title: sourceTask.title,
               description: sourceTask.description,
               type: sourceTask.type,
               difficulty: sourceTask.difficulty,
               estimatedHours: sourceTask.estimatedHours,
-              orderIndex: sourceTask.orderIndex,
+              taskOrder: sourceTask.taskOrder || sourceTask.orderIndex || 1,
               acceptanceCriteria: sourceTask.acceptanceCriteria,
-              deliverable: sourceTask.deliverable
+              deliverable: sourceTask.deliverable || 'Complete the assigned task'
             });
           }
         }
@@ -426,13 +433,13 @@ class RoadmapService {
         if (weekData.tasks && Array.isArray(weekData.tasks)) {
           for (const taskData of weekData.tasks) {
             await models.RoadmapTask.create({
-              weekId: week.id,
+              roadmapWeekId: week.id,
               title: taskData.title,
               description: taskData.description,
               type: taskData.type || 'exercise',
               difficulty: taskData.difficulty || 'medium',
               estimatedHours: taskData.estimatedHours || 5,
-              orderIndex: taskData.orderIndex || 1,
+              taskOrder: taskData.taskOrder || taskData.orderIndex || 1,
               acceptanceCriteria: taskData.acceptanceCriteria || [],
               deliverable: taskData.deliverable || 'Task completion'
             });
@@ -532,7 +539,7 @@ class RoadmapService {
     // Delete all associated weeks and tasks
     const weeks = await models.RoadmapWeek.findAll({ where: { roadmapId } });
     for (const week of weeks) {
-      await models.RoadmapTask.destroy({ where: { weekId: week.id } });
+      await models.RoadmapTask.destroy({ where: { roadmapWeekId: week.id } });
       await week.destroy();
     }
 
@@ -616,7 +623,7 @@ class RoadmapService {
     }
 
     // Delete all tasks in this week
-    await models.RoadmapTask.destroy({ where: { weekId } });
+    await models.RoadmapTask.destroy({ where: { roadmapWeekId: weekId } });
     await week.destroy();
 
     return { message: 'Week deleted successfully' };
@@ -646,7 +653,7 @@ class RoadmapService {
     }
 
     const task = await models.RoadmapTask.create({
-      weekId,
+      roadmapWeekId: weekId,
       ...data,
       // Map orderIndex → taskOrder (model field), auto-assign if missing
       taskOrder: data.taskOrder || data.orderIndex ||
@@ -659,7 +666,7 @@ class RoadmapService {
     if (data.resources && Array.isArray(data.resources)) {
       for (const resourceData of data.resources) {
         await models.TaskResource.create({
-          taskId: task.id,
+          roadmapTaskId: task.id,
           ...resourceData
         });
       }
@@ -730,8 +737,11 @@ class RoadmapService {
       throw new ForbiddenError('You do not have permission to delete this task');
     }
 
-    // Delete associated resources
-    await models.TaskResource.destroy({ where: { taskId } });
+    // Delete associated resources, skills, analytics, and assigned tasks
+    await models.TaskResource.destroy({ where: { roadmapTaskId: taskId } });
+    await models.TaskSkill.destroy({ where: { roadmapTaskId: taskId } });
+    await models.TaskAnalytics.destroy({ where: { roadmapTaskId: taskId } });
+    await models.AssignedTask.destroy({ where: { roadmapTaskId: taskId } });
     await task.destroy();
 
     return { message: 'Task deleted successfully' };
