@@ -91,6 +91,10 @@ export default function FeedbackProvision({ params }: PageProps) {
   const [pointsAwarded, setPointsAwarded] = useState(10);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [ratingError, setRatingError] = useState('');
+  const [feedbackError, setFeedbackError] = useState('');
+  const [decisionError, setDecisionError] = useState('');
+  const [revisionError, setRevisionError] = useState('');
   const [inlineFeedback, setInlineFeedback] = useState<Array<{
     id: number;
     comment: string;
@@ -146,26 +150,40 @@ export default function FeedbackProvision({ params }: PageProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setRatingError('');
+    setFeedbackError('');
+    setDecisionError('');
+    setRevisionError('');
 
     if (!submission) {
       setError('No submission found');
       return;
     }
 
-    if (!decision || rating === 0) {
-      setError('Please provide a rating and decision');
-      return;
+    let hasError = false;
+
+    if (rating === 0) {
+      setRatingError('Please select a rating before submitting.');
+      hasError = true;
     }
 
-    if (!feedbackText.trim()) {
-      setError('Please provide feedback');
-      return;
+    const plainText = feedbackText.replace(/<[^>]*>/g, '').trim();
+    if (!plainText) {
+      setFeedbackError('Feedback is required. Please describe your thoughts on the submission.');
+      hasError = true;
+    }
+
+    if (!decision) {
+      setDecisionError('Please select a decision (Approve or Request Revision).');
+      hasError = true;
     }
 
     if (decision === 'revision' && !revisionNotes.trim()) {
-      setError('Please provide revision notes');
-      return;
+      setRevisionError('Revision notes are required when requesting a revision.');
+      hasError = true;
     }
+
+    if (hasError) return;
 
     setIsSubmitting(true);
 
@@ -399,7 +417,7 @@ export default function FeedbackProvision({ params }: PageProps) {
               <button
                 key={star}
                 type="button"
-                onClick={() => setRating(star)}
+                onClick={() => { setRating(star); setRatingError(''); }}
                 onMouseEnter={() => setHoveredRating(star)}
                 onMouseLeave={() => setHoveredRating(0)}
                 className="transition-transform hover:scale-110"
@@ -417,6 +435,12 @@ export default function FeedbackProvision({ params }: PageProps) {
               {rating > 0 ? `${rating}/5` : 'Not rated'}
             </span>
           </div>
+          {ratingError && (
+            <p className="mt-2 text-sm text-red-600 flex items-center gap-1">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              {ratingError}
+            </p>
+          )}
         </div>
 
         {/* General Feedback */}
@@ -424,12 +448,20 @@ export default function FeedbackProvision({ params }: PageProps) {
           <label className="block text-sm text-slate-700 mb-2">
             General Feedback <span className="text-red-500">*</span>
           </label>
-          <RichTextEditor
-            content={feedbackText}
-            onChange={setFeedbackText}
-            placeholder="Provide detailed feedback on the submission..."
-            minHeight="200px"
-          />
+          <div className={feedbackError ? 'ring-2 ring-red-400 rounded-lg' : ''}>
+            <RichTextEditor
+              content={feedbackText}
+              onChange={(val) => { setFeedbackText(val); if (val.replace(/<[^>]*>/g, '').trim()) setFeedbackError(''); }}
+              placeholder="Provide detailed feedback on the submission..."
+              minHeight="200px"
+            />
+          </div>
+          {feedbackError && (
+            <p className="mt-2 text-sm text-red-600 flex items-center gap-1">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              {feedbackError}
+            </p>
+          )}
         </div>
 
         {/* Inline Feedback */}
@@ -487,7 +519,7 @@ export default function FeedbackProvision({ params }: PageProps) {
           <div className="grid grid-cols-2 gap-4">
             <button
               type="button"
-              onClick={() => setDecision('approve')}
+              onClick={() => { setDecision('approve'); setDecisionError(''); }}
               className={`p-4 border-2 rounded-xl flex items-center gap-3 transition-all ${
                 decision === 'approve'
                   ? 'border-green-500 bg-green-50'
@@ -502,7 +534,7 @@ export default function FeedbackProvision({ params }: PageProps) {
             </button>
             <button
               type="button"
-              onClick={() => setDecision('revision')}
+              onClick={() => { setDecision('revision'); setDecisionError(''); }}
               className={`p-4 border-2 rounded-xl flex items-center gap-3 transition-all ${
                 decision === 'revision'
                   ? 'border-orange-500 bg-orange-50'
@@ -516,6 +548,12 @@ export default function FeedbackProvision({ params }: PageProps) {
               </div>
             </button>
           </div>
+          {decisionError && (
+            <p className="mt-2 text-sm text-red-600 flex items-center gap-1">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              {decisionError}
+            </p>
+          )}
         </div>
 
         {/* Points (if approved) */}
@@ -543,10 +581,20 @@ export default function FeedbackProvision({ params }: PageProps) {
             </label>
             <textarea
               value={revisionNotes}
-              onChange={(e) => setRevisionNotes(e.target.value)}
+              onChange={(e) => { setRevisionNotes(e.target.value); if (e.target.value.trim()) setRevisionError(''); }}
               placeholder="Specify what needs to be improved or corrected..."
-              className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[100px]"
+              className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 min-h-[100px] ${
+                revisionError
+                  ? 'border-red-400 focus:ring-red-500'
+                  : 'border-slate-200 focus:ring-blue-500'
+              }`}
             />
+            {revisionError && (
+              <p className="mt-2 text-sm text-red-600 flex items-center gap-1">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                {revisionError}
+              </p>
+            )}
           </div>
         )}
 
