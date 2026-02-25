@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Search, Filter, ClipboardList, Clock, CheckCircle2, AlertCircle, Plus, Loader2, FileText, Star, XCircle, Trash2, AlertTriangle, BookOpen, CalendarClock } from 'lucide-react';
 import { taskApi } from '@/lib/services/task-api';
@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 export default function MentorTasks() {
   const { user } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<'pending' | 'extensions' | 'all' | 'roadmap' | 'create'>('pending');
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
@@ -68,6 +69,32 @@ export default function MentorTasks() {
       const matchesList = menteesRes?.data?.matches || menteesRes?.matches || [];
       setMentees(matchesList);
       
+      // Apply URL pre-selection params (from mentee detail page "Assign Task" button)
+      const paramMenteeId = searchParams.get('menteeId');
+      const paramProgramId = searchParams.get('programId');
+      const paramTab = searchParams.get('tab') as 'pending' | 'extensions' | 'all' | 'roadmap' | 'create' | null;
+
+      if (paramMenteeId && matchesList.length > 0) {
+        const match = matchesList.find((m: any) => m.menteeId === paramMenteeId);
+        if (match) {
+          const programId = paramProgramId || match.enrollment?.programId || '';
+          const levelId = match.enrollment?.currentLevelId || '';
+
+          setFormData(prev => ({
+            ...prev,
+            menteeId: paramMenteeId,
+            enrollmentId: match.enrollmentId || ''
+          }));
+          setSelectedMenteeForAssign(paramMenteeId);
+          if (programId) setSelectedProgram(programId);
+          if (levelId) setSelectedLevel(levelId);
+          if (programId && levelId) fetchRoadmap(programId, levelId, paramMenteeId);
+          if (paramTab) setActiveTab(paramTab);
+          else setActiveTab('create');
+          return;
+        }
+      }
+
       // Auto-select first mentee's program if available
       if (matchesList.length > 0 && !selectedProgram) {
         const firstMatch = matchesList[0];

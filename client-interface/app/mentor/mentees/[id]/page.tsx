@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { 
   ArrowLeft, 
   BookOpen, 
@@ -26,6 +26,7 @@ import { toast } from 'sonner';
 export default function MenteeDetail() {
   const params = useParams();
   const { user } = useAuth();
+  const router = useRouter();
   const menteeId = params.id as string;
 
   const [match, setMatch] = useState<any>(null);
@@ -123,7 +124,7 @@ export default function MenteeDetail() {
               Send Message
             </button>
             <button
-              onClick={() => toast.info('Custom task creation coming soon!')}
+              onClick={() => router.push(`/mentor/tasks?tab=create&menteeId=${menteeId}&programId=${enrollment?.programId || ''}`)}
               className="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl transition-colors flex items-center gap-2"
             >
               <Plus className="w-5 h-5" />
@@ -217,7 +218,7 @@ export default function MenteeDetail() {
             <div className="px-6 py-5 border-b border-slate-200 flex items-center justify-between">
               <h2 className="text-slate-900">Tasks</h2>
               <button
-                onClick={() => toast.info('Custom task creation coming soon!')}
+                onClick={() => router.push(`/mentor/tasks?tab=create&menteeId=${menteeId}&programId=${enrollment?.programId || ''}`)}
                 className="text-indigo-600 hover:text-indigo-700 text-sm flex items-center gap-1"
               >
                 <Plus className="w-4 h-4" />
@@ -353,7 +354,7 @@ export default function MenteeDetail() {
                 <span className="text-slate-700">Send Message</span>
               </button>
               <button
-                onClick={() => toast.info('Custom task creation coming soon!')}
+                onClick={() => router.push(`/mentor/tasks?tab=create&menteeId=${menteeId}&programId=${enrollment?.programId || ''}`)}
                 className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 rounded-xl transition-colors text-left"
               >
                 <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
