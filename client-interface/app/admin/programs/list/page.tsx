@@ -1,286 +1,371 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { 
-  Search, 
-  Filter, 
-  Plus,
-  Users,
-  Calendar,
-  TrendingUp,
-  MoreVertical,
-  Eye,
-  Edit,
-  Trash2,
-  Loader2
+import {
+  Search, Plus, Users, Calendar, TrendingUp,
+  MoreVertical, Eye, Edit, Trash2, X, ArrowUpDown,
 } from 'lucide-react';
-import { programManagementApi } from '@/lib/services/program-api';
-import { toast } from 'sonner';
+import { TablePagination } from '@/components/shared/TablePagination';
+import { EmptyState } from '@/components/shared/EmptyState';
+import { ErrorState } from '@/components/shared/ErrorState';
+import { useProgramList, ProgramStatus, ProgramSortBy, SortOrder } from '@/lib/hooks/admin/useProgramList';
+
+// ─── Skeleton ────────────────────────────────────────────────────────────────
+
+function ProgramCardSkeleton() {
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 p-6 animate-pulse">
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div className="flex-1 space-y-3">
+          <div className="flex items-center gap-3">
+            <div className="h-5 bg-slate-200 rounded w-48" />
+            <div className="h-5 bg-slate-200 rounded w-20" />
+          </div>
+          <div className="flex gap-4">
+            <div className="h-4 bg-slate-100 rounded w-24" />
+            <div className="h-4 bg-slate-100 rounded w-16" />
+            <div className="h-4 bg-slate-100 rounded w-28" />
+          </div>
+          <div className="flex gap-2">
+            <div className="h-5 bg-slate-100 rounded-full w-16" />
+            <div className="h-5 bg-slate-100 rounded-full w-20" />
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex-1 max-w-xs h-1.5 bg-slate-100 rounded-full" />
+            <div className="h-4 bg-slate-100 rounded w-8" />
+          </div>
+        </div>
+        <div className="flex items-center gap-8">
+          <div className="text-center space-y-1">
+            <div className="h-7 bg-slate-200 rounded w-8 mx-auto" />
+            <div className="h-4 bg-slate-100 rounded w-14" />
+          </div>
+          <div className="text-center space-y-1">
+            <div className="h-7 bg-slate-200 rounded w-8 mx-auto" />
+            <div className="h-4 bg-slate-100 rounded w-12" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Status badge ─────────────────────────────────────────────────────────────
+
+const STATUS_CLS: Record<string, string> = {
+  published: 'bg-green-100 text-green-700',
+  active:    'bg-green-100 text-green-700',
+  draft:     'bg-amber-100 text-amber-700',
+  completed: 'bg-indigo-100 text-indigo-700',
+  archived:  'bg-slate-100 text-slate-600',
+};
+
+const STATUS_OPTIONS: { value: ProgramStatus; label: string }[] = [
+  { value: 'all',       label: 'All Status' },
+  { value: 'published', label: 'Published' },
+  { value: 'draft',     label: 'Draft' },
+  { value: 'completed', label: 'Completed' },
+  { value: 'archived',  label: 'Archived' },
+];
+
+const TYPE_OPTIONS = [
+  { value: 'all',         label: 'All Types' },
+  { value: 'mentorship',  label: 'Mentorship' },
+  { value: 'internship',  label: 'Internship' },
+  { value: 'training',    label: 'Training' },
+  { value: 'onboarding',  label: 'Onboarding' },
+];
+
+const SORT_OPTIONS: { value: ProgramSortBy; label: string }[] = [
+  { value: 'createdAt',  label: 'Newest first' },
+  { value: 'name',       label: 'Name A–Z' },
+  { value: 'startDate',  label: 'Start date' },
+];
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ProgramListPage() {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState('all');
-  const [sortBy, setSortBy] = useState('name');
-  const [programs, setPrograms] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetchPrograms();
-  }, []);
-
-  const fetchPrograms = async () => {
-    try {
-      setLoading(true);
-      const response = await programManagementApi.programs.getAll();
-      const programsList = response || response?.programs || [];
-      setPrograms(Array.isArray(programsList) ? programsList : []);
-    } catch (error) {
-      console.error('Failed to fetch programs:', error);
-      toast.error(error.response?.data?.message || 'Failed to load programs');
-      setPrograms([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDelete = async (id, name) => {
-    if (!confirm(`Are you sure you want to delete "${name}"?`)) return;
-
-    try {
-      await programManagementApi.programs.delete(id);
-      toast.success('Program deleted successfully');
-      fetchPrograms();
-    } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to delete program');
-    }
-  };
-
-  // Filter and sort programs
-  const filteredAndSortedPrograms = programs
-    .filter((program) => {
-      // Search filter
-      const matchesSearch = searchTerm === '' || 
-        program.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        program.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        program.tags?.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()));
-      
-      // Status filter
-      const matchesStatus = filterStatus === 'all' || program.status === filterStatus;
-      
-      return matchesSearch && matchesStatus;
-    })
-    .sort((a, b) => {
-      switch (sortBy) {
-        case 'name':
-          return a.name?.localeCompare(b.name || '') || 0;
-        case 'enrollments':
-          return (b._count?.enrollments || 0) - (a._count?.enrollments || 0);
-        case 'startDate':
-          return new Date(b.startDate || 0).getTime() - new Date(a.startDate || 0).getTime();
-        case 'completion':
-          return (b.completion || 0) - (a.completion || 0);
-        default:
-          return 0;
-      }
-    });
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
-      </div>
-    );
-  }
+  const {
+    programs, isLoading, error, isEmpty,
+    pagination,
+    search, status, type, sortBy, sortOrder, hasActiveFilters,
+    setSearch, setStatus, setType, setSortBy, setSortOrder,
+    resetFilters, refetch, handleDelete,
+  } = useProgramList();
 
   return (
     <>
-      {/* Header */}
+      {/* ── Header ── */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-8">
         <div>
-          <h1 className="text-slate-900 mb-2">Programs</h1>
-          <p className="text-slate-600">Manage all mentorship programs</p>
+          <h1 className="text-2xl font-bold text-slate-900 mb-1">Programs</h1>
+          <p className="text-slate-500 text-sm">
+            Manage all mentorship programs
+            {!isLoading && pagination.total > 0 && (
+              <span className="ml-2 px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full text-xs font-medium">
+                {pagination.total} total
+              </span>
+            )}
+          </p>
         </div>
         <Link
           href="/admin/programs/create"
-          className="mt-4 sm:mt-0 inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl transition-colors"
+          className="mt-4 sm:mt-0 inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl transition-colors text-sm font-medium"
         >
-          <Plus className="w-5 h-5" />
+          <Plus className="w-4 h-4" />
           Create Program
         </Link>
       </div>
 
-      {/* Filters & Search */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-6 mb-6">
-        <div className="grid md:grid-cols-3 gap-4">
+      {/* ── Filters ── */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-5 mb-6">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {/* Search */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+          <div className="relative lg:col-span-2">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
             <input
               type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search programs..."
-              className="w-full pl-11 pr-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by name or description…"
+              className="w-full pl-10 pr-10 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent placeholder:text-slate-400"
             />
+            {search && (
+              <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                <X className="w-4 h-4" />
+              </button>
+            )}
           </div>
 
-          {/* Status Filter */}
-          <div className="relative">
-            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-            <select
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-              className="w-full pl-11 pr-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent appearance-none"
-            >
-              <option value="all">All Status</option>
-              <option value="published">Published</option>
-              <option value="draft">Draft</option>
-              <option value="completed">Completed</option>
-            </select>
+          {/* Status */}
+          <select
+            value={status}
+            onChange={(e) => setStatus(e.target.value as ProgramStatus)}
+            className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-slate-700 appearance-none bg-white"
+          >
+            {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+
+          {/* Type */}
+          <select
+            value={type}
+            onChange={(e) => setType(e.target.value)}
+            className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-slate-700 appearance-none bg-white"
+          >
+            {TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </div>
+
+        {/* Second row: sort + active chips */}
+        <div className="flex flex-wrap items-center gap-3 mt-3">
+          {/* Sort */}
+          <div className="flex items-center gap-2 text-sm text-slate-500 mr-2">
+            <TrendingUp className="w-4 h-4" />
+            <span>Sort:</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            {SORT_OPTIONS.map((o) => (
+              <button
+                key={o.value}
+                onClick={() => {
+                  if (sortBy === o.value) {
+                    setSortOrder(sortOrder === 'ASC' ? 'DESC' : 'ASC');
+                  } else {
+                    setSortBy(o.value);
+                    setSortOrder('DESC');
+                  }
+                }}
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                  sortBy === o.value
+                    ? 'bg-indigo-100 text-indigo-700'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                {o.label}
+                {sortBy === o.value && (
+                  <ArrowUpDown className="w-3 h-3" />
+                )}
+              </button>
+            ))}
           </div>
 
-          {/* Sort By */}
-          <div className="relative">
-            <TrendingUp className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              className="w-full pl-11 pr-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent appearance-none"
-            >
-              <option value="name">Name</option>
-              <option value="enrollments">Enrollments</option>
-              <option value="startDate">Start Date</option>
-              <option value="completion">Completion</option>
-            </select>
-          </div>
+          {/* Active filter chips */}
+          {hasActiveFilters && (
+            <div className="flex flex-wrap items-center gap-2 ml-auto">
+              {search && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-full text-xs font-medium">
+                  "{search}"
+                  <button onClick={() => setSearch('')}><X className="w-3 h-3" /></button>
+                </span>
+              )}
+              {status !== 'all' && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-full text-xs font-medium">
+                  {STATUS_OPTIONS.find((o) => o.value === status)?.label}
+                  <button onClick={() => setStatus('all')}><X className="w-3 h-3" /></button>
+                </span>
+              )}
+              {type !== 'all' && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-full text-xs font-medium">
+                  {TYPE_OPTIONS.find((o) => o.value === type)?.label}
+                  <button onClick={() => setType('all')}><X className="w-3 h-3" /></button>
+                </span>
+              )}
+              <button onClick={resetFilters} className="text-xs text-slate-500 hover:text-slate-700 underline">
+                Clear all
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Programs List */}
-      <div className="space-y-4">
-        {filteredAndSortedPrograms.length === 0 ? (
-          <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center">
-            <p className="text-slate-500">No programs found matching your filters.</p>
-          </div>
-        ) : (
-          filteredAndSortedPrograms.map((program) => (
-          <div
-            key={program.id}
-            className="bg-white rounded-2xl border border-slate-200 p-6 hover:shadow-lg hover:shadow-slate-200/50 transition-shadow"
-          >
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-              {/* Program Info */}
-              <div className="flex-1">
-                <div className="flex items-start gap-3 mb-3">
+      {/* ── Error ── */}
+      {error && !isLoading && (
+        <ErrorState message={error} onRetry={refetch} className="mb-6" />
+      )}
+
+      {/* ── Program Cards ── */}
+      {isLoading ? (
+        <div className="space-y-4">
+          {Array.from({ length: pagination.limit }).map((_, i) => (
+            <ProgramCardSkeleton key={i} />
+          ))}
+        </div>
+      ) : isEmpty ? (
+        <EmptyState
+          title={hasActiveFilters ? 'No programs match your filters' : 'No programs yet'}
+          description={
+            hasActiveFilters
+              ? 'Try adjusting your search or filters'
+              : 'Create your first mentorship program to get started'
+          }
+          action={
+            hasActiveFilters
+              ? { label: 'Clear filters', onClick: resetFilters }
+              : { label: 'Create Program', href: '/admin/programs/create' }
+          }
+        />
+      ) : (
+        <>
+          <div className="space-y-4">
+            {programs.map((program) => (
+              <div
+                key={program.id}
+                className="bg-white rounded-2xl border border-slate-200 p-6 hover:shadow-lg hover:shadow-slate-200/50 transition-shadow"
+              >
+                <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                  {/* Program Info */}
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
                       <Link
                         href={`/admin/programs/${program.id}`}
-                        className="text-slate-900 hover:text-indigo-600 transition-colors"
+                        className="text-base font-semibold text-slate-900 hover:text-indigo-600 transition-colors"
                       >
                         {program.name}
                       </Link>
-                      <span
-                        className={`px-3 py-1 rounded-lg text-xs ${
-                          program.status === 'active'
-                            ? 'bg-green-100 text-green-700'
-                            : program.status === 'draft'
-                            ? 'bg-yellow-100 text-yellow-700'
-                            : 'bg-slate-100 text-slate-700'
-                        }`}
-                      >
+                      <span className={`px-2.5 py-1 rounded-lg text-xs font-medium ${STATUS_CLS[program.status] ?? 'bg-slate-100 text-slate-600'}`}>
                         {program.status}
                       </span>
                     </div>
-                    <div className="flex flex-wrap items-center gap-4 text-sm text-slate-600">
-                      <span>{program.type}</span>
-                      <span>•</span>
+
+                    <div className="flex flex-wrap items-center gap-3 text-sm text-slate-500 mb-3">
+                      {program.type && <span className="capitalize">{program.type}</span>}
+                      {program.type && <span>·</span>}
                       <span>{program.totalDurationWeeks} weeks</span>
-                      <span>•</span>
-                      <span className="flex items-center gap-1">
-                        <Calendar className="w-4 h-4" />
-                        {program.startDate}
-                      </span>
+                      {program.startDate && (
+                        <>
+                          <span>·</span>
+                          <span className="flex items-center gap-1">
+                            <Calendar className="w-3.5 h-3.5" />
+                            {new Date(program.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                          </span>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Tags */}
+                    {program.tags && program.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mb-3">
+                        {program.tags.map((tag: string) => (
+                          <span key={tag} className="px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-full text-xs font-medium">
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Progress bar */}
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1 max-w-xs h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-indigo-500 rounded-full transition-all"
+                          style={{ width: `${program.completion || 0}%` }}
+                        />
+                      </div>
+                      <span className="text-xs text-slate-500 tabular-nums">{program.completion || 0}% complete</span>
+                    </div>
+                  </div>
+
+                  {/* Stats + Actions */}
+                  <div className="flex items-center gap-6">
+                    <div className="text-center">
+                      <p className="text-2xl font-bold text-slate-900">{program._count?.enrollments ?? 0}</p>
+                      <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
+                        <Users className="w-3.5 h-3.5" />
+                        Mentees
+                      </p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-2xl font-bold text-slate-900">{program._count?.mentors ?? program.mentors ?? 0}</p>
+                      <p className="text-xs text-slate-500 mt-0.5">Mentors</p>
+                    </div>
+
+                    {/* Dropdown actions */}
+                    <div className="relative group">
+                      <button className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
+                        <MoreVertical className="w-5 h-5 text-slate-500" />
+                      </button>
+                      <div className="absolute right-0 top-full mt-2 w-48 bg-white border border-slate-200 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
+                        <Link
+                          href={`/admin/programs/${program.id}`}
+                          className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 text-slate-700 rounded-t-xl text-sm"
+                        >
+                          <Eye className="w-4 h-4" />
+                          View Details
+                        </Link>
+                        <Link
+                          href={`/admin/programs/${program.id}/roadmap`}
+                          className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 text-slate-700 text-sm"
+                        >
+                          <Edit className="w-4 h-4" />
+                          Edit Roadmap
+                        </Link>
+                        <button
+                          onClick={() => handleDelete(program.id, program.name)}
+                          className="flex items-center gap-3 px-4 py-3 hover:bg-red-50 text-red-600 w-full rounded-b-xl text-sm"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          Delete Program
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
-
-                {/* Tags */}
-                {program.tags && program.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mb-3">
-                    {program.tags.map((tag) => (
-                      <span
-                        key={tag}
-                        className="px-3 py-1 bg-indigo-50 text-indigo-700 rounded-lg text-xs"
-                      >
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                )}
-
-                {/* Progress */}
-                <div className="flex items-center gap-3">
-                  <div className="flex-1 max-w-xs h-2 bg-slate-100 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-indigo-600 rounded-full"
-                      style={{ width: `${program.completion || 0}%` }}
-                    />
-                  </div>
-                  <span className="text-sm text-slate-600">{program.completion || 0}%</span>
-                </div>
               </div>
-
-              {/* Stats */}
-              <div className="flex items-center gap-6">
-                <div className="text-center">
-                  <div className="text-slate-900 text-2xl mb-1">{program._count?.enrollments || 0}</div>
-                  <div className="text-slate-600 text-sm flex items-center gap-1">
-                    <Users className="w-4 h-4" />
-                    Mentees
-                  </div>
-                </div>
-                <div className="text-center">
-                  <div className="text-slate-900 text-2xl mb-1">{program._count?.mentors || program.mentors || 0}</div>
-                  <div className="text-slate-600 text-sm">Mentors</div>
-                </div>
-
-                {/* Actions */}
-                <div className="relative group">
-                  <button className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
-                    <MoreVertical className="w-5 h-5 text-slate-600" />
-                  </button>
-                  <div className="absolute right-0 top-full mt-2 w-48 bg-white border border-slate-200 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
-                    <Link
-                      href={`/admin/programs/${program.id}`}
-                      className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 text-slate-700 first:rounded-t-xl"
-                    >
-                      <Eye className="w-4 h-4" />
-                      View Details
-                    </Link>
-                    <Link
-                      href={`/admin/programs/${program.id}/roadmap`}
-                      className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 text-slate-700"
-                    >
-                      <Edit className="w-4 h-4" />
-                      Edit Roadmap
-                    </Link>
-                    <button 
-                      onClick={() => handleDelete(program.id, program.name)}
-                      className="flex items-center gap-3 px-4 py-3 hover:bg-red-50 text-red-600 w-full last:rounded-b-xl"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      Delete Program
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
+            ))}
           </div>
-          ))
-        )}
-      </div>
+
+          {/* ── Pagination ── */}
+          <div className="mt-6 bg-white rounded-2xl border border-slate-200 px-4">
+            <TablePagination
+              pagination={pagination}
+              isLoading={isLoading}
+              showInfo
+              showPageSize
+              pageSizeOptions={[10, 20, 50]}
+            />
+          </div>
+        </>
+      )}
     </>
   );
 }

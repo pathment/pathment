@@ -1,26 +1,52 @@
 // Program Types
+import { Roadmap } from './roadmap';
+export type { Roadmap };
 export interface Program {
   id: string;
   name: string;
   description: string;
   type: ProgramType;
-  duration: number; // in weeks
+  // legacy field (kept for compatibility)
+  duration?: number;
+  // actual server field
+  totalDurationWeeks?: number;
+  estimatedHoursPerWeek?: number;
   startDate: string;
-  endDate: string;
-  skillTags: string[];
+  endDate?: string;
+  skillTags?: string[];
+  tags?: string[];
   status: ProgramStatus;
-  levels: ProgramLevel[];
+  levels?: ProgramLevel[];
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+  // API-computed fields
+  completion?: number;
+  mentors?: number;
+  isTemplate?: boolean;
+  maxEnrollments?: number;
+  learningOutcomes?: string[];
+  prerequisites?: string;
+  targetAudience?: string;
+  publishedAt?: string | null;
+  _count?: {
+    enrollments?: number;
+    mentors?: number;
+  };
+  creator?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+  };
+  enrollments?: { id: string }[];
 }
 
 export type ProgramType = 
-  | 'technical'
-  | 'business'
-  | 'creative'
-  | 'leadership'
-  | 'other';
+  | 'mentorship'
+  | 'internship'
+  | 'training'
+  | 'onboarding';
 
 export type ProgramStatus = 
   | 'draft'
