@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Search, Sparkles, Star, Users, Loader2 } from 'lucide-react';
-import { enrollmentApi, matchingApi } from '@/lib/services/enrollment-api';
+import { ArrowLeft, Search, Sparkles, Star, Users, Loader2, ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react';
+import { enrollmentApi, matchingApi, mentorApi } from '@/lib/services/enrollment-api';
 import { programManagementApi } from '@/lib/services/program-api';
+import { useDebounce } from '@/lib/hooks/shared/useDebounce';
 import { toast } from 'sonner';
 
 export default function MentorAssignment() {
@@ -12,14 +13,25 @@ export default function MentorAssignment() {
   const [showAISuggestions, setShowAISuggestions] = useState(true);
   const [loading, setLoading] = useState(true);
   const [matching, setMatching] = useState<string | null>(null);
+  const [autoMatching, setAutoMatching] = useState(false);
   
   const [programs, setPrograms] = useState<any[]>([]);
   const [enrollments, setEnrollments] = useState<any[]>([]);
   const [mentors, setMentors] = useState<Record<string, any[]>>({});
   const [suggestions, setSuggestions] = useState<Record<string, any[]>>({});
 
+  const [mentorSearch, setMentorSearch] = useState('');
+  const [allMentors, setAllMentors] = useState<any[]>([]);
+  const [mentorsLoading, setMentorsLoading] = useState(false);
+  const [mentorPage, setMentorPage] = useState(1);
+  const [mentorTotalPages, setMentorTotalPages] = useState(1);
+  const [mentorTotal, setMentorTotal] = useState(0);
+  const MENTOR_LIMIT = 10;
+  const debouncedMentorSearch = useDebounce(mentorSearch, 400);
+
   useEffect(() => {
     fetchPrograms();
+    fetchAllMentors();
   }, []);
 
   useEffect(() => {
@@ -28,11 +40,19 @@ export default function MentorAssignment() {
     }
   }, [selectedProgram]);
 
+  useEffect(() => {
+    setMentorPage(1);
+  }, [debouncedMentorSearch]);
+
+  useEffect(() => {
+    fetchAllMentors();
+  }, [debouncedMentorSearch, mentorPage]);
+
   const fetchPrograms = async () => {
     try {
       setLoading(true);
       const response = await programManagementApi.programs.getAll();
-      const programsList = response || response?.programs || [];
+      const programsList = Array.isArray(response?.data) ? response.data : [];
       setPrograms(programsList);
       
       if (programsList.length > 0 && !selectedProgram) {
@@ -69,6 +89,24 @@ export default function MentorAssignment() {
       toast.error('Failed to load enrollments');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchAllMentors = async () => {
+    try {
+      setMentorsLoading(true);
+      const response = await mentorApi.getAll({
+        ...(debouncedMentorSearch.trim() && { search: debouncedMentorSearch.trim() }),
+        page: mentorPage,
+        limit: MENTOR_LIMIT,
+      });
+      setAllMentors(Array.isArray(response?.data?.mentors) ? response.data.mentors : []);
+      setMentorTotalPages(response?.pagination?.totalPages ?? 1);
+      setMentorTotal(response?.pagination?.totalItems ?? 0);
+    } catch (error: any) {
+      console.error('Failed to fetch mentors:', error);
+    } finally {
+      setMentorsLoading(false);
     }
   };
 
@@ -110,6 +148,25 @@ export default function MentorAssignment() {
 
   const selectedProgramData = programs.find(p => p.id === selectedProgram);
 
+  const handleAutoMatch = async () => {
+    if (!confirm(`Auto-match all pending enrollments${selectedProgram ? ' in this program' : ''}? This will assign the top AI-suggested mentor to each unmatched mentee.`)) return;
+    try {
+      setAutoMatching(true);
+      const response = await matchingApi.autoMatchPending(selectedProgram || undefined);
+      const { summary } = response?.data || {};
+      toast.success(
+        `Auto-match complete: ${summary?.matched ?? 0} matched, ${summary?.skipped ?? 0} skipped, ${summary?.failed ?? 0} failed`
+      );
+      if ((summary?.matched ?? 0) > 0) {
+        await fetchEnrollments();
+      }
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'Auto-match failed');
+    } finally {
+      setAutoMatching(false);
+    }
+  };
+
   if (loading && programs.length === 0) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -146,8 +203,16 @@ export default function MentorAssignment() {
                 Our AI analyzes mentee backgrounds, skills, and learning goals to suggest the best mentor matches 
                 based on expertise, availability, and teaching style compatibility.
               </p>
-              <button className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm transition-colors">
-                Auto-Match All Pending
+              <button
+                onClick={handleAutoMatch}
+                disabled={autoMatching || enrollments.length === 0}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg text-sm transition-colors flex items-center gap-2"
+              >
+                {autoMatching ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /> Matching...</>
+                ) : (
+                  'Auto-Match All Pending'
+                )}
               </button>
             </div>
             <button
@@ -306,110 +371,149 @@ export default function MentorAssignment() {
           <div>
             <div className="bg-white rounded-2xl border border-slate-200">
               <div className="px-6 py-5 border-b border-slate-200 flex items-center justify-between">
-                <h2 className="text-slate-900">Available Mentors</h2>
+                <div>
+                  <h2 className="text-slate-900">Available Mentors</h2>
+                  <p className="text-slate-500 text-xs mt-0.5">{mentorTotal} mentor{mentorTotal !== 1 ? 's' : ''}</p>
+                </div>
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                   <input
                     type="text"
-                    placeholder="Search..."
-                    className="pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    value={mentorSearch}
+                    onChange={(e) => setMentorSearch(e.target.value)}
+                    placeholder="Search by name or email…"
+                    className="pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent w-56"
                   />
                 </div>
               </div>
               <div className="divide-y divide-slate-200">
-                {enrollments.map((enrollment) => {
-                  const currentLevel = enrollment.currentLevel;
-                  const levelMentorsList = currentLevel ? (mentors[currentLevel.id] || []) : [];
-
-                  return levelMentorsList.length > 0 ? (
-                    levelMentorsList.map((mentor: any) => {
-                      const capacity = mentor.currentMenteeCount || 0;
-                      const maxCapacity = mentor.mentorProfile?.maxMentees || 6;
-                      const capacityPercent = maxCapacity > 0 ? (capacity / maxCapacity) * 100 : 0;
-
-                      return (
-                        <div key={mentor.id} className="p-6">
-                          <div className="flex items-start gap-4 mb-4">
-                            <div className="w-12 h-12 bg-purple-200 rounded-full flex items-center justify-center shrink-0">
-                              <span className="text-purple-700">
-                                {mentor.firstName?.[0]}{mentor.lastName?.[0]}
-                              </span>
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-1">
-                                <h3 className="text-slate-900">
-                                  {mentor.firstName} {mentor.lastName}
-                                </h3>
-                                {mentor.mentorProfile?.rating && (
-                                  <div className="flex items-center gap-1">
-                                    <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
-                                    <span className="text-slate-700 text-sm">{mentor.mentorProfile.rating}</span>
-                                  </div>
-                                )}
-                              </div>
-                              {mentor.mentorProfile?.specialization && mentor.mentorProfile.specialization.length > 0 && (
-                                <div className="flex flex-wrap gap-2 mb-3">
-                                  {mentor.mentorProfile.specialization.map((skill: string, idx: number) => (
-                                    <span key={idx} className="px-2 py-1 bg-purple-50 text-purple-700 rounded text-xs">
-                                      {skill}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-                              <div className="flex items-center gap-4 text-sm text-slate-600">
-                                <span className="flex items-center gap-1">
-                                  <Users className="w-4 h-4" />
-                                  {capacity}/{maxCapacity} mentees
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Capacity Bar */}
-                          <div className="mb-3">
-                            <div className="flex items-center justify-between text-xs text-slate-600 mb-2">
-                              <span>Capacity</span>
-                              <span>{Math.round(capacityPercent)}%</span>
-                            </div>
-                            <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                              <div
-                                className={`h-full rounded-full ${
-                                  capacityPercent < 70
-                                    ? 'bg-green-500'
-                                    : capacityPercent < 90
-                                    ? 'bg-yellow-500'
-                                    : 'bg-red-500'
-                                }`}
-                                style={{ width: `${capacityPercent}%` }}
-                              />
-                            </div>
-                          </div>
-
-                          <button className="w-full px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg text-sm transition-colors">
-                            View Profile
-                          </button>
-                        </div>
-                      );
-                    })
-                  ) : null;
-                }).filter(Boolean)}
-                
-                {enrollments.every((enrollment) => {
-                  const currentLevel = enrollment.currentLevel;
-                  const levelMentorsList = currentLevel ? (mentors[currentLevel.id] || []) : [];
-                  return levelMentorsList.length === 0;
-                }) && (
+                {mentorsLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="w-6 h-6 animate-spin text-indigo-600" />
+                  </div>
+                ) : allMentors.length === 0 ? (
                   <div className="p-12 text-center">
                     <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
                       <Users className="w-8 h-8 text-slate-400" />
                     </div>
-                    <h3 className="text-slate-900 mb-2">No Mentors Available</h3>
+                    <h3 className="text-slate-900 mb-2">
+                      {mentorSearch.trim() ? 'No mentors found' : 'No Mentors Available'}
+                    </h3>
                     <p className="text-slate-600 text-sm">
-                      No mentors are assigned to the current levels.
+                      {mentorSearch.trim()
+                        ? `No mentors match "${mentorSearch.trim()}"`
+                        : 'There are no active mentors in the system.'}
                     </p>
                   </div>
+                ) : (
+                  allMentors.map((mentor: any) => {
+                    const capacity = mentor.mentorProfile?.currentMenteeCount ?? 0;
+                    const maxCapacity = mentor.mentorProfile?.maxMentees || 6;
+                    const capacityPercent = maxCapacity > 0 ? (capacity / maxCapacity) * 100 : 0;
+
+                    return (
+                      <div key={mentor.id} className="p-6">
+                        <div className="flex items-start gap-4 mb-4">
+                          <div className="w-12 h-12 bg-purple-200 rounded-full flex items-center justify-center shrink-0">
+                            <span className="text-purple-700">
+                              {mentor.firstName?.[0]}{mentor.lastName?.[0]}
+                            </span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <h3 className="text-slate-900">
+                                {mentor.firstName} {mentor.lastName}
+                              </h3>
+                              {mentor.mentorProfile?.rating && (
+                                <div className="flex items-center gap-1">
+                                  <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
+                                  <span className="text-slate-700 text-sm">{mentor.mentorProfile.rating}</span>
+                                </div>
+                              )}
+                            </div>
+                            {mentor.mentorProfile?.title && (
+                              <p className="text-slate-500 text-xs mb-2">
+                                {mentor.mentorProfile.title}
+                                {mentor.mentorProfile.organization ? ` · ${mentor.mentorProfile.organization}` : ''}
+                              </p>
+                            )}
+                            {mentor.mentorProfile?.specialization && mentor.mentorProfile.specialization.length > 0 && (
+                              <div className="flex flex-wrap gap-1.5 mb-3">
+                                {mentor.mentorProfile.specialization.map((skill: string, idx: number) => (
+                                  <span key={idx} className="px-2 py-1 bg-purple-50 text-purple-700 rounded text-xs">
+                                    {skill}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                            <div className="flex items-center gap-4 text-sm text-slate-600">
+                              <span className="flex items-center gap-1">
+                                <Users className="w-4 h-4" />
+                                {capacity}/{maxCapacity} mentees
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Capacity Bar */}
+                        <div className="mb-3">
+                          <div className="flex items-center justify-between text-xs text-slate-600 mb-2">
+                            <span>Capacity</span>
+                            <span>{Math.round(capacityPercent)}%</span>
+                          </div>
+                          <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all ${
+                                capacityPercent < 70
+                                  ? 'bg-green-500'
+                                  : capacityPercent < 90
+                                  ? 'bg-yellow-500'
+                                  : 'bg-red-500'
+                              }`}
+                              style={{ width: `${Math.min(capacityPercent, 100)}%` }}
+                            />
+                          </div>
+                        </div>
+
+                        <Link
+                          href={`/admin/mentors/${mentor.id}`}
+                          className="w-full px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          View Profile
+                        </Link>
+                      </div>
+                    );
+                  })
                 )}
               </div>
+              {/* Mentor Pagination */}
+              {mentorTotalPages > 1 && (
+                <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-between">
+                  <p className="text-sm text-slate-500">
+                    Page {mentorPage} of {mentorTotalPages}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setMentorPage(p => Math.max(1, p - 1))}
+                      disabled={mentorPage === 1 || mentorsLoading}
+                      className="p-2 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <ChevronLeft className="w-4 h-4 text-slate-600" />
+                    </button>
+                    <span className="text-sm text-slate-700 min-w-12 text-center">
+                      {mentorPage} / {mentorTotalPages}
+                    </span>
+                    <button
+                      onClick={() => setMentorPage(p => Math.min(mentorTotalPages, p + 1))}
+                      disabled={mentorPage === mentorTotalPages || mentorsLoading}
+                      className="p-2 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <ChevronRight className="w-4 h-4 text-slate-600" />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -48,6 +48,11 @@ export const matchingApi = {
     return apiClient.post(apiConfig.endpoints.matches, data);
   },
 
+  // Auto-match all pending enrollments
+  autoMatchPending: (programId?: string) => {
+    return apiClient.post(`${apiConfig.endpoints.matches}/auto-match`, { programId });
+  },
+
   // Get AI match suggestions
   getSuggestions: (enrollmentId: string) => {
     return apiClient.get(apiConfig.endpoints.matchSuggestions(enrollmentId));
@@ -73,5 +78,21 @@ export const matchingApi = {
   // Update match status
   updateMatchStatus: (id: string, status: string) => {
     return apiClient.patch(apiConfig.endpoints.matchStatus(id), { status });
+  },
+};
+
+// ─── Mentor API ───────────────────────────────────────────────────────────────
+export const mentorApi = {
+  getAll: (filters?: { search?: string; page?: number; limit?: number }) => {
+    const params = new URLSearchParams();
+    if (filters?.search) params.append('search', filters.search);
+    if (filters?.page) params.append('page', String(filters.page));
+    if (filters?.limit) params.append('limit', String(filters.limit));
+    const qs = params.toString();
+    return apiClient.get(`/mentors${qs ? `?${qs}` : ''}`);
+  },
+
+  getById: (id: string) => {
+    return apiClient.get(`/mentors/${id}`);
   },
 };
