@@ -229,29 +229,47 @@ export default function MenteeDashboard() {
                     </div>
 
                     {/* Progress Bar */}
-                    <div className="mb-4">
-                      <div className="flex items-center justify-between text-sm mb-2">
-                        <span className="text-slate-600">Overall Progress</span>
-                        <span className="text-slate-900">{parseFloat(enrollment.overallProgressPercentage) || 0}%</span>
-                      </div>
-                      <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-linear-to-r from-indigo-600 to-purple-600 rounded-full"
-                          style={{ width: `${parseFloat(enrollment.overallProgressPercentage) || 0}%` }}
-                        />
-                      </div>
-                    </div>
+                    {(() => {
+                      const completed = enrollment.tasksCompleted || 0;
+                      const total     = enrollment.tasksTotal     || 0;
+                      const remaining = Math.max(0, total - completed);
+                      // prefer server-supplied percentage; fall back to task ratio
+                      const rawPct    = parseFloat(enrollment.overallProgressPercentage);
+                      const pct       = rawPct > 0 ? rawPct : (total > 0 ? Math.round((completed / total) * 100) : 0);
 
-                    <div className="flex items-center gap-4 text-sm text-slate-600 mb-4">
-                      <span className="flex items-center gap-1.5">
-                        <CheckCircle2 className="w-4 h-4 text-green-600" />
-                        {enrollment.tasksCompleted || 0} done
-                      </span>
-                      <span className="flex items-center gap-1.5">
-                        <Target className="w-4 h-4 text-indigo-600" />
-                        {(enrollment.tasksTotal || 0) - (enrollment.tasksCompleted || 0)} remaining
-                      </span>
-                    </div>
+                      return (
+                        <>
+                          <div className="mb-4">
+                            <div className="flex items-center justify-between text-sm mb-2">
+                              <span className="text-slate-600">Overall Progress</span>
+                              <span className="text-slate-900 font-medium">{pct}%</span>
+                            </div>
+                            <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-linear-to-r from-indigo-600 to-purple-600 rounded-full transition-all duration-300"
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-4 text-sm text-slate-600 mb-4">
+                            <span className="flex items-center gap-1.5">
+                              <CheckCircle2 className="w-4 h-4 text-green-600" />
+                              {completed} task{completed !== 1 ? 's' : ''} done
+                            </span>
+                            {total > 0 && (
+                              <>
+                                <span className="flex items-center gap-1.5">
+                                  <Target className="w-4 h-4 text-indigo-600" />
+                                  {remaining} remaining
+                                </span>
+                                <span className="text-slate-400 ml-auto">{total} total</span>
+                              </>
+                            )}
+                          </div>
+                        </>
+                      );
+                    })()}
 
                     <div className="flex items-center gap-2">
                       <Link
