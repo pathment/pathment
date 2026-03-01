@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   Clock,
   Target,
-  Award,
   Loader2,
   Plus,
   TrendingUp,
@@ -21,7 +20,8 @@ export default function MenteeDashboard() {
   const { user } = useAuth();
   const [enrollments, setEnrollments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [completionLoading, setCompletionLoading] = useState(false);
+  // tracks which enrollment's completion request is in-flight
+  const [completionLoading, setCompletionLoading] = useState<string | null>(null);
 
   useEffect(() => {
     if (user?.id) {
@@ -46,25 +46,25 @@ export default function MenteeDashboard() {
   // treat both 'active' and 'matched' as the working state — enrollment stays
   // at 'matched' after a mentor is assigned in this codebase
   const WORKING_STATUSES = ['active', 'matched'];
-  const activeEnrollment = enrollments.find(e => WORKING_STATUSES.includes(e.status));
-  const pendingCompletionEnrollment = enrollments.find(e => e.status === 'pending_completion');
-  const levelCompletedEnrollment = enrollments.find(e => e.status === 'level_completed');
-  // The card to show for "Current Program" — any in-progress enrollment
+  // All in-progress statuses — used to show program cards
   const IN_PROGRESS_STATUSES = ['active', 'matched', 'pending_completion', 'level_completed'];
-  const currentProgramEnrollment = enrollments.find(e => IN_PROGRESS_STATUSES.includes(e.status));
-  const pendingEnrollments = enrollments.filter(e => e.status === 'pending_approval');
-  const approvedEnrollments = enrollments.filter(e => e.status === 'approved' || e.status === 'pending_match');
+
+  const pendingCompletionEnrollments = enrollments.filter(e => e.status === 'pending_completion');
+  const levelCompletedEnrollments    = enrollments.filter(e => e.status === 'level_completed');
+  const currentProgramEnrollments    = enrollments.filter(e => IN_PROGRESS_STATUSES.includes(e.status));
+  const pendingEnrollments           = enrollments.filter(e => e.status === 'pending_approval');
+  const approvedEnrollments          = enrollments.filter(e => e.status === 'approved' || e.status === 'pending_match');
 
   const handleRequestCompletion = async (enrollmentId: string) => {
     try {
-      setCompletionLoading(true);
+      setCompletionLoading(enrollmentId);
       await enrollmentApi.requestCompletion(enrollmentId);
       toast.success('Completion request sent to your mentor for approval!');
       fetchEnrollments();
     } catch (err: any) {
       toast.error(err?.response?.data?.message || 'Failed to request completion');
     } finally {
-      setCompletionLoading(false);
+      setCompletionLoading(null);
     }
   };
 
@@ -103,39 +103,49 @@ export default function MenteeDashboard() {
           )}
 
           {/* Pending Completion — Awaiting Mentor Approval */}
-          {pendingCompletionEnrollment && (
+          {pendingCompletionEnrollments.length > 0 && (
             <div className="bg-orange-50 border border-orange-200 rounded-2xl p-6">
               <div className="flex items-start gap-4">
                 <div className="w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center shrink-0">
                   <Clock className="w-5 h-5 text-orange-600" />
                 </div>
                 <div className="flex-1">
-                  <h3 className="text-orange-900 mb-1">Completion Request Pending</h3>
-                  <p className="text-orange-700 text-sm">
-                    Your completion request for <strong>{pendingCompletionEnrollment.program?.name}</strong> is awaiting your mentor&apos;s approval.
-                  </p>
-                  {pendingCompletionEnrollment.completionRejectionReason && (
-                    <div className="mt-3 p-3 bg-orange-100 rounded-lg text-orange-800 text-xs">
-                      <strong>Last rejection reason:</strong> {pendingCompletionEnrollment.completionRejectionReason}
-                    </div>
-                  )}
+                  <h3 className="text-orange-900 mb-1">Completion Request{pendingCompletionEnrollments.length > 1 ? 's' : ''} Pending</h3>
+                  <div className="space-y-2">
+                    {pendingCompletionEnrollments.map((e) => (
+                      <div key={e.id}>
+                        <p className="text-orange-700 text-sm">
+                          <strong>{e.program?.name}</strong> — awaiting your mentor&apos;s approval.
+                        </p>
+                        {e.completionRejectionReason && (
+                          <div className="mt-1 p-2 bg-orange-100 rounded-lg text-orange-800 text-xs">
+                            <strong>Last rejection reason:</strong> {e.completionRejectionReason}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
           )}
 
-          {/* Level Completed — Awaiting Promotion */}
-          {levelCompletedEnrollment && (
+          {/* Level Completed — Auto-promoted to pending_match */}
+          {levelCompletedEnrollments.length > 0 && (
             <div className="bg-green-50 border border-green-200 rounded-2xl p-6">
               <div className="flex items-start gap-4">
                 <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center shrink-0">
                   <TrendingUp className="w-5 h-5 text-green-600" />
                 </div>
                 <div className="flex-1">
-                  <h3 className="text-green-900 mb-1">Level Completed! 🎉</h3>
-                  <p className="text-green-700 text-sm">
-                    You&apos;ve completed a level in <strong>{levelCompletedEnrollment.program?.name}</strong>. The admin will promote you to the next level soon!
-                  </p>
+                  <h3 className="text-green-900 mb-1">Level{levelCompletedEnrollments.length > 1 ? 's' : ''} Completed! 🎉</h3>
+                  <div className="space-y-1">
+                    {levelCompletedEnrollments.map((e) => (
+                      <p key={e.id} className="text-green-700 text-sm">
+                        <strong>{e.program?.name}</strong> — the admin is assigning your next mentor.
+                      </p>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
@@ -189,85 +199,86 @@ export default function MenteeDashboard() {
             </div>
           )}
 
-          {/* Active Program */}
-          {currentProgramEnrollment ? (
-            <div className="grid lg:grid-cols-3 gap-8">
-              <div className="lg:col-span-2 space-y-6">
-                <div className="bg-white rounded-2xl border border-slate-200 p-6">
-                  <h2 className="text-slate-900 mb-4">Current Program</h2>
-                  <div className="mb-6">
+          {/* Active Programs — one card per in-progress enrollment */}
+          {currentProgramEnrollments.length > 0 && (
+            <div>
+              <h2 className="text-slate-900 mb-4">
+                Active Program{currentProgramEnrollments.length > 1 ? 's' : ''}
+              </h2>
+              <div className="grid gap-6 lg:grid-cols-2">
+                {currentProgramEnrollments.map((enrollment) => (
+                  <div key={enrollment.id} className="bg-white rounded-2xl border border-slate-200 p-6">
                     <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <h3 className="text-slate-900 mb-1">{currentProgramEnrollment.program?.name || 'Unknown Program'}</h3>
+                      <div className="flex-1 min-w-0 mr-3">
+                        <h3 className="text-slate-900 truncate mb-1">{enrollment.program?.name || 'Unknown Program'}</h3>
                         <p className="text-slate-600 text-sm">
-                          {currentProgramEnrollment.currentLevel?.name
-                            ? `Level: ${currentProgramEnrollment.currentLevel.name} · Week ${currentProgramEnrollment.currentWeek || 1}`
-                            : `Week ${currentProgramEnrollment.currentWeek || 1}`}
+                          {enrollment.currentLevel?.name
+                            ? `Level: ${enrollment.currentLevel.name} · Week ${enrollment.currentWeek || 1}`
+                            : `Week ${enrollment.currentWeek || 1}`}
                         </p>
                       </div>
-                      <div className="flex items-center gap-2">
-                          <Link
-                            href="/mentee/tasks"
-                            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm transition-colors"
-                          >
-                            View Tasks
-                          </Link>
-                          {/* Only show request button when NOT already pending */}
-                          {WORKING_STATUSES.includes(currentProgramEnrollment.status) && (
-                            <button
-                              onClick={() => handleRequestCompletion(currentProgramEnrollment.id)}
-                              disabled={completionLoading}
-                              className="px-4 py-2 bg-green-50 hover:bg-green-100 border border-green-300 text-green-700 rounded-xl text-sm transition-colors flex items-center gap-2 disabled:opacity-50"
-                              title="Ask your mentor to review and close this level"
-                            >
-                              {completionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                              Request Completion
-                            </button>
-                          )}
-                        </div>
+                      <span className={`shrink-0 px-2 py-1 rounded text-xs ${
+                        enrollment.status === 'matched'            ? 'bg-green-100 text-green-700' :
+                        enrollment.status === 'active'             ? 'bg-indigo-100 text-indigo-700' :
+                        enrollment.status === 'pending_completion' ? 'bg-orange-100 text-orange-700' :
+                        enrollment.status === 'level_completed'    ? 'bg-teal-100 text-teal-700' :
+                        'bg-slate-100 text-slate-700'
+                      }`}>
+                        {enrollment.status.replace(/_/g, ' ')}
+                      </span>
                     </div>
-                    
+
                     {/* Progress Bar */}
                     <div className="mb-4">
                       <div className="flex items-center justify-between text-sm mb-2">
                         <span className="text-slate-600">Overall Progress</span>
-                        <span className="text-slate-900">{parseFloat(currentProgramEnrollment.overallProgressPercentage) || 0}%</span>
+                        <span className="text-slate-900">{parseFloat(enrollment.overallProgressPercentage) || 0}%</span>
                       </div>
-                      <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
+                      <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
                         <div
                           className="h-full bg-linear-to-r from-indigo-600 to-purple-600 rounded-full"
-                          style={{ width: `${parseFloat(currentProgramEnrollment.overallProgressPercentage) || 0}%` }}
+                          style={{ width: `${parseFloat(enrollment.overallProgressPercentage) || 0}%` }}
                         />
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-6 text-sm text-slate-600">
-                      <span className="flex items-center gap-2">
+                    <div className="flex items-center gap-4 text-sm text-slate-600 mb-4">
+                      <span className="flex items-center gap-1.5">
                         <CheckCircle2 className="w-4 h-4 text-green-600" />
-                        {currentProgramEnrollment.tasksCompleted || 0} tasks completed
+                        {enrollment.tasksCompleted || 0} done
                       </span>
-                      <span className="flex items-center gap-2">
+                      <span className="flex items-center gap-1.5">
                         <Target className="w-4 h-4 text-indigo-600" />
-                        {(currentProgramEnrollment.tasksTotal || 0) - (currentProgramEnrollment.tasksCompleted || 0)} remaining
+                        {(enrollment.tasksTotal || 0) - (enrollment.tasksCompleted || 0)} remaining
                       </span>
                     </div>
-                  </div>
-                </div>
-              </div>
 
-              <div className="space-y-6">
-                <div className="bg-linear-to-br from-indigo-50 to-purple-50 border border-indigo-200 rounded-2xl p-6">
-                  <div className="w-12 h-12 bg-indigo-600 rounded-xl flex items-center justify-center mb-4">
-                    <Award className="w-6 h-6 text-white" />
+                    <div className="flex items-center gap-2">
+                      <Link
+                        href="/mentee/tasks"
+                        className="flex-1 text-center px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm transition-colors"
+                      >
+                        View Tasks
+                      </Link>
+                      {WORKING_STATUSES.includes(enrollment.status) && (
+                        <button
+                          onClick={() => handleRequestCompletion(enrollment.id)}
+                          disabled={completionLoading === enrollment.id}
+                          className="flex-1 px-3 py-2 bg-green-50 hover:bg-green-100 border border-green-300 text-green-700 rounded-xl text-sm transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50"
+                          title="Ask your mentor to review and close this level"
+                        >
+                          {completionLoading === enrollment.id
+                            ? <Loader2 className="w-4 h-4 animate-spin" />
+                            : <Send className="w-4 h-4" />}
+                          Request Completion
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <h3 className="text-indigo-900 mb-2">Keep Learning!</h3>
-                  <p className="text-indigo-700 text-sm mb-4">
-                    You&apos;re making great progress. Stay consistent!
-                  </p>
-                </div>
+                ))}
               </div>
             </div>
-          ) : enrollments.length > 0 ? null : null}
+          )}
 
           {/* All Enrollments */}
           {enrollments.length > 0 && (
