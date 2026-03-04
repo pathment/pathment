@@ -1,56 +1,21 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Search, Filter, Users, TrendingUp, Clock, CheckCircle2, Loader2, MessageSquare } from 'lucide-react';
-import { matchingApi } from '@/lib/services/enrollment-api';
-import { useAuth } from '@/lib/context/AuthContext';
 import { toast } from 'sonner';
+import { useMentorMentees } from '@/lib/hooks/mentor';
 
 export default function MyMentees() {
-  const { user } = useAuth();
-  const [matches, setMatches] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterProgram, setFilterProgram] = useState('all');
-
-  useEffect(() => {
-    if (user?.id) {
-      fetchMyMatches();
-    }
-  }, [user]);
-
-  const fetchMyMatches = async () => {
-    try {
-      setLoading(true);
-      const response = await matchingApi.getMatches({ mentorId: user?.id, status: 'active' });
-      const matchesList = response?.data?.matches || response?.matches || [];
-      setMatches(matchesList);
-    } catch (error: any) {
-      console.error('Failed to fetch matches:', error);
-      toast.error('Failed to load your mentees');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Get unique programs for filter
-  const programs = [...new Set(matches.map(m => m.enrollment?.program?.name))].filter(Boolean);
-
-  // Filter matches
-  const filteredMatches = matches.filter(match => {
-    const mentee = match.mentee;
-    const program = match.enrollment?.program?.name || '';
-    
-    const matchesSearch = searchTerm === '' || 
-      mentee?.firstName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      mentee?.lastName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      program.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesProgram = filterProgram === 'all' || program === filterProgram;
-    
-    return matchesSearch && matchesProgram;
-  });
+  const {
+    matches,
+    filteredMatches,
+    programs,
+    loading,
+    searchTerm,
+    filterProgram,
+    setSearchTerm,
+    setFilterProgram,
+  } = useMentorMentees();
 
   const getProgressColor = (progress: number) => {
     if (progress >= 75) return 'bg-green-600';

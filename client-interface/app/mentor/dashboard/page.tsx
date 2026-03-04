@@ -1,39 +1,14 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Users, ClipboardList, Star, Clock, CheckCircle2, MessageSquare, TrendingUp, Loader2, BookOpen } from 'lucide-react';
-import { matchingApi } from '@/lib/services/enrollment-api';
+import { Users, ClipboardList, Star, Clock, CheckCircle2, TrendingUp, Loader2, BookOpen } from 'lucide-react';
 import { useAuth } from '@/lib/context/AuthContext';
-import { toast } from 'sonner';
+import { useMentorDashboard } from '@/lib/hooks/mentor';
 
 export default function MentorDashboard() {
   const { user } = useAuth();
-  const [matches, setMatches] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { activeMentees, programsCount, loading } = useMentorDashboard();
 
-  useEffect(() => {
-    if (user?.id) {
-      fetchMyMatches();
-    }
-  }, [user]);
-
-  const fetchMyMatches = async () => {
-    try {
-      setLoading(true);
-      const response = await matchingApi.getMatches({ mentorId: user?.id, status: 'active' });
-      const matchesList = response?.data?.matches || response?.matches || [];
-      setMatches(matchesList);
-    } catch (error: any) {
-      console.error('Failed to fetch matches:', error);
-      toast.error('Failed to load your mentees');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const activeMentees = matches.filter(m => m.status === 'active');
-  const programsCount = [...new Set(matches.map(m => m.enrollment?.program?.id))].filter(Boolean).length;
   const pendingReviewsCount = 0; // TODO: Implement task submissions API
 
   const stats = [

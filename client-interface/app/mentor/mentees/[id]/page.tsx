@@ -1,6 +1,5 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { 
@@ -22,54 +21,28 @@ import {
   ThumbsDown,
   AlertCircle
 } from 'lucide-react';
-import { matchingApi, enrollmentApi } from '@/lib/services/enrollment-api';
-import { taskApi } from '@/lib/services/task-api';
-import { useAuth } from '@/lib/context/AuthContext';
 import { toast } from 'sonner';
+import { useMenteeDetailPage } from '@/lib/hooks/mentor';
 
 export default function MenteeDetail() {
   const params = useParams();
-  const { user } = useAuth();
   const router = useRouter();
   const menteeId = params.id as string;
 
-  const [match, setMatch] = useState<any>(null);
-  const [tasks, setTasks] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [completionLoading, setCompletionLoading] = useState(false);
-  const [rejectReason, setRejectReason] = useState('');
-  const [showRejectModal, setShowRejectModal] = useState(false);
-  const [showCompleteConfirm, setShowCompleteConfirm] = useState(false);
-
-  useEffect(() => {
-    if (user?.id && menteeId) {
-      fetchMenteeDetails();
-    }
-  }, [user, menteeId]);
-
-  const fetchMenteeDetails = async () => {
-    try {
-      setLoading(true);
-      const response = await matchingApi.getMatches({ 
-        mentorId: user?.id, 
-        menteeId: menteeId,
-        status: 'active'
-      });
-      const matches = response?.data?.matches || response?.matches || [];
-      if (matches.length > 0) {
-        setMatch(matches[0]);
-      }
-
-      // Fetch tasks assigned by this mentor to this mentee
-      const tasksRes = await taskApi.getMentorTasks(user!.id, { menteeId });
-      setTasks(tasksRes?.data?.tasks || []);
-    } catch (error: any) {
-      console.error('Failed to fetch mentee details:', error);
-      toast.error('Failed to load mentee details');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const {
+    match,
+    tasks,
+    loading,
+    completionLoading,
+    rejectReason,
+    showRejectModal,
+    showCompleteConfirm,
+    setRejectReason,
+    setShowRejectModal,
+    setShowCompleteConfirm,
+    handleApproveCompletion,
+    handleRejectCompletion,
+  } = useMenteeDetailPage(menteeId);
 
   if (loading) {
     return (
@@ -95,44 +68,6 @@ export default function MenteeDetail() {
   const enrollment = match.enrollment;
   const profile = mentee?.menteeProfile;
   const progress = parseFloat(enrollment?.overallProgressPercentage) || 0;
-
-  const handleApproveCompletion = async () => {
-    if (!enrollment?.id) return;
-    try {
-      setCompletionLoading(true);
-      const res = await enrollmentApi.approveCompletion(enrollment.id);
-      const result = (res as any)?.data?.result;
-      if (result?.autoPromoted) {
-        toast.success(`Level complete! Mentee advanced to "${result.nextLevelName}" — awaiting new mentor match.`);
-      } else if (result?.hasNextLevel === false) {
-        toast.success('Program completed! Well done.');
-      } else {
-        toast.success('Completion approved!');
-      }
-      setShowCompleteConfirm(false);
-      fetchMenteeDetails();
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || 'Failed to approve completion');
-    } finally {
-      setCompletionLoading(false);
-    }
-  };
-
-  const handleRejectCompletion = async () => {
-    if (!enrollment?.id) return;
-    try {
-      setCompletionLoading(true);
-      await enrollmentApi.rejectCompletion(enrollment.id, rejectReason);
-      toast.success('Completion request rejected — mentee returned to active');
-      setShowRejectModal(false);
-      setRejectReason('');
-      fetchMenteeDetails();
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || 'Failed to reject completion');
-    } finally {
-      setCompletionLoading(false);
-    }
-  };
 
   return (
     <div className="space-y-6">

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, use, useEffect } from 'react';
+import { use } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
@@ -15,205 +15,51 @@ import {
   Calendar,
   RotateCw,
   ThumbsUp,
-  ThumbsDown,
   Loader2
 } from 'lucide-react';
 import RichTextEditor from '@/components/shared/RichTextEditor';
-import { submissionService } from '@/lib/services/submissionService';
-import { taskApi } from '@/lib/services/task-api';
+import { useMentorTaskFeedback } from '@/lib/hooks/mentor';
 
 interface PageProps {
   params: Promise<{ id: string }>;
 }
 
-interface Submission {
-  id: string;
-  version: number;
-  submissionText: string;
-  submissionUrls?: string[];
-  submittedAt: string;
-  status: string;
-  extensionRequested?: boolean;
-  extensionDays?: number;
-  extensionReason?: string;
-  files?: Array<{
-    id: string;
-    fileName: string;
-    fileUrl: string;
-    fileType: string;
-    fileSize: number;
-  }>;
-}
-
-interface Task {
-  id: string;
-  title: string;
-  description: string;
-  dueDate: string;
-  type: string;
-  difficulty: string;
-  deliverable?: string;
-  acceptanceCriteria?: string[];
-  status: string;
-  isCustomTask: boolean;
-  roadmapTask?: {
-    title: string;
-    description: string;
-    deliverable?: string;
-    acceptanceCriteria?: string[];
-  };
-  mentee?: {
-    id: string;
-    firstName: string;
-    lastName: string;
-    email: string;
-  };
-  enrollment?: {
-    program?: {
-      name: string;
-    };
-  };
-  submissions?: Submission[];
-}
-
 export default function FeedbackProvision({ params }: PageProps) {
   const resolvedParams = use(params);
   const router = useRouter();
-  const [task, setTask] = useState<Task | null>(null);
-  const [submission, setSubmission] = useState<Submission | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [rating, setRating] = useState(0);
-  const [hoveredRating, setHoveredRating] = useState(0);
-  const [feedbackText, setFeedbackText] = useState('');
-  const [revisionNotes, setRevisionNotes] = useState('');
-  const [decision, setDecision] = useState<'approve' | 'revision' | null>(null);
-  const [showSuccess, setShowSuccess] = useState(false);
-  const [pointsAwarded, setPointsAwarded] = useState(10);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState('');
-  const [ratingError, setRatingError] = useState('');
-  const [feedbackError, setFeedbackError] = useState('');
-  const [decisionError, setDecisionError] = useState('');
-  const [revisionError, setRevisionError] = useState('');
-  const [inlineFeedback, setInlineFeedback] = useState<Array<{
-    id: number;
-    comment: string;
-    type: 'suggestion' | 'issue' | 'praise';
-  }>>([]);
-
-  useEffect(() => {
-    const fetchTaskAndSubmission = async () => {
-      try {
-        const response = await taskApi.getTaskById(resolvedParams.id);
-        const taskData = response.data.task;
-        setTask(taskData);
-        
-        // Get the latest submission
-        if (taskData.submissions && taskData.submissions.length > 0) {
-          setSubmission(taskData.submissions[0]);
-        }
-        
-        // Set default points based on task
-        if (taskData.pointsBase) {
-          setPointsAwarded(taskData.pointsBase);
-        }
-      } catch (err: unknown) {
-        const error = err as { response?: { data?: { message?: string } } };
-        setError(error.response?.data?.message || 'Failed to load task');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchTaskAndSubmission();
-  }, [resolvedParams.id]);
-
-  const addInlineFeedback = () => {
-    setInlineFeedback([
-      ...inlineFeedback,
-      { id: Date.now(), comment: '', type: 'suggestion' }
-    ]);
-  };
-
-  const updateInlineFeedback = (id: number, field: string, value: string) => {
-    setInlineFeedback(
-      inlineFeedback.map(item =>
-        item.id === id ? { ...item, [field]: value } : item
-      )
-    );
-  };
-
-  const removeInlineFeedback = (id: number) => {
-    setInlineFeedback(inlineFeedback.filter(item => item.id !== id));
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setRatingError('');
-    setFeedbackError('');
-    setDecisionError('');
-    setRevisionError('');
-
-    if (!submission) {
-      setError('No submission found');
-      return;
-    }
-
-    let hasError = false;
-
-    if (rating === 0) {
-      setRatingError('Please select a rating before submitting.');
-      hasError = true;
-    }
-
-    const plainText = feedbackText.replace(/<[^>]*>/g, '').trim();
-    if (!plainText) {
-      setFeedbackError('Feedback is required. Please describe your thoughts on the submission.');
-      hasError = true;
-    }
-
-    if (!decision) {
-      setDecisionError('Please select a decision (Approve or Request Revision).');
-      hasError = true;
-    }
-
-    if (decision === 'revision' && !revisionNotes.trim()) {
-      setRevisionError('Revision notes are required when requesting a revision.');
-      hasError = true;
-    }
-
-    if (hasError) return;
-
-    setIsSubmitting(true);
-
-    try {
-      const validInlineFeedback = inlineFeedback
-        .filter(item => item.comment.trim())
-        .map(item => ({
-          line: 0,
-          comment: item.comment,
-          type: item.type
-        }));
-
-      await submissionService.reviewSubmission(submission.id, {
-        rating,
-        feedbackText,
-        inlineFeedback: validInlineFeedback.length > 0 ? validInlineFeedback : undefined,
-        isApproved: decision === 'approve',
-        revisionNotes: decision === 'revision' ? revisionNotes : undefined,
-        pointsAwarded: decision === 'approve' ? pointsAwarded : undefined
-      });
-
-      setShowSuccess(true);
-      setTimeout(() => router.push('/mentor/tasks'), 2000);
-    } catch (err: unknown) {
-      const error = err as { response?: { data?: { message?: string } } };
-      setError(error.response?.data?.message || 'Failed to submit review');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+  const {
+    task,
+    submission,
+    loading,
+    isSubmitting,
+    showSuccess,
+    rating,
+    hoveredRating,
+    feedbackText,
+    revisionNotes,
+    decision,
+    pointsAwarded,
+    inlineFeedback,
+    error,
+    ratingError,
+    feedbackError,
+    decisionError,
+    revisionError,
+    setRating,
+    setHoveredRating,
+    setFeedbackText,
+    setRevisionNotes,
+    setDecision,
+    setPointsAwarded,
+    setRatingError,
+    setFeedbackError,
+    setDecisionError,
+    setRevisionError,
+    addInlineFeedback,
+    updateInlineFeedback,
+    removeInlineFeedback,
+    handleSubmit,
+  } = useMentorTaskFeedback(resolvedParams.id);
 
   if (loading) {
     return (

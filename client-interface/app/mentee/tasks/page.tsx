@@ -317,7 +317,7 @@ export default function MenteeTasks() {
 
                       {task.status === 'completed' && task.submissions?.[0]?.feedback?.[0] && (
                         <button
-                          onClick={() => router.push(`/mentee/tasks/${task.id}`)}
+                          onClick={() => router.push(`/mentee/feedback/${task.id}`)}
                           className="text-indigo-600 hover:underline text-sm"
                         >
                           View Feedback

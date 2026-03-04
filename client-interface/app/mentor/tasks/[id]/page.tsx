@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, use, useEffect } from 'react';
+import { use } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
@@ -22,9 +22,7 @@ import {
   Send,
   AlertTriangle,
 } from 'lucide-react';
-import { taskApi } from '@/lib/services/task-api';
-import { submissionService } from '@/lib/services/submissionService';
-import { toast } from 'sonner';
+import { useMentorTaskDetail } from '@/lib/hooks/mentor';
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -33,69 +31,23 @@ interface PageProps {
 export default function MentorTaskDetailsPage({ params }: PageProps) {
   const resolvedParams = use(params);
   const router = useRouter();
-  const [task, setTask] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [cancellingTask, setCancellingTask] = useState(false);
-  const [cancelReason, setCancelReason] = useState('');
-  const [isCancelling, setIsCancelling] = useState(false);
-  const [extensionDecision, setExtensionDecision] = useState<'approve' | 'reject' | null>(null);
-  const [newDueDate, setNewDueDate] = useState('');
-  const [isHandlingExtension, setIsHandlingExtension] = useState(false);
-
-  useEffect(() => {
-    const fetchTask = async () => {
-      try {
-        const response = await taskApi.getTaskById(resolvedParams.id);
-        setTask(response.data.task);
-      } catch (err: unknown) {
-        const e = err as { response?: { data?: { message?: string } } };
-        setError(e.response?.data?.message || 'Failed to load task');
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchTask();
-  }, [resolvedParams.id]);
-
-  const handleExtension = async (approved: boolean, submissionId: string) => {
-    setIsHandlingExtension(true);
-    try {
-      await submissionService.handleExtension(submissionId, approved, approved && newDueDate ? newDueDate : undefined);
-      toast.success(approved ? 'Extension approved! Due date updated.' : 'Extension request rejected.');
-      setExtensionDecision(null);
-      setNewDueDate('');
-      const response = await taskApi.getTaskById(resolvedParams.id);
-      setTask(response.data.task);
-    } catch (err: unknown) {
-      const e = err as { response?: { data?: { message?: string } } };
-      toast.error(e.response?.data?.message || 'Failed to handle extension request');
-    } finally {
-      setIsHandlingExtension(false);
-    }
-  };
-
-  const handleCancelTask = async () => {
-    if (!cancelReason.trim()) {
-      toast.error('Please provide a reason for cancellation');
-      return;
-    }
-    setIsCancelling(true);
-    try {
-      await taskApi.cancelTask(resolvedParams.id, cancelReason);
-      toast.success('Task cancelled successfully');
-      setCancellingTask(false);
-      setCancelReason('');
-      // Refresh task
-      const response = await taskApi.getTaskById(resolvedParams.id);
-      setTask(response.data.task);
-    } catch (err: unknown) {
-      const e = err as { response?: { data?: { message?: string } } };
-      toast.error(e.response?.data?.message || 'Failed to cancel task');
-    } finally {
-      setIsCancelling(false);
-    }
-  };
+  const {
+    task,
+    loading,
+    error,
+    cancellingTask,
+    cancelReason,
+    isCancelling,
+    extensionDecision,
+    newDueDate,
+    isHandlingExtension,
+    setCancellingTask,
+    setCancelReason,
+    setExtensionDecision,
+    setNewDueDate,
+    handleExtension,
+    handleCancelTask,
+  } = useMentorTaskDetail(resolvedParams.id);
 
   if (loading) {
     return (

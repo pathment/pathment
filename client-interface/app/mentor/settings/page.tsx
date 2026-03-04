@@ -1,164 +1,27 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useAuth } from '@/lib/context/AuthContext';
-import { apiClient } from '@/lib/services/api-client';
-import { apiConfig } from '@/lib/config/api';
-import { toast } from 'sonner';
-import { 
-  User, 
-  Mail, 
-  Phone, 
-  Briefcase, 
-  Users, 
-  Bell, 
-  Shield,
-  CheckCircle2,
-  Loader2,
-  Save
-} from 'lucide-react';
+import { Loader2, Save, User, Mail, Phone, Briefcase, Users, Bell, Shield, CheckCircle2 } from 'lucide-react';
+import { useMentorSettings } from '@/lib/hooks/mentor';
 
 export default function MentorSettings() {
-  const { user, refreshUser } = useAuth();
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState('profile');
-
-  // Profile State
-  const [profileData, setProfileData] = useState({
-    firstName: '',
-    lastName: '',
-    email: '',
-    phone: '',
-    bio: ''
-  });
-
-  // Mentor Profile State
-  const [mentorProfile, setMentorProfile] = useState({
-    title: '',
-    organization: '',
-    yearsOfExperience: 0,
-    specialization: [] as string[],
-    linkedinUrl: '',
-    githubUrl: '',
-    portfolioUrl: ''
-  });
-
-  // Availability State
-  const [availabilitySettings, setAvailabilitySettings] = useState({
-    isAcceptingMentees: true,
-    maxMentees: 5,
-    currentMenteeCount: 0
-  });
-
-  // Notification State
-  const [notificationSettings, setNotificationSettings] = useState({
-    emailNotifications: true,
-    taskReminders: true,
-    menteeMessages: true,
-    weeklyReports: true
-  });
-
-  useEffect(() => {
-    fetchSettings();
-  }, []);
-
-  const fetchSettings = async () => {
-    try {
-      setLoading(true);
-      const response = await apiClient.get(apiConfig.endpoints.profile);
-      const data = response.data;
-      
-      setProfileData({
-        firstName: data.firstName || '',
-        lastName: data.lastName || '',
-        email: data.email || '',
-        phone: data.phone || '',
-        bio: data.bio || ''
-      });
-
-      if (data.mentorProfile) {
-        setMentorProfile({
-          title: data.mentorProfile.title || '',
-          organization: data.mentorProfile.organization || '',
-          yearsOfExperience: data.mentorProfile.yearsOfExperience || 0,
-          specialization: data.mentorProfile.specialization || [],
-          linkedinUrl: data.mentorProfile.linkedinUrl || '',
-          githubUrl: data.mentorProfile.githubUrl || '',
-          portfolioUrl: data.mentorProfile.portfolioUrl || ''
-        });
-
-        setAvailabilitySettings({
-          isAcceptingMentees: data.mentorProfile.isAcceptingMentees ?? true,
-          maxMentees: data.mentorProfile.maxMentees || 5,
-          currentMenteeCount: data.mentorProfile.currentMenteeCount || 0
-        });
-      }
-    } catch (error: any) {
-      console.error('Failed to fetch settings:', error);
-      toast.error('Failed to load settings');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleProfileUpdate = async () => {
-    try {
-      setSaving(true);
-      await apiClient.put(apiConfig.endpoints.profile, profileData);
-      await refreshUser();
-      toast.success('Profile updated successfully');
-    } catch (error: any) {
-      console.error('Failed to update profile:', error);
-      toast.error(error.response?.data?.message || 'Failed to update profile');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleMentorProfileUpdate = async () => {
-    try {
-      setSaving(true);
-      await apiClient.post(`${apiConfig.endpoints.profile}/complete-mentor`, mentorProfile);
-      toast.success('Mentor profile updated successfully');
-      await fetchSettings();
-    } catch (error: any) {
-      console.error('Failed to update mentor profile:', error);
-      toast.error(error.response?.data?.message || 'Failed to update mentor profile');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleAvailabilityUpdate = async () => {
-    try {
-      setSaving(true);
-      await apiClient.patch(`${apiConfig.endpoints.profile}/mentor/availability`, {
-        isAcceptingMentees: availabilitySettings.isAcceptingMentees,
-        maxMentees: availabilitySettings.maxMentees
-      });
-      toast.success('Availability settings updated successfully');
-      await fetchSettings();
-    } catch (error: any) {
-      console.error('Failed to update availability:', error);
-      toast.error(error.response?.data?.message || 'Failed to update availability settings');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleNotificationUpdate = async () => {
-    try {
-      setSaving(true);
-      // TODO: Implement notification settings API
-      toast.success('Notification settings updated successfully');
-    } catch (error: any) {
-      console.error('Failed to update notifications:', error);
-      toast.error('Failed to update notification settings');
-    } finally {
-      setSaving(false);
-    }
-  };
+  const {
+    loading,
+    saving,
+    activeTab,
+    profileData,
+    mentorProfile,
+    availabilitySettings,
+    notificationSettings,
+    setActiveTab,
+    setProfileData,
+    setMentorProfile,
+    setAvailabilitySettings,
+    setNotificationSettings,
+    handleProfileUpdate,
+    handleMentorProfileUpdate,
+    handleAvailabilityUpdate,
+    handleNotificationUpdate,
+  } = useMentorSettings();
 
   if (loading) {
     return (

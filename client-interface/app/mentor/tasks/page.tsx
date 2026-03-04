@@ -1,340 +1,51 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   Search, ClipboardList, Clock, CheckCircle2, AlertCircle, Plus,
   Loader2, FileText, Star, XCircle, AlertTriangle, BookOpen, CalendarClock
 } from 'lucide-react';
-import { taskApi } from '@/lib/services/task-api';
-import { matchingApi } from '@/lib/services/enrollment-api';
-import { useAuth } from '@/lib/context/AuthContext';
-import { toast } from 'sonner';
-
-type TabType = 'pending' | 'extensions' | 'all' | 'roadmap' | 'create';
+import { useMentorTasks } from '@/lib/hooks/mentor';
 
 export default function MentorTasks() {
-  const { user } = useAuth();
   const router = useRouter();
-  const searchParams = useSearchParams();
-
-  // --- Tab state ---
-  const [activeTab, setActiveTab] = useState<TabType>('pending');
-
-  // --- Stats (always loaded on mount) ---
-  const [stats, setStats] = useState<any>(null);
-  const [statsLoading, setStatsLoading] = useState(true);
-
-  // --- Pending tab ---
-  const [pendingTasks, setPendingTasks] = useState<any[]>([]);
-  const [pendingLoading, setPendingLoading] = useState(true);
-
-  // --- All Tasks + Extensions tab (shared data) ---
-  const [allTasks, setAllTasks] = useState<any[]>([]);
-  const [allTasksLoading, setAllTasksLoading] = useState(false);
-  const [allTasksLoaded, setAllTasksLoaded] = useState(false);
-
-  // --- Mentees (active matches — used only for Mentee dropdown step 3) ---
-  const [mentees, setMentees] = useState<any[]>([]);
-  const [menteesLoading, setMenteesLoading] = useState(false);
-  const [menteesLoaded, setMenteesLoaded] = useState(false);
-
-  // --- LevelMentorAssignment — programs+levels the mentor is assigned to teach ---
-  const [mentorLevelAssignments, setMentorLevelAssignments] = useState<any[]>([]);
-  const [mentorLevelsLoaded, setMentorLevelsLoaded] = useState(false);
-  const [mentorLevelsLoading, setMentorLevelsLoading] = useState(false);
-
-  // --- Roadmap tab ---
-  const [roadmapData, setRoadmapData] = useState<any>(null);
-  const [selectedProgram, setSelectedProgram] = useState('');
-  const [selectedLevel, setSelectedLevel] = useState('');
-  const [selectedMenteeForAssign, setSelectedMenteeForAssign] = useState('');
-  const [assigningTask, setAssigningTask] = useState<string | null>(null);
-
-  // --- Create task form ---
-  const [formData, setFormData] = useState({
-    menteeId: '',
-    enrollmentId: '',
-    title: '',
-    description: '',
-    type: 'custom',
-    difficulty: 'medium',
-    dueDate: '',
-    pointsBase: 10,
-    deliverable: '',
-    acceptanceCriteria: [] as string[]
-  });
-
-  // --- Cancel dialog ---
-  const [cancellingTask, setCancellingTask] = useState<string | null>(null);
-  const [cancelReason, setCancelReason] = useState('');
-
-  // --- Search ---
-  const [searchTerm, setSearchTerm] = useState('');
-
-  // ─── Fetchers ────────────────────────────────────────────────────────────
-
-  const fetchStats = useCallback(async () => {
-    if (!user?.id) return;
-    try {
-      setStatsLoading(true);
-      const res = await taskApi.getMentorTaskStats(user.id);
-      setStats(res?.data?.stats);
-    } catch {
-      // stats failure is non-critical
-    } finally {
-      setStatsLoading(false);
-    }
-  }, [user?.id]);
-
-  const fetchPendingTasks = useCallback(async () => {
-    if (!user?.id) return;
-    try {
-      setPendingLoading(true);
-      const res = await taskApi.getMentorTasks(user.id, { pendingReview: true });
-      setPendingTasks(res?.data?.tasks || []);
-    } catch {
-      toast.error('Failed to load pending tasks');
-    } finally {
-      setPendingLoading(false);
-    }
-  }, [user?.id]);
-
-  const fetchAllTasks = useCallback(async () => {
-    if (!user?.id) return;
-    try {
-      setAllTasksLoading(true);
-      const res = await taskApi.getMentorTasks(user.id);
-      setAllTasks(res?.data?.tasks || []);
-      setAllTasksLoaded(true);
-    } catch {
-      toast.error('Failed to load tasks');
-    } finally {
-      setAllTasksLoading(false);
-    }
-  }, [user?.id]);
-
-  const fetchMentees = useCallback(async (): Promise<any[]> => {
-    if (!user?.id) return [];
-    try {
-      setMenteesLoading(true);
-      const res = await matchingApi.getMatches({ mentorId: user.id, status: 'active' });
-      const list = res?.data?.matches || res?.matches || [];
-      setMentees(list);
-      setMenteesLoaded(true);
-      return list;
-    } catch {
-      toast.error('Failed to load mentees');
-      return [];
-    } finally {
-      setMenteesLoading(false);
-    }
-  }, [user?.id]);
-
-  const fetchMentorLevelAssignments = useCallback(async (): Promise<any[]> => {
-    try {
-      setMentorLevelsLoading(true);
-      const res = await matchingApi.getMentorAssignedLevels();
-      const list = res?.data?.programs || [];
-      setMentorLevelAssignments(list);
-      setMentorLevelsLoaded(true);
-      return list;
-    } catch {
-      toast.error('Failed to load assigned levels');
-      return [];
-    } finally {
-      setMentorLevelsLoading(false);
-    }
-  }, []);
-
-  const fetchRoadmap = useCallback(async (programId: string, levelId: string, menteeId?: string) => {
-    try {
-      const res = await taskApi.getRoadmapTasks(programId, levelId, menteeId);
-      setRoadmapData(res.data.roadmap);
-    } catch {
-      toast.error('Failed to load roadmap');
-    }
-  }, []);
-
-  // ─── Initial load ─────────────────────────────────────────────────────────
-
-  useEffect(() => {
-    if (!user?.id) return;
-
-    const paramTab = searchParams.get('tab') as TabType | null;
-    const paramMenteeId = searchParams.get('menteeId');
-    const paramProgramId = searchParams.get('programId');
-
-    const needsMentees = paramTab === 'create' || paramTab === 'roadmap' || !!paramMenteeId;
-    const needsAllTasks = paramTab === 'all' || paramTab === 'extensions';
-
-    // Always: stats + pending (default tab)
-    fetchStats();
-    fetchPendingTasks();
-
-    if (needsMentees) {
-      fetchMentorLevelAssignments();
-      fetchMentees().then((list) => {
-        if (paramMenteeId && list.length > 0) {
-          const match = list.find((m: any) => m.menteeId === paramMenteeId);
-          if (match) {
-            const programId = paramProgramId || match.enrollment?.programId || '';
-            const levelId = match.levelId || '';
-            setFormData((prev) => ({
-              ...prev,
-              menteeId: paramMenteeId,
-              enrollmentId: match.enrollmentId || ''
-            }));
-            setSelectedMenteeForAssign(paramMenteeId);
-            if (programId) setSelectedProgram(programId);
-            if (levelId) setSelectedLevel(levelId);
-            if (programId && levelId) fetchRoadmap(programId, levelId, paramMenteeId);
-          }
-        }
-        if (paramTab) setActiveTab(paramTab);
-        else if (paramMenteeId) setActiveTab('create');
-      });
-    }
-
-    if (needsAllTasks) {
-      fetchAllTasks();
-      if (paramTab) setActiveTab(paramTab);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id]);
-
-  // ─── Tab switch handler ───────────────────────────────────────────────────
-
-  const handleTabSwitch = (tab: TabType) => {
-    setActiveTab(tab);
-    if ((tab === 'all' || tab === 'extensions') && !allTasksLoaded && !allTasksLoading) {
-      fetchAllTasks();
-    }
-    if ((tab === 'roadmap' || tab === 'create') && !menteesLoaded && !menteesLoading) {
-      fetchMentees();
-    }
-    if ((tab === 'roadmap' || tab === 'create') && !mentorLevelsLoaded && !mentorLevelsLoading) {
-      fetchMentorLevelAssignments();
-    }
-  };
-
-  // ─── Derived data ─────────────────────────────────────────────────────────
-
-  const extensionTasks = allTasks.filter((task) =>
-    task.submissions?.some((s: any) => s.extensionRequested && s.extensionStatus === 'pending')
-  );
-
-  const filteredAllTasks = allTasks.filter((task) => {
-    if (!searchTerm) return true;
-    const q = searchTerm.toLowerCase();
-    return (
-      task.roadmapTask?.title?.toLowerCase().includes(q) ||
-      task.mentee?.firstName?.toLowerCase().includes(q) ||
-      task.mentee?.lastName?.toLowerCase().includes(q)
-    );
-  });
-
-  // ─── Mutations ────────────────────────────────────────────────────────────
-
-  const handleAssignRoadmapTask = async (taskId: string, weekNumber: number) => {
-    if (!selectedMenteeForAssign) {
-      toast.error('Please select a mentee first');
-      return;
-    }
-    try {
-      const match = mentees.find((m) => m.menteeId === selectedMenteeForAssign);
-      if (!match) return;
-      await taskApi.createCustomTask({
-        menteeId: selectedMenteeForAssign,
-        enrollmentId: match.enrollmentId,
-        title: `Week ${weekNumber} - Roadmap Task`,
-        description: 'Assigned from roadmap',
-        roadmapTaskId: taskId
-      } as any);
-      toast.success('Roadmap task assigned successfully!');
-      setAssigningTask(null);
-      if (selectedProgram && selectedLevel)
-        fetchRoadmap(selectedProgram, selectedLevel, selectedMenteeForAssign);
-      // Invalidate allTasks so they refresh on next visit to those tabs
-      setAllTasksLoaded(false);
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Failed to assign task');
-    }
-  };
-
-  const handleCreateCustomTask = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.menteeId || !formData.title || !formData.description) {
-      toast.error('Please fill in all required fields');
-      return;
-    }
-    try {
-      await taskApi.createCustomTask(formData);
-      toast.success('Custom task created successfully!');
-      setFormData({
-        menteeId: '',
-        enrollmentId: '',
-        title: '',
-        description: '',
-        type: 'custom',
-        difficulty: 'medium',
-        dueDate: '',
-        pointsBase: 10,
-        deliverable: '',
-        acceptanceCriteria: []
-      });
-      fetchStats();
-      fetchPendingTasks();
-      // Switch to all tasks and load fresh data
-      setAllTasksLoaded(false);
-      setActiveTab('all');
-      fetchAllTasks();
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Failed to create custom task');
-    }
-  };
-
-  const handleCancelTask = async (taskId: string) => {
-    if (!cancelReason.trim()) {
-      toast.error('Please provide a reason for cancellation');
-      return;
-    }
-    try {
-      await taskApi.cancelTask(taskId, cancelReason);
-      toast.success('Task cancelled successfully');
-      setCancellingTask(null);
-      setCancelReason('');
-      fetchStats();
-      fetchPendingTasks();
-      if (allTasksLoaded) fetchAllTasks();
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Failed to cancel task');
-    }
-  };
-
-  const handleMenteeChange = (menteeId: string) => {
-    const match = mentees.find((m) => m.menteeId === menteeId);
-    setFormData({ ...formData, menteeId, enrollmentId: match?.enrollmentId || '' });
-  };
-
-  const handleProgramChange = (programId: string) => {
-    setSelectedProgram(programId);
-    setSelectedLevel('');
-    setSelectedMenteeForAssign('');
-    setRoadmapData(null);
-  };
-
-  const handleLevelChange = (levelId: string) => {
-    setSelectedLevel(levelId);
-    setSelectedMenteeForAssign('');
-    setRoadmapData(null);
-  };
-
-  const handleMenteeForAssignChange = (menteeId: string) => {
-    setSelectedMenteeForAssign(menteeId);
-    if (selectedProgram && selectedLevel) fetchRoadmap(selectedProgram, selectedLevel, menteeId);
-  };
+  const {
+    activeTab,
+    handleTabSwitch,
+    stats,
+    statsLoading,
+    pendingTasks,
+    pendingLoading,
+    allTasksLoading,
+    allTasksLoaded,
+    extensionTasks,
+    filteredAllTasks,
+    searchTerm,
+    setSearchTerm,
+    mentees,
+    menteesLoading,
+    mentorLevelAssignments,
+    roadmapData,
+    selectedProgram,
+    selectedLevel,
+    selectedMenteeForAssign,
+    assigningTask,
+    setAssigningTask,
+    handleProgramChange,
+    handleLevelChange,
+    handleMenteeForAssignChange,
+    handleAssignRoadmapTask,
+    formData,
+    setFormData,
+    handleMenteeChange,
+    handleCreateCustomTask,
+    cancellingTask,
+    cancelReason,
+    setCancellingTask,
+    setCancelReason,
+    handleCancelTask,
+  } = useMentorTasks();
 
   // ─── UI helpers ──────────────────────────────────────────────────────────
 

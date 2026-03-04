@@ -1,6 +1,5 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import {
@@ -8,119 +7,32 @@ import {
   BookOpen,
   Users,
   Clock,
-  TrendingUp,
   CheckCircle2,
   Circle,
   ChevronDown,
   Loader2,
-  Tag,
   Target,
-  BarChart2,
 } from 'lucide-react';
-import { programManagementApi } from '@/lib/services/program-api';
-import { matchingApi } from '@/lib/services/enrollment-api';
-import { useAuth } from '@/lib/context/AuthContext';
-import { toast } from 'sonner';
+import { useMentorProgramDetail } from '@/lib/hooks/mentor';
 
 export default function MentorProgramDetail() {
   const params = useParams();
   const id = params?.id as string;
-  const { user } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'roadmap' | 'mentees'>('overview');
-  const [program, setProgram] = useState<any>(null);
-  const [levels, setLevels] = useState<any[]>([]);
-  const [selectedLevelId, setSelectedLevelId] = useState<string>('');
-  const [roadmap, setRoadmap] = useState<any>(null);
-  const [loadingRoadmap, setLoadingRoadmap] = useState(false);
-  const [myMentees, setMyMentees] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [expandedWeeks, setExpandedWeeks] = useState<Set<string>>(new Set());
-
-  useEffect(() => {
-    if (id) {
-      fetchProgram();
-      fetchLevels();
-    }
-  }, [id]);
-
-  useEffect(() => {
-    if (user?.id && id) {
-      fetchMyMentees();
-    }
-  }, [user, id]);
-
-  useEffect(() => {
-    if (activeTab === 'roadmap' && selectedLevelId) {
-      fetchRoadmap();
-    }
-  }, [activeTab, selectedLevelId]);
-
-  const fetchProgram = async () => {
-    try {
-      setLoading(true);
-      const response = await programManagementApi.programs.getById(id);
-      const programData = response?.data?.program || response?.program || response;
-      setProgram(programData);
-    } catch (error: any) {
-      console.error('Failed to fetch program:', error);
-      toast.error('Failed to load program');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchLevels = async () => {
-    try {
-      const response = await programManagementApi.levels.getByProgram(id);
-      const levelsList = response?.data?.levels || response?.levels || response || [];
-      const arr = Array.isArray(levelsList) ? levelsList : [];
-      setLevels(arr);
-      if (arr.length > 0) setSelectedLevelId(arr[0].id);
-    } catch (error: any) {
-      console.error('Failed to fetch levels:', error);
-    }
-  };
-
-  const fetchRoadmap = async () => {
-    if (!selectedLevelId) return;
-    try {
-      setLoadingRoadmap(true);
-      const response = await programManagementApi.roadmaps.getByLevel(id, selectedLevelId);
-      const roadmapData = response?.data?.roadmap || response?.roadmap || response;
-      setRoadmap(roadmapData);
-    } catch (error: any) {
-      console.error('Failed to fetch roadmap:', error);
-      if (error?.response?.status !== 404) {
-        toast.error('Failed to load roadmap');
-      } else {
-        setRoadmap(null);
-      }
-    } finally {
-      setLoadingRoadmap(false);
-    }
-  };
-
-  const fetchMyMentees = async () => {
-    try {
-      const response = await matchingApi.getMatches({ mentorId: user?.id, status: 'active' });
-      const matches = response?.data?.matches || response?.matches || [];
-      const inThisProgram = matches.filter(
-        (m: any) => m.enrollment?.program?.id === id || m.enrollment?.programId === id
-      );
-      setMyMentees(inThisProgram);
-    } catch (error: any) {
-      console.error('Failed to fetch mentees:', error);
-    }
-  };
-
-  const toggleWeek = (weekId: string) => {
-    setExpandedWeeks((prev) => {
-      const next = new Set(prev);
-      next.has(weekId) ? next.delete(weekId) : next.add(weekId);
-      return next;
-    });
-  };
+  const {
+    program,
+    levels,
+    roadmap,
+    myMentees,
+    loading,
+    loadingRoadmap,
+    activeTab,
+    selectedLevelId,
+    expandedWeeks,
+    setActiveTab,
+    setSelectedLevelId,
+    toggleWeek,
+  } = useMentorProgramDetail(id);
 
   const tabs = [
     { id: 'overview', label: 'Overview' },

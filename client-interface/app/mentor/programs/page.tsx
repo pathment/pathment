@@ -1,61 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { BookOpen, Users, Clock, ChevronRight, Loader2, TrendingUp } from 'lucide-react';
-import { matchingApi } from '@/lib/services/enrollment-api';
-import { useAuth } from '@/lib/context/AuthContext';
-import { toast } from 'sonner';
+import { BookOpen, Users, ChevronRight, Loader2, TrendingUp } from 'lucide-react';
+import { useMentorPrograms } from '@/lib/hooks/mentor';
 
 export default function MentorProgramsPage() {
-  const { user } = useAuth();
-  const [programs, setPrograms] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (user?.id) {
-      fetchPrograms();
-    }
-  }, [user]);
-
-  const fetchPrograms = async () => {
-    try {
-      setLoading(true);
-      const response = await matchingApi.getMatches({ mentorId: user?.id, status: 'active' });
-      const matches = response?.data?.matches || response?.matches || [];
-
-      // Group by program
-      const programMap = new Map<string, any>();
-      for (const match of matches) {
-        const prog = match.enrollment?.program;
-        if (!prog) continue;
-        if (!programMap.has(prog.id)) {
-          programMap.set(prog.id, {
-            ...prog,
-            menteeCount: 0,
-            avgProgress: 0,
-            totalProgress: 0,
-          });
-        }
-        const entry = programMap.get(prog.id);
-        entry.menteeCount += 1;
-        entry.totalProgress += parseFloat(match.enrollment?.overallProgressPercentage || 0);
-      }
-
-      // Compute avg progress
-      const programList = Array.from(programMap.values()).map((p) => ({
-        ...p,
-        avgProgress: p.menteeCount > 0 ? Math.round(p.totalProgress / p.menteeCount) : 0,
-      }));
-
-      setPrograms(programList);
-    } catch (error: any) {
-      console.error('Failed to fetch programs:', error);
-      toast.error('Failed to load your programs');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { programs, loading } = useMentorPrograms();
 
   return (
     <div className="space-y-6">
