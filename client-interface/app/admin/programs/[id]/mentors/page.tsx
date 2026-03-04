@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Trash2, Users, Loader2, UserPlus, Search, X } from 'lucide-react';
+import { Trash2, Users, Loader2, UserPlus, Search, X } from 'lucide-react';
 import { useProgramMentors } from '@/lib/hooks/admin';
+import { PageHeader } from '@/components/admin/ui';
 
 export default function LevelMentorsManagement() {
   const {
@@ -37,19 +38,12 @@ export default function LevelMentorsManagement() {
   return (
     <>
       {/* Header */}
-      <div className="mb-8">
-        <Link
-          href={`/admin/programs/${programId}`}
-          className="inline-flex items-center gap-2 text-slate-600 hover:text-slate-900 mb-4"
-        >
-          <ArrowLeft className="w-5 h-5" />
-          Back to Program
-        </Link>
-        <h1 className="text-slate-900 mb-2">Manage Level Mentors</h1>
-        <p className="text-slate-600">
-          Assign mentors to specific levels in {program?.name}
-        </p>
-      </div>
+      <PageHeader
+        title="Manage Level Mentors"
+        subtitle={`Assign mentors to specific levels in ${program?.name ?? '\u2026'}`}
+        backHref={`/admin/programs/${programId}`}
+        backLabel="Back to Program"
+      />
 
       {/* Levels List */}
       <div className="space-y-6">

@@ -11,6 +11,7 @@ import {
   Save,
 } from 'lucide-react';
 import { useAdminSettings } from '@/lib/hooks/admin';
+import { PageHeader, TabBar } from '@/components/admin/ui';
 
 const TABS = [
   { id: 'profile', label: 'Profile', icon: User },
@@ -97,33 +98,15 @@ export default function AdminSettings() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-slate-900 mb-2">Admin Settings</h1>
-        <p className="text-slate-600">Manage system configuration and your admin profile</p>
-      </div>
+      <PageHeader
+        title="Admin Settings"
+        subtitle="Manage system configuration and your admin profile"
+      />
 
       {/* Tabs */}
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-        <div className="border-b border-slate-200 overflow-x-auto">
-          <div className="flex">
-            {TABS.map((tab) => {
-              const Icon = tab.icon;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-2 px-6 py-4 border-b-2 transition-colors whitespace-nowrap ${
-                    activeTab === tab.id
-                      ? 'border-indigo-600 text-indigo-600 font-medium'
-                      : 'border-transparent text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <Icon className="w-5 h-5" />
-                  <span>{tab.label}</span>
-                </button>
-              );
-            })}
-          </div>
+        <div className="overflow-x-auto">
+          <TabBar tabs={TABS} activeTab={activeTab} onChange={setActiveTab} />
         </div>
 
         <div className="p-8">

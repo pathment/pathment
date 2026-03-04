@@ -2,12 +2,13 @@
 
 import Link from 'next/link';
 import {
-  Search, Plus, Users, Calendar, TrendingUp,
-  MoreVertical, Eye, Edit, Trash2, X, ArrowUpDown,
+  Plus, Users, Calendar, TrendingUp,
+  MoreVertical, Eye, Edit, Trash2, ArrowUpDown,
 } from 'lucide-react';
 import { TablePagination } from '@/components/shared/TablePagination';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { ErrorState } from '@/components/shared/ErrorState';
+import { PageHeader, StatusBadge, SearchAndFilterBar } from '@/components/admin/ui';
 import { useProgramList, ProgramStatus, ProgramSortBy, SortOrder } from '@/lib/hooks/admin/useProgramList';
 
 // ─── Skeleton ────────────────────────────────────────────────────────────────
@@ -96,125 +97,75 @@ export default function ProgramListPage() {
   return (
     <>
       {/* ── Header ── */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-8">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 mb-1">Programs</h1>
-          <p className="text-slate-500 text-sm">
-            Manage all mentorship programs
-            {!isLoading && pagination.total > 0 && (
-              <span className="ml-2 px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full text-xs font-medium">
-                {pagination.total} total
-              </span>
-            )}
-          </p>
-        </div>
-        <Link
-          href="/admin/programs/create"
-          className="mt-4 sm:mt-0 inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl transition-colors text-sm font-medium"
-        >
-          <Plus className="w-4 h-4" />
-          Create Program
-        </Link>
-      </div>
+      <PageHeader
+        title="Programs"
+        subtitle="Manage all mentorship programs"
+        actions={
+          <Link
+            href="/admin/programs/create"
+            className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl transition-colors text-sm font-medium"
+          >
+            <Plus className="w-4 h-4" />
+            Create Program
+          </Link>
+        }
+      />
 
       {/* ── Filters ── */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-5 mb-6">
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {/* Search */}
-          <div className="relative lg:col-span-2">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by name or description…"
-              className="w-full pl-10 pr-10 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent placeholder:text-slate-400"
-            />
-            {search && (
-              <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                <X className="w-4 h-4" />
-              </button>
-            )}
-          </div>
+      <SearchAndFilterBar
+        search={search}
+        onSearch={setSearch}
+        placeholder="Search by name or description…"
+        filters={[
+          {
+            value: status,
+            onChange: (v) => setStatus(v as ProgramStatus),
+            options: STATUS_OPTIONS,
+          },
+          {
+            value: type,
+            onChange: setType,
+            options: TYPE_OPTIONS,
+          },
+        ]}
+        activeChips={[
+          ...(search ? [{ label: `"${search}"`, onRemove: () => setSearch('') }] : []),
+          ...(status !== 'all' ? [{ label: STATUS_OPTIONS.find((o) => o.value === status)?.label ?? status, onRemove: () => setStatus('all') }] : []),
+          ...(type !== 'all' ? [{ label: TYPE_OPTIONS.find((o) => o.value === type)?.label ?? type, onRemove: () => setType('all') }] : []),
+        ]}
+        onClearAll={hasActiveFilters ? resetFilters : undefined}
+      />
 
-          {/* Status */}
-          <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value as ProgramStatus)}
-            className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-slate-700 appearance-none bg-white"
-          >
-            {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-
-          {/* Type */}
-          <select
-            value={type}
-            onChange={(e) => setType(e.target.value)}
-            className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-slate-700 appearance-none bg-white"
-          >
-            {TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
+      {/* Sort row */}
+      <div className="flex flex-wrap items-center gap-3 mb-6 -mt-3">
+        <div className="flex items-center gap-2 text-sm text-slate-500 mr-2">
+          <TrendingUp className="w-4 h-4" />
+          <span>Sort:</span>
         </div>
-
-        {/* Second row: sort + active chips */}
-        <div className="flex flex-wrap items-center gap-3 mt-3">
-          {/* Sort */}
-          <div className="flex items-center gap-2 text-sm text-slate-500 mr-2">
-            <TrendingUp className="w-4 h-4" />
-            <span>Sort:</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            {SORT_OPTIONS.map((o) => (
-              <button
-                key={o.value}
-                onClick={() => {
-                  if (sortBy === o.value) {
-                    setSortOrder(sortOrder === 'ASC' ? 'DESC' : 'ASC');
-                  } else {
-                    setSortBy(o.value);
-                    setSortOrder('DESC');
-                  }
-                }}
-                className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                  sortBy === o.value
-                    ? 'bg-indigo-100 text-indigo-700'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-              >
-                {o.label}
-                {sortBy === o.value && (
-                  <ArrowUpDown className="w-3 h-3" />
-                )}
-              </button>
-            ))}
-          </div>
-
-          {/* Active filter chips */}
-          {hasActiveFilters && (
-            <div className="flex flex-wrap items-center gap-2 ml-auto">
-              {search && (
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-full text-xs font-medium">
-                  "{search}"
-                  <button onClick={() => setSearch('')}><X className="w-3 h-3" /></button>
-                </span>
+        <div className="flex items-center gap-1.5">
+          {SORT_OPTIONS.map((o) => (
+            <button
+              key={o.value}
+              onClick={() => {
+                if (sortBy === o.value) {
+                  setSortOrder(sortOrder === 'ASC' ? 'DESC' : 'ASC');
+                } else {
+                  setSortBy(o.value);
+                  setSortOrder('DESC');
+                }
+              }}
+              className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                sortBy === o.value
+                  ? 'bg-indigo-100 text-indigo-700'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              {o.label}
+              {sortBy === o.value && (
+                <ArrowUpDown className="w-3 h-3" />
               )}
-              {status !== 'all' && (
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-full text-xs font-medium">
-                  {STATUS_OPTIONS.find((o) => o.value === status)?.label}
-                  <button onClick={() => setStatus('all')}><X className="w-3 h-3" /></button>
-                </span>
-              )}
-              {type !== 'all' && (
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-full text-xs font-medium">
-                  {TYPE_OPTIONS.find((o) => o.value === type)?.label}
-                  <button onClick={() => setType('all')}><X className="w-3 h-3" /></button>
-                </span>
-              )}
-              <button onClick={resetFilters} className="text-xs text-slate-500 hover:text-slate-700 underline">
-                Clear all
-              </button>
-            </div>
-          )}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -262,9 +213,7 @@ export default function ProgramListPage() {
                       >
                         {program.name}
                       </Link>
-                      <span className={`px-2.5 py-1 rounded-lg text-xs font-medium ${STATUS_CLS[program.status] ?? 'bg-slate-100 text-slate-600'}`}>
-                        {program.status}
-                      </span>
+                      <StatusBadge status={program.status} />
                     </div>
 
                     <div className="flex flex-wrap items-center gap-3 text-sm text-slate-500 mb-3">

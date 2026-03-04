@@ -2,8 +2,9 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
-import { ArrowLeft, Search, Sparkles, Star, Users, Loader2, ExternalLink, ChevronLeft, ChevronRight, ChevronDown, ChevronUp } from 'lucide-react';
+import { Search, Sparkles, Star, Users, Loader2, ExternalLink, ChevronLeft, ChevronRight, ChevronDown, ChevronUp } from 'lucide-react';
 import { useMentorAssignment } from '@/lib/hooks/admin';
+import { PageHeader } from '@/components/admin/ui';
 
 export default function MentorAssignment() {
   const [showAISuggestions, setShowAISuggestions] = useState(true);
@@ -57,17 +58,12 @@ export default function MentorAssignment() {
   return (
     <>
       {/* Header */}
-      <div className="mb-8">
-        <Link
-          href="/admin/dashboard"
-          className="inline-flex items-center gap-2 text-slate-600 hover:text-slate-900 mb-4"
-        >
-          <ArrowLeft className="w-5 h-5" />
-          Back to Dashboard
-        </Link>
-        <h1 className="text-slate-900 mb-2">Mentor Assignment</h1>
-        <p className="text-slate-600">Match mentees with mentors using AI-powered recommendations</p>
-      </div>
+      <PageHeader
+        title="Mentor Assignment"
+        subtitle="Match mentees with mentors using AI-powered recommendations"
+        backHref="/admin/dashboard"
+        backLabel="Back to Dashboard"
+      />
 
       {/* AI Matching Banner */}
       {showAISuggestions && (

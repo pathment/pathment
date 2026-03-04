@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useMentorProfile } from '@/lib/hooks/admin';
 import type { MentorSkill, MentorActiveMatch } from '@/lib/hooks/admin';
+import { StatsCard, PageHeader } from '@/components/admin/ui';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -18,29 +19,6 @@ const PROFICIENCY_CLS: Record<string, string> = {
   advanced:     'bg-indigo-100 text-indigo-700',
   expert:       'bg-purple-100 text-purple-700',
 };
-
-function StatCard({
-  icon: Icon, label, value, sub, colorClass = 'text-indigo-600 bg-indigo-50',
-}: {
-  icon: React.ElementType;
-  label: string;
-  value: string | number;
-  sub?: string;
-  colorClass?: string;
-}) {
-  return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-5">
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-sm text-slate-500">{label}</p>
-        <div className={`p-2 rounded-xl ${colorClass}`}>
-          <Icon className="w-4 h-4" />
-        </div>
-      </div>
-      <p className="text-3xl font-bold text-slate-900">{value}</p>
-      {sub && <p className="text-xs text-slate-500 mt-1">{sub}</p>}
-    </div>
-  );
-}
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -78,15 +56,12 @@ export default function AdminMentorProfilePage() {
   return (
     <>
       {/* ── Header ── */}
-      <div className="mb-8">
-        <Link
-          href="/admin/matching/mentor-assignment"
-          className="inline-flex items-center gap-2 text-slate-500 hover:text-slate-900 text-sm mb-4 transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back to Mentor Assignment
-        </Link>
-      </div>
+      <PageHeader
+        title={`${mentor.firstName} ${mentor.lastName}`}
+        subtitle={mp?.title ?? undefined}
+        backHref="/admin/matching/mentor-assignment"
+        backLabel="Back to Mentor Assignment"
+      />
 
       <div className="grid lg:grid-cols-3 gap-6">
         {/* ── LEFT COLUMN ── */}
@@ -98,7 +73,7 @@ export default function AdminMentorProfilePage() {
               <div className="w-20 h-20 bg-purple-100 text-purple-700 rounded-full flex items-center justify-center text-2xl font-bold mb-4">
                 {initials}
               </div>
-              <h1 className="text-xl font-bold text-slate-900">{mentor.firstName} {mentor.lastName}</h1>
+              <p className="text-xl font-bold text-slate-900">{mentor.firstName} {mentor.lastName}</p>
               {mp?.title && <p className="text-slate-600 text-sm mt-1">{mp.title}</p>}
               {mp?.organization && (
                 <p className="text-slate-500 text-xs mt-1 flex items-center gap-1">
@@ -195,10 +170,10 @@ export default function AdminMentorProfilePage() {
 
           {/* Stats grid */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <StatCard icon={Users}      label="Total Mentored"  value={mp?.totalMenteesGuided ?? 0}   colorClass="text-indigo-600 bg-indigo-50" />
-            <StatCard icon={TrendingUp} label="Success Rate"    value={`${mp?.successRate ?? 0}%`}    colorClass="text-green-600 bg-green-50" />
-            <StatCard icon={Star}       label="Avg Rating"      value={mp?.avgFeedbackRating != null ? Number(mp.avgFeedbackRating).toFixed(1) : '—'} colorClass="text-amber-600 bg-amber-50" />
-            <StatCard icon={CheckCircle2} label="Tasks Reviewed" value={mp?.totalTasksReviewed ?? 0}  colorClass="text-purple-600 bg-purple-50" />
+            <StatsCard icon={Users}      label="Total Mentored"  value={mp?.totalMenteesGuided ?? 0}   colorClass="text-indigo-600 bg-indigo-50" />
+            <StatsCard icon={TrendingUp} label="Success Rate"    value={`${mp?.successRate ?? 0}%`}    colorClass="text-green-600 bg-green-50" />
+            <StatsCard icon={Star}       label="Avg Rating"      value={mp?.avgFeedbackRating != null ? Number(mp.avgFeedbackRating).toFixed(1) : '—'} colorClass="text-amber-600 bg-amber-50" />
+            <StatsCard icon={CheckCircle2} label="Tasks Reviewed" value={mp?.totalTasksReviewed ?? 0}  colorClass="text-purple-600 bg-purple-50" />
           </div>
 
           {/* Specializations */}
