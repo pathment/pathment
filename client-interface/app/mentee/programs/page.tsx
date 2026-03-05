@@ -1,8 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { Search, Clock, Users, BookOpen, Loader2, Filter } from 'lucide-react';
+import { Clock, Users, BookOpen, Loader2 } from 'lucide-react';
 import { useMenteePrograms } from '@/lib/hooks/mentee';
+import { SearchAndFilterBar, StatusBadge } from '@/components/admin/ui';
 
 export default function MenteeProgramsPage() {
   const {
@@ -24,37 +25,22 @@ export default function MenteeProgramsPage() {
       </div>
 
       {/* Search & Filters */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-6">
-        <div className="flex flex-col sm:flex-row gap-4">
-          {/* Search */}
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search programs..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-            />
-          </div>
-
-          {/* Filter */}
-          <div className="sm:w-48">
-            <div className="relative">
-              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 appearance-none bg-white"
-              >
-                <option value="all">All Programs</option>
-                <option value="published">Published</option>
-                <option value="draft">Draft</option>
-              </select>
-            </div>
-          </div>
-        </div>
-      </div>
+      <SearchAndFilterBar
+        search={searchQuery}
+        onSearch={setSearchQuery}
+        placeholder="Search programs..."
+        filters={[
+          {
+            value: statusFilter,
+            onChange: setStatusFilter,
+            options: [
+              { value: 'all', label: 'All Programs' },
+              { value: 'published', label: 'Published' },
+              { value: 'draft', label: 'Draft' },
+            ],
+          },
+        ]}
+      />
 
       {/* Programs Grid */}
       {loading ? (
@@ -83,9 +69,7 @@ export default function MenteeProgramsPage() {
                   <h3 className="text-slate-900 group-hover:text-indigo-600 transition-colors">
                     {program.name}
                   </h3>
-                  <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs">
-                    {program.status}
-                  </span>
+                  <StatusBadge status={program.status} noIcon />
                 </div>
                 <p className="text-slate-600 text-sm line-clamp-2">
                   {program.description || 'No description available'}

@@ -3,7 +3,6 @@
 import { use } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  ArrowLeft,
   CheckCircle2,
   Calendar,
   Clock,
@@ -21,6 +20,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { useTaskDetail } from '@/lib/hooks/mentee';
+import { PageHeader, StatusBadge } from '@/components/admin/ui';
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -56,37 +56,12 @@ export default function TaskDetailsPage({ params }: PageProps) {
   const latestSubmission = task.submissions?.[task.submissions.length - 1] || null;
   const feedback = latestSubmission?.feedback || [];
 
-  const statusConfig: Record<string, { bg: string; text: string; label: string; icon: React.ElementType }> = {
-    assigned: { bg: 'bg-blue-100', text: 'text-blue-700', label: 'New', icon: AlertCircle },
-    in_progress: { bg: 'bg-yellow-100', text: 'text-yellow-700', label: 'In Progress', icon: Clock },
-    submitted: { bg: 'bg-purple-100', text: 'text-purple-700', label: 'Submitted', icon: FileText },
-    revision_needed: { bg: 'bg-orange-100', text: 'text-orange-700', label: 'Needs Revision', icon: AlertCircle },
-    completed: { bg: 'bg-green-100', text: 'text-green-700', label: 'Completed', icon: CheckCircle2 },
-    cancelled: { bg: 'bg-red-100', text: 'text-red-700', label: 'Cancelled', icon: XCircle },
-  };
-
-  const statusInfo = statusConfig[task.status] || statusConfig.assigned;
-  const StatusIcon = statusInfo.icon;
-
-  const submissionStatusConfig: Record<string, { bg: string; text: string; label: string }> = {
-    pending: { bg: 'bg-yellow-100', text: 'text-yellow-700', label: 'Pending Review' },
-    approved: { bg: 'bg-green-100', text: 'text-green-700', label: 'Approved' },
-    rejected: { bg: 'bg-red-100', text: 'text-red-700', label: 'Rejected' },
-    revision_requested: { bg: 'bg-orange-100', text: 'text-orange-700', label: 'Revision Requested' },
-  };
-
   const canSubmit = ['in_progress', 'revision_needed', 'assigned'].includes(task.status);
 
   return (
     <div className="space-y-6 max-w-4xl">
       {/* Back button */}
-      <button
-        onClick={() => router.push('/mentee/tasks')}
-        className="inline-flex items-center gap-2 text-slate-600 hover:text-slate-900 transition-colors"
-      >
-        <ArrowLeft className="w-5 h-5" />
-        Back to Tasks
-      </button>
+      <PageHeader backHref="/mentee/tasks" backLabel="Back to Tasks" />
 
       {/* Task Header */}
       <div className="bg-white rounded-2xl border border-slate-200 p-6">
@@ -106,10 +81,7 @@ export default function TaskDetailsPage({ params }: PageProps) {
             </div>
             <p className="text-slate-600">{taskDescription}</p>
           </div>
-          <span className={`px-3 py-1.5 ${statusInfo.bg} ${statusInfo.text} rounded-lg text-sm flex items-center gap-1.5 font-medium whitespace-nowrap`}>
-            <StatusIcon className="w-4 h-4" />
-            {statusInfo.label}
-          </span>
+          <StatusBadge status={task.status} />
         </div>
 
         {/* Meta grid */}
@@ -255,10 +227,8 @@ export default function TaskDetailsPage({ params }: PageProps) {
           {latestSubmission && (
             <div className="space-y-4">
               {/* Status badge */}
-              {latestSubmission.status && submissionStatusConfig[latestSubmission.status] && (
-                <span className={`inline-flex items-center px-3 py-1 text-sm rounded-lg font-medium ${submissionStatusConfig[latestSubmission.status].bg} ${submissionStatusConfig[latestSubmission.status].text}`}>
-                  {submissionStatusConfig[latestSubmission.status].label}
-                </span>
+              {latestSubmission.status && (
+                <StatusBadge status={latestSubmission.status} />
               )}
 
               {/* Submission text */}

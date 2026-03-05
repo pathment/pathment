@@ -1,8 +1,9 @@
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, CheckCircle2, Clock, BookOpen, Target, Users, Star, Loader2 } from 'lucide-react';
+import { CheckCircle2, Clock, BookOpen, Target, Users, Star, Loader2, ArrowLeft } from 'lucide-react';
 import { useProgramEnroll } from '@/lib/hooks/mentee';
+import { PageHeader } from '@/components/admin/ui';
 
 export default function ProgramEnrollment() {
   const params = useParams();
@@ -46,13 +47,7 @@ export default function ProgramEnrollment() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <button
-        onClick={() => router.back()}
-        className="inline-flex items-center gap-2 text-slate-600 hover:text-slate-900"
-      >
-        <ArrowLeft className="w-5 h-5" />
-        Back
-      </button>
+      <PageHeader backHref="/mentee/programs" backLabel="Back" />
 
       {/* Program Header */}
       <div className="bg-white rounded-2xl border border-slate-200 p-8">

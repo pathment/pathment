@@ -3,7 +3,6 @@
 import { useState, use, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  ArrowLeft,
   Link as LinkIcon,
   Send,
   CheckCircle2,
@@ -15,6 +14,7 @@ import RichTextEditor from '@/components/shared/RichTextEditor';
 import FileUploader from '@/components/shared/FileUploader';
 import { submissionService } from '@/lib/services/submissionService';
 import { useTaskDetail } from '@/lib/hooks/mentee';
+import { PageHeader } from '@/components/admin/ui';
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -152,13 +152,7 @@ export default function TaskSubmission({ params }: PageProps) {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <button
-        onClick={() => router.push('/mentee/tasks')}
-        className="inline-flex items-center gap-2 text-slate-600 hover:text-slate-900"
-      >
-        <ArrowLeft className="w-5 h-5" />
-        Back to Tasks
-      </button>
+      <PageHeader backHref="/mentee/tasks" backLabel="Back to Tasks" />
 
       {/* Success Message */}
       {showSuccess && (

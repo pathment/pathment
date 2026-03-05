@@ -1,43 +1,15 @@
 'use client';
 
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CheckSquare, BookOpen, Clock, Trophy } from 'lucide-react';
-
-interface StatsCardProps {
-  title: string;
-  value: string;
-  icon: React.ElementType;
-  change: string;
-}
-
-function StatsCard({ title, value, icon: Icon, change }: StatsCardProps) {
-  return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium">{title}</CardTitle>
-        <Icon className="h-4 w-4 text-muted-foreground" />
-      </CardHeader>
-      <CardContent>
-        <div className="text-2xl font-bold">{value}</div>
-        <p className="text-xs text-muted-foreground mt-1">{change}</p>
-      </CardContent>
-    </Card>
-  );
-}
+import { StatsCard } from '@/components/admin/ui';
 
 export function MenteeStats() {
-  const stats = [
-    { title: 'Active Tasks', value: '6', icon: CheckSquare, change: '2 due this week' },
-    { title: 'Programs Enrolled', value: '2', icon: BookOpen, change: '1 in progress' },
-    { title: 'Hours Logged', value: '42', icon: Clock, change: 'This month' },
-    { title: 'Tasks Completed', value: '18', icon: Trophy, change: '85% completion rate' },
-  ];
-
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-      {stats.map((stat) => (
-        <StatsCard key={stat.title} {...stat} />
-      ))}
+      <StatsCard icon={CheckSquare} label="Active Tasks"       value="6"  sub="2 due this week"        colorClass="text-indigo-600 bg-indigo-50" />
+      <StatsCard icon={BookOpen}    label="Programs Enrolled" value="2"  sub="1 in progress"          colorClass="text-blue-600 bg-blue-50" />
+      <StatsCard icon={Clock}       label="Hours Logged"      value="42" sub="This month"             colorClass="text-green-600 bg-green-50" />
+      <StatsCard icon={Trophy}      label="Tasks Completed"   value="18" sub="85% completion rate"    colorClass="text-purple-600 bg-purple-50" />
     </div>
   );
 }

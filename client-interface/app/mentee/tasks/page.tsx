@@ -1,8 +1,9 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { Search, Clock, CheckCircle2, AlertCircle, FileText, Loader2, Star, Calendar, XCircle, BookOpen, Sparkles, GraduationCap } from 'lucide-react';
+import { Clock, CheckCircle2, AlertCircle, FileText, Loader2, Star, Calendar, XCircle, BookOpen, Sparkles, GraduationCap, ClipboardList } from 'lucide-react';
 import { useMenteeTasks } from '@/lib/hooks/mentee';
+import { StatsCard, SearchAndFilterBar, StatusBadge } from '@/components/admin/ui';
 
 export default function MenteeTasks() {
   const router = useRouter();
@@ -18,25 +19,7 @@ export default function MenteeTasks() {
     setFilterStatus,
     setSearchTerm,
     handleStartTask,
-  } = useMenteeTasks();const getStatusBadge = (status: string) => {
-    const badges: any = {
-      assigned: { bg: 'bg-blue-100', text: 'text-blue-700', label: 'New', icon: AlertCircle },
-      in_progress: { bg: 'bg-yellow-100', text: 'text-yellow-700', label: 'In Progress', icon: Clock },
-      submitted: { bg: 'bg-purple-100', text: 'text-purple-700', label: 'Submitted', icon: FileText },
-      revision_needed: { bg: 'bg-orange-100', text: 'text-orange-700', label: 'Needs Revision', icon: AlertCircle },
-      completed: { bg: 'bg-green-100', text: 'text-green-700', label: 'Completed', icon: CheckCircle2 },
-      cancelled: { bg: 'bg-red-100', text: 'text-red-700', label: 'Cancelled', icon: XCircle }
-    };
-    const badge = badges[status] || badges.assigned;
-    const Icon = badge.icon;
-    
-    return (
-      <span className={`px-3 py-1 ${badge.bg} ${badge.text} rounded-lg text-sm flex items-center gap-1 font-medium`}>
-        <Icon className="w-4 h-4" />
-        {badge.label}
-      </span>
-    );
-  };
+  } = useMenteeTasks();
 
   const getTaskSourceBadge = (isCustomTask: boolean) => {
     return isCustomTask ? (
@@ -125,69 +108,34 @@ export default function MenteeTasks() {
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <div className="bg-white rounded-2xl p-6 border border-slate-200">
-          <div className="text-slate-600 text-sm mb-1">Total Tasks</div>
-          <div className="text-slate-900 text-2xl font-bold">{stats?.total || 0}</div>
-        </div>
-
-        <div className="bg-white rounded-2xl p-6 border border-slate-200">
-          <div className="text-slate-600 text-sm mb-1">Completed</div>
-          <div className="text-green-600 text-2xl font-bold flex items-center gap-2">
-            {stats?.completed || 0}
-            {stats?.total > 0 && (
-              <span className="text-xs text-slate-500">
-                ({Math.round(((stats?.completed || 0) / stats?.total) * 100)}%)
-              </span>
-            )}
-          </div>
-        </div>
-
-        <div className="bg-white rounded-2xl p-6 border border-slate-200">
-          <div className="text-slate-600 text-sm mb-1">Pending Review</div>
-          <div className="text-purple-600 text-2xl font-bold">{stats?.submitted || 0}</div>
-        </div>
-
-        <div className="bg-white rounded-2xl p-6 border border-slate-200">
-          <div className="text-slate-600 text-sm mb-1">In Progress</div>
-          <div className="text-yellow-600 text-2xl font-bold">{stats?.inProgress || 0}</div>
-        </div>
-
-        <div className="bg-white rounded-2xl p-6 border border-slate-200">
-          <div className="text-slate-600 text-sm mb-1">Overdue</div>
-          <div className="text-red-600 text-2xl font-bold">{stats?.overdue || 0}</div>
-        </div>
+        <StatsCard icon={ClipboardList} label="Total Tasks"    value={stats?.total || 0}       colorClass="text-indigo-600 bg-indigo-50" />
+        <StatsCard icon={CheckCircle2}  label="Completed"      value={stats?.completed || 0}   colorClass="text-green-600 bg-green-50"
+          sub={stats?.total > 0 ? `${Math.round(((stats?.completed || 0) / stats?.total) * 100)}%` : undefined} />
+        <StatsCard icon={FileText}      label="Pending Review" value={stats?.submitted || 0}   colorClass="text-purple-600 bg-purple-50" />
+        <StatsCard icon={Clock}         label="In Progress"    value={stats?.inProgress || 0}  colorClass="text-yellow-600 bg-yellow-50" />
+        <StatsCard icon={AlertCircle}   label="Overdue"        value={stats?.overdue || 0}     colorClass="text-red-600 bg-red-50" />
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-6">
-        <div className="grid md:grid-cols-2 gap-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search tasks..."
-              className="w-full pl-11 pr-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-            />
-          </div>
-
-          <div>
-            <select
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-              className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-            >
-              <option value="all">All Tasks</option>
-              <option value="assigned">New Tasks</option>
-              <option value="in_progress">In Progress</option>
-              <option value="submitted">Submitted</option>
-              <option value="revision_needed">Needs Revision</option>
-              <option value="completed">Completed</option>
-            </select>
-          </div>
-        </div>
-      </div>
+      <SearchAndFilterBar
+        search={searchTerm}
+        onSearch={setSearchTerm}
+        placeholder="Search tasks..."
+        filters={[
+          {
+            value: filterStatus,
+            onChange: setFilterStatus,
+            options: [
+              { value: 'all', label: 'All Tasks' },
+              { value: 'assigned', label: 'New Tasks' },
+              { value: 'in_progress', label: 'In Progress' },
+              { value: 'submitted', label: 'Submitted' },
+              { value: 'revision_needed', label: 'Needs Revision' },
+              { value: 'completed', label: 'Completed' },
+            ],
+          },
+        ]}
+      />
 
       {/* Tasks List */}
       <div className="bg-white rounded-2xl border border-slate-200">
@@ -283,7 +231,7 @@ export default function MenteeTasks() {
                     </div>
 
                     <div className="flex flex-col items-end gap-2">
-                      {getStatusBadge(task.status)}
+                      <StatusBadge status={task.status} />
                       
                       {task.status === 'assigned' && (
                         <button

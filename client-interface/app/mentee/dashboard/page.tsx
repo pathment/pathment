@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/lib/context/AuthContext';
 import { useMenteeDashboard } from '@/lib/hooks/mentee';
+import { ProgressBar, StatusBadge } from '@/components/admin/ui';
 
 export default function MenteeDashboard() {
   const { user } = useAuth();
@@ -178,15 +179,7 @@ export default function MenteeDashboard() {
                             : `Week ${enrollment.currentWeek || 1}`}
                         </p>
                       </div>
-                      <span className={`shrink-0 px-2 py-1 rounded text-xs ${
-                        enrollment.status === 'matched'            ? 'bg-green-100 text-green-700' :
-                        enrollment.status === 'active'             ? 'bg-indigo-100 text-indigo-700' :
-                        enrollment.status === 'pending_completion' ? 'bg-orange-100 text-orange-700' :
-                        enrollment.status === 'level_completed'    ? 'bg-teal-100 text-teal-700' :
-                        'bg-slate-100 text-slate-700'
-                      }`}>
-                        {enrollment.status.replace(/_/g, ' ')}
-                      </span>
+                      <StatusBadge status={enrollment.status} noIcon />
                     </div>
 
                     {/* Progress Bar */}
@@ -201,16 +194,7 @@ export default function MenteeDashboard() {
                       return (
                         <>
                           <div className="mb-4">
-                            <div className="flex items-center justify-between text-sm mb-2">
-                              <span className="text-slate-600">Overall Progress</span>
-                              <span className="text-slate-900 font-medium">{pct}%</span>
-                            </div>
-                            <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
-                              <div
-                                className="h-full bg-linear-to-r from-indigo-600 to-purple-600 rounded-full transition-all duration-300"
-                                style={{ width: `${pct}%` }}
-                              />
-                            </div>
+                            <ProgressBar value={pct} size="md" />
                           </div>
 
                           <div className="flex items-center gap-4 text-sm text-slate-600 mb-4">
