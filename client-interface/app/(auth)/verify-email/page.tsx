@@ -1,14 +1,21 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Mail, CheckCircle2, XCircle, RotateCw, ArrowRight } from 'lucide-react';
 
 export default function VerifyEmailPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const emailParam = searchParams.get('email') || 'your-email@example.com';
+  const [email, setEmail] = useState<string>('');
   const [status, setStatus] = useState<'pending' | 'success' | 'failed'>('pending');
   const [code, setCode] = useState(['', '', '', '', '', '']);
   const [resendCountdown, setResendCountdown] = useState(60);
+
+  useEffect(() => {
+    setEmail(emailParam);
+  }, [emailParam]);
 
   useEffect(() => {
     if (resendCountdown > 0) {
@@ -19,7 +26,7 @@ export default function VerifyEmailPage() {
 
   const handleCodeChange = (index: number, value: string) => {
     if (value.length > 1) return;
-    
+
     const newCode = [...code];
     newCode[index] = value;
     setCode(newCode);
@@ -37,9 +44,17 @@ export default function VerifyEmailPage() {
   };
 
   const verifyCode = async (enteredCode: string) => {
-    // Simulate verification
-    setTimeout(() => {
-      if (enteredCode === '123456') {
+    setStatus('pending');
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/auth/verify-email`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ code: enteredCode })
+      });
+
+      if (response.ok) {
         setStatus('success');
         setTimeout(() => router.push('/login'), 2000);
       } else {
@@ -49,7 +64,14 @@ export default function VerifyEmailPage() {
           setCode(['', '', '', '', '', '']);
         }, 3000);
       }
-    }, 800);
+    } catch (error) {
+      console.error('Verification error:', error);
+      setStatus('failed');
+      setTimeout(() => {
+        setStatus('pending');
+        setCode(['', '', '', '', '', '']);
+      }, 3000);
+    }
   };
 
   const handleResend = () => {
@@ -95,7 +117,7 @@ export default function VerifyEmailPage() {
               <h2 className="text-slate-900 mb-2">Check your email</h2>
               <p className="text-slate-600">
                 We&apos;ve sent a 6-digit verification code to<br />
-                <span className="text-slate-900">john.doe@example.com</span>
+                <span className="text-slate-900">{email}</span>
               </p>
             </>
           )}
@@ -137,11 +159,10 @@ export default function VerifyEmailPage() {
                       prevInput?.focus();
                     }
                   }}
-                  className={`w-12 h-14 text-center text-lg border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors ${
-                    status === 'failed'
-                      ? 'border-red-300 bg-red-50'
-                      : 'border-slate-200 focus:border-transparent'
-                  }`}
+                  className={`w-12 h-14 text-center text-lg border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors ${status === 'failed'
+                    ? 'border-red-300 bg-red-50'
+                    : 'border-slate-200 focus:border-transparent'
+                    }`}
                 />
               ))}
             </div>
@@ -179,7 +200,7 @@ export default function VerifyEmailPage() {
 
       {/* Help Text */}
       <p className="text-center text-slate-500 text-sm">
-        Use code <span className="text-slate-700">123456</span> for demo purposes
+        Check your email inbox or spam folder for the verification code
       </p>
     </div>
   );

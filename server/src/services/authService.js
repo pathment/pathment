@@ -1,28 +1,38 @@
-const bcrypt = require('bcrypt');
-const { Op } = require('sequelize');
-const { sequelize, models } = require('../db');
-const { 
-  AuthenticationError, 
-  ConflictError, 
+const bcrypt = require("bcrypt");
+const { Op } = require("sequelize");
+const { sequelize, models } = require("../db");
+const emailService = require("./emailService");
+const {
+  AuthenticationError,
+  ConflictError,
   NotFoundError,
-  ValidationError 
-} = require('../utils/errors/errorTypes');
-const { AUTH_MESSAGES } = require('../utils/responses/messages');
+  ValidationError,
+} = require("../utils/errors/errorTypes");
+const { AUTH_MESSAGES } = require("../utils/responses/messages");
 const {
   generateAccessToken,
   generateRefreshToken,
   verifyRefreshToken,
   generateRandomToken,
   generateVerificationCode,
-  hashToken
-} = require('../utils/jwt');
+  hashToken,
+} = require("../utils/jwt");
 
 class AuthService {
   /**
    * Register a new user
    */
   async register(userData) {
-    const { firstName, lastName, email, password, role, phoneNumber, dateOfBirth, bio } = userData;
+    const {
+      firstName,
+      lastName,
+      email,
+      password,
+      role,
+      phoneNumber,
+      dateOfBirth,
+      bio,
+    } = userData;
 
     // Check if email already exists
     const existingUser = await models.User.findOne({ where: { email } });
@@ -43,47 +53,54 @@ class AuthService {
       phoneNumber,
       dateOfBirth,
       emailVerified: false,
-      status: 'active'
+      status: "active",
     });
 
     // Create role-specific profile
-    if (role === 'mentor') {
+    if (role === "mentor") {
       await models.MentorProfile.create({
         userId: user.id,
         bio: bio || null,
         specialization: [],
         yearsOfExperience: 0,
-        maxMentees: 5
+        maxMentees: 5,
       });
-    } else if (role === 'mentee') {
+    } else if (role === "mentee") {
       await models.MenteeProfile.create({
         userId: user.id,
         bio: bio || null,
         learningGoals: [],
         currentLevel: 1,
-        totalPoints: 0
+        totalPoints: 0,
       });
     }
 
-    // Generate email verification token
-    const verificationToken = generateRandomToken();
-    const hashedToken = hashToken(verificationToken);
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+    // Generate 6-digit verification code
+    const verificationCode = Math.floor(
+      100000 + Math.random() * 900000,
+    ).toString();
+    const hashedCode = hashToken(verificationCode);
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
 
     await models.EmailVerificationToken.create({
       userId: user.id,
-      token: hashedToken,
-      expiresAt
+      token: hashedCode,
+      expiresAt,
     });
 
-    // TODO: Send verification email (integrate email service)
-    // await emailService.sendVerificationEmail(user.email, verificationToken);
+    // Send verification email (non-blocking)
+    try {
+      await emailService.sendVerificationEmail(user.email, verificationCode);
+    } catch (emailError) {
+      console.error("Failed to send verification email:", emailError);
+      // Don't fail the registration if email sending fails
+    }
 
     // Generate tokens
-    const accessToken = generateAccessToken({ 
-      id: user.id, 
-      email: user.email, 
-      role: user.role 
+    const accessToken = generateAccessToken({
+      id: user.id,
+      email: user.email,
+      role: user.role,
     });
     const refreshToken = generateRefreshToken({ id: user.id });
 
@@ -91,7 +108,7 @@ class AuthService {
     await models.RefreshToken.create({
       userId: user.id,
       token: refreshToken,
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
     });
 
     // Remove password from response
@@ -102,7 +119,8 @@ class AuthService {
       user: userResponse,
       accessToken,
       refreshToken,
-      verificationToken // Return for testing, remove in production
+      message:
+        "Account created! Please check your email for the verification code.",
     };
   }
 
@@ -111,13 +129,13 @@ class AuthService {
    */
   async login(email, password) {
     // Find user
-    const user = await models.User.findOne({ 
+    const user = await models.User.findOne({
       where: { email },
       include: [
-        { model: models.MentorProfile, as: 'mentorProfile' },
-        { model: models.MenteeProfile, as: 'menteeProfile' },
-        { model: models.AdminProfile, as: 'adminProfile' }
-      ]
+        { model: models.MentorProfile, as: "mentorProfile" },
+        { model: models.MenteeProfile, as: "menteeProfile" },
+        { model: models.AdminProfile, as: "adminProfile" },
+      ],
     });
 
     if (!user) {
@@ -125,7 +143,7 @@ class AuthService {
     }
 
     // Check if account is active
-    if (user.status !== 'active') {
+    if (user.status !== "active") {
       throw new AuthenticationError(AUTH_MESSAGES.ACCOUNT_DISABLED);
     }
 
@@ -145,10 +163,10 @@ class AuthService {
     await user.save();
 
     // Generate tokens
-    const accessToken = generateAccessToken({ 
-      id: user.id, 
-      email: user.email, 
-      role: user.role 
+    const accessToken = generateAccessToken({
+      id: user.id,
+      email: user.email,
+      role: user.role,
     });
     const refreshToken = generateRefreshToken({ id: user.id });
 
@@ -156,7 +174,7 @@ class AuthService {
     await models.RefreshToken.create({
       userId: user.id,
       token: refreshToken,
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     });
 
     // Remove password from response
@@ -166,7 +184,7 @@ class AuthService {
     return {
       user: userResponse,
       accessToken,
-      refreshToken
+      refreshToken,
     };
   }
 
@@ -188,8 +206,8 @@ class AuthService {
         token: refreshToken,
         userId: decoded.id,
         revokedAt: null,
-        expiresAt: { [Op.gt]: new Date() }
-      }
+        expiresAt: { [Op.gt]: new Date() },
+      },
     });
 
     if (!storedToken) {
@@ -198,15 +216,15 @@ class AuthService {
 
     // Get user
     const user = await models.User.findByPk(decoded.id);
-    if (!user || user.status !== 'active') {
+    if (!user || user.status !== "active") {
       throw new AuthenticationError(AUTH_MESSAGES.USER_NOT_FOUND);
     }
 
     // Generate new access token
-    const accessToken = generateAccessToken({ 
-      id: user.id, 
-      email: user.email, 
-      role: user.role 
+    const accessToken = generateAccessToken({
+      id: user.id,
+      email: user.email,
+      role: user.role,
     });
 
     return { accessToken };
@@ -219,25 +237,32 @@ class AuthService {
     // Revoke refresh token
     await models.RefreshToken.update(
       { revokedAt: new Date() },
-      { where: { token: refreshToken } }
+      { where: { token: refreshToken } },
     );
 
     return true;
   }
 
   /**
-   * Verify email
+   * Verify email with 6-digit code
    */
-  async verifyEmail(token) {
-    const hashedToken = hashToken(token);
+  async verifyEmail(code) {
+    // Clean and normalize the code (remove whitespace, convert to string)
+    const cleanCode = String(code).trim().replace(/\s+/g, "");
 
-    // Find token
+    if (!cleanCode || cleanCode.length !== 6 || !/^\d{6}$/.test(cleanCode)) {
+      throw new ValidationError("Invalid verification code format");
+    }
+
+    const hashedCode = hashToken(cleanCode);
+
+    // Find the verification token by hashed code
     const verificationToken = await models.EmailVerificationToken.findOne({
       where: {
-        token: hashedToken,
-        isUsed: false,
-        expiresAt: { [Op.gt]: new Date() }
-      }
+        token: hashedCode,
+        usedAt: null,
+        expiresAt: { [Op.gt]: new Date() },
+      },
     });
 
     if (!verificationToken) {
@@ -247,11 +272,11 @@ class AuthService {
     // Update user
     await models.User.update(
       { isEmailVerified: true, emailVerifiedAt: new Date() },
-      { where: { id: verificationToken.userId } }
+      { where: { id: verificationToken.userId } },
     );
 
     // Mark token as used
-    verificationToken.isUsed = true;
+    verificationToken.usedAt = new Date();
     await verificationToken.save();
 
     return true;
@@ -262,42 +287,54 @@ class AuthService {
    */
   async forgotPassword(email) {
     const user = await models.User.findOne({ where: { email } });
-    
+
     if (!user) {
       // Don't reveal if email exists
       return true;
     }
 
-    // Generate reset token
-    const resetToken = generateRandomToken();
-    const hashedToken = hashToken(resetToken);
+    // Generate 6-digit reset code
+    const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const hashedToken = hashToken(resetCode);
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
 
     await models.PasswordResetToken.create({
       userId: user.id,
       token: hashedToken,
-      expiresAt
+      expiresAt,
     });
 
-    // TODO: Send password reset email
-    // await emailService.sendPasswordResetEmail(user.email, resetToken);
+    // Send password reset email (non-blocking)
+    try {
+      await emailService.sendPasswordResetEmail(user.email, resetCode);
+    } catch (emailError) {
+      console.error("Failed to send password reset email:", emailError);
+      // Don't fail the request if email sending fails
+    }
 
-    return { resetToken }; // Return for testing, remove in production
+    return true;
   }
 
   /**
-   * Reset password
+   * Reset password with 6-digit code
    */
-  async resetPassword(token, newPassword) {
-    const hashedToken = hashToken(token);
+  async resetPassword(code, newPassword) {
+    // Clean and normalize the code (remove whitespace, convert to string)
+    const cleanCode = String(code).trim().replace(/\s+/g, "");
 
-    // Find token
+    if (!cleanCode || cleanCode.length !== 6 || !/^\d{6}$/.test(cleanCode)) {
+      throw new ValidationError("Invalid reset code format");
+    }
+
+    const hashedCode = hashToken(cleanCode);
+
+    // Find the reset token by hashed code
     const resetToken = await models.PasswordResetToken.findOne({
       where: {
-        token: hashedToken,
-        isUsed: false,
-        expiresAt: { [Op.gt]: new Date() }
-      }
+        token: hashedCode,
+        usedAt: null,
+        expiresAt: { [Op.gt]: new Date() },
+      },
     });
 
     if (!resetToken) {
@@ -309,18 +346,18 @@ class AuthService {
 
     // Update user password
     await models.User.update(
-      { password: hashedPassword },
-      { where: { id: resetToken.userId } }
+      { passwordHash: hashedPassword },
+      { where: { id: resetToken.userId } },
     );
 
     // Mark token as used
-    resetToken.isUsed = true;
+    resetToken.usedAt = new Date();
     await resetToken.save();
 
     // Revoke all refresh tokens for this user
     await models.RefreshToken.update(
-      { isRevoked: true, revokedAt: new Date() },
-      { where: { userId: resetToken.userId } }
+      { revokedAt: new Date() },
+      { where: { userId: resetToken.userId } },
     );
 
     return true;
@@ -331,15 +368,18 @@ class AuthService {
    */
   async changePassword(userId, currentPassword, newPassword) {
     const user = await models.User.findByPk(userId);
-    
+
     if (!user) {
       throw new NotFoundError(AUTH_MESSAGES.USER_NOT_FOUND);
     }
 
     // Verify current password
-    const isPasswordValid = await bcrypt.compare(currentPassword, user.passwordHash);
+    const isPasswordValid = await bcrypt.compare(
+      currentPassword,
+      user.passwordHash,
+    );
     if (!isPasswordValid) {
-      throw new AuthenticationError('Current password is incorrect');
+      throw new AuthenticationError("Current password is incorrect");
     }
 
     // Hash new password
@@ -353,7 +393,7 @@ class AuthService {
     // For simplicity, we revoke all
     await models.RefreshToken.update(
       { isRevoked: true, revokedAt: new Date() },
-      { where: { userId: user.id } }
+      { where: { userId: user.id } },
     );
 
     return true;
@@ -364,12 +404,12 @@ class AuthService {
    */
   async getCurrentUser(userId) {
     const user = await models.User.findByPk(userId, {
-      attributes: { exclude: ['password'] },
+      attributes: { exclude: ["password"] },
       include: [
-        { model: models.MentorProfile, as: 'mentorProfile' },
-        { model: models.MenteeProfile, as: 'menteeProfile' },
-        { model: models.AdminProfile, as: 'adminProfile' }
-      ]
+        { model: models.MentorProfile, as: "mentorProfile" },
+        { model: models.MenteeProfile, as: "menteeProfile" },
+        { model: models.AdminProfile, as: "adminProfile" },
+      ],
     });
 
     if (!user) {

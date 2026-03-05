@@ -1,7 +1,7 @@
-const authService = require('../services/authService');
-const { successResponse } = require('../utils/responses');
-const { AUTH_MESSAGES } = require('../utils/responses/messages');
-const { catchAsync } = require('../middlewares/errorHandler');
+const authService = require("../services/authService");
+const { successResponse } = require("../utils/responses");
+const { AUTH_MESSAGES } = require("../utils/responses/messages");
+const { catchAsync } = require("../middlewares/errorHandler");
 
 class AuthController {
   /**
@@ -18,11 +18,11 @@ class AuthController {
           user: result.user,
           tokens: {
             accessToken: result.accessToken,
-            refreshToken: result.refreshToken
-          }
+            refreshToken: result.refreshToken,
+          },
         },
-        201
-      )
+        201,
+      ),
     );
   });
 
@@ -35,16 +35,13 @@ class AuthController {
     const result = await authService.login(email, password);
 
     res.status(200).json(
-      successResponse(
-        AUTH_MESSAGES.LOGIN_SUCCESS,
-        {
-          user: result.user,
-          tokens: {
-            accessToken: result.accessToken,
-            refreshToken: result.refreshToken
-          }
-        }
-      )
+      successResponse(AUTH_MESSAGES.LOGIN_SUCCESS, {
+        user: result.user,
+        tokens: {
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken,
+        },
+      }),
     );
   });
 
@@ -57,12 +54,9 @@ class AuthController {
     const result = await authService.refreshAccessToken(refreshToken);
 
     res.status(200).json(
-      successResponse(
-        AUTH_MESSAGES.TOKEN_REFRESH_SUCCESS,
-        {
-          accessToken: result.accessToken
-        }
-      )
+      successResponse(AUTH_MESSAGES.TOKEN_REFRESH_SUCCESS, {
+        accessToken: result.accessToken,
+      }),
     );
   });
 
@@ -74,9 +68,7 @@ class AuthController {
     const { refreshToken } = req.body;
     await authService.logout(refreshToken);
 
-    res.status(200).json(
-      successResponse(AUTH_MESSAGES.LOGOUT_SUCCESS)
-    );
+    res.status(200).json(successResponse(AUTH_MESSAGES.LOGOUT_SUCCESS));
   });
 
   /**
@@ -84,12 +76,10 @@ class AuthController {
    * POST /api/auth/verify-email
    */
   verifyEmail = catchAsync(async (req, res) => {
-    const { token } = req.body;
-    await authService.verifyEmail(token);
+    const { code } = req.body;
+    await authService.verifyEmail(code);
 
-    res.status(200).json(
-      successResponse(AUTH_MESSAGES.EMAIL_VERIFIED)
-    );
+    res.status(200).json(successResponse(AUTH_MESSAGES.EMAIL_VERIFIED));
   });
 
   /**
@@ -100,9 +90,7 @@ class AuthController {
     const { email } = req.body;
     await authService.forgotPassword(email);
 
-    res.status(200).json(
-      successResponse(AUTH_MESSAGES.PASSWORD_RESET_SENT)
-    );
+    res.status(200).json(successResponse(AUTH_MESSAGES.PASSWORD_RESET_SENT));
   });
 
   /**
@@ -110,12 +98,10 @@ class AuthController {
    * POST /api/auth/reset-password
    */
   resetPassword = catchAsync(async (req, res) => {
-    const { token, password } = req.body;
-    await authService.resetPassword(token, password);
+    const { code, password } = req.body;
+    await authService.resetPassword(code, password);
 
-    res.status(200).json(
-      successResponse(AUTH_MESSAGES.PASSWORD_RESET_SUCCESS)
-    );
+    res.status(200).json(successResponse(AUTH_MESSAGES.PASSWORD_RESET_SUCCESS));
   });
 
   /**
@@ -126,9 +112,9 @@ class AuthController {
     const { currentPassword, newPassword } = req.body;
     await authService.changePassword(req.user.id, currentPassword, newPassword);
 
-    res.status(200).json(
-      successResponse(AUTH_MESSAGES.PASSWORD_CHANGE_SUCCESS)
-    );
+    res
+      .status(200)
+      .json(successResponse(AUTH_MESSAGES.PASSWORD_CHANGE_SUCCESS));
   });
 
   /**
@@ -138,12 +124,9 @@ class AuthController {
   getCurrentUser = catchAsync(async (req, res) => {
     const user = await authService.getCurrentUser(req.user.id);
 
-    res.status(200).json(
-      successResponse(
-        'User retrieved successfully',
-        { user }
-      )
-    );
+    res
+      .status(200)
+      .json(successResponse("User retrieved successfully", { user }));
   });
 }
 

@@ -66,7 +66,7 @@ export default function RegisterPage() {
       await register(formData);
       setShowSuccess(true);
       toast.success('Account created! Please verify your email.');
-      setTimeout(() => router.push('/verify-email'), 1500);
+      setTimeout(() => router.push(`/verify-email?email=${encodeURIComponent(formData.email)}`), 1500);
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Registration failed');
       setErrors({ general: err.response?.data?.message || 'Registration failed' });
@@ -214,11 +214,10 @@ export default function RegisterPage() {
                   key={role}
                   type="button"
                   onClick={() => setFormData({ ...formData, role })}
-                  className={`p-3 rounded-xl border-2 transition-all ${
-                    formData.role === role
+                  className={`p-3 rounded-xl border-2 transition-all ${formData.role === role
                       ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
                       : 'border-slate-200 hover:border-slate-300 text-slate-700'
-                  }`}
+                    }`}
                 >
                   <div className="capitalize">{role}</div>
                 </button>
