@@ -16,6 +16,7 @@ const {
   generateVerificationCode,
   hashToken
 } = require('../utils/jwt');
+const notificationOrchestrator = require('./notificationOrchestrator');
 
 class AuthService {
   /**
@@ -65,6 +66,9 @@ class AuthService {
       });
     }
 
+    // Ensure settings exist for notification preference checks.
+    await models.UserSettings.create({ userId: user.id });
+
     // Generate email verification token
     const verificationToken = generateRandomToken();
     const hashedToken = hashToken(verificationToken);
@@ -76,8 +80,10 @@ class AuthService {
       expiresAt
     });
 
-    // TODO: Send verification email (integrate email service)
-    // await emailService.sendVerificationEmail(user.email, verificationToken);
+    // Send welcome email (non-blocking).
+    notificationOrchestrator.sendWelcomeEmail(user).catch((error) => {
+      console.warn('welcome email failed:', error.message);
+    });
 
     // Generate tokens
     const accessToken = generateAccessToken({ 
@@ -279,8 +285,10 @@ class AuthService {
       expiresAt
     });
 
-    // TODO: Send password reset email
-    // await emailService.sendPasswordResetEmail(user.email, resetToken);
+    // Send reset email (non-blocking).
+    notificationOrchestrator.sendPasswordResetEmail(user, resetToken).catch((error) => {
+      console.warn('password reset email failed:', error.message);
+    });
 
     return { resetToken }; // Return for testing, remove in production
   }

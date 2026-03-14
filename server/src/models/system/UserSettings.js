@@ -15,15 +15,34 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.JSONB,
       defaultValue: {
         task_assigned: true,
+        task_submitted: true,
+        submission_reviewed: true,
+        feedback_sent: true,
         feedback_received: true,
         deadline_approaching: true,
-        message_received: true
+        deadline_passed: true,
+        message_received: true,
+        enrollment_updates: true,
+        mentor_assignment: true,
+        program_updates: true,
+        account_welcome: true,
+        password_reset: true,
+        weekly_progress_report: true
       },
       field: 'email_notifications'
     },
     pushNotifications: {
       type: DataTypes.JSONB,
-      defaultValue: { enabled: true },
+      defaultValue: {
+        enabled: true,
+        task_assigned: true,
+        task_submitted: true,
+        submission_reviewed: true,
+        feedback_sent: true,
+        deadline_approaching: true,
+        deadline_passed: true,
+        message_received: true
+      },
       field: 'push_notifications'
     },
     notificationFrequency: {

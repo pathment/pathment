@@ -6,6 +6,7 @@ const { sequelize } = require('./db');
 const routes = require('./routes');
 const { errorHandler, notFound } = require('./middlewares/errorHandler');
 const { initSocket } = require('./socket');
+const notificationScheduler = require('./services/notificationScheduler');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -74,6 +75,9 @@ async function start() {
 
     // Start HTTP + Socket.IO server
     initSocket(server);
+    if (process.env.NOTIFICATION_SCHEDULER_DISABLED !== 'true') {
+      notificationScheduler.start();
+    }
 
     server.listen(PORT, () => {
       console.log(`✓ Server running on port ${PORT}`);

@@ -3,6 +3,7 @@ const { Op } = require('sequelize');
 const { sequelize, models } = require('../db');
 const { ConflictError, NotFoundError } = require('../utils/errors/errorTypes');
 const { AUTH_MESSAGES, USER_MESSAGES } = require('../utils/responses/messages');
+const notificationOrchestrator = require('./notificationOrchestrator');
 
 class AdminService {
   /**
@@ -43,6 +44,8 @@ class AdminService {
       canManageSettings: permissions?.includes('manage_settings') || false
     });
 
+    await models.UserSettings.create({ userId: admin.id });
+
     // Log admin creation
     await models.AuditLog.create({
       userId: createdBy,
@@ -59,6 +62,10 @@ class AdminService {
     // Remove password from response
     const adminResponse = admin.toJSON();
     delete adminResponse.passwordHash;
+
+    notificationOrchestrator.sendWelcomeEmail(admin).catch((error) => {
+      console.warn('admin welcome email failed:', error.message);
+    });
 
     return adminResponse;
   }
