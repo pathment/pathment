@@ -16,7 +16,8 @@ module.exports = (sequelize, DataTypes) => {
       defaultValue: {
         task_assigned: true,
         feedback_received: true,
-        deadline_approaching: true
+        deadline_approaching: true,
+        message_received: true
       },
       field: 'email_notifications'
     },

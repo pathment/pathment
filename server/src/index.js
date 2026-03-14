@@ -1,12 +1,15 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const http = require('http');
 const { sequelize } = require('./db');
 const routes = require('./routes');
 const { errorHandler, notFound } = require('./middlewares/errorHandler');
+const { initSocket } = require('./socket');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const server = http.createServer(app);
 
 /**
  * Middleware Configuration
@@ -69,12 +72,15 @@ async function start() {
     //   console.log('✓ Database models synchronized');
     // }
 
-    // Start server
-    app.listen(PORT, () => {
+    // Start HTTP + Socket.IO server
+    initSocket(server);
+
+    server.listen(PORT, () => {
       console.log(`✓ Server running on port ${PORT}`);
       console.log(`✓ Environment: ${process.env.NODE_ENV || 'development'}`);
       console.log(`✓ API available at: http://localhost:${PORT}/api`);
       console.log(`✓ Health check: http://localhost:${PORT}/api/health`);
+      console.log(`✓ Socket.IO path: http://localhost:${PORT}/socket.io`);
     });
   } catch (err) {
     console.error('✗ Failed to start server:', err);

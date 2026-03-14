@@ -129,6 +129,8 @@ module.exports = (sequelize, DataTypes) => {
     User.hasMany(models.Notification, { foreignKey: 'user_id', as: 'notifications' });
     User.hasMany(models.Message, { foreignKey: 'sender_id', as: 'sentMessages' });
     User.hasMany(models.Message, { foreignKey: 'recipient_id', as: 'receivedMessages' });
+    User.hasMany(models.Conversation, { foreignKey: 'created_by', as: 'createdConversations' });
+    User.hasMany(models.ConversationParticipant, { foreignKey: 'user_id', as: 'conversationParticipants' });
     
     // Badges & Gamification
     User.belongsToMany(models.Badge, {

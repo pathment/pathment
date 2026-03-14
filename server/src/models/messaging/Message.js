@@ -68,6 +68,7 @@ module.exports = (sequelize, DataTypes) => {
   Message.associate = (models) => {
     Message.belongsTo(models.User, { foreignKey: 'sender_id', as: 'sender' });
     Message.belongsTo(models.User, { foreignKey: 'recipient_id', as: 'recipient' });
+    Message.belongsTo(models.Conversation, { foreignKey: 'thread_id', as: 'conversation' });
     Message.belongsTo(models.Message, { foreignKey: 'parent_message_id', as: 'parentMessage' });
     Message.belongsTo(models.AssignedTask, { foreignKey: 'related_task_id', as: 'relatedTask' });
     Message.belongsTo(models.Enrollment, { foreignKey: 'related_enrollment_id', as: 'relatedEnrollment' });

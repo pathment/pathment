@@ -14,6 +14,7 @@ const taskRoutes = require('./tasks');
 const submissionRoutes = require('./submissions');
 const profileRoutes = require('./profile');
 const skillRoutes = require('./skills');
+const messagingRoutes = require('./messaging');
 
 /**
  * API Routes
@@ -59,6 +60,9 @@ router.use('/tasks', taskRoutes);
 
 // Submission routes
 router.use('/submissions', submissionRoutes);
+
+// Messaging & notifications routes
+router.use('/messaging', messagingRoutes);
 
 // Level mentor assignment routes
 router.use('/', levelMentorRoutes);
