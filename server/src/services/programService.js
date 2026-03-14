@@ -232,7 +232,24 @@ class ProgramService {
       userRole !== 'admin' &&
       program.createdBy !== userId
     ) {
-      throw new ForbiddenError('You do not have permission to view this program');
+      // Also allow mentors who are assigned to any level of this program
+      if (userRole === 'mentor' && userId) {
+        const isMentorAssigned = await models.LevelMentorAssignment.count({
+          where: { mentorId: userId, isActive: true },
+          include: [{
+            model: models.ProgramLevel,
+            as: 'level',
+            where: { programId: program.id },
+            attributes: [],
+            required: true
+          }]
+        });
+        if (!isMentorAssigned) {
+          throw new ForbiddenError('You do not have permission to view this program');
+        }
+      } else {
+        throw new ForbiddenError('You do not have permission to view this program');
+      }
     }
 
     // Count unique mentors and compute average completion in parallel
