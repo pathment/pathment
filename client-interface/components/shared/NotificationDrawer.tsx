@@ -50,6 +50,10 @@ const toNotificationMessageText = (value: unknown): string => {
   return 'You have a new message';
 };
 
+const isNonMessageNotification = (notification: { type?: string }): boolean => {
+  return notification.type !== 'message';
+};
+
 const getRoleMessagesPath = (pathname: string): string => {
   const role = pathname.split('/')[1];
   if (role === 'admin' || role === 'mentor' || role === 'mentee') {
@@ -78,8 +82,9 @@ export default function NotificationDrawer({
     setIsLoading(true);
     try {
       const data = await messagingApi.listNotifications(50);
-      setNotifications(data.notifications);
-      setUnreadCount(data.unreadCount);
+      const filtered = data.notifications.filter(isNonMessageNotification);
+      setNotifications(filtered);
+      setUnreadCount(filtered.filter((item) => item.status === 'unread').length);
     } catch (error) {
       console.error('Failed to load notifications:', error);
     } finally {
@@ -102,10 +107,15 @@ export default function NotificationDrawer({
     });
 
     const handleNotificationNew = (data: NotificationSocketPayload) => {
+      const incomingType = data?.type || 'message';
+      if (incomingType === 'message') {
+        return;
+      }
+
       setNotifications((prev) => [
         {
           id: data?.id || `notif-${Date.now()}`,
-          type: data?.type || 'message',
+          type: incomingType,
           title: data?.title || 'New message',
           message: toNotificationMessageText(data?.message),
           status: 'unread',
@@ -117,8 +127,18 @@ export default function NotificationDrawer({
       setUnreadCount((prev) => prev + 1);
     };
 
-    const handleUnreadCountUpdate = (data: { unreadCount: number }) => {
-      setUnreadCount(data.unreadCount);
+    const handleUnreadCountUpdate = async (data: { unreadCount: number }) => {
+      if (typeof data?.unreadCount !== 'number') {
+        return;
+      }
+
+      try {
+        const latest = await messagingApi.listNotifications(50);
+        const filtered = latest.notifications.filter(isNonMessageNotification);
+        setUnreadCount(filtered.filter((item) => item.status === 'unread').length);
+      } catch (error) {
+        console.error('Failed to refresh notification count:', error);
+      }
     };
 
     newSocket.on('notification:new', handleNotificationNew);
@@ -142,8 +162,9 @@ export default function NotificationDrawer({
 
     const loadUnreadCount = async () => {
       try {
-        const data = await messagingApi.listNotifications(1);
-        setUnreadCount(data.unreadCount);
+        const data = await messagingApi.listNotifications(50);
+        const filtered = data.notifications.filter(isNonMessageNotification);
+        setUnreadCount(filtered.filter((item) => item.status === 'unread').length);
       } catch (error) {
         console.error('Failed to load notification count:', error);
       }

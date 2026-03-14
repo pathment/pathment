@@ -38,7 +38,7 @@ export default function Navigation({ role }: NavigationProps) {
   const router = useRouter();
   const { logout, user } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(0);
+  const [unreadMessageCount, setUnreadMessageCount] = useState(0);
   const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
   const adminLinks: NavLink[] = [
@@ -66,48 +66,51 @@ export default function Navigation({ role }: NavigationProps) {
 
   const links = role === 'admin' ? adminLinks : role === 'mentor' ? mentorLinks : menteeLinks;
 
-  // Load initial unread count
+  // Fetch unread message count from conversation list (initial load + on route change).
   useEffect(() => {
-    const loadUnreadCount = async () => {
-      try {
-        const data = await messagingApi.listNotifications(1);
-        setUnreadCount(data.unreadCount);
-      } catch (error) {
-        console.error('Failed to load unread count:', error);
-      }
-    };
+    if (!user?.id) return;
 
-    if (user?.id) {
-      loadUnreadCount();
-    }
-  }, [user?.id]);
+    messagingApi.listConversations(50).then((conversations) => {
+      const total = conversations.reduce(
+        (sum, conversation) => sum + (conversation.unreadCount || 0),
+        0
+      );
+      setUnreadMessageCount(total);
+    }).catch(() => {});
+  }, [user?.id, pathname]);
 
-  // Setup socket listeners for real-time updates
+  // Real-time badge updates via socket.
+  // NOTE: message:new is emitted to conversation rooms — Navigation never joins those.
+  // Instead we use notification:new (type='message') which IS sent to the user room,
+  // and message:unread-count which fires after a conversation is marked as read.
   useEffect(() => {
     if (!user?.id) return;
 
     const socketUrl = apiBaseUrl.endsWith('/api') ? apiBaseUrl.slice(0, -4) : apiBaseUrl;
 
     const socket = io(socketUrl, {
-      auth: {
-        token: localStorage.getItem('token')
-      }
+      auth: { token: localStorage.getItem('token') }
     });
 
-    const handleNotificationNew = () => {
-      setUnreadCount((prev) => prev + 1);
+    const handleNotificationNew = (data: { type?: string }) => {
+      if (data?.type === 'message') {
+        setUnreadMessageCount((prev) => prev + 1);
+      }
     };
 
-    const handleUnreadCountUpdate = (data: { unreadCount: number }) => {
-      setUnreadCount(data.unreadCount);
+    const handleUnreadCountReset = () => {
+      messagingApi.listConversations(50).then((conversations) => {
+        const total = conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
+        setUnreadMessageCount(total);
+      }).catch(() => {});
     };
 
     socket.on('notification:new', handleNotificationNew);
-    socket.on('notification:unread-count', handleUnreadCountUpdate);
+    socket.on('message:unread-count', handleUnreadCountReset);
 
     return () => {
       socket.off('notification:new', handleNotificationNew);
-      socket.off('notification:unread-count', handleUnreadCountUpdate);
+      socket.off('message:unread-count', handleUnreadCountReset);
       socket.disconnect();
     };
   }, [user?.id, apiBaseUrl]);
@@ -151,9 +154,9 @@ export default function Navigation({ role }: NavigationProps) {
                 >
                   <Icon className="w-5 h-5" />
                   <span>{link.label}</span>
-                  {link.hasBadge && unreadCount > 0 && (
+                  {link.hasBadge && unreadMessageCount > 0 && (
                     <span className="absolute right-3 flex items-center justify-center min-w-6 h-6 px-1.5 bg-red-500 text-white text-xs font-bold rounded-full">
-                      {unreadCount > 99 ? '99+' : unreadCount}
+                      {unreadMessageCount > 99 ? '99+' : unreadMessageCount}
                     </span>
                   )}
                 </Link>
@@ -237,9 +240,9 @@ export default function Navigation({ role }: NavigationProps) {
                   >
                     <Icon className="w-5 h-5" />
                     <span>{link.label}</span>
-                    {link.hasBadge && unreadCount > 0 && (
+                    {link.hasBadge && unreadMessageCount > 0 && (
                       <span className="absolute right-3 flex items-center justify-center min-w-6 h-6 px-1.5 bg-red-500 text-white text-xs font-bold rounded-full">
-                        {unreadCount > 99 ? '99+' : unreadCount}
+                        {unreadMessageCount > 99 ? '99+' : unreadMessageCount}
                       </span>
                     )}
                   </Link>

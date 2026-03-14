@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Loader2, MessageSquare, RefreshCw, Send } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -30,6 +30,7 @@ function getErrorMessage(error: unknown, fallback: string): string {
 }
 
 export default function MessageCenter({ role }: MessageCenterProps) {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useAuth();
 
@@ -43,6 +44,7 @@ export default function MessageCenter({ role }: MessageCenterProps) {
 
   const [composer, setComposer] = useState('');
   const [startParticipantId, setStartParticipantId] = useState('');
+  const messageListEndRef = useRef<HTMLDivElement | null>(null);
 
   const participantId = searchParams.get('participantId');
   const queryConversationId = searchParams.get('conversationId');
@@ -72,6 +74,12 @@ export default function MessageCenter({ role }: MessageCenterProps) {
         return prev;
       }
       return [...prev, incoming];
+    });
+  };
+
+  const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
+    requestAnimationFrame(() => {
+      messageListEndRef.current?.scrollIntoView({ behavior, block: 'end' });
     });
   };
 
@@ -112,6 +120,7 @@ export default function MessageCenter({ role }: MessageCenterProps) {
 
           if (conversation?.id) {
             await loadMessages(conversation.id);
+            router.replace(`/${role}/messages?conversationId=${conversation.id}`);
           }
         } else {
           const initialConversationId = queryConversationId || list[0]?.id || null;
@@ -129,7 +138,7 @@ export default function MessageCenter({ role }: MessageCenterProps) {
     };
 
     boot();
-  }, [participantId, queryConversationId]);
+  }, [participantId, queryConversationId, role, router]);
 
   useEffect(() => {
     if (!selectedConversationId || isBootstrapping) {
@@ -156,6 +165,15 @@ export default function MessageCenter({ role }: MessageCenterProps) {
 
       if (incomingConversationId === selectedConversationId) {
         mergeIncomingMessage(incomingMessage);
+
+        // If user is currently viewing this conversation, keep it read in real-time.
+        if (incomingMessage.senderId !== user?.id) {
+          messagingApi.markConversationRead(incomingConversationId).catch(() => {
+            // Non-blocking: badge will re-sync on next fetch/socket refresh even if this fails.
+          });
+        }
+
+        scrollToBottom('smooth');
       }
 
       setConversations((prev) => {
@@ -210,6 +228,14 @@ export default function MessageCenter({ role }: MessageCenterProps) {
       socket.emit('conversation:leave', { conversationId: selectedConversationId });
     };
   }, [selectedConversationId]);
+
+  useEffect(() => {
+    if (messages.length === 0) {
+      return;
+    }
+
+    scrollToBottom(isMessagesLoading ? 'auto' : 'smooth');
+  }, [messages, selectedConversationId, isMessagesLoading]);
 
   const handleSendMessage = async () => {
     if (!selectedConversationId || !composer.trim() || isSending) {
@@ -365,29 +391,32 @@ export default function MessageCenter({ role }: MessageCenterProps) {
                 Send your first message.
               </div>
             ) : (
-              messages.map((message) => {
-                const mine = message.senderId === user?.id;
-                return (
-                  <div
-                    key={message.id}
-                    className={`max-w-[80%] rounded-2xl px-4 py-3 ${
-                      mine
-                        ? 'ml-auto bg-indigo-600 text-white'
-                        : 'bg-white border border-slate-200 text-slate-800'
-                    }`}
-                  >
-                    <p className="text-xs opacity-75 mb-1">
-                      {mine
-                        ? 'You'
-                        : `${message.sender?.firstName || ''} ${message.sender?.lastName || ''}`.trim() || 'User'}
-                    </p>
-                    <p className="text-sm whitespace-pre-wrap">{message.messageText}</p>
-                    <p className="text-[11px] opacity-70 mt-2">
-                      {new Date(message.createdAt).toLocaleString()}
-                    </p>
-                  </div>
-                );
-              })
+              <>
+                {messages.map((message) => {
+                  const mine = message.senderId === user?.id;
+                  return (
+                    <div
+                      key={message.id}
+                      className={`max-w-[80%] rounded-2xl px-4 py-3 ${
+                        mine
+                          ? 'ml-auto bg-indigo-600 text-white'
+                          : 'bg-white border border-slate-200 text-slate-800'
+                      }`}
+                    >
+                      <p className="text-xs opacity-75 mb-1">
+                        {mine
+                          ? 'You'
+                          : `${message.sender?.firstName || ''} ${message.sender?.lastName || ''}`.trim() || 'User'}
+                      </p>
+                      <p className="text-sm whitespace-pre-wrap">{message.messageText}</p>
+                      <p className="text-[11px] opacity-70 mt-2">
+                        {new Date(message.createdAt).toLocaleString()}
+                      </p>
+                    </div>
+                  );
+                })}
+                <div ref={messageListEndRef} />
+              </>
             )}
           </div>
 

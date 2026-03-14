@@ -89,6 +89,9 @@ exports.markConversationRead = catchAsync(async (req, res) => {
     updatedCount: result.updatedCount
   });
 
+  // Signal the user's navigation badge to refresh its unread count.
+  emitToUser(req.user.id, 'message:unread-count', {});
+
   res.status(200).json(successResponse('Conversation marked as read', result));
 });
 

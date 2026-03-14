@@ -70,6 +70,11 @@ function emitToConversation(conversationId, event, payload) {
   io.to(`conversation:${conversationId}`).emit(event, payload);
 }
 
+function isUserOnline(userId) {
+  const sockets = userSockets.get(userId);
+  return Boolean(sockets && sockets.size > 0);
+}
+
 function getIO() {
   return io;
 }
@@ -195,6 +200,9 @@ function initSocket(httpServer) {
           updatedCount: result.updatedCount
         });
 
+        // Signal the reading user's navigation badge to refresh its unread count.
+        emitToUser(userId, 'message:unread-count', {});
+
         if (typeof ack === 'function') {
           ack({ ok: true, updatedCount: result.updatedCount });
         }
@@ -217,5 +225,6 @@ module.exports = {
   initSocket,
   getIO,
   emitToUser,
-  emitToConversation
+  emitToConversation,
+  isUserOnline
 };

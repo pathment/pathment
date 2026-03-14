@@ -5,9 +5,38 @@ const {
   ForbiddenError,
   ValidationError
 } = require('../utils/errors/errorTypes');
-const { shouldCreateNotification } = require('../utils/notificationPreferences');
 
 class MessagingService {
+  async findDirectConversationsByKey(directKey, transaction = null) {
+    return models.Conversation.findAll({
+      where: {
+        type: 'direct',
+        isArchived: false,
+        metadata: {
+          directKey
+        }
+      },
+      transaction
+    });
+  }
+
+  selectCanonicalDirectConversation(conversations) {
+    if (!Array.isArray(conversations) || conversations.length === 0) {
+      return null;
+    }
+
+    return [...conversations].sort((left, right) => {
+      const leftLastMessageAt = left.lastMessageAt ? new Date(left.lastMessageAt).getTime() : -1;
+      const rightLastMessageAt = right.lastMessageAt ? new Date(right.lastMessageAt).getTime() : -1;
+
+      if (leftLastMessageAt !== rightLastMessageAt) {
+        return rightLastMessageAt - leftLastMessageAt;
+      }
+
+      return new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime();
+    })[0];
+  }
+
   async createOrGetDirectConversation(userId, participantId, options = {}) {
     if (userId === participantId) {
       throw new ValidationError('Cannot create a direct conversation with yourself');
@@ -23,41 +52,44 @@ class MessagingService {
 
     const directKey = [userId, participantId].sort().join(':');
 
-    let conversation = await models.Conversation.findOne({
-      where: {
-        type: 'direct',
-        metadata: {
-          directKey
+    const conversation = await sequelize.transaction(async (transaction) => {
+      await sequelize.query(
+        'SELECT pg_advisory_xact_lock(hashtext(:lockKey))',
+        {
+          replacements: { lockKey: `direct-conversation:${directKey}` },
+          transaction
         }
+      );
+
+      const existingConversations = await this.findDirectConversationsByKey(directKey, transaction);
+      const existingConversation = this.selectCanonicalDirectConversation(existingConversations);
+      if (existingConversation) {
+        return existingConversation;
       }
+
+      const created = await models.Conversation.create({
+        type: 'direct',
+        createdBy: userId,
+        relatedTaskId: options.relatedTaskId || null,
+        relatedEnrollmentId: options.relatedEnrollmentId || null,
+        metadata: { directKey }
+      }, { transaction });
+
+      await models.ConversationParticipant.bulkCreate([
+        {
+          conversationId: created.id,
+          userId,
+          role: 'owner'
+        },
+        {
+          conversationId: created.id,
+          userId: participantId,
+          role: 'participant'
+        }
+      ], { transaction });
+
+      return created;
     });
-
-    if (!conversation) {
-      conversation = await sequelize.transaction(async (transaction) => {
-        const created = await models.Conversation.create({
-          type: 'direct',
-          createdBy: userId,
-          relatedTaskId: options.relatedTaskId || null,
-          relatedEnrollmentId: options.relatedEnrollmentId || null,
-          metadata: { directKey }
-        }, { transaction });
-
-        await models.ConversationParticipant.bulkCreate([
-          {
-            conversationId: created.id,
-            userId,
-            role: 'owner'
-          },
-          {
-            conversationId: created.id,
-            userId: participantId,
-            role: 'participant'
-          }
-        ], { transaction });
-
-        return created;
-      });
-    }
 
     return this.getConversationByIdForUser(conversation.id, userId);
   }
@@ -156,11 +188,30 @@ class MessagingService {
       return acc;
     }, {});
 
-    return orderedConversations.map((conversation) => {
+    const seenDirectKeys = new Set();
+
+    return orderedConversations.flatMap((conversation) => {
       const json = conversation.toJSON();
       const otherParticipants = (json.participants || []).filter((p) => p.userId !== userId);
+      const fallbackDirectKey = otherParticipants
+        .map((participant) => participant.userId)
+        .concat(userId)
+        .filter(Boolean)
+        .sort()
+        .join(':');
+      const directKey = json.type === 'direct'
+        ? json.metadata?.directKey || fallbackDirectKey
+        : null;
 
-      return {
+      if (directKey) {
+        if (seenDirectKeys.has(directKey)) {
+          return [];
+        }
+
+        seenDirectKeys.add(directKey);
+      }
+
+      return [{
         id: json.id,
         type: json.type,
         relatedTaskId: json.relatedTaskId,
@@ -176,7 +227,7 @@ class MessagingService {
           role: p.user?.role
         })),
         lastMessage: json.lastMessage
-      };
+      }];
     });
   }
 
@@ -274,24 +325,6 @@ class MessagingService {
       }, { transaction });
 
       const notifications = await Promise.all(recipientIds.map(async (userId) => {
-        // Fetch recipient settings to check notification preferences
-        const recipientSettings = await models.UserSettings.findOne({
-          where: { userId },
-          attributes: ['emailNotifications', 'pushNotifications', 'quietHours']
-        });
-
-        // Check if recipient has enabled message notifications
-        const prefCheck = shouldCreateNotification(recipientSettings, 'message_received', {
-          checkEmail: true,
-          checkPush: true,
-          respectQuietHours: true
-        });
-
-        if (!prefCheck.should_create) {
-          // Notification preference disabled - don't create
-          return null;
-        }
-
         return models.Notification.create({
           userId,
           type: 'message',
@@ -305,8 +338,7 @@ class MessagingService {
         }, { transaction });
       }));
 
-      // Filter out null notifications (where preferences were disabled)
-      const createdNotifications = notifications.filter((n) => n !== null);
+      const createdNotifications = notifications;
 
       const hydratedMessage = await models.Message.findByPk(message.id, {
         include: [
