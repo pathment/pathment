@@ -1,4 +1,4 @@
-const { models } = require('../db');
+const { models, Sequelize } = require('../db');
 const { NotFoundError, ValidationError } = require('../utils/errors/errorTypes');
 const notificationOrchestrator = require('./notificationOrchestrator');
 const { NOTIFICATION_EVENTS } = require('../config/notificationMatrix');
@@ -32,9 +32,24 @@ class GamificationService {
 
     await menteeProfile.update({ totalPoints: pointsAfter });
 
-    await this.checkLevelUp(menteeId);
-    await this.updateLeaderboardEntry(menteeId);
-    await this.checkAndAwardBadges(menteeId);
+    // Keep core points-award successful even if non-critical side effects fail.
+    try {
+      await this.checkLevelUp(menteeId);
+    } catch (error) {
+      console.error('[Gamification] checkLevelUp failed:', error.message);
+    }
+
+    try {
+      await this.updateLeaderboardEntry(menteeId);
+    } catch (error) {
+      console.error('[Gamification] updateLeaderboardEntry failed:', error.message);
+    }
+
+    try {
+      await this.checkAndAwardBadges(menteeId);
+    } catch (error) {
+      console.error('[Gamification] checkAndAwardBadges failed:', error.message);
+    }
 
     return {
       pointsAwarded: Number(pointsAmount),
@@ -174,7 +189,7 @@ class GamificationService {
 
     const higherRankedCount = await models.MenteeProfile.count({
       where: {
-        totalPoints: { [models.Sequelize.Op.gt]: Number(menteeProfile.totalPoints || 0) }
+        totalPoints: { [Sequelize.Op.gt]: Number(menteeProfile.totalPoints || 0) }
       }
     });
 
@@ -321,7 +336,7 @@ class GamificationService {
     if (periodType === 'weekly') periodStart = this.getWeekStart(now);
     if (periodType === 'monthly') periodStart = this.getMonthStart(now);
 
-    return models.LeaderboardEntry.findAll({
+    const entries = await models.LeaderboardEntry.findAll({
       where: {
         programId,
         periodType,
@@ -337,6 +352,36 @@ class GamificationService {
       limit,
       subQuery: false
     });
+
+    if (entries.length > 0) {
+      return entries;
+    }
+
+    // Fallback: derive ranking from profile points when leaderboard rows are missing.
+    const profiles = await models.MenteeProfile.findAll({
+      where: {
+        totalPoints: { [Sequelize.Op.gt]: 0 }
+      },
+      include: [{
+        model: models.User,
+        as: 'user',
+        attributes: ['id', 'firstName', 'lastName', 'email']
+      }],
+      order: [['totalPoints', 'DESC']],
+      limit
+    });
+
+    return profiles.map((profile, index) => ({
+      id: `derived-${profile.userId}-${periodType}`,
+      userId: profile.userId,
+      rank: index + 1,
+      points: Number(profile.totalPoints || 0),
+      periodType,
+      periodStart,
+      periodEnd: now.toISOString().split('T')[0],
+      isVisible: true,
+      user: profile.user
+    }));
   }
 
   async getUserBadges(userId) {
@@ -364,8 +409,9 @@ class GamificationService {
     const totalBadges = await models.UserBadge.count({ where: { userId } });
     const recentBadges = await this.getUserBadges(userId);
     const recentPoints = await this.getUserPointsHistory(userId, 10);
+    const latestPointsEntry = recentPoints.length > 0 ? recentPoints[0] : null;
 
-    const userLeaderboardRank = await models.LeaderboardEntry.findOne({
+    let userLeaderboardRank = await models.LeaderboardEntry.findOne({
       where: {
         userId,
         periodType: 'all_time',
@@ -373,10 +419,30 @@ class GamificationService {
       }
     });
 
+    if (!userLeaderboardRank) {
+      const higherRankedCount = await models.MenteeProfile.count({
+        where: {
+          totalPoints: { [Sequelize.Op.gt]: Number(menteeProfile.totalPoints || 0) }
+        }
+      });
+
+      userLeaderboardRank = { rank: higherRankedCount + 1 };
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+    const latestActivityDay = latestPointsEntry?.createdAt
+      ? new Date(latestPointsEntry.createdAt).toISOString().split('T')[0]
+      : null;
+
+    const derivedCurrentStreak =
+      Number(menteeProfile.currentStreakDays || 0) === 0 && latestActivityDay === today
+        ? 1
+        : Number(menteeProfile.currentStreakDays || 0);
+
     return {
       totalPoints: Number(menteeProfile.totalPoints || 0),
       currentLevel: Number(menteeProfile.currentLevel || 1),
-      currentStreak: Number(menteeProfile.currentStreakDays || 0),
+      currentStreak: derivedCurrentStreak,
       longestStreak: Number(menteeProfile.longestStreakDays || 0),
       totalBadges,
       totalTasksCompleted: Number(menteeProfile.totalTasksCompleted || 0),
