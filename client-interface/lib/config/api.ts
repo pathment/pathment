@@ -12,6 +12,7 @@ export const apiConfig = {
     refreshToken: '/auth/refresh',
     logout: '/auth/logout',
     me: '/auth/me',
+    verify2FALogin: '/auth/verify-2fa-login',
     
     // Profile
     profile: '/profile',

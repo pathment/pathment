@@ -101,6 +101,22 @@ const authSchemas = {
     token: Joi.string().required().messages({
       'string.empty': 'Verification token is required'
     })
+  }),
+
+  verify2FA: Joi.object({
+    token: Joi.string().length(6).pattern(/^\d+$/).required().messages({
+      'string.empty': '2FA token is required',
+      'string.length': '2FA token must be 6 digits',
+      'string.pattern.base': '2FA token must contain only digits'
+    })
+  }),
+
+  verify2FALogin: Joi.object({
+    code: Joi.string().length(6).pattern(/^\d+$/).required().messages({
+      'string.empty': '2FA code is required',
+      'string.length': '2FA code must be 6 digits',
+      'string.pattern.base': '2FA code must contain only digits'
+    })
   })
 };
 

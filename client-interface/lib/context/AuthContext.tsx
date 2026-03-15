@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { User, AuthResponse, LoginCredentials, RegisterData } from '../types';
+import { User, AuthResponse, LoginCredentials, RegisterData, TwoFactorLoginResponse } from '../types';
 import { apiClient } from '../services/api-client';
 import { apiConfig } from '../config/api';
 
@@ -9,7 +9,10 @@ interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (credentials: LoginCredentials) => Promise<void>;
+  requiresTwoFactor: boolean;
+  temporaryToken: string | null;
+  login: (credentials: LoginCredentials) => Promise<{ requiresTwoFactor: boolean }>;
+  verify2FA: (code: string) => Promise<void>;
   register: (data: RegisterData) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
@@ -21,6 +24,8 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [requiresTwoFactor, setRequiresTwoFactor] = useState(false);
+  const [temporaryToken, setTemporaryToken] = useState<string | null>(null);
 
   useEffect(() => {
     checkAuth();
@@ -43,17 +48,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (token) {
         // Try to get user from API
         try {
-          const response = await apiClient.get<{ data: { user: User } }>(apiConfig.endpoints.me);
-          setUser(response.data.user);
-          localStorage.setItem('user', JSON.stringify(response.data.user));
-        } catch (apiError) {
+          const response = await apiClient.get<any>(apiConfig.endpoints.me);
+          // apiClient.get returns: { success, message, statusCode, data: { user } }
+          const userData = response.data?.user;
+          if (userData) {
+            setUser(userData);
+            localStorage.setItem('user', JSON.stringify(userData));
+          }
+        } catch (apiError: any) {
           // If API fails, try to get from localStorage cache
           if (cachedUser) {
+            console.log('Using cached user after API fail');
             setUser(JSON.parse(cachedUser));
           } else {
             throw apiError;
           }
         }
+      } else {
+        setUser(null);
       }
     } catch (error) {
       console.error('Auth check failed:', error);
@@ -68,18 +80,84 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (credentials: LoginCredentials) => {
     try {
-      const response = await apiClient.post<{ data: AuthResponse }>(
+      const response = await apiClient.post<any>(
         apiConfig.endpoints.login,
         credentials
       );
 
-      const { user, tokens } = response.data;
+      // apiClient.post returns response.data directly
+      // Response structure: { success: true, message: "...", data: { user, tokens } }
+      const responseData = response.data;
 
-      localStorage.setItem('token', tokens.accessToken);
-      localStorage.setItem('refreshToken', tokens.refreshToken);
+      // Check if 2FA is required
+      if (responseData?.requiresTwoFactor) {
+        setRequiresTwoFactor(true);
+        setTemporaryToken(responseData?.temporaryToken);
+        setUser(responseData?.user);
+        console.log('2FA required, temporary token set');
+        return { requiresTwoFactor: true };
+      }
+
+      // Normal login flow (no 2FA)
+      const user = responseData?.user;
+      const accessToken = responseData?.tokens?.accessToken;
+      const refreshToken = responseData?.tokens?.refreshToken;
+
+      if (!user || !accessToken || !refreshToken) {
+        throw new Error('Invalid login response structure');
+      }
+
+      localStorage.setItem('token', accessToken);
+      localStorage.setItem('refreshToken', refreshToken);
       localStorage.setItem('user', JSON.stringify(user));
+      
+      console.log('Login successful, tokens stored');
       setUser(user);
+      setRequiresTwoFactor(false);
+      setTemporaryToken(null);
+      return { requiresTwoFactor: false };
     } catch (error) {
+      console.error('Login error:', error);
+      throw error;
+    }
+  };
+
+  const verify2FA = async (code: string) => {
+    if (!temporaryToken) {
+      throw new Error('No temporary token available. Please login first.');
+    }
+
+    try {
+      const response = await apiClient.post<any>(
+        apiConfig.endpoints.verify2FALogin,
+        { code },
+        {
+          headers: {
+            Authorization: `Bearer ${temporaryToken}`,
+          },
+        }
+      );
+
+      // apiClient.post returns response.data directly
+      const responseData = response.data;
+      const accessToken = responseData?.tokens?.accessToken;
+      const refreshToken = responseData?.tokens?.refreshToken;
+
+      if (!user || !accessToken || !refreshToken) {
+        throw new Error('Invalid 2FA verification response');
+      }
+
+      localStorage.setItem('token', accessToken);
+      localStorage.setItem('refreshToken', refreshToken);
+      localStorage.setItem('user', JSON.stringify(user));
+      
+      console.log('2FA verified, tokens stored');
+      
+      // Clear 2FA state
+      setRequiresTwoFactor(false);
+      setTemporaryToken(null);
+    } catch (error) {
+      console.error('2FA verification error:', error);
       throw error;
     }
   };
@@ -124,8 +202,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = {
     user,
     isLoading,
-    isAuthenticated: !!user,
+    isAuthenticated: !!user && !requiresTwoFactor,
+    requiresTwoFactor,
+    temporaryToken,
     login,
+    verify2FA,
     register,
     logout,
     refreshUser,

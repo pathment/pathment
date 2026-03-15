@@ -78,4 +78,80 @@ router.post(
   authController.logout
 );
 
+/**
+ * Security routes (authentication required)
+ */
+
+// Get active sessions
+router.get(
+  '/sessions',
+  authenticate,
+  authController.getActiveSessions
+);
+
+// Revoke a specific session
+router.delete(
+  '/sessions/:sessionId',
+  authenticate,
+  authController.revokeSession
+);
+
+// Revoke all other sessions
+router.post(
+  '/sessions/revoke-all-others',
+  authenticate,
+  authController.revokeAllOtherSessions
+);
+
+// Get audit logs
+router.get(
+  '/audit-logs',
+  authenticate,
+  authController.getAuditLogs
+);
+
+// Setup 2FA
+router.post(
+  '/2fa/setup',
+  authenticate,
+  authController.setup2FA
+);
+
+// Verify and enable 2FA
+router.post(
+  '/2fa/verify',
+  authenticate,
+  validateBody(authSchemas.verify2FA),
+  authController.verify2FA
+);
+
+// Disable 2FA
+router.post(
+  '/2fa/disable',
+  authenticate,
+  authController.disable2FA
+);
+
+// Get 2FA status
+router.get(
+  '/2fa/status',
+  authenticate,
+  authController.get2FAStatus
+);
+
+// Verify 2FA during login (uses temporary token from login response)
+router.post(
+  '/verify-2fa-login',
+  authenticate,
+  validateBody(authSchemas.verify2FALogin),
+  authController.verify2FALogin
+);
+
+// Regenerate backup codes
+router.post(
+  '/2fa/regenerate-backup-codes',
+  authenticate,
+  authController.regenerateBackupCodes
+);
+
 module.exports = router;

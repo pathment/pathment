@@ -146,6 +146,27 @@ class AuthService {
     //   throw new AuthenticationError(AUTH_MESSAGES.EMAIL_NOT_VERIFIED);
     // }
 
+    // Check if 2FA is enabled
+    if (user.twoFactorEnabled) {
+      // Generate temporary token for 2FA verification
+      const temporaryToken = generateAccessToken({ 
+        id: user.id, 
+        email: user.email, 
+        role: user.role,
+        temp: true 
+      }, '5m'); // 5 minute expiry for 2FA verification
+
+      // Remove password from response
+      const userResponse = user.toJSON();
+      delete userResponse.passwordHash;
+
+      return {
+        requiresTwoFactor: true,
+        temporaryToken,
+        user: userResponse
+      };
+    }
+
     // Update last login
     user.lastLoginAt = new Date();
     await user.save();
@@ -385,6 +406,55 @@ class AuthService {
     }
 
     return user;
+  }
+
+  /**
+   * Verify 2FA code during login
+   */
+  async verify2FADuringLogin(userId, code) {
+    const securityService = require('./securityService');
+    
+    // Verify 2FA code (TOTP or backup code)
+    const result = await securityService.verify2FAToken(userId, code);
+    
+    // Get user
+    const user = await models.User.findByPk(userId, {
+      include: [
+        { model: models.MentorProfile, as: 'mentorProfile' },
+        { model: models.MenteeProfile, as: 'menteeProfile' },
+        { model: models.AdminProfile, as: 'adminProfile' }
+      ]
+    });
+
+    // Update last login
+    user.lastLoginAt = new Date();
+    await user.save();
+
+    // Generate full tokens
+    const accessToken = generateAccessToken({ 
+      id: user.id, 
+      email: user.email, 
+      role: user.role 
+    });
+    const refreshToken = generateRefreshToken({ id: user.id });
+
+    // Store refresh token
+    await models.RefreshToken.create({
+      userId: user.id,
+      token: refreshToken,
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+    });
+
+    // Remove password from response
+    const userResponse = user.toJSON();
+    delete userResponse.passwordHash;
+
+    return {
+      user: userResponse,
+      accessToken,
+      refreshToken,
+      twoFactorType: result.type
+    };
   }
 }
 

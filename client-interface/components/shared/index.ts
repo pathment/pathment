@@ -11,6 +11,12 @@ export type { EmptyStateProps, EmptyStateAction } from './EmptyState';
 
 export { ErrorState } from './ErrorState';
 
+export { TwoFactorCodeInput } from './TwoFactorCodeInput';
+
+export { BackupCodesModal } from './BackupCodesModal';
+
+export { UserProfileCard } from './UserProfileCard';
+
 // Pre-existing shared components
 export { default as FileUploader } from './FileUploader';
 export { default as Navigation } from './Navigation';

@@ -1,6 +1,8 @@
 const authService = require('../services/authService');
+const securityService = require('../services/securityService');
 const { successResponse } = require('../utils/responses');
 const { AUTH_MESSAGES } = require('../utils/responses/messages');
+const { AuthenticationError } = require('../utils/errors/errorTypes');
 const { catchAsync } = require('../middlewares/errorHandler');
 
 class AuthController {
@@ -34,18 +36,33 @@ class AuthController {
     const { email, password } = req.body;
     const result = await authService.login(email, password);
 
-    res.status(200).json(
-      successResponse(
-        AUTH_MESSAGES.LOGIN_SUCCESS,
-        {
-          user: result.user,
-          tokens: {
-            accessToken: result.accessToken,
-            refreshToken: result.refreshToken
+    // Check if 2FA is required
+    if (result.requiresTwoFactor) {
+      res.status(200).json(
+        successResponse(
+          AUTH_MESSAGES.LOGIN_SUCCESS,
+          {
+            requiresTwoFactor: true,
+            temporaryToken: result.temporaryToken,
+            user: result.user
           }
-        }
-      )
-    );
+        )
+      );
+    } else {
+      // Normal login flow
+      res.status(200).json(
+        successResponse(
+          AUTH_MESSAGES.LOGIN_SUCCESS,
+          {
+            user: result.user,
+            tokens: {
+              accessToken: result.accessToken,
+              refreshToken: result.refreshToken
+            }
+          }
+        )
+      );
+    }
   });
 
   /**
@@ -143,6 +160,147 @@ class AuthController {
         'User retrieved successfully',
         { user }
       )
+    );
+  });
+
+  /**
+   * Get active sessions
+   * GET /api/auth/sessions
+   */
+  getActiveSessions = catchAsync(async (req, res) => {
+    const sessions = await securityService.getActiveSessions(req.user.id);
+
+    res.status(200).json(
+      successResponse('Active sessions retrieved successfully', sessions)
+    );
+  });
+
+  /**
+   * Revoke a session
+   * DELETE /api/auth/sessions/:sessionId
+   */
+  revokeSession = catchAsync(async (req, res) => {
+    const { sessionId } = req.params;
+    await securityService.revokeSession(req.user.id, sessionId);
+
+    res.status(200).json(
+      successResponse('Session revoked successfully')
+    );
+  });
+
+  /**
+   * Revoke all other sessions
+   * POST /api/auth/sessions/revoke-all-others
+   */
+  revokeAllOtherSessions = catchAsync(async (req, res) => {
+    const sessionId = req.sessionId; // Extracted from token middleware
+    await securityService.revokeAllOtherSessions(req.user.id, sessionId);
+
+    res.status(200).json(
+      successResponse('All other sessions revoked successfully')
+    );
+  });
+
+  /**
+   * Get audit logs
+   * GET /api/auth/audit-logs
+   */
+  getAuditLogs = catchAsync(async (req, res) => {
+    const { limit = 50, offset = 0 } = req.query;
+    const result = await securityService.getAuditLogs(req.user.id, {
+      limit: parseInt(limit),
+      offset: parseInt(offset)
+    });
+
+    res.status(200).json(
+      successResponse('Audit logs retrieved successfully', result)
+    );
+  });
+
+  /**
+   * Setup 2FA
+   * POST /api/auth/2fa/setup
+   */
+  setup2FA = catchAsync(async (req, res) => {
+    const result = await securityService.setup2FA(req.user.id);
+
+    res.status(200).json(
+      successResponse('2FA setup initiated. Scan the QR code or enter the secret key.', result)
+    );
+  });
+
+  /**
+   * Verify and enable 2FA
+   * POST /api/auth/2fa/verify
+   */
+  verify2FA = catchAsync(async (req, res) => {
+    const { token } = req.body;
+    const result = await securityService.verify2FA(req.user.id, token);
+
+    res.status(200).json(
+      successResponse('2FA verified and enabled successfully', result)
+    );
+  });
+
+  /**
+   * Disable 2FA
+   * POST /api/auth/2fa/disable
+   */
+  disable2FA = catchAsync(async (req, res) => {
+    const result = await securityService.disable2FA(req.user.id);
+
+    res.status(200).json(
+      successResponse(result.message)
+    );
+  });
+
+  /**
+   * Get 2FA status
+   * GET /api/auth/2fa/status
+   */
+  get2FAStatus = catchAsync(async (req, res) => {
+    const result = await securityService.get2FAStatus(req.user.id);
+
+    res.status(200).json(
+      successResponse('2FA status retrieved successfully', result)
+    );
+  });
+
+  /**
+   * Verify 2FA code during login
+   * POST /api/auth/verify-2fa-login
+   */
+  verify2FALogin = catchAsync(async (req, res) => {
+    const code = req.body.code || req.body.token;
+    
+    // Extract user ID from temporary token (done by middleware)
+    const userId = req.user?.id;
+    if (!userId) {
+      throw new AuthenticationError('Invalid temporary token');
+    }
+
+    const result = await authService.verify2FADuringLogin(userId, code);
+
+    res.status(200).json(
+      successResponse('2FA verified successfully', {
+        user: result.user,
+        tokens: {
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken
+        }
+      })
+    );
+  });
+
+  /**
+   * Regenerate backup codes
+   * POST /api/auth/2fa/regenerate-backup-codes
+   */
+  regenerateBackupCodes = catchAsync(async (req, res) => {
+    const result = await securityService.regenerateBackupCodes(req.user.id);
+
+    res.status(200).json(
+      successResponse('Backup codes regenerated successfully', result)
     );
   });
 }

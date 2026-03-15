@@ -4,13 +4,14 @@ import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/context/AuthContext';
+import { TwoFactorCodeInput } from '@/components/shared/TwoFactorCodeInput';
 import { Mail, Lock, ArrowRight, AlertCircle, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { login, user, isLoading } = useAuth();
+  const { login, verify2FA, user, isLoading, requiresTwoFactor } = useAuth();
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -26,11 +27,43 @@ export default function LoginPage() {
 
   // Redirect if already logged in
   useEffect(() => {
-    if (!isLoading && user) {
+    if (!isLoading && user && !requiresTwoFactor) {
       const dashboard = `/${user.role}/dashboard`;
       router.push(dashboard);
     }
-  }, [user, isLoading, router]);
+  }, [user, isLoading, requiresTwoFactor, router]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    try {
+      const result = await login(formData);
+      // Use returned result instead of state to avoid stale value race.
+      if (!result.requiresTwoFactor) {
+        toast.success('Welcome back!');
+        router.push('/');
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Invalid email or password');
+      toast.error('Login failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handle2FAVerify = async (code: string) => {
+    try {
+      await verify2FA(code);
+      // After successful 2FA, redirect to dashboard
+      if (user) {
+        router.push(`/${user.role}/dashboard`);
+      }
+    } catch (err: any) {
+      throw err;
+    }
+  };
 
   // Show loading while checking auth
   if (isLoading) {
@@ -41,27 +74,27 @@ export default function LoginPage() {
     );
   }
 
-  // Don't render login form if user is logged in
-  if (user) {
+  // Don't render login form if user is logged in and doesn't require 2FA (redirect will happen via useEffect)
+  if (user && !requiresTwoFactor) {
     return null;
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-
-    try {
-      await login(formData);
-      toast.success('Welcome back!');
-      router.push('/');
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Invalid email or password');
-      toast.error('Login failed');
-    } finally {
-      setLoading(false);
-    }
-  };
+  // If user is pending 2FA verification, only show the 2FA modal
+  if (user && requiresTwoFactor) {
+    return (
+      <TwoFactorCodeInput
+        isOpen={true}
+        onVerify={handle2FAVerify}
+        onCancel={() => {
+          // Reset form and logout user to go back to login if they cancel
+          setFormData({ email: '', password: '' });
+          setError('');
+          window.location.href = '/login';
+        }}
+        userEmail={user?.email}
+      />
+    );
+  }
 
   return (
     <div className="space-y-6">

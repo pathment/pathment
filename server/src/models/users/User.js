@@ -81,6 +81,11 @@ module.exports = (sequelize, DataTypes) => {
       field: 'onboarding_step',
       comment: '0=registered, 1=profile_completed, 2=skills_added, 3=onboarding_finished'
     },
+    twoFactorEnabled: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+      field: 'two_factor_enabled'
+    },
     deletedAt: {
       type: DataTypes.DATE,
       field: 'deleted_at'
@@ -124,6 +129,9 @@ module.exports = (sequelize, DataTypes) => {
     
     // Sessions
     User.hasMany(models.UserSession, { foreignKey: 'user_id', as: 'sessions' });
+    
+    // Two Factor Auth
+    User.hasOne(models.TwoFactorAuth, { foreignKey: 'user_id', as: 'twoFactorAuth' });
     
     // Notifications & Messages
     User.hasMany(models.Notification, { foreignKey: 'user_id', as: 'notifications' });

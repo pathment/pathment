@@ -3,6 +3,8 @@ export interface User {
   id: string;
   email: string;
   role: UserRole;
+  firstName: string;
+  lastName: string;
   isVerified: boolean;
   createdAt: string;
   updatedAt: string;
@@ -40,6 +42,12 @@ export interface tokens {
 export interface AuthResponse {
   user: User;
   tokens: tokens;
+}
+
+export interface TwoFactorLoginResponse {
+  requiresTwoFactor: boolean;
+  temporaryToken: string;
+  user: User;
 }
 
 export interface PasswordResetRequest {

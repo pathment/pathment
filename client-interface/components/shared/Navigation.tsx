@@ -20,6 +20,7 @@ import {
   LucideIcon
 } from 'lucide-react';
 import { NotificationDrawer } from './NotificationDrawer';
+import { UserProfileCard } from './UserProfileCard';
 import { messagingApi } from '@/lib/services/messaging-api';
 import { io } from 'socket.io-client';
 
@@ -167,8 +168,11 @@ export default function Navigation({ role }: NavigationProps) {
           </nav>
 
           {/* Bottom Section */}
-          <div className="px-4 py-4 border-t border-slate-200 space-y-1 flex flex-col">
-            <div className="relative flex items-center gap-2 mb-4">
+          <div className="px-4 py-4 border-t border-slate-200 space-y-3 flex flex-col">
+            {/* User Profile Card */}
+            <UserProfileCard />
+            
+            <div className="relative flex items-center gap-2">
               {user?.id && (
                 <NotificationDrawer userId={user.id} apiBaseUrl={apiBaseUrl} showLabel />
               )}

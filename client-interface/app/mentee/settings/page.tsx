@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { useMenteeSettings } from '@/lib/hooks/mentee';
 import { PageHeader, TabBar } from '@/components/admin/ui';
+import SecurityTab from '@/components/shared/SecurityTab';
 import type { Tab } from '@/components/admin/ui';
 
 export default function MenteeSettings() {
@@ -336,32 +337,7 @@ export default function MenteeSettings() {
 
           {/* Security Tab */}
           {activeTab === 'security' && (
-            <div className="space-y-6">
-              <div>
-                <h2 className="text-slate-900 mb-2">Security Settings</h2>
-                <p className="text-slate-600">Manage your password and security preferences</p>
-              </div>
-
-              <div className="p-6 border border-slate-200 rounded-xl">
-                <div className="text-slate-900 font-medium mb-2">Change Password</div>
-                <div className="text-sm text-slate-600 mb-4">
-                  Update your password to keep your account secure
-                </div>
-                <button className="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-colors">
-                  Change Password
-                </button>
-              </div>
-
-              <div className="p-6 border border-slate-200 rounded-xl">
-                <div className="text-slate-900 font-medium mb-2">Two-Factor Authentication</div>
-                <div className="text-sm text-slate-600 mb-4">
-                  Add an extra layer of security to your account
-                </div>
-                <button className="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-colors">
-                  Enable 2FA
-                </button>
-              </div>
-            </div>
+            <SecurityTab userRole="mentee" showAuditLogs={false} />
           )}
         </div>
       </div>

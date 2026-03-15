@@ -31,8 +31,10 @@
     "openai": "^6.9.1",
     "pg": "^8.11.0",
     "pg-hstore": "^2.3.4",
+    "qrcode": "^1.5.4",
     "sequelize": "^6.32.1",
     "socket.io": "^4.8.1",
+    "speakeasy": "^2.0.0",
     "winston": "^3.18.3"
   },
   "devDependencies": {
