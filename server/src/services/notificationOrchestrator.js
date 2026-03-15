@@ -46,7 +46,7 @@ class NotificationOrchestrator {
 
       // In-app channel
       if (channels.inApp) {
-        const shouldSkipInApp = await this.shouldSkipByDedupe(recipient.userId, matrix.type, dedupe);
+        const shouldSkipInApp = await this.shouldSkipByDedupe(recipient.userId, matrix.type, dedupe, payload);
         if (!shouldSkipInApp) {
           await models.Notification.create({
             userId: recipient.userId,
@@ -86,8 +86,18 @@ class NotificationOrchestrator {
     return { delivered, skipped };
   }
 
-  async shouldSkipByDedupe(userId, type, dedupe) {
-    if (!dedupe?.relatedEntityType || !dedupe?.relatedEntityId) {
+  async shouldSkipByDedupe(userId, type, dedupe, payload = null) {
+    const dedupeType = dedupe?.relatedEntityType || null;
+    const dedupeId = dedupe?.relatedEntityId || null;
+    const payloadType = payload?.relatedEntityType || null;
+    const payloadId = payload?.relatedEntityId || null;
+
+    const candidates = [
+      dedupeType && dedupeId ? { relatedEntityType: dedupeType, relatedEntityId: dedupeId } : null,
+      payloadType && payloadId ? { relatedEntityType: payloadType, relatedEntityId: payloadId } : null
+    ].filter(Boolean);
+
+    if (candidates.length === 0) {
       return false;
     }
 
@@ -95,8 +105,7 @@ class NotificationOrchestrator {
       where: {
         userId,
         type,
-        relatedEntityType: dedupe.relatedEntityType,
-        relatedEntityId: dedupe.relatedEntityId
+        [models.Sequelize.Op.or]: candidates
       },
       attributes: ['id']
     });

@@ -55,7 +55,7 @@ class NotificationScheduler {
           emailSubject: 'Pathment: Task deadline approaching'
         },
         dedupe: {
-          relatedEntityType: 'task_deadline_approaching',
+          relatedEntityType: 'assigned_task',
           relatedEntityId: task.id
         }
       });
@@ -95,7 +95,7 @@ class NotificationScheduler {
           email: false
         },
         dedupe: {
-          relatedEntityType: 'task_deadline_passed',
+          relatedEntityType: 'assigned_task',
           relatedEntityId: task.id
         }
       });
@@ -114,7 +114,7 @@ class NotificationScheduler {
           emailSubject: 'Pathment: Submission deadline passed'
         },
         dedupe: {
-          relatedEntityType: 'task_deadline_passed',
+          relatedEntityType: 'assigned_task',
           relatedEntityId: task.id
         }
       });
