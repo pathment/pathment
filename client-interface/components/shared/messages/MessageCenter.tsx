@@ -300,7 +300,7 @@ export default function MessageCenter({ role }: MessageCenterProps) {
         <div>
           <h1 className="text-slate-900 mb-1">Messages</h1>
           <p className="text-slate-600 text-sm capitalize">
-            Realtime chat for {role}, mentors, and mentees
+            Realtime chat for {role}
           </p>
         </div>
         <div className="flex items-center gap-2">
