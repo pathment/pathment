@@ -3,6 +3,7 @@
  * Run this script: node scripts/seedSkills.js
  */
 
+require('dotenv').config();
 const { models, sequelize } = require('../src/db');
 
 const skillsData = [

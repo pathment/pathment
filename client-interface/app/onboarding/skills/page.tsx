@@ -23,50 +23,88 @@ export default function SkillsOnboardingPage() {
   const router = useRouter();
   const { user, updateUser } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [skills, setSkills] = useState<Skill[]>([]);
   const [selectedSkills, setSelectedSkills] = useState<UserSkill[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [categories, setCategories] = useState<string[]>([]);
+  const [error, setError] = useState<string>('');
 
   useEffect(() => {
-    fetchSkills();
-    fetchCategories();
+    loadData();
   }, []);
+
+  const loadData = async () => {
+    setInitialLoading(true);
+    setError('');
+    try {
+      await Promise.all([fetchSkills(), fetchCategories()]);
+    } catch (err) {
+      setError('Failed to load skills data. Please refresh the page or try again later.');
+    } finally {
+      setInitialLoading(false);
+    }
+  };
 
   const fetchSkills = async () => {
     try {
       const token = localStorage.getItem('token');
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/skills`, {
         headers: {
           Authorization: `Bearer ${token}`
         }
       });
 
-      const data = await response.json();
-      if (data.success) {
-        setSkills(data.data);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch skills (${response.status})`);
       }
-    } catch (error) {
+
+      const data = await response.json();
+      if (data.success && Array.isArray(data.data)) {
+        setSkills(data.data);
+      } else {
+        throw new Error('Invalid response format from skills API');
+      }
+    } catch (error: any) {
+      console.error('Error fetching skills:', error);
       toast.error('Failed to load skills');
+      throw error;
     }
   };
 
   const fetchCategories = async () => {
     try {
       const token = localStorage.getItem('token');
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/skills/categories`, {
         headers: {
           Authorization: `Bearer ${token}`
         }
       });
 
+      if (!response.ok) {
+        console.error('Failed to fetch categories, using defaults');
+        setCategories(['all']);
+        return;
+      }
+
       const data = await response.json();
-      if (data.success) {
+      if (data.success && Array.isArray(data.data)) {
         setCategories(['all', ...data.data]);
+      } else {
+        setCategories(['all']);
       }
     } catch (error) {
-      console.error('Failed to load categories');
+      console.error('Error fetching categories:', error);
+      setCategories(['all']);
     }
   };
 
@@ -186,6 +224,66 @@ export default function SkillsOnboardingPage() {
           </div>
         </div>
 
+        {/* Initial Loading State */}
+        {initialLoading && (
+          <div className="bg-white rounded-2xl shadow-lg border border-slate-100 p-12 text-center">
+            <Loader2 className="w-12 h-12 text-indigo-600 animate-spin mx-auto mb-4" />
+            <p className="text-slate-600">Loading skills...</p>
+          </div>
+        )}
+
+        {/* Error State */}
+        {!initialLoading && error && (
+          <div className="bg-white rounded-2xl shadow-lg border border-red-200 p-8">
+            <div className="text-center mb-6">
+              <div className="inline-flex items-center justify-center w-16 h-16 bg-red-100 rounded-full mb-4">
+                <span className="text-3xl">⚠️</span>
+              </div>
+              <h3 className="text-xl font-semibold text-red-900 mb-2">Unable to Load Skills</h3>
+              <p className="text-slate-600">{error}</p>
+            </div>
+            <div className="flex gap-4 justify-center">
+              <button
+                onClick={loadData}
+                className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition-colors flex items-center gap-2"
+              >
+                <span>Try Again</span>
+              </button>
+              <button
+                onClick={handleSkip}
+                className="px-6 py-3 bg-white border-2 border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50 transition-colors"
+              >
+                Skip for Now
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Empty Skills State */}
+        {!initialLoading && !error && skills.length === 0 && (
+          <div className="bg-white rounded-2xl shadow-lg border border-amber-200 p-8">
+            <div className="text-center mb-6">
+              <div className="inline-flex items-center justify-center w-16 h-16 bg-amber-100 rounded-full mb-4">
+                <span className="text-3xl">📚</span>
+              </div>
+              <h3 className="text-xl font-semibold text-amber-900 mb-2">No Skills Available</h3>
+              <p className="text-slate-600 mb-1">The skills database is empty.</p>
+              <p className="text-sm text-slate-500">Please contact your administrator to seed the skills database.</p>
+            </div>
+            <div className="flex gap-4 justify-center">
+              <button
+                onClick={handleSkip}
+                className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition-colors"
+              >
+                Continue to Dashboard
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Main Content - Only show when data is loaded and no errors */}
+        {!initialLoading && !error && skills.length > 0 && (
+          <>
         {/* Selected Skills Summary */}
         {selectedSkills.length > 0 && (
           <div className="bg-white rounded-2xl shadow-lg border border-slate-100 p-6 mb-6">
@@ -320,6 +418,8 @@ export default function SkillsOnboardingPage() {
             )}
           </button>
         </div>
+        </>
+        )}
       </div>
     </div>
   );
