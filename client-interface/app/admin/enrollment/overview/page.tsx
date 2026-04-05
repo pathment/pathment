@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useState } from 'react';
 import {
   Download,
@@ -27,6 +26,127 @@ import { enrollmentApi } from '@/lib/services/enrollment-api';
 import { toast } from 'sonner';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+// Convert enrollment data to CSV
+const convertToCSV = (data: Enrollment[]): string => {
+  if (data.length === 0) return '';
+
+  // Define CSV headers
+  const headers = [
+    'Enrollment ID',
+    'Mentee ID',
+    'Mentee Name',
+    'Mentee Email',
+    'Mentor ID',
+    'Mentor Name',
+    'Mentor Email',
+    'Match Status',
+    'Program ID',
+    'Program Name',
+    'Program Type',
+    'Program Status',
+    'Current Level ID',
+    'Current Level Name',
+    'Level Duration (Weeks)',
+    'Enrollment Status',
+    'Current Week',
+    'Tasks Completed',
+    'Total Tasks',
+    'Progress (%)',
+    'Enrolled Date',
+    'Completion Requested Date',
+    'Completion Requested By',
+    'Completion Rejection Reason',
+  ];
+
+  // Convert data rows
+  const rows = data.map((enrollment) => {
+    const match = enrollment.matches?.[0];
+    const mentor = match?.mentor;
+    const mentorId = mentor?.id || '';
+    const mentorName = mentor ? `${mentor.firstName} ${mentor.lastName}`.trim() : 'Not assigned';
+    const mentorEmail = mentor?.email || 'N/A';
+    const matchStatus = match?.status || 'No match';
+    
+    const completionRequested = enrollment.completionRequestedAt
+      ? new Date(enrollment.completionRequestedAt).toLocaleDateString('en-US', { 
+          year: 'numeric', 
+          month: '2-digit', 
+          day: '2-digit' 
+        })
+      : 'N/A';
+
+    const enrolledDate = enrollment.enrolledAt 
+      ? new Date(enrollment.enrolledAt).toLocaleDateString('en-US', { 
+          year: 'numeric', 
+          month: '2-digit', 
+          day: '2-digit' 
+        })
+      : 'N/A';
+
+    return [
+      enrollment.id || '',
+      enrollment.menteeId || '',
+      `${enrollment.mentee?.firstName || ''} ${enrollment.mentee?.lastName || ''}`.trim() || 'N/A',
+      enrollment.mentee?.email || 'N/A',
+      mentorId,
+      mentorName,
+      mentorEmail,
+      matchStatus,
+      enrollment.programId || '',
+      enrollment.program?.name || 'N/A',
+      enrollment.program?.type || 'N/A',
+      enrollment.program?.status || 'N/A',
+      enrollment.currentLevelId || '',
+      enrollment.currentLevel?.name || 'N/A',
+      enrollment.currentLevel?.durationWeeks?.toString() || 'N/A',
+      enrollment.status || 'N/A',
+      enrollment.currentWeek?.toString() || '0',
+      enrollment.tasksCompleted?.toString() || '0',
+      enrollment.tasksTotal?.toString() || '0',
+      parseFloat(enrollment.overallProgressPercentage || '0').toFixed(2),
+      enrolledDate,
+      completionRequested,
+      enrollment.completionRequestedByRole || 'N/A',
+      enrollment.completionRejectionReason || 'N/A',
+    ];
+  });
+
+  // Escape CSV fields that contain commas or quotes
+  const escapeCSVField = (field: string): string => {
+    if (field.includes(',') || field.includes('"') || field.includes('\n')) {
+      return `"${field.replace(/"/g, '""')}"`;
+    }
+    return field;
+  };
+
+  // Build CSV string
+  const csvContent = [
+    headers.map(escapeCSVField).join(','),
+    ...rows.map((row) => row.map(String).map(escapeCSVField).join(',')),
+  ].join('\n');
+
+  return csvContent;
+};
+
+// Download CSV file
+const downloadCSV = (content: string, filename: string) => {
+  // Add UTF-8 BOM for Excel compatibility
+  const BOM = '\uFEFF';
+  const blob = new Blob([BOM + content], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  const url = URL.createObjectURL(blob);
+  
+  link.setAttribute('href', url);
+  link.setAttribute('download', filename);
+  link.style.visibility = 'hidden';
+  
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  
+  URL.revokeObjectURL(url);
+};
 
 // ─── Column definitions ───────────────────────────────────────────────────────
 
@@ -119,6 +239,46 @@ export default function EnrollmentOverviewPage() {
   } = useEnrollmentList();
 
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [exportLoading, setExportLoading] = useState(false);
+
+  const handleExportCSV = async () => {
+    try {
+      setExportLoading(true);
+      toast.info('Fetching enrollment data...');
+
+      // Fetch all enrollments without pagination
+      const response = await enrollmentApi.getAll({
+        limit: 10000, // Large limit to get all records
+        ...(status !== 'all' && { status }),
+        ...(search && { search }),
+      });
+
+      const allEnrollments: Enrollment[] = response?.data?.enrollments ?? [];
+
+      if (allEnrollments.length === 0) {
+        toast.warning('No enrollments to export');
+        return;
+      }
+
+      // Convert to CSV
+      const csvContent = convertToCSV(allEnrollments);
+
+      // Generate filename with timestamp
+      const timestamp = new Date().toISOString().split('T')[0];
+      const statusSuffix = status !== 'all' ? `_${status}` : '';
+      const filename = `enrollments${statusSuffix}_${timestamp}.csv`;
+
+      // Download
+      downloadCSV(csvContent, filename);
+
+      toast.success(`Successfully exported ${allEnrollments.length} enrollment(s) with 24 data columns`);
+    } catch (err: any) {
+      console.error('Export error:', err);
+      toast.error(err?.response?.data?.message || 'Failed to export CSV');
+    } finally {
+      setExportLoading(false);
+    }
+  };
 
   const handleApproveCompletion = async (enrollmentId: string) => {
     try {
@@ -204,9 +364,22 @@ export default function EnrollmentOverviewPage() {
         backHref="/admin/dashboard"
         backLabel="Back to Dashboard"
         actions={
-          <button className="inline-flex items-center gap-2 px-4 py-2.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl transition-colors text-sm font-medium">
-            <Download className="w-4 h-4" />
-            Export CSV
+          <button 
+            onClick={handleExportCSV}
+            disabled={exportLoading || isLoading}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {exportLoading ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Exporting...
+              </>
+            ) : (
+              <>
+                <Download className="w-4 h-4" />
+                Export CSV
+              </>
+            )}
           </button>
         }
       />
