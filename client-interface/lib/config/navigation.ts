@@ -7,6 +7,7 @@ import {
   Trophy,
   MessageSquare,
   Bell,
+  UserPlus,
   Settings,
   type LucideIcon
 } from 'lucide-react';
@@ -25,6 +26,7 @@ export const navigationConfig = {
     { path: '/admin/programs/list', icon: BookOpen, label: 'Programs' },
     { path: '/admin/matching/mentor-assignment', icon: UserCheck, label: 'Mentors' },
     { path: '/admin/enrollment/overview', icon: Users, label: 'Enrollments' },
+    { path: '/admin/invites', icon: UserPlus, label: 'Invites' },
     { path: '/admin/messages', icon: MessageSquare, label: 'Messages', hasBadge: true },
     { path: '/admin/notifications', icon: Bell, label: 'Notifications' },
     { path: '/admin/settings', icon: Settings, label: 'Settings' },

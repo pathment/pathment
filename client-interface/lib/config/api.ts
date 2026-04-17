@@ -13,6 +13,7 @@ export const apiConfig = {
     logout: '/auth/logout',
     me: '/auth/me',
     verify2FALogin: '/auth/verify-2fa-login',
+    validateInvite: (token: string) => `/auth/invites/${encodeURIComponent(token)}`,
     
     // Profile
     profile: '/profile',
@@ -47,5 +48,9 @@ export const apiConfig = {
     
     // Mentors
     mentors: '/mentors',
+
+    // Admin invites
+    adminInvites: '/admin/invites',
+    revokeAdminInvite: (id: string) => `/admin/invites/${id}/revoke`,
   },
 };

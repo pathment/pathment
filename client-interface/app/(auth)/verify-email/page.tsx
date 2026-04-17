@@ -1,14 +1,29 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Mail, CheckCircle2, XCircle, RotateCw, ArrowRight } from 'lucide-react';
+import { toast } from 'sonner';
+import { apiClient } from '@/lib/services/api-client';
+import { apiConfig } from '@/lib/config/api';
 
 export default function VerifyEmailPage() {
   const router = useRouter();
-  const [status, setStatus] = useState<'pending' | 'success' | 'failed'>('pending');
-  const [code, setCode] = useState(['', '', '', '', '', '']);
+  const searchParams = useSearchParams();
+  const [status, setStatus] = useState<'pending' | 'verifying' | 'success' | 'failed'>('pending');
+  const [email, setEmail] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
+  const [resending, setResending] = useState(false);
   const [resendCountdown, setResendCountdown] = useState(60);
+
+  const token = searchParams.get('token') || '';
+
+  useEffect(() => {
+    const emailFromQuery = searchParams.get('email') || '';
+    if (emailFromQuery) {
+      setEmail(emailFromQuery);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (resendCountdown > 0) {
@@ -17,45 +32,46 @@ export default function VerifyEmailPage() {
     }
   }, [resendCountdown]);
 
-  const handleCodeChange = (index: number, value: string) => {
-    if (value.length > 1) return;
-    
-    const newCode = [...code];
-    newCode[index] = value;
-    setCode(newCode);
-
-    // Auto-focus next input
-    if (value && index < 5) {
-      const nextInput = document.getElementById(`code-${index + 1}`);
-      nextInput?.focus();
+  useEffect(() => {
+    if (!token) {
+      return;
     }
 
-    // Auto-verify when all filled
-    if (newCode.every(digit => digit) && newCode.join('').length === 6) {
-      setTimeout(() => verifyCode(newCode.join('')), 300);
-    }
-  };
-
-  const verifyCode = async (enteredCode: string) => {
-    // Simulate verification
-    setTimeout(() => {
-      if (enteredCode === '123456') {
+    const verifyToken = async () => {
+      try {
+        setStatus('verifying');
+        setErrorMessage('');
+        await apiClient.post(apiConfig.endpoints.verifyEmail, { token });
         setStatus('success');
-        setTimeout(() => router.push('/login'), 2000);
-      } else {
+        toast.success('Email verified successfully');
+        setTimeout(() => router.push('/login'), 1800);
+      } catch (error: any) {
         setStatus('failed');
-        setTimeout(() => {
-          setStatus('pending');
-          setCode(['', '', '', '', '', '']);
-        }, 3000);
+        setErrorMessage(error?.response?.data?.message || 'Verification link is invalid or expired');
       }
-    }, 800);
-  };
+    };
 
-  const handleResend = () => {
-    setResendCountdown(60);
-    setCode(['', '', '', '', '', '']);
-    setStatus('pending');
+    verifyToken();
+  }, [token, router]);
+
+  const handleResend = async () => {
+    if (!email) {
+      toast.error('Email is required to resend verification');
+      return;
+    }
+
+    try {
+      setResending(true);
+      await apiClient.post(apiConfig.endpoints.resendVerification, { email });
+      setResendCountdown(60);
+      setStatus('pending');
+      setErrorMessage('');
+      toast.success('Verification email sent');
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || 'Failed to resend verification email');
+    } finally {
+      setResending(false);
+    }
   };
 
   return (
@@ -76,6 +92,11 @@ export default function VerifyEmailPage() {
               <Mail className="w-10 h-10 text-indigo-600" />
             </div>
           )}
+          {status === 'verifying' && (
+            <div className="w-20 h-20 bg-indigo-100 rounded-full flex items-center justify-center">
+              <RotateCw className="w-10 h-10 text-indigo-600 animate-spin" />
+            </div>
+          )}
           {status === 'success' && (
             <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center">
               <CheckCircle2 className="w-10 h-10 text-green-600" />
@@ -94,9 +115,15 @@ export default function VerifyEmailPage() {
             <>
               <h2 className="text-slate-900 mb-2">Check your email</h2>
               <p className="text-slate-600">
-                We&apos;ve sent a 6-digit verification code to<br />
-                <span className="text-slate-900">john.doe@example.com</span>
+                We&apos;ve sent a verification link to<br />
+                <span className="text-slate-900">{email || 'your email address'}</span>
               </p>
+            </>
+          )}
+          {status === 'verifying' && (
+            <>
+              <h2 className="text-slate-900 mb-2">Verifying your email...</h2>
+              <p className="text-slate-600">Please wait while we confirm your verification link.</p>
             </>
           )}
           {status === 'success' && (
@@ -112,53 +139,41 @@ export default function VerifyEmailPage() {
             <>
               <h2 className="text-red-900 mb-2">Verification failed</h2>
               <p className="text-red-700">
-                The code you entered is incorrect.<br />
-                Please try again.
+                {errorMessage || 'The verification link is invalid or expired.'}
               </p>
             </>
           )}
         </div>
 
         {/* Code Input */}
-        {status !== 'success' && (
+        {status !== 'success' && status !== 'verifying' && (
           <>
-            <div className="flex gap-3 justify-center mb-6">
-              {code.map((digit, index) => (
-                <input
-                  key={index}
-                  id={`code-${index}`}
-                  type="text"
-                  maxLength={1}
-                  value={digit}
-                  onChange={(e) => handleCodeChange(index, e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Backspace' && !digit && index > 0) {
-                      const prevInput = document.getElementById(`code-${index - 1}`);
-                      prevInput?.focus();
-                    }
-                  }}
-                  className={`w-12 h-14 text-center text-lg border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors ${
-                    status === 'failed'
-                      ? 'border-red-300 bg-red-50'
-                      : 'border-slate-200 focus:border-transparent'
-                  }`}
-                />
-              ))}
+            <div className="mb-6">
+              <label className="block text-slate-700 text-sm mb-2">Email address</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
             </div>
 
             {/* Resend */}
             <div className="text-center">
               {resendCountdown > 0 ? (
                 <p className="text-slate-600 text-sm">
-                  Resend code in <span className="text-indigo-600">{resendCountdown}s</span>
+                  Resend verification email in <span className="text-indigo-600">{resendCountdown}s</span>
                 </p>
               ) : (
                 <button
+                  type="button"
                   onClick={handleResend}
-                  className="text-indigo-600 hover:text-indigo-700 text-sm inline-flex items-center gap-2"
+                  disabled={resending}
+                  className="text-indigo-600 hover:text-indigo-700 disabled:text-indigo-300 text-sm inline-flex items-center gap-2"
                 >
-                  <RotateCw className="w-4 h-4" />
-                  Resend verification code
+                  <RotateCw className={`w-4 h-4 ${resending ? 'animate-spin' : ''}`} />
+                  Resend verification email
                 </button>
               )}
             </div>
@@ -179,7 +194,7 @@ export default function VerifyEmailPage() {
 
       {/* Help Text */}
       <p className="text-center text-slate-500 text-sm">
-        Use code <span className="text-slate-700">123456</span> for demo purposes
+        Open the verification link from your inbox. If it expires, request a new one.
       </p>
     </div>
   );

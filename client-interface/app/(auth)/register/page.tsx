@@ -1,26 +1,40 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/context/AuthContext';
 import { Mail, Lock, User, ArrowRight, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { apiClient } from '@/lib/services/api-client';
+import { apiConfig } from '@/lib/config/api';
+
+type InviteDetails = {
+  id: string;
+  email: string;
+  role: 'mentor' | 'mentee';
+  expiresAt: string;
+};
 
 export default function RegisterPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { register, user, isLoading } = useAuth();
   const [formData, setFormData] = useState({
     email: '',
     password: '',
     confirmPassword: '',
-    role: 'mentee' as 'mentor' | 'mentee',
     firstName: '',
     lastName: ''
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showSuccess, setShowSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [inviteLoading, setInviteLoading] = useState(true);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [inviteDetails, setInviteDetails] = useState<InviteDetails | null>(null);
+
+  const inviteToken = searchParams.get('invite')?.trim() || '';
 
   // Redirect if already logged in
   useEffect(() => {
@@ -30,8 +44,41 @@ export default function RegisterPage() {
     }
   }, [user, isLoading, router]);
 
+  // Validate invite token before allowing registration
+  useEffect(() => {
+    if (!inviteToken) {
+      setInviteLoading(false);
+      setInviteError('An invite link is required to create an account.');
+      return;
+    }
+
+    const validateInvite = async () => {
+      try {
+        setInviteLoading(true);
+        setInviteError(null);
+
+        const response = await apiClient.get<any>(apiConfig.endpoints.validateInvite(inviteToken));
+        const invite = response?.data?.invite || response?.invite;
+
+        if (!invite || !invite.role || !invite.email) {
+          throw new Error('Invalid invite response');
+        }
+
+        setInviteDetails(invite);
+        setFormData((prev) => ({ ...prev, email: invite.email }));
+      } catch (error: any) {
+        const message = error?.response?.data?.message || 'This invite is invalid or expired.';
+        setInviteError(message);
+      } finally {
+        setInviteLoading(false);
+      }
+    };
+
+    validateInvite();
+  }, [inviteToken]);
+
   // Show loading while checking auth
-  if (isLoading) {
+  if (isLoading || inviteLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -48,6 +95,16 @@ export default function RegisterPage() {
     e.preventDefault();
     const newErrors: Record<string, string> = {};
 
+    if (!inviteToken) {
+      newErrors.general = 'A valid invite link is required to register.';
+    }
+    if (inviteError) {
+      newErrors.general = inviteError;
+    }
+    if (!inviteDetails) {
+      newErrors.general = 'Invite details could not be loaded.';
+    }
+
     if (!formData.firstName) newErrors.firstName = 'First name is required';
     if (!formData.lastName) newErrors.lastName = 'Last name is required';
     if (!formData.email) newErrors.email = 'Email is required';
@@ -63,10 +120,17 @@ export default function RegisterPage() {
 
     setLoading(true);
     try {
-      await register(formData);
+      await register({
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        email: formData.email,
+        password: formData.password,
+        confirmPassword: formData.confirmPassword,
+        inviteToken
+      });
       setShowSuccess(true);
       toast.success('Account created! Please verify your email.');
-      setTimeout(() => router.push('/verify-email'), 1500);
+      setTimeout(() => router.push(`/verify-email?email=${encodeURIComponent(formData.email)}`), 1500);
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Registration failed');
       setErrors({ general: err.response?.data?.message || 'Registration failed' });
@@ -83,11 +147,30 @@ export default function RegisterPage() {
           <span className="text-white text-2xl">P</span>
         </div>
         <h1 className="text-indigo-900 mb-2">Create your Pathment account</h1>
-        <p className="text-slate-600">Start your mentorship journey today</p>
+        <p className="text-slate-600">Invite-only signup for approved users</p>
       </div>
 
       {/* Registration Form */}
       <div className="bg-white rounded-2xl shadow-xl shadow-slate-200/50 p-8 border border-slate-100">
+        {inviteError && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-red-900">Invite required</p>
+              <p className="text-red-700 text-sm mt-1">{inviteError}</p>
+            </div>
+          </div>
+        )}
+
+        {!inviteError && inviteDetails && (
+          <div className="mb-6 p-4 bg-indigo-50 border border-indigo-200 rounded-xl">
+            <p className="text-indigo-900 text-sm">
+              You are invited as <span className="font-semibold capitalize">{inviteDetails.role}</span>
+            </p>
+            <p className="text-indigo-700 text-sm mt-1">Invite email: {inviteDetails.email}</p>
+          </div>
+        )}
+
         {showSuccess && (
           <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-xl flex items-start gap-3">
             <CheckCircle2 className="w-5 h-5 text-green-600 shrink-0 mt-0.5" />
@@ -151,6 +234,7 @@ export default function RegisterPage() {
                 type="email"
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  disabled={!!inviteDetails?.email}
                 className={`w-full pl-11 pr-4 py-3 border ${errors.email ? 'border-red-300' : 'border-slate-200'} rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent`}
                 placeholder="you@example.com"
               />
@@ -205,31 +289,10 @@ export default function RegisterPage() {
             )}
           </div>
 
-          {/* Role Selection */}
-          <div>
-            <label className="block text-slate-700 text-sm mb-3">I want to join as</label>
-            <div className="grid grid-cols-2 gap-3">
-              {(['mentee', 'mentor'] as const).map((role) => (
-                <button
-                  key={role}
-                  type="button"
-                  onClick={() => setFormData({ ...formData, role })}
-                  className={`p-3 rounded-xl border-2 transition-all ${
-                    formData.role === role
-                      ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
-                      : 'border-slate-200 hover:border-slate-300 text-slate-700'
-                  }`}
-                >
-                  <div className="capitalize">{role}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-
           {/* Submit Button */}
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || !!inviteError}
             className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white py-3 rounded-xl transition-colors flex items-center justify-center gap-2 group"
           >
             {loading ? (

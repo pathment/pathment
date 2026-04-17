@@ -28,10 +28,12 @@ export interface LoginCredentials {
 }
 
 export interface RegisterData {
+  firstName: string;
+  lastName: string;
   email: string;
   password: string;
   confirmPassword: string;
-  role: UserRole;
+  inviteToken: string;
 }
 
 export interface tokens {
