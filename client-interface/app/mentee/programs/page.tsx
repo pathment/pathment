@@ -36,7 +36,6 @@ export default function MenteeProgramsPage() {
             options: [
               { value: 'all', label: 'All Programs' },
               { value: 'published', label: 'Published' },
-              { value: 'draft', label: 'Draft' },
             ],
           },
         ]}

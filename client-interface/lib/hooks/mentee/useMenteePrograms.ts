@@ -33,7 +33,7 @@ export function useMenteePrograms(): UseMenteeProgramsReturn {
         : Array.isArray(response)
         ? response
         : [];
-      setPrograms(list);
+      setPrograms(list.filter((program) => program?.status !== 'draft'));
     } catch (err: any) {
       console.error('Failed to fetch programs:', err);
       toast.error('Failed to load programs');
