@@ -61,6 +61,7 @@
 
 | Component | URL Pattern | Example |
 |-----------|------------|---------|
+| Marketing Site | `https://pathment.me` | `https://pathment.me` |
 | Frontend  | `https://<company>.pathment.me` | `https://acme.pathment.me` |
 | Backend API | `https://api-<company>.pathment.me/api` | `https://api-acme.pathment.me/api` |
 | WebSocket | `https://api-<company>.pathment.me/socket.io` | `https://api-acme.pathment.me/socket.io` |

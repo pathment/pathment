@@ -28,12 +28,13 @@ Pathment enables organizations to:
 
 ## 🏗️ Architecture
 
-Pathment is built as a monorepo with two main applications:
+Pathment is built as a monorepo with three main applications:
 
 ```
 pathment/
+├── marketing-site/      # Public marketing website (Next.js)
 ├── server/              # Backend API (Node.js + Express + PostgreSQL)
-└── client-interface/    # Frontend Web App (Next.js 14 + React + TypeScript)
+└── client-interface/    # Tenant frontend app (Next.js + React + TypeScript)
 ```
 
 ### High-Level Architecture
