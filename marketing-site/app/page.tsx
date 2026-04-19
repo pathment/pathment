@@ -59,6 +59,60 @@ const outcomes = [
   },
 ];
 
+const operatingModel = [
+  {
+    stage: '1. Design Program Architecture',
+    detail:
+      'Define role-level outcomes, milestones, and practical assignments tied to business goals.',
+  },
+  {
+    stage: '2. Match and Activate Mentorship',
+    detail:
+      'Pair mentors and learners intelligently using skill alignment, availability, and context fit.',
+  },
+  {
+    stage: '3. Execute, Review, and Improve',
+    detail:
+      'Run task cycles with feedback, then track completion quality, momentum, and capability lift.',
+  },
+];
+
+const roleValue = [
+  {
+    role: 'For Program Leaders',
+    detail:
+      'Launch repeatable mentorship systems across teams and monitor outcomes from a single command view.',
+  },
+  {
+    role: 'For Mentors',
+    detail:
+      'Deliver structured coaching with clear expectations, submission context, and feedback workflows.',
+  },
+  {
+    role: 'For Learners',
+    detail:
+      'Follow clear roadmaps, submit practical work, and see real progress toward role advancement.',
+  },
+];
+
+const faqs = [
+  {
+    question: 'Can we run Pathment as an isolated tenant?',
+    answer:
+      'Yes. Pathment supports isolated tenant deployments with dedicated backend and database patterns for strict separation.',
+  },
+  {
+    question: 'How quickly can we launch a pilot?',
+    answer:
+      'Most teams can launch an initial pilot in days once the first mentorship program and mentor pool are defined.',
+  },
+  {
+    question: 'Which industries are best suited?',
+    answer:
+      'Pathment is strongest where capability transfer is operationally critical, including technical, field, and leadership teams.',
+  },
+];
+
 export default function HomePage() {
   return (
     <main className="landing-shell">
@@ -71,8 +125,10 @@ export default function HomePage() {
         </a>
         <nav className="nav-links" aria-label="Primary">
           <a href="#why">Why Pathment</a>
+          <a href="#model">How It Works</a>
           <a href="#industries">Industries</a>
           <a href="#platform">Platform</a>
+          <a href="#roles">Roles</a>
           <a href="#trust">Trust</a>
         </nav>
         <a className="btn btn-ghost" href="mailto:hello@pathment.me">
@@ -90,6 +146,12 @@ export default function HomePage() {
           match people intelligently, and prove learning outcomes with measurable
           performance data.
         </p>
+        <div className="proof-strip" aria-label="Key platform signals">
+          <p>Single-tenant deployment readiness</p>
+          <p>Role-based mentorship operations</p>
+          <p>Analytics for completion and quality</p>
+          <p>AI-assisted roadmap progression</p>
+        </div>
         <div className="hero-actions">
           <a className="btn btn-solid" href="mailto:hello@pathment.me?subject=Pathment%20Demo%20Request">
             Book Demo
@@ -111,6 +173,21 @@ export default function HomePage() {
             <h2>Leadership Visibility</h2>
             <p>Admins monitor completion, momentum, and mentor effectiveness.</p>
           </article>
+        </div>
+      </section>
+
+      <section id="model" className="section-block">
+        <div>
+          <p className="section-kicker">Operating Model</p>
+          <h2>A practical system for turning expertise into team capability.</h2>
+        </div>
+        <div className="model-grid">
+          {operatingModel.map((item) => (
+            <article key={item.stage} className="surface-card">
+              <h3>{item.stage}</h3>
+              <p>{item.detail}</p>
+            </article>
+          ))}
         </div>
       </section>
 
@@ -156,6 +233,21 @@ export default function HomePage() {
         </ul>
       </section>
 
+      <section id="roles" className="section-block">
+        <div>
+          <p className="section-kicker">Role Experience</p>
+          <h2>Designed for each stakeholder in the mentorship lifecycle.</h2>
+        </div>
+        <div className="role-grid">
+          {roleValue.map((item) => (
+            <article key={item.role} className="surface-card">
+              <h3>{item.role}</h3>
+              <p>{item.detail}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
       <section id="trust" className="section-block">
         <div>
           <p className="section-kicker">Deployment and Trust</p>
@@ -171,6 +263,21 @@ export default function HomePage() {
         </div>
       </section>
 
+      <section className="section-block faq-block">
+        <div>
+          <p className="section-kicker">FAQ</p>
+          <h2>Answers for teams evaluating Pathment right now.</h2>
+        </div>
+        <div className="faq-grid">
+          {faqs.map((item) => (
+            <article key={item.question} className="surface-card">
+              <h3>{item.question}</h3>
+              <p>{item.answer}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
       <section className="closing-cta">
         <p className="section-kicker">Launch Pathment</p>
         <h2>
@@ -179,6 +286,9 @@ export default function HomePage() {
         <p>
           Start with one industry team, validate outcomes, then scale across your
           organization with confidence.
+        </p>
+        <p className="closing-subcopy">
+          Typical next step: a focused architecture and pilot-planning call.
         </p>
         <div className="hero-actions">
           <a className="btn btn-solid" href="mailto:hello@pathment.me?subject=Start%20Pathment%20Pilot">
