@@ -139,13 +139,13 @@ export function useProgramDetail(): UseProgramDetailReturn {
           ?? (response as { data?: { levels?: ProgramLevel[] }; levels?: ProgramLevel[] })?.levels
           ?? [];
       setLevels(list);
-      if (list.length > 0 && !selectedLevelId) {
-        setSelectedLevelId(list[0].id);
+      if (list.length > 0) {
+        setSelectedLevelId((prev) => prev || list[0].id);
       }
     } catch (err: unknown) {
       console.error('Failed to fetch levels:', err);
     }
-  }, [id, selectedLevelId]);
+  }, [id]);
 
   const fetchMentorAssignments = useCallback(async () => {
     if (!id) return;
