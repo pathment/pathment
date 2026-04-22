@@ -130,8 +130,8 @@ export default function RegisterPage() {
         inviteToken
       });
       setShowSuccess(true);
-      toast.success('Account created! Please verify your email.');
-      setTimeout(() => router.push(`/verify-email?email=${encodeURIComponent(formData.email)}`), 1500);
+      toast.success('Account created! You can now log in.');
+      setTimeout(() => router.push('/login'), 1500);
     } catch (err: any) {
       const message = extractApiErrorMessage(err, 'Registration failed');
       toast.error(message);
@@ -178,7 +178,7 @@ export default function RegisterPage() {
             <CheckCircle2 className="w-5 h-5 text-green-600 shrink-0 mt-0.5" />
             <div>
               <p className="text-green-900">Account created successfully!</p>
-              <p className="text-green-700 text-sm mt-1">Redirecting to email verification...</p>
+              <p className="text-green-700 text-sm mt-1">Redirecting to login...</p>
             </div>
           </div>
         )}
