@@ -1,31 +1,74 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Mail, Lock, ArrowRight, CheckCircle2, ArrowLeft } from 'lucide-react';
+import { Mail, Lock, ArrowRight, CheckCircle2, ArrowLeft, Loader2 } from 'lucide-react';
+import { apiClient } from '@/lib/services/api-client';
+import { apiConfig } from '@/lib/config/api';
 
 export default function ResetPasswordPage() {
   const router = useRouter();
-  const [step, setStep] = useState<'email' | 'code' | 'password' | 'success'>('email');
+  const searchParams = useSearchParams();
+  const [step, setStep] = useState<'email' | 'sent' | 'password' | 'success'>('email');
   const [email, setEmail] = useState('');
-  const [code, setCode] = useState('');
+  const [token, setToken] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleEmailSubmit = (e: React.FormEvent) => {
+  // If the user arrives via the email link (?token=...), jump straight to password step
+  useEffect(() => {
+    const t = searchParams.get('token');
+    if (t) {
+      setToken(t);
+      setStep('password');
+    }
+  }, [searchParams]);
+
+  const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setStep('code');
+    setError('');
+    setLoading(true);
+    try {
+      await apiClient.post(apiConfig.endpoints.forgotPassword, { email });
+      setStep('sent');
+    } catch (err: any) {
+      setError(
+        err?.response?.data?.message ||
+        err?.message ||
+        'Failed to send reset email. Please try again.'
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleCodeSubmit = (e: React.FormEvent) => {
+  const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setStep('password');
-  };
-
-  const handlePasswordSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setStep('success');
+    setError('');
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.');
+      return;
+    }
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters.');
+      return;
+    }
+    setLoading(true);
+    try {
+      await apiClient.post(apiConfig.endpoints.resetPassword, { token, password, confirmPassword });
+      setStep('success');
+    } catch (err: any) {
+      setError(
+        err?.response?.data?.message ||
+        err?.message ||
+        'Failed to reset password. The link may have expired.'
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -37,13 +80,13 @@ export default function ResetPasswordPage() {
         </div>
         <h1 className="text-indigo-900 mb-2">
           {step === 'email' && 'Reset your password'}
-          {step === 'code' && 'Enter verification code'}
+          {step === 'sent' && 'Check your email'}
           {step === 'password' && 'Create new password'}
           {step === 'success' && 'Password reset successful'}
         </h1>
         <p className="text-slate-600">
-          {step === 'email' && 'Enter your email to receive a reset code'}
-          {step === 'code' && 'Check your email for the verification code'}
+          {step === 'email' && 'Enter your email to receive a reset link'}
+          {step === 'sent' && `A reset link has been sent to ${email}`}
           {step === 'password' && 'Choose a strong password'}
           {step === 'success' && 'Your password has been updated'}
         </p>
@@ -51,6 +94,14 @@ export default function ResetPasswordPage() {
 
       {/* Reset Card */}
       <div className="bg-white rounded-2xl shadow-xl shadow-slate-200/50 p-8 border border-slate-100">
+
+        {/* Error banner */}
+        {error && (
+          <div className="mb-5 p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
+            {error}
+          </div>
+        )}
+
         {/* Email Step */}
         {step === 'email' && (
           <form onSubmit={handleEmailSubmit} className="space-y-5">
@@ -65,57 +116,46 @@ export default function ResetPasswordPage() {
                   className="w-full pl-11 pr-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                   placeholder="you@example.com"
                   required
+                  disabled={loading}
                 />
               </div>
             </div>
 
             <button
               type="submit"
-              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl transition-colors flex items-center justify-center gap-2 group"
+              disabled={loading}
+              className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed text-white py-3 rounded-xl transition-colors flex items-center justify-center gap-2 group"
             >
-              Send Reset Code
-              <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+              {loading ? (
+                <><Loader2 className="w-5 h-5 animate-spin" /> Sending...</>
+              ) : (
+                <>Send Reset Link <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" /></>
+              )}
             </button>
           </form>
         )}
 
-        {/* Code Verification Step */}
-        {step === 'code' && (
-          <form onSubmit={handleCodeSubmit} className="space-y-5">
+        {/* Email Sent Step */}
+        {step === 'sent' && (
+          <div className="text-center space-y-6">
+            <div className="flex justify-center">
+              <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center">
+                <Mail className="w-10 h-10 text-blue-600" />
+              </div>
+            </div>
             <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-900">
-              A 6-digit code has been sent to <span className="text-blue-700">{email}</span>
+              We sent a password reset link to <span className="font-medium">{email}</span>.
+              Click the link in that email to set a new password. It expires in 1 hour.
             </div>
-
-            <div>
-              <label className="block text-slate-700 text-sm mb-2">Verification Code</label>
-              <input
-                type="text"
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-center tracking-widest text-lg"
-                placeholder="000000"
-                maxLength={6}
-                required
-              />
-            </div>
-
-            <button
-              type="submit"
-              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl transition-colors flex items-center justify-center gap-2 group"
-            >
-              Verify Code
-              <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-            </button>
-
             <button
               type="button"
-              onClick={() => setStep('email')}
+              onClick={() => { setStep('email'); setError(''); }}
               className="w-full text-slate-600 hover:text-slate-900 text-sm flex items-center justify-center gap-2"
             >
               <ArrowLeft className="w-4 h-4" />
-              Back to email
+              Use a different email
             </button>
-          </form>
+          </div>
         )}
 
         {/* New Password Step */}
@@ -132,6 +172,7 @@ export default function ResetPasswordPage() {
                   className="w-full pl-11 pr-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                   placeholder="••••••••"
                   required
+                  disabled={loading}
                 />
               </div>
               <p className="text-slate-500 text-sm mt-1">Must be at least 8 characters</p>
@@ -148,16 +189,21 @@ export default function ResetPasswordPage() {
                   className="w-full pl-11 pr-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                   placeholder="••••••••"
                   required
+                  disabled={loading}
                 />
               </div>
             </div>
 
             <button
               type="submit"
-              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl transition-colors flex items-center justify-center gap-2 group"
+              disabled={loading}
+              className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed text-white py-3 rounded-xl transition-colors flex items-center justify-center gap-2 group"
             >
-              Reset Password
-              <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+              {loading ? (
+                <><Loader2 className="w-5 h-5 animate-spin" /> Resetting...</>
+              ) : (
+                <>Reset Password <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" /></>
+              )}
             </button>
           </form>
         )}
