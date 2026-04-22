@@ -1,7 +1,6 @@
 'use client';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -50,11 +49,9 @@ export default function CreateProgramFlow() {
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-          <Link href="/admin/programs/list">
-            <Button variant="outline" size="sm">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back
-            </Button>
+          <Link href="/admin/programs/list" className="inline-flex items-center gap-2 border border-slate-200 text-slate-700 hover:bg-slate-50 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors">
+            <ArrowLeft className="h-4 w-4" />
+            Back
           </Link>
           <div>
             <h1 className="text-2xl font-bold text-foreground sm:text-3xl">Create New Program</h1>
@@ -74,10 +71,10 @@ export default function CreateProgramFlow() {
                 <div
                   className={`h-12 w-12 rounded-full flex items-center justify-center text-sm font-medium border-2 transition-all ${
                     currentStep > step.number
-                      ? 'bg-primary text-primary-foreground border-primary'
+                      ? 'bg-indigo-600 text-white border-indigo-600'
                       : currentStep === step.number
-                      ? 'bg-primary text-primary-foreground border-primary'
-                      : 'bg-background text-muted-foreground border-border'
+                      ? 'bg-indigo-600 text-white border-indigo-600'
+                      : 'bg-white text-slate-400 border-slate-200'
                   }`}
                 >
                   {currentStep > step.number ? <Check className="h-5 w-5" /> : step.number}
@@ -90,7 +87,7 @@ export default function CreateProgramFlow() {
               {index < steps.length - 1 && (
                 <div
                   className={`h-1 w-10 mx-2 -mt-8 transition-all sm:w-20 sm:mx-4 ${
-                    currentStep > step.number ? 'bg-primary' : 'bg-border'
+                    currentStep > step.number ? 'bg-indigo-600' : 'bg-slate-200'
                   }`}
                 />
               )}
@@ -300,9 +297,9 @@ function ProgramBasicInfo({ programData, setProgramData, tagInput, setTagInput, 
               onChange={(e) => setTagInput(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addTag())}
             />
-            <Button type="button" variant="outline" onClick={addTag} className="sm:w-auto">
+            <button type="button" onClick={addTag} className="inline-flex items-center justify-center border border-slate-200 text-slate-700 hover:bg-slate-50 p-2 rounded-lg transition-colors shrink-0">
               <Plus className="h-4 w-4" />
-            </Button>
+            </button>
           </div>
           <div className="flex flex-wrap gap-2 mt-2">
             {programData.tags.map((tag: string) => (
@@ -330,9 +327,9 @@ function ProgramBasicInfo({ programData, setProgramData, tagInput, setTagInput, 
               onChange={(e) => setOutcomeInput(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addOutcome())}
             />
-            <Button type="button" variant="outline" onClick={addOutcome} className="sm:w-auto">
+            <button type="button" onClick={addOutcome} className="inline-flex items-center justify-center border border-slate-200 text-slate-700 hover:bg-slate-50 p-2 rounded-lg transition-colors shrink-0">
               <Plus className="h-4 w-4" />
-            </Button>
+            </button>
           </div>
           <div className="space-y-1 mt-2">
             {programData.learningOutcomes.map((outcome: string, index: number) => (
@@ -354,9 +351,9 @@ function ProgramBasicInfo({ programData, setProgramData, tagInput, setTagInput, 
               onChange={(e) => setPrerequisiteInput(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addPrerequisite())}
             />
-            <Button type="button" variant="outline" onClick={addPrerequisite} className="sm:w-auto">
+            <button type="button" onClick={addPrerequisite} className="inline-flex items-center justify-center border border-slate-200 text-slate-700 hover:bg-slate-50 p-2 rounded-lg transition-colors shrink-0">
               <Plus className="h-4 w-4" />
-            </Button>
+            </button>
           </div>
           <div className="space-y-1 mt-2">
             {programData.prerequisites.map((prereq: string, index: number) => (
@@ -369,19 +366,19 @@ function ProgramBasicInfo({ programData, setProgramData, tagInput, setTagInput, 
         </div>
 
         <div className="flex justify-end pt-4">
-          <Button onClick={onNext} disabled={loading} size="lg" className="w-full sm:w-auto">
+          <button onClick={onNext} disabled={loading} className="inline-flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 disabled:cursor-not-allowed text-white px-6 py-3 rounded-xl text-sm font-medium transition-colors w-full sm:w-auto">
             {loading ? (
               <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Loader2 className="h-4 w-4 animate-spin" />
                 Creating...
               </>
             ) : (
               <>
                 Next: Add Levels
-                <ArrowRight className="ml-2 h-4 w-4" />
+                <ArrowRight className="h-4 w-4" />
               </>
             )}
-          </Button>
+          </button>
         </div>
       </CardContent>
     </Card>
@@ -407,7 +404,7 @@ function ProgramLevels({ levels, createdLevels, currentLevel, setCurrentLevel, l
             {createdLevels.map((level: any, index: number) => {
               const isEditing = editingLevelId === level.id;
               return (
-                <div key={level.id} className={`flex flex-col gap-3 p-4 border rounded-lg sm:flex-row sm:items-start sm:justify-between ${isEditing ? 'border-primary bg-primary/5' : ''}`}>
+                <div key={level.id} className={`flex flex-col gap-3 p-4 border rounded-lg sm:flex-row sm:items-start sm:justify-between ${isEditing ? 'border-indigo-500 bg-indigo-50' : ''}`}>
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
                       <Badge variant="default">Level {index + 1}</Badge>
@@ -424,22 +421,20 @@ function ProgramLevels({ levels, createdLevels, currentLevel, setCurrentLevel, l
                     )}
                   </div>
                   <div className="flex gap-2 sm:ml-4">
-                    <Button
-                      variant="ghost"
-                      size="sm"
+                    <button
                       onClick={() => onEditLevel(index, level, level.id)}
                       disabled={loading}
+                      className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-50"
                     >
-                      <Edit className="h-4 w-4 text-blue-600" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
+                      <Edit className="h-4 w-4 text-indigo-600" />
+                    </button>
+                    <button
                       onClick={() => onRemoveLevel(index, level.id)}
                       disabled={loading}
+                      className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-50"
                     >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
+                      <Trash2 className="h-4 w-4 text-red-500" />
+                    </button>
                   </div>
                 </div>
               );
@@ -450,7 +445,7 @@ function ProgramLevels({ levels, createdLevels, currentLevel, setCurrentLevel, l
               const isEditing = editingLevelIndex === index;
               const actualIndex = createdLevels.length + index;
               return (
-                <div key={`local-${index}`} className={`flex flex-col gap-3 p-4 border rounded-lg border-dashed sm:flex-row sm:items-start sm:justify-between ${isEditing ? 'border-primary bg-primary/5' : ''}`}>
+                <div key={`local-${index}`} className={`flex flex-col gap-3 p-4 border rounded-lg border-dashed sm:flex-row sm:items-start sm:justify-between ${isEditing ? 'border-indigo-500 bg-indigo-50' : ''}`}>
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
                       <Badge variant="outline">Level {actualIndex + 1}</Badge>
@@ -467,20 +462,18 @@ function ProgramLevels({ levels, createdLevels, currentLevel, setCurrentLevel, l
                     )}
                   </div>
                   <div className="flex gap-2 sm:ml-4">
-                    <Button
-                      variant="ghost"
-                      size="sm"
+                    <button
                       onClick={() => onEditLevel(index, level)}
+                      className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
                     >
-                      <Edit className="h-4 w-4 text-blue-600" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
+                      <Edit className="h-4 w-4 text-indigo-600" />
+                    </button>
+                    <button
                       onClick={() => onRemoveLevel(index)}
+                      className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
                     >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
+                      <Trash2 className="h-4 w-4 text-red-500" />
+                    </button>
                   </div>
                 </div>
               );
@@ -498,9 +491,9 @@ function ProgramLevels({ levels, createdLevels, currentLevel, setCurrentLevel, l
               <CardDescription>Define the structure and progression of your program</CardDescription>
             </div>
             {(editingLevelId || editingLevelIndex !== null) && (
-              <Button variant="outline" size="sm" onClick={onCancelEdit}>
+              <button onClick={onCancelEdit} className="inline-flex items-center justify-center border border-slate-200 text-slate-700 hover:bg-slate-50 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors">
                 Cancel Edit
-              </Button>
+              </button>
             )}
           </div>
         </CardHeader>
@@ -563,9 +556,9 @@ function ProgramLevels({ levels, createdLevels, currentLevel, setCurrentLevel, l
                 onChange={(e) => setLevelOutcomeInput(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addLevelOutcome())}
               />
-              <Button type="button" variant="outline" onClick={addLevelOutcome} className="sm:w-auto">
+              <button type="button" onClick={addLevelOutcome} className="inline-flex items-center justify-center border border-slate-200 text-slate-700 hover:bg-slate-50 p-2 rounded-lg transition-colors shrink-0">
                 <Plus className="h-4 w-4" />
-              </Button>
+              </button>
             </div>
             <div className="space-y-1 mt-2">
               {currentLevel.learningOutcomes.map((outcome: string, index: number) => (
@@ -587,9 +580,9 @@ function ProgramLevels({ levels, createdLevels, currentLevel, setCurrentLevel, l
                 onChange={(e) => setLevelPrerequisiteInput(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addLevelPrerequisite())}
               />
-              <Button type="button" variant="outline" onClick={addLevelPrerequisite} className="sm:w-auto">
+              <button type="button" onClick={addLevelPrerequisite} className="inline-flex items-center justify-center border border-slate-200 text-slate-700 hover:bg-slate-50 p-2 rounded-lg transition-colors shrink-0">
                 <Plus className="h-4 w-4" />
-              </Button>
+              </button>
             </div>
             <div className="space-y-1 mt-2">
               {currentLevel.prerequisites.map((prereq: string, index: number) => (
@@ -601,56 +594,55 @@ function ProgramLevels({ levels, createdLevels, currentLevel, setCurrentLevel, l
             </div>
           </div>
 
-          <Button
+          <button
             type="button"
-            variant="outline"
-            className="w-full"
             onClick={onAddLevel}
             disabled={loading}
+            className="inline-flex items-center justify-center gap-2 w-full border border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2.5 rounded-lg text-sm font-medium transition-colors"
           >
             {loading ? (
               <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                <Loader2 className="h-4 w-4 animate-spin" />
                 {editingLevelId || editingLevelIndex !== null ? 'Updating...' : 'Saving...'}
               </>
             ) : (
               <>
                 {editingLevelId || editingLevelIndex !== null ? (
                   <>
-                    <Check className="h-4 w-4 mr-2" />
+                    <Check className="h-4 w-4" />
                     Update Level
                   </>
                 ) : (
                   <>
-                    <Plus className="h-4 w-4 mr-2" />
+                    <Plus className="h-4 w-4" />
                     Add Level to Program
                   </>
                 )}
               </>
             )}
-          </Button>
+          </button>
         </CardContent>
       </Card>
 
       {/* Navigation */}
       <div className="flex flex-col-reverse gap-3 pt-4 sm:flex-row sm:justify-between">
-        <Button variant="outline" onClick={onBack} className="w-full sm:w-auto">
-          <ArrowLeft className="mr-2 h-4 w-4" />
+        <button onClick={onBack} className="inline-flex items-center justify-center gap-2 border border-slate-200 text-slate-700 hover:bg-slate-50 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors w-full sm:w-auto">
+          <ArrowLeft className="h-4 w-4" />
           Back
-        </Button>
-        <Button onClick={onNext} disabled={loading || totalLevels === 0} size="lg" className="w-full sm:w-auto">
+        </button>
+        <button onClick={onNext} disabled={loading || totalLevels === 0} className="inline-flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 disabled:cursor-not-allowed text-white px-6 py-3 rounded-xl text-sm font-medium transition-colors w-full sm:w-auto">
           {loading ? (
             <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              <Loader2 className="h-4 w-4 animate-spin" />
               Saving...
             </>
           ) : (
             <>
               Next: Generate Roadmaps
-              <ArrowRight className="ml-2 h-4 w-4" />
+              <ArrowRight className="h-4 w-4" />
             </>
           )}
-        </Button>
+        </button>
       </div>
     </div>
   );
@@ -663,7 +655,7 @@ function RoadmapGeneration({ levels, selectedLevel, roadmapInstructions, setRoad
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-primary" />
+            <Sparkles className="h-5 w-5 text-indigo-600" />
             AI Roadmap Generation
           </CardTitle>
           <CardDescription>
@@ -699,24 +691,23 @@ function RoadmapGeneration({ levels, selectedLevel, roadmapInstructions, setRoad
                     )}
                   </div>
                   <div className="sm:ml-4">
-                    <Button
+                    <button
                       onClick={() => onGenerate(index)}
                       disabled={generatingRoadmap && selectedLevel === index}
-                      variant="default"
-                      className="w-full sm:w-auto"
+                      className="inline-flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors w-full sm:w-auto"
                     >
                       {generatingRoadmap && selectedLevel === index ? (
                         <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          <Loader2 className="h-4 w-4 animate-spin" />
                           Generating...
                         </>
                       ) : (
                         <>
-                          <Sparkles className="mr-2 h-4 w-4" />
+                          <Sparkles className="h-4 w-4" />
                           Generate Roadmap
                         </>
                       )}
-                    </Button>
+                    </button>
                   </div>
                 </div>
 
@@ -745,7 +736,7 @@ function RoadmapGeneration({ levels, selectedLevel, roadmapInstructions, setRoad
             </p>
           </div>
 
-          <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+          <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
             <h4 className="font-medium text-sm mb-2">💡 Tip: Roadmap Generation</h4>
             <ul className="text-sm text-muted-foreground space-y-1">
               <li>• You can generate roadmaps now or skip and do it later</li>
@@ -759,10 +750,10 @@ function RoadmapGeneration({ levels, selectedLevel, roadmapInstructions, setRoad
 
       {/* Finish Button */}
       <div className="flex justify-end pt-4">
-        <Button onClick={onFinish} size="lg" variant="default" className="w-full sm:w-auto">
-          <Check className="mr-2 h-4 w-4" />
+        <button onClick={onFinish} className="inline-flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl text-sm font-medium transition-colors w-full sm:w-auto">
+          <Check className="h-4 w-4" />
           Finish & View Program
-        </Button>
+        </button>
       </div>
     </div>
   );
