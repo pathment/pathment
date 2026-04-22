@@ -31,6 +31,7 @@ export function useMenteeTasks(): UseMenteeTasksReturn {
   const [loading, setLoading] = useState(true);
   const [enrollments, setEnrollments] = useState<any[]>([]);
   const [selectedEnrollmentId, setSelectedEnrollmentId] = useState<string | null>(null);
+  const [enrollmentsReady, setEnrollmentsReady] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -48,6 +49,8 @@ export function useMenteeTasks(): UseMenteeTasksReturn {
       }
     } catch (err: any) {
       console.error('Failed to fetch enrollments:', err);
+    } finally {
+      setEnrollmentsReady(true);
     }
   }, [user?.id]);
 
@@ -78,10 +81,10 @@ export function useMenteeTasks(): UseMenteeTasksReturn {
     if (user?.id) fetchEnrollments();
   }, [user?.id, fetchEnrollments]);
 
-  // Re-fetch tasks when filter or program selection changes
+  // Re-fetch tasks when filter or program selection changes — only after enrollments are loaded
   useEffect(() => {
-    if (user?.id) fetchTasks();
-  }, [user?.id, filterStatus, selectedEnrollmentId, fetchTasks]);
+    if (user?.id && enrollmentsReady) fetchTasks();
+  }, [user?.id, filterStatus, selectedEnrollmentId, fetchTasks, enrollmentsReady]);
 
   const handleStartTask = useCallback(async (taskId: string) => {
     try {
