@@ -8,24 +8,43 @@ import {
   MessageSquare,
   UserPlus,
   Settings,
+  GraduationCap,
+  School,
   type LucideIcon
 } from 'lucide-react';
 import { UserRole } from '@/lib/types';
+
+export interface NavChildLink {
+  path: string;
+  icon: LucideIcon;
+  label: string;
+}
 
 export interface NavLink {
   path: string;
   icon: LucideIcon;
   label: string;
   hasBadge?: boolean;
+  /** If present, renders as a collapsible group with these child links */
+  children?: NavChildLink[];
 }
 
-export const navigationConfig = {
+export const navigationConfig: Record<string, NavLink[]> = {
   admin: [
     { path: '/admin/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/admin/programs/list', icon: BookOpen, label: 'Programs' },
     { path: '/admin/matching/mentor-assignment', icon: UserCheck, label: 'Mentor Matching' },
     { path: '/admin/enrollment/overview', icon: Users, label: 'Enrollments' },
     { path: '/admin/invites', icon: UserPlus, label: 'Invites' },
+    {
+      path: '/admin/users',
+      icon: Users,
+      label: 'Users',
+      children: [
+        { path: '/admin/users/mentors', icon: GraduationCap, label: 'Mentors' },
+        { path: '/admin/users/mentees', icon: School, label: 'Mentees' },
+      ],
+    },
     { path: '/admin/messages', icon: MessageSquare, label: 'Messages', hasBadge: true },
     { path: '/admin/settings', icon: Settings, label: 'Settings' },
   ],
