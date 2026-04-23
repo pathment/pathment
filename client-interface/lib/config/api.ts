@@ -48,6 +48,11 @@ export const apiConfig = {
     
     // Mentors
     mentors: '/mentors',
+    mentorById: (id: string) => `/mentors/${id}`,
+
+    // Mentees
+    mentees: '/mentees',
+    menteeById: (id: string) => `/mentees/${id}`,
 
     // Admin invites
     adminInvites: '/admin/invites',

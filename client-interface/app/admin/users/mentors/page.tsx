@@ -1,0 +1,270 @@
+'use client';
+
+import Link from 'next/link';
+import {
+  GraduationCap,
+  UserCheck,
+  TrendingDown,
+  Star,
+  ExternalLink,
+  Loader2,
+} from 'lucide-react';
+import { DataTable, DataTableColumn } from '@/components/shared/DataTable';
+import { TablePagination } from '@/components/shared/TablePagination';
+import {
+  StatsCard,
+  PageHeader,
+  SearchAndFilterBar,
+  AvatarWithInitials,
+} from '@/components/admin/ui';
+import { useMentorsList, MentorListItem, AcceptingFilter } from '@/lib/hooks/admin/useMentorsList';
+
+// ─── Column definitions ───────────────────────────────────────────────────────
+
+const columns: DataTableColumn<MentorListItem>[] = [
+  {
+    key: 'firstName',
+    label: 'Mentor',
+    render: (_, row) => (
+      <AvatarWithInitials
+        firstName={row.firstName}
+        lastName={row.lastName}
+        email={row.email}
+        colorClass="bg-purple-100 text-purple-700"
+      />
+    ),
+  },
+  {
+    key: 'mentorProfile' as keyof MentorListItem,
+    label: 'Title / Organization',
+    render: (_, row) => {
+      const mp = row.mentorProfile;
+      return (
+        <div className="min-w-0">
+          <p className="text-sm text-slate-900 truncate">{mp?.title ?? '—'}</p>
+          {mp?.organization && (
+            <p className="text-xs text-slate-500 mt-0.5 truncate">{mp.organization}</p>
+          )}
+        </div>
+      );
+    },
+  },
+  {
+    key: 'capacity' as keyof MentorListItem,
+    label: 'Capacity',
+    render: (_, row) => {
+      const mp = row.mentorProfile;
+      const current = mp?.currentMenteeCount ?? 0;
+      const max = mp?.maxMentees ?? 0;
+      const pct = max > 0 ? Math.round((current / max) * 100) : 0;
+      return (
+        <div className="min-w-[110px]">
+          <div className="flex justify-between text-xs text-slate-500 mb-1.5">
+            <span className="font-medium text-slate-700">{current}/{max}</span>
+            <span>{pct}%</span>
+          </div>
+          <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all ${
+                pct < 70 ? 'bg-green-500' : pct < 90 ? 'bg-amber-500' : 'bg-red-500'
+              }`}
+              style={{ width: `${Math.min(pct, 100)}%` }}
+            />
+          </div>
+        </div>
+      );
+    },
+  },
+  {
+    key: 'specializations' as keyof MentorListItem,
+    label: 'Specializations',
+    render: (_, row) => {
+      const specs = row.mentorProfile?.specialization ?? [];
+      if (specs.length === 0) return <span className="text-slate-400 text-sm">—</span>;
+      const visible = specs.slice(0, 2);
+      const remaining = specs.length - visible.length;
+      return (
+        <div className="flex flex-wrap gap-1">
+          {visible.map((s) => (
+            <span
+              key={s}
+              className="px-2 py-0.5 bg-purple-50 text-purple-700 rounded-full text-xs font-medium"
+            >
+              {s}
+            </span>
+          ))}
+          {remaining > 0 && (
+            <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full text-xs">
+              +{remaining}
+            </span>
+          )}
+        </div>
+      );
+    },
+  },
+  {
+    key: 'accepting' as keyof MentorListItem,
+    label: 'Status',
+    render: (_, row) => {
+      const accepting = row.mentorProfile?.isAcceptingMentees !== false;
+      return (
+        <span
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+            accepting ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'
+          }`}
+        >
+          <span
+            className={`w-1.5 h-1.5 rounded-full ${accepting ? 'bg-green-500' : 'bg-slate-400'}`}
+          />
+          {accepting ? 'Accepting' : 'Closed'}
+        </span>
+      );
+    },
+  },
+  {
+    key: 'createdAt',
+    label: 'Joined',
+    sortable: true,
+    render: (val) =>
+      val ? (
+        <span className="text-sm text-slate-600">
+          {new Date(val).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+          })}
+        </span>
+      ) : (
+        <span className="text-slate-400">—</span>
+      ),
+  },
+];
+
+const ACCEPTING_OPTIONS = [
+  { value: 'all', label: 'All Mentors' },
+  { value: 'accepting', label: 'Accepting Mentees' },
+  { value: 'not_accepting', label: 'Not Accepting' },
+];
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
+export default function AdminMentorsListPage() {
+  const {
+    mentors,
+    isLoading,
+    error,
+    pagination,
+    search,
+    setSearch,
+    acceptingFilter,
+    setAcceptingFilter,
+    refetch,
+  } = useMentorsList();
+
+  // Stats derived from current page
+  const acceptingCount = mentors.filter(
+    (m) => m.mentorProfile?.isAcceptingMentees !== false
+  ).length;
+
+  const atCapacityCount = mentors.filter((m) => {
+    const mp = m.mentorProfile;
+    return mp?.maxMentees ? (mp.currentMenteeCount ?? 0) >= mp.maxMentees : false;
+  }).length;
+
+  const avgRating = (() => {
+    const rated = mentors.filter((m) => m.mentorProfile?.avgFeedbackRating);
+    if (!rated.length) return '—';
+    const avg =
+      rated.reduce((s, m) => s + Number(m.mentorProfile!.avgFeedbackRating), 0) / rated.length;
+    return avg.toFixed(1);
+  })();
+
+  const actionColumn: DataTableColumn<MentorListItem> = {
+    key: 'actions' as keyof MentorListItem,
+    label: '',
+    render: (_, row) => (
+      <Link
+        href={`/admin/mentors/${row.id}`}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+      >
+        <ExternalLink className="w-3.5 h-3.5" />
+        Profile
+      </Link>
+    ),
+  };
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="Mentors"
+        subtitle="All registered mentors on the platform"
+        backHref="/admin/dashboard"
+        backLabel="Back to Dashboard"
+      />
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatsCard
+          icon={GraduationCap}
+          label="Total Mentors"
+          value={isLoading ? '—' : pagination.total}
+          colorClass="text-purple-600 bg-purple-50"
+        />
+        <StatsCard
+          icon={UserCheck}
+          label="Accepting Now"
+          value={isLoading ? '—' : acceptingCount}
+          colorClass="text-green-600 bg-green-50"
+          sub="on this page"
+        />
+        <StatsCard
+          icon={TrendingDown}
+          label="At Full Capacity"
+          value={isLoading ? '—' : atCapacityCount}
+          colorClass="text-amber-600 bg-amber-50"
+          sub="on this page"
+        />
+        <StatsCard
+          icon={Star}
+          label="Avg Rating"
+          value={isLoading ? '—' : avgRating}
+          colorClass="text-indigo-600 bg-indigo-50"
+          sub="on this page"
+        />
+      </div>
+
+      {/* Search + Filter */}
+      <SearchAndFilterBar
+        search={search}
+        onSearch={setSearch}
+        placeholder="Search by name or email…"
+        filters={[
+          {
+            value: acceptingFilter,
+            onChange: (v) => setAcceptingFilter(v as AcceptingFilter),
+            options: ACCEPTING_OPTIONS,
+          },
+        ]}
+      />
+
+      {/* Table */}
+      <DataTable<MentorListItem>
+        columns={[...columns, actionColumn]}
+        data={mentors}
+        isLoading={isLoading}
+        error={error}
+        onRetry={refetch}
+        emptyState={{
+          title: 'No mentors found',
+          description: search
+            ? 'No mentors match your search. Try a different name or email.'
+            : acceptingFilter !== 'all'
+              ? 'No mentors match this filter.'
+              : 'No mentors are registered on the platform yet.',
+        }}
+      />
+
+      <TablePagination pagination={pagination} isLoading={isLoading} />
+    </div>
+  );
+}

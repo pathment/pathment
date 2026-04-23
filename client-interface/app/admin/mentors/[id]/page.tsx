@@ -41,9 +41,9 @@ export default function AdminMentorProfilePage() {
         </div>
         <h2 className="text-lg font-semibold text-slate-900 mb-2">Mentor not found</h2>
         <p className="text-slate-500 text-sm mb-6">{error ?? 'This mentor profile does not exist.'}</p>
-        <Link href="/admin/matching/mentor-assignment" className="inline-flex items-center gap-2 text-indigo-600 hover:text-indigo-700 text-sm font-medium">
+        <Link href="/admin/users/mentors" className="inline-flex items-center gap-2 text-indigo-600 hover:text-indigo-700 text-sm font-medium">
           <ArrowLeft className="w-4 h-4" />
-          Back to Mentor Assignment
+          Back to Mentors
         </Link>
       </div>
     );
@@ -59,8 +59,8 @@ export default function AdminMentorProfilePage() {
       <PageHeader
         title={`${mentor.firstName} ${mentor.lastName}`}
         subtitle={mp?.title ?? undefined}
-        backHref="/admin/matching/mentor-assignment"
-        backLabel="Back to Mentor Assignment"
+        backHref="/admin/users/mentors"
+        backLabel="Back to Mentors"
       />
 
       <div className="grid lg:grid-cols-3 gap-6">
