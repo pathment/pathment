@@ -10,6 +10,7 @@ const enrollmentRoutes = require('./enrollments');
 const matchingRoutes = require('./matching');
 const levelMentorRoutes = require('./levelMentors');
 const mentorRoutes = require('./mentors');
+const menteeRoutes = require('./mentees');
 const taskRoutes = require('./tasks');
 const submissionRoutes = require('./submissions');
 const profileRoutes = require('./profile');
@@ -53,8 +54,9 @@ router.use('/', roadmapRoutes);
 router.use('/enrollments', enrollmentRoutes);
 router.use('/matches', matchingRoutes);
 
-// Mentor routes
+// Mentor and Mentee routes
 router.use('/mentors', mentorRoutes);
+router.use('/mentees', menteeRoutes);
 
 // Task routes
 router.use('/tasks', taskRoutes);

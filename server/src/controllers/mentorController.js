@@ -7,7 +7,7 @@ const { NotFoundError } = require('../utils/errors/errorTypes');
  * Get all active mentors
  */
 const getAllMentors = catchAsync(async (req, res) => {
-  const { search, page = 1, limit = 20 } = req.query;
+  const { search, page = 1, limit = 20, accepting } = req.query;
   const pageNum = Math.max(1, parseInt(page));
   const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
   const offset = (pageNum - 1) * limitNum;
@@ -22,14 +22,25 @@ const getAllMentors = catchAsync(async (req, res) => {
     ]
   } : {};
 
+  // Build mentor profile include — optionally filter by accepting status
+  const mentorProfileInclude = {
+    model: models.MentorProfile,
+    as: 'mentorProfile',
+    attributes: [
+      'specialization', 'maxMentees', 'currentMenteeCount', 'title', 'organization',
+      'isAcceptingMentees', 'avgFeedbackRating', 'totalMenteesGuided', 'yearsOfExperience',
+    ],
+  };
+
+  if (accepting === 'true' || accepting === 'false') {
+    mentorProfileInclude.where = { isAcceptingMentees: accepting === 'true' };
+    mentorProfileInclude.required = true;
+  }
+
   const { count, rows: mentors } = await models.User.findAndCountAll({
     where: { ...where, ...searchConditions },
-    attributes: ['id', 'firstName', 'lastName', 'email'],
-    include: [{
-      model: models.MentorProfile,
-      as: 'mentorProfile',
-      attributes: ['specialization', 'maxMentees', 'currentMenteeCount', 'title', 'organization']
-    }],
+    attributes: ['id', 'firstName', 'lastName', 'email', 'createdAt'],
+    include: [mentorProfileInclude],
     order: [['firstName', 'ASC']],
     limit: limitNum,
     offset,
