@@ -103,7 +103,8 @@ class EnrollmentService {
           include: [{
             model: models.ProgramLevel,
             as: 'levels',
-            order: [['orderIndex', 'ASC']]
+            separate: true,
+            order: [['levelOrder', 'ASC']]
           }]
         },
         {
@@ -126,7 +127,8 @@ class EnrollmentService {
       include: [{
         model: models.ProgramLevel,
         as: 'levels',
-        order: [['orderIndex', 'ASC']]
+        separate: true,
+        order: [['levelOrder', 'ASC']]
       }]
     });
 

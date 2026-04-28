@@ -720,7 +720,7 @@ class TaskService {
 
     // No next week — check for a next level
     const program = await models.Program.findByPk(enrollment.programId, {
-      include: [{ model: models.ProgramLevel, as: 'levels', order: [['orderIndex', 'ASC']] }]
+      include: [{ model: models.ProgramLevel, as: 'levels', separate: true, order: [['levelOrder', 'ASC']] }]
     });
 
     const levels = program?.levels || [];
