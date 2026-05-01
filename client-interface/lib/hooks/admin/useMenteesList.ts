@@ -12,6 +12,7 @@ export interface MenteeListItem {
   firstName: string;
   lastName: string;
   email: string;
+  status: string;
   createdAt: string;
   menteeProfile?: {
     currentEducation?: string;

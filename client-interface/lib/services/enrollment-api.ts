@@ -62,6 +62,11 @@ export const enrollmentApi = {
   promoteToNextLevel: (id: string) => {
     return apiClient.post(`${apiConfig.endpoints.enrollments}/${id}/promote-next-level`);
   },
+
+  // Admin: remove (unenroll) a mentee from a program
+  remove: (id: string) => {
+    return apiClient.delete(`${apiConfig.endpoints.enrollments}/${id}`);
+  },
 };
 
 export const matchingApi = {

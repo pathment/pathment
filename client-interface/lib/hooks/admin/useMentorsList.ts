@@ -12,6 +12,7 @@ export interface MentorListItem {
   firstName: string;
   lastName: string;
   email: string;
+  status: string;
   createdAt: string;
   mentorProfile?: {
     title?: string;

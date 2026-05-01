@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import {
   GraduationCap,
@@ -8,6 +9,9 @@ import {
   Star,
   ExternalLink,
   Loader2,
+  Trash2,
+  ShieldOff,
+  ShieldCheck,
 } from 'lucide-react';
 import { DataTable, DataTableColumn } from '@/components/shared/DataTable';
 import { TablePagination } from '@/components/shared/TablePagination';
@@ -18,6 +22,9 @@ import {
   AvatarWithInitials,
 } from '@/components/admin/ui';
 import { useMentorsList, MentorListItem, AcceptingFilter } from '@/lib/hooks/admin/useMentorsList';
+import { mentorApi } from '@/lib/services/mentor-api';
+import { extractApiErrorMessage } from '@/lib/utils/api-error';
+import { toast } from 'sonner';
 
 // ─── Column definitions ───────────────────────────────────────────────────────
 
@@ -161,6 +168,44 @@ export default function AdminMentorsListPage() {
     refetch,
   } = useMentorsList();
 
+  const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
+  const [suspendLoading, setSuspendLoading] = useState<string | null>(null);
+
+  const handleDelete = async (id: string, name: string) => {
+    if (!confirm(`Permanently delete ${name}? Their active mentee assignments will be cancelled. This cannot be undone.`)) return;
+    try {
+      setDeleteLoading(id);
+      await mentorApi.deleteUser(id);
+      toast.success(`${name} has been deleted.`);
+      refetch();
+    } catch (err: any) {
+      toast.error(extractApiErrorMessage(err, 'Failed to delete user'));
+    } finally {
+      setDeleteLoading(null);
+    }
+  };
+
+  const handleToggleSuspend = async (row: MentorListItem) => {
+    const isSuspended = row.status === 'suspended';
+    const name = `${row.firstName} ${row.lastName}`;
+    if (!isSuspended && !confirm(`Suspend ${name}? They will be logged out immediately and cannot log in.`)) return;
+    try {
+      setSuspendLoading(row.id);
+      if (isSuspended) {
+        await mentorApi.unsuspendUser(row.id);
+        toast.success(`${name} has been unsuspended.`);
+      } else {
+        await mentorApi.suspendUser(row.id);
+        toast.success(`${name} has been suspended.`);
+      }
+      refetch();
+    } catch (err: any) {
+      toast.error(extractApiErrorMessage(err, `Failed to ${isSuspended ? 'unsuspend' : 'suspend'} user`));
+    } finally {
+      setSuspendLoading(null);
+    }
+  };
+
   // Stats derived from current page
   const acceptingCount = mentors.filter(
     (m) => m.mentorProfile?.isAcceptingMentees !== false
@@ -182,15 +227,46 @@ export default function AdminMentorsListPage() {
   const actionColumn: DataTableColumn<MentorListItem> = {
     key: 'actions' as keyof MentorListItem,
     label: '',
-    render: (_, row) => (
-      <Link
-        href={`/admin/mentors/${row.id}`}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-      >
-        <ExternalLink className="w-3.5 h-3.5" />
-        Profile
-      </Link>
-    ),
+    render: (_, row) => {
+      const isSuspended = row.status === 'suspended';
+      const name = `${row.firstName} ${row.lastName}`;
+      return (
+        <div className="flex items-center gap-2">
+          <Link
+            href={`/admin/mentors/${row.id}`}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+            Profile
+          </Link>
+          <button
+            onClick={() => handleToggleSuspend(row)}
+            disabled={suspendLoading === row.id}
+            title={isSuspended ? 'Unsuspend' : 'Suspend'}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors disabled:opacity-50 ${
+              isSuspended
+                ? 'text-green-700 hover:bg-green-50'
+                : 'text-amber-700 hover:bg-amber-50'
+            }`}
+          >
+            {suspendLoading === row.id
+              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              : isSuspended
+                ? <ShieldCheck className="w-3.5 h-3.5" />
+                : <ShieldOff className="w-3.5 h-3.5" />}
+            {isSuspended ? 'Unsuspend' : 'Suspend'}
+          </button>
+          <button
+            onClick={() => handleDelete(row.id, name)}
+            disabled={deleteLoading === row.id}
+            title="Delete permanently"
+            className="inline-flex items-center justify-center w-7 h-7 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+          >
+            {deleteLoading === row.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+          </button>
+        </div>
+      );
+    },
   };
 
   return (

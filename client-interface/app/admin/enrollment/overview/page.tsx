@@ -10,6 +10,7 @@ import {
   TrendingUp,
   Clock,
   Loader2,
+  Trash2,
 } from 'lucide-react';
 import { DataTable, DataTableColumn } from '@/components/shared/DataTable';
 import { TablePagination } from '@/components/shared/TablePagination';
@@ -314,36 +315,60 @@ export default function EnrollmentOverviewPage() {
     }
   };
 
+  const handleRemoveEnrollment = async (enrollmentId: string, menteeName: string) => {
+    if (!confirm(`Remove ${menteeName} from this program? This cannot be undone.`)) return;
+    try {
+      setActionLoading(`remove-${enrollmentId}`);
+      await enrollmentApi.remove(enrollmentId);
+      toast.success(`${menteeName} has been removed from the program.`);
+      refetch();
+    } catch (err: any) {
+      toast.error(extractApiErrorMessage(err, 'Failed to remove enrollment'));
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const actionColumn: DataTableColumn<Enrollment> = {
     key: 'id',
     label: 'Action',
     render: (id: string, row: Enrollment) => {
       const busy = actionLoading === id;
-      if (row.status === 'pending_completion') {
-        return (
+      const removeBusy = actionLoading === `remove-${id}`;
+      const menteeName = `${row.mentee?.firstName ?? ''} ${row.mentee?.lastName ?? ''}`.trim();
+      return (
+        <div className="flex items-center gap-2">
+          {row.status === 'pending_completion' && (
+            <button
+              onClick={() => handleApproveCompletion(id)}
+              disabled={busy}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs rounded-lg transition-colors disabled:opacity-50"
+            >
+              {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
+              Approve
+            </button>
+          )}
+          {row.status === 'level_completed' && (
+            <button
+              onClick={() => handlePromoteToNextLevel(id)}
+              disabled={busy}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs rounded-lg transition-colors disabled:opacity-50"
+            >
+              {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <TrendingUp className="w-3 h-3" />}
+              Promote
+            </button>
+          )}
           <button
-            onClick={() => handleApproveCompletion(id)}
-            disabled={busy}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs rounded-lg transition-colors disabled:opacity-50"
+            onClick={() => handleRemoveEnrollment(id, menteeName)}
+            disabled={removeBusy}
+            title="Remove enrollment"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 text-xs rounded-lg transition-colors disabled:opacity-50"
           >
-            {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
-            Approve
+            {removeBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+            Remove
           </button>
-        );
-      }
-      if (row.status === 'level_completed') {
-        return (
-          <button
-            onClick={() => handlePromoteToNextLevel(id)}
-            disabled={busy}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs rounded-lg transition-colors disabled:opacity-50"
-          >
-            {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <TrendingUp className="w-3 h-3" />}
-            Promote
-          </button>
-        );
-      }
-      return <span className="text-slate-300 text-xs">—</span>;
+        </div>
+      );
     },
   };
 

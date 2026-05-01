@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import {
   School,
@@ -8,6 +9,10 @@ import {
   Trophy,
   ExternalLink,
   Flame,
+  Trash2,
+  Loader2,
+  ShieldOff,
+  ShieldCheck,
 } from 'lucide-react';
 import { DataTable, DataTableColumn } from '@/components/shared/DataTable';
 import { TablePagination } from '@/components/shared/TablePagination';
@@ -18,6 +23,9 @@ import {
   AvatarWithInitials,
 } from '@/components/admin/ui';
 import { useMenteesList, MenteeListItem } from '@/lib/hooks/admin/useMenteesList';
+import { menteeApi } from '@/lib/services/mentee-api';
+import { extractApiErrorMessage } from '@/lib/utils/api-error';
+import { toast } from 'sonner';
 
 // ─── Column definitions ───────────────────────────────────────────────────────
 
@@ -135,6 +143,44 @@ export default function AdminMenteesListPage() {
     refetch,
   } = useMenteesList();
 
+  const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
+  const [suspendLoading, setSuspendLoading] = useState<string | null>(null);
+
+  const handleDelete = async (id: string, name: string) => {
+    if (!confirm(`Permanently delete ${name}? This removes all their enrollments and data and cannot be undone.`)) return;
+    try {
+      setDeleteLoading(id);
+      await menteeApi.deleteUser(id);
+      toast.success(`${name} has been deleted.`);
+      refetch();
+    } catch (err: any) {
+      toast.error(extractApiErrorMessage(err, 'Failed to delete user'));
+    } finally {
+      setDeleteLoading(null);
+    }
+  };
+
+  const handleToggleSuspend = async (row: MenteeListItem) => {
+    const isSuspended = row.status === 'suspended';
+    const name = `${row.firstName} ${row.lastName}`;
+    if (!isSuspended && !confirm(`Suspend ${name}? They will be logged out immediately and cannot log in.`)) return;
+    try {
+      setSuspendLoading(row.id);
+      if (isSuspended) {
+        await menteeApi.unsuspendUser(row.id);
+        toast.success(`${name} has been unsuspended.`);
+      } else {
+        await menteeApi.suspendUser(row.id);
+        toast.success(`${name} has been suspended.`);
+      }
+      refetch();
+    } catch (err: any) {
+      toast.error(extractApiErrorMessage(err, `Failed to ${isSuspended ? 'unsuspend' : 'suspend'} user`));
+    } finally {
+      setSuspendLoading(null);
+    }
+  };
+
   // Stats derived from current page
   const enrolledCount = mentees.filter(
     (m) => (m.menteeProfile?.totalProgramsEnrolled ?? 0) > 0
@@ -153,16 +199,47 @@ export default function AdminMenteesListPage() {
   const actionColumn: DataTableColumn<MenteeListItem> = {
     key: 'actions' as keyof MenteeListItem,
     label: '',
-    render: (_, row) => (
-      <Link
-        href={`/admin/enrollment/overview`}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-        title={`View enrollments for ${row.firstName} ${row.lastName}`}
-      >
-        <ExternalLink className="w-3.5 h-3.5" />
-        Enrollments
-      </Link>
-    ),
+    render: (_, row) => {
+      const isSuspended = row.status === 'suspended';
+      const name = `${row.firstName} ${row.lastName}`;
+      return (
+        <div className="flex items-center gap-2">
+          <Link
+            href={`/admin/enrollment/overview`}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+            title={`View enrollments for ${name}`}
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+            Enrollments
+          </Link>
+          <button
+            onClick={() => handleToggleSuspend(row)}
+            disabled={suspendLoading === row.id}
+            title={isSuspended ? 'Unsuspend' : 'Suspend'}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors disabled:opacity-50 ${
+              isSuspended
+                ? 'text-green-700 hover:bg-green-50'
+                : 'text-amber-700 hover:bg-amber-50'
+            }`}
+          >
+            {suspendLoading === row.id
+              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              : isSuspended
+                ? <ShieldCheck className="w-3.5 h-3.5" />
+                : <ShieldOff className="w-3.5 h-3.5" />}
+            {isSuspended ? 'Unsuspend' : 'Suspend'}
+          </button>
+          <button
+            onClick={() => handleDelete(row.id, name)}
+            disabled={deleteLoading === row.id}
+            title="Delete permanently"
+            className="inline-flex items-center justify-center w-7 h-7 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+          >
+            {deleteLoading === row.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+          </button>
+        </div>
+      );
+    },
   };
 
   return (

@@ -14,4 +14,16 @@ export const menteeApi = {
   getById: (id: string) => {
     return apiClient.get(apiConfig.endpoints.menteeById(id));
   },
+
+  deleteUser: (id: string) => {
+    return apiClient.delete(`/admin/users/${id}`);
+  },
+
+  suspendUser: (id: string) => {
+    return apiClient.put(`/admin/users/${id}/suspend`, {});
+  },
+
+  unsuspendUser: (id: string) => {
+    return apiClient.put(`/admin/users/${id}/unsuspend`, {});
+  },
 };
