@@ -69,4 +69,28 @@ router.post(
   adminController.recalculateMentorCounts
 );
 
+// Delete a user (mentee or mentor)
+router.delete(
+  '/users/:id',
+  authenticate,
+  authorize('admin'),
+  adminController.deleteUser
+);
+
+// Suspend a user
+router.put(
+  '/users/:id/suspend',
+  authenticate,
+  authorize('admin'),
+  adminController.suspendUser
+);
+
+// Unsuspend a user
+router.put(
+  '/users/:id/unsuspend',
+  authenticate,
+  authorize('admin'),
+  adminController.unsuspendUser
+);
+
 module.exports = router;

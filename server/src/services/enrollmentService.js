@@ -442,6 +442,36 @@ class EnrollmentService {
       promotedToLevel: nextLevel
     };
   }
+
+  /**
+   * Remove (unenroll) a mentee from a program. Admin-only.
+   * Cancels any active match and deletes all associated assigned tasks.
+   */
+  async removeEnrollment(enrollmentId, adminUserId) {
+    const enrollment = await models.Enrollment.findByPk(enrollmentId, {
+      include: [
+        { model: models.User, as: 'mentee', attributes: ['id', 'firstName', 'lastName'] },
+        { model: models.Program, as: 'program', attributes: ['id', 'name'] },
+      ],
+    });
+
+    if (!enrollment) {
+      throw new NotFoundError('Enrollment not found');
+    }
+
+    // Cancel all active matches
+    await models.MentorMenteeMatch.update(
+      { status: 'cancelled' },
+      { where: { enrollmentId, status: 'active' } }
+    );
+
+    // Delete all assigned tasks for this enrollment
+    await models.AssignedTask.destroy({ where: { enrollmentId } });
+
+    await enrollment.destroy();
+
+    return { message: 'Enrollment removed successfully' };
+  }
 }
 
 module.exports = new EnrollmentService();

@@ -130,6 +130,36 @@ class AdminController {
       )
     );
   });
+
+  /**
+   * Delete a user (mentee or mentor). Admin-only.
+   * DELETE /api/admin/users/:id
+   */
+  deleteUser = catchAsync(async (req, res) => {
+    const { id } = req.params;
+    const result = await adminService.deleteUser(id, req.user.id);
+    res.status(200).json(successResponse(result.message, {}));
+  });
+
+  /**
+   * Suspend a user. Admin-only.
+   * PUT /api/admin/users/:id/suspend
+   */
+  suspendUser = catchAsync(async (req, res) => {
+    const { id } = req.params;
+    const result = await adminService.suspendUser(id, req.user.id);
+    res.status(200).json(successResponse(result.message, {}));
+  });
+
+  /**
+   * Unsuspend a user. Admin-only.
+   * PUT /api/admin/users/:id/unsuspend
+   */
+  unsuspendUser = catchAsync(async (req, res) => {
+    const { id } = req.params;
+    const result = await adminService.unsuspendUser(id, req.user.id);
+    res.status(200).json(successResponse(result.message, {}));
+  });
 }
 
 module.exports = new AdminController();

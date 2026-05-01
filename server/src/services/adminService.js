@@ -432,6 +432,102 @@ class AdminService {
       return 'Just now';
     }
   }
+
+  /**
+   * Suspend a user — sets status to 'suspended', immediately invalidates all sessions.
+   */
+  async suspendUser(targetUserId, adminUserId) {
+    if (targetUserId === adminUserId) {
+      throw new ValidationError('You cannot suspend your own account');
+    }
+    const user = await models.User.findByPk(targetUserId);
+    if (!user) throw new NotFoundError('User not found');
+    if (user.role === 'admin') throw new ValidationError('Admin accounts cannot be suspended through this endpoint');
+    if (user.status === 'suspended') throw new ValidationError('User is already suspended');
+
+    await user.update({ status: 'suspended' });
+    // Invalidate all active sessions so they are kicked out immediately
+    await models.UserSession.destroy({ where: { userId: targetUserId } });
+    await models.RefreshToken.destroy({ where: { userId: targetUserId } });
+
+    return { message: `${user.firstName} ${user.lastName} has been suspended` };
+  }
+
+  /**
+   * Unsuspend a user — restores status to 'active'.
+   */
+  async unsuspendUser(targetUserId, adminUserId) {
+    const user = await models.User.findByPk(targetUserId);
+    if (!user) throw new NotFoundError('User not found');
+    if (user.status !== 'suspended') throw new ValidationError('User is not suspended');
+
+    await user.update({ status: 'active' });
+
+    return { message: `${user.firstName} ${user.lastName} has been unsuspended` };
+  }
+
+  /**
+   * Delete a user (mentee or mentor) and all their associated data. Admin-only.
+   * An admin cannot delete themselves or another admin.
+   */
+  async deleteUser(targetUserId, adminUserId) {
+    if (targetUserId === adminUserId) {
+      throw new ValidationError('You cannot delete your own account');
+    }
+
+    const user = await models.User.findByPk(targetUserId);
+    if (!user) {
+      throw new NotFoundError('User not found');
+    }
+    if (user.role === 'admin') {
+      throw new ValidationError('Admin accounts cannot be deleted through this endpoint');
+    }
+
+    // For mentees: cancel active matches + delete assigned tasks before destroying enrollment
+    if (user.role === 'mentee') {
+      const enrollments = await models.Enrollment.findAll({
+        where: { menteeId: targetUserId },
+        attributes: ['id'],
+      });
+      const enrollmentIds = enrollments.map((e) => e.id);
+
+      if (enrollmentIds.length > 0) {
+        await models.MentorMenteeMatch.update(
+          { status: 'cancelled' },
+          { where: { enrollmentId: enrollmentIds, status: 'active' } }
+        );
+        await models.AssignedTask.destroy({ where: { enrollmentId: enrollmentIds } });
+      }
+    }
+
+    // For mentors: deactivate any active level assignments
+    if (user.role === 'mentor') {
+      await models.LevelMentorAssignment.update(
+        { isActive: false },
+        { where: { mentorId: targetUserId, isActive: true } }
+      );
+      // Cancel their active matches (mentees revert to pending_match)
+      const activeMatches = await models.MentorMenteeMatch.findAll({
+        where: { mentorId: targetUserId, status: 'active' },
+        attributes: ['enrollmentId'],
+      });
+      if (activeMatches.length > 0) {
+        const enrollmentIds = activeMatches.map((m) => m.enrollmentId);
+        await models.MentorMenteeMatch.update(
+          { status: 'cancelled' },
+          { where: { mentorId: targetUserId, status: 'active' } }
+        );
+        await models.Enrollment.update(
+          { status: 'pending_match' },
+          { where: { id: enrollmentIds } }
+        );
+      }
+    }
+
+    await user.destroy();
+
+    return { message: `${user.firstName} ${user.lastName} has been deleted` };
+  }
 }
 
 module.exports = new AdminService();

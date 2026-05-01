@@ -137,4 +137,14 @@ exports.promoteToNextLevel = catchAsync(async (req, res) => {
   ));
 });
 
+/**
+ * Remove enrollment (admin only)
+ * DELETE /api/enrollments/:id
+ */
+exports.removeEnrollment = catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const result = await enrollmentService.removeEnrollment(id, req.user.id);
+  res.status(200).json(successResponse(result.message, {}));
+});
+
 module.exports = exports;

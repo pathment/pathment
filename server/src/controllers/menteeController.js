@@ -27,7 +27,7 @@ const getAllMentees = catchAsync(async (req, res) => {
 
   const { count, rows: mentees } = await models.User.findAndCountAll({
     where: { ...where, ...searchConditions },
-    attributes: ['id', 'firstName', 'lastName', 'email', 'createdAt'],
+    attributes: ['id', 'firstName', 'lastName', 'email', 'status', 'createdAt'],
     include: [
       {
         model: models.MenteeProfile,
