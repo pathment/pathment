@@ -907,13 +907,7 @@ class TaskService {
           model: models.Enrollment, 
           as: 'enrollment',
           include: [
-            { model: models.User, as: 'mentee' },
-            {
-              model: models.MentorMenteeMatch,
-              as: 'currentMatch',
-              where: { status: 'active' },
-              required: false
-            }
+            { model: models.User, as: 'mentee' }
           ]
         }
       ]
@@ -923,10 +917,9 @@ class TaskService {
       throw new NotFoundError('Task not found');
     }
 
-    // Authorization: Admin can cancel any task, mentor can only cancel their mentee's tasks
+    // Authorization: Admin can cancel any task, mentor can only cancel their own mentee's tasks
     if (userRole === 'mentor') {
-      const match = task.enrollment.currentMatch;
-      if (!match || match.mentorId !== userId) {
+      if (task.mentorId !== userId) {
         throw new ForbiddenError('You can only cancel tasks for your own mentees');
       }
     } else if (userRole !== 'admin') {
