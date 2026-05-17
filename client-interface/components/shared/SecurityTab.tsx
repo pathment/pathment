@@ -9,13 +9,21 @@ import {
   Copy,
   Check,
   X,
+  // LogOut,
   Loader2,
+  // Smartphone,
+  // Laptop,
+  // Globe,
   AlertCircle,
   CheckCircle2,
   Clock,
   Key
 } from 'lucide-react';
-import securityService, { TwoFactorStatus, AuditLog } from '@/lib/services/security-api';
+import securityService, {
+  // Session,
+  TwoFactorStatus,
+  AuditLog,
+} from '@/lib/services/security-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { BackupCodesModal } from './BackupCodesModal';
 
@@ -28,6 +36,17 @@ const formatDate = (dateString: string) => {
     minute: '2-digit'
   });
 };
+
+// const getDeviceIcon = (deviceType?: string) => {
+//   switch (deviceType?.toLowerCase()) {
+//     case 'mobile':
+//       return <Smartphone className="w-4 h-4" />;
+//     case 'tablet':
+//       return <Smartphone className="w-4 h-4" />;
+//     default:
+//       return <Laptop className="w-4 h-4" />;
+//   }
+// };
 
 const getApiErrorMessage = (err: any, fallback: string) => extractApiErrorMessage(err, fallback);
 
@@ -305,6 +324,7 @@ export default function SecurityTab({ showAuditLogs = false }: SecurityTabProps)
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
   const [setup2FAModalOpen, setSetup2FAModalOpen] = useState(false);
   const [backupCodesModalOpen, setBackupCodesModalOpen] = useState(false);
+  // const [sessions, setSessions] = useState<Session[]>([]);
   const [twoFactorStatus, setTwoFactorStatus] = useState<TwoFactorStatus | null>(null);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -318,8 +338,13 @@ export default function SecurityTab({ showAuditLogs = false }: SecurityTabProps)
   const loadSecurityData = async () => {
     setLoading(true);
     try {
+      // const [sessionsData, twoFactorData] = await Promise.all([
+      //   securityService.getActiveSessions(),
+      //   securityService.get2FAStatus()
+      // ]);
       const twoFactorData = await securityService.get2FAStatus();
 
+      // setSessions(sessionsData);
       setTwoFactorStatus(twoFactorData);
 
       if (showAuditLogs) {
@@ -356,6 +381,15 @@ export default function SecurityTab({ showAuditLogs = false }: SecurityTabProps)
       setDisabling2FA(false);
     }
   };
+
+  // const handleRevokeSession = async (sessionId: string) => {
+  //   try {
+  //     await securityService.revokeSession(sessionId);
+  //     setSessions(sessions.filter(s => s.id !== sessionId));
+  //   } catch (error) {
+  //     console.error('Failed to revoke session:', error);
+  //   }
+  // };
 
   if (loading) {
     return (
@@ -459,6 +493,51 @@ export default function SecurityTab({ showAuditLogs = false }: SecurityTabProps)
           )}
         </div>
       </div>
+
+      {/* Active Sessions Section intentionally commented out per maintainer request.
+      <div className="space-y-3">
+        <h3 className="text-slate-900 font-semibold flex items-center gap-2">
+          <Smartphone className="w-5 h-5" />
+          Active Sessions ({sessions.length})
+        </h3>
+        {sessions.length > 0 ? (
+          <div className="space-y-2">
+            {sessions.map((session) => (
+              <div key={session.id} className="p-4 border border-slate-200 rounded-lg flex items-start justify-between">
+                <div className="flex items-start gap-3 flex-1">
+                  <div className="p-2 bg-slate-100 rounded-lg">
+                    {getDeviceIcon(session.deviceType)}
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-slate-900 font-medium">
+                      {session.deviceType || 'Unknown Device'}
+                    </p>
+                    <p className="text-sm text-slate-600 flex items-center gap-1">
+                      <Globe className="w-3 h-3" />
+                      {session.ipAddress}
+                    </p>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Active {session.isActive ? 'now' : `since ${formatDate(session.lastActivityAt)}`}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => handleRevokeSession(session.id)}
+                  className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                  title="Revoke this session"
+                >
+                  <LogOut className="w-5 h-5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="p-4 bg-slate-50 rounded-lg text-slate-600 text-center">
+            No active sessions
+          </div>
+        )}
+      </div>
+      */}
 
       {/* Admin Access Log Section */}
       {showAuditLogs && (

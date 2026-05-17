@@ -95,6 +95,27 @@ router.post(
  * Security routes (authentication required)
  */
 
+// Get active sessions
+// router.get(
+//   '/sessions',
+//   authenticate,
+//   authController.getActiveSessions
+// );
+
+// Revoke a specific session
+// router.delete(
+//   '/sessions/:sessionId',
+//   authenticate,
+//   authController.revokeSession
+// );
+
+// Revoke all other sessions
+// router.post(
+//   '/sessions/revoke-all-others',
+//   authenticate,
+//   authController.revokeAllOtherSessions
+// );
+
 // Get audit logs
 router.get(
   '/audit-logs',
