@@ -9,17 +9,21 @@ import {
   Copy,
   Check,
   X,
-  LogOut,
+  // LogOut,
   Loader2,
-  Smartphone,
-  Laptop,
-  Globe,
+  // Smartphone,
+  // Laptop,
+  // Globe,
   AlertCircle,
   CheckCircle2,
   Clock,
   Key
 } from 'lucide-react';
-import securityService, { Session, TwoFactorStatus, AuditLog } from '@/lib/services/security-api';
+import securityService, {
+  // Session,
+  TwoFactorStatus,
+  AuditLog,
+} from '@/lib/services/security-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { BackupCodesModal } from './BackupCodesModal';
 
@@ -33,16 +37,16 @@ const formatDate = (dateString: string) => {
   });
 };
 
-const getDeviceIcon = (deviceType?: string) => {
-  switch (deviceType?.toLowerCase()) {
-    case 'mobile':
-      return <Smartphone className="w-4 h-4" />;
-    case 'tablet':
-      return <Smartphone className="w-4 h-4" />;
-    default:
-      return <Laptop className="w-4 h-4" />;
-  }
-};
+// const getDeviceIcon = (deviceType?: string) => {
+//   switch (deviceType?.toLowerCase()) {
+//     case 'mobile':
+//       return <Smartphone className="w-4 h-4" />;
+//     case 'tablet':
+//       return <Smartphone className="w-4 h-4" />;
+//     default:
+//       return <Laptop className="w-4 h-4" />;
+//   }
+// };
 
 const getApiErrorMessage = (err: any, fallback: string) => extractApiErrorMessage(err, fallback);
 
@@ -316,11 +320,11 @@ interface SecurityTabProps {
   showAuditLogs?: boolean;
 }
 
-export default function SecurityTab({ userRole = 'mentee', showAuditLogs = false }: SecurityTabProps) {
+export default function SecurityTab({ showAuditLogs = false }: SecurityTabProps) {
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
   const [setup2FAModalOpen, setSetup2FAModalOpen] = useState(false);
   const [backupCodesModalOpen, setBackupCodesModalOpen] = useState(false);
-  const [sessions, setSessions] = useState<Session[]>([]);
+  // const [sessions, setSessions] = useState<Session[]>([]);
   const [twoFactorStatus, setTwoFactorStatus] = useState<TwoFactorStatus | null>(null);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -334,12 +338,13 @@ export default function SecurityTab({ userRole = 'mentee', showAuditLogs = false
   const loadSecurityData = async () => {
     setLoading(true);
     try {
-      const [sessionsData, twoFactorData] = await Promise.all([
-        securityService.getActiveSessions(),
-        securityService.get2FAStatus()
-      ]);
+      // const [sessionsData, twoFactorData] = await Promise.all([
+      //   securityService.getActiveSessions(),
+      //   securityService.get2FAStatus()
+      // ]);
+      const twoFactorData = await securityService.get2FAStatus();
 
-      setSessions(sessionsData);
+      // setSessions(sessionsData);
       setTwoFactorStatus(twoFactorData);
 
       if (showAuditLogs) {
@@ -377,14 +382,14 @@ export default function SecurityTab({ userRole = 'mentee', showAuditLogs = false
     }
   };
 
-  const handleRevokeSession = async (sessionId: string) => {
-    try {
-      await securityService.revokeSession(sessionId);
-      setSessions(sessions.filter(s => s.id !== sessionId));
-    } catch (error) {
-      console.error('Failed to revoke session:', error);
-    }
-  };
+  // const handleRevokeSession = async (sessionId: string) => {
+  //   try {
+  //     await securityService.revokeSession(sessionId);
+  //     setSessions(sessions.filter(s => s.id !== sessionId));
+  //   } catch (error) {
+  //     console.error('Failed to revoke session:', error);
+  //   }
+  // };
 
   if (loading) {
     return (
@@ -489,7 +494,7 @@ export default function SecurityTab({ userRole = 'mentee', showAuditLogs = false
         </div>
       </div>
 
-      {/* Active Sessions Section */}
+      {/* Active Sessions Section intentionally commented out per maintainer request.
       <div className="space-y-3">
         <h3 className="text-slate-900 font-semibold flex items-center gap-2">
           <Smartphone className="w-5 h-5" />
@@ -532,6 +537,7 @@ export default function SecurityTab({ userRole = 'mentee', showAuditLogs = false
           </div>
         )}
       </div>
+      */}
 
       {/* Admin Access Log Section */}
       {showAuditLogs && (

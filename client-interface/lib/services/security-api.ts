@@ -1,14 +1,14 @@
 import axiosInstance from './axios-instance';
 
-export interface Session {
-  id: string;
-  ipAddress: string;
-  deviceType: string;
-  userAgent: string;
-  createdAt: string;
-  lastActivityAt: string;
-  isActive: boolean;
-}
+// export interface Session {
+//   id: string;
+//   ipAddress: string;
+//   deviceType: string;
+//   userAgent: string;
+//   createdAt: string;
+//   lastActivityAt: string;
+//   isActive: boolean;
+// }
 
 export interface AuditLog {
   id: string;
@@ -49,24 +49,24 @@ class SecurityService {
   /**
    * Get active sessions for current user
    */
-  async getActiveSessions(): Promise<Session[]> {
-    const response = await axiosInstance.get<{ data: Session[] }>('/auth/sessions');
-    return response.data.data || [];
-  }
+  // async getActiveSessions(): Promise<Session[]> {
+  //   const response = await axiosInstance.get<{ data: Session[] }>('/auth/sessions');
+  //   return response.data.data || [];
+  // }
 
   /**
    * Revoke a specific session
    */
-  async revokeSession(sessionId: string): Promise<void> {
-    await axiosInstance.delete(`/auth/sessions/${sessionId}`);
-  }
+  // async revokeSession(sessionId: string): Promise<void> {
+  //   await axiosInstance.delete(`/auth/sessions/${sessionId}`);
+  // }
 
   /**
    * Revoke all other sessions
    */
-  async revokeAllOtherSessions(): Promise<void> {
-    await axiosInstance.post('/auth/sessions/revoke-all-others', {});
-  }
+  // async revokeAllOtherSessions(): Promise<void> {
+  //   await axiosInstance.post('/auth/sessions/revoke-all-others', {});
+  // }
 
   /**
    * Get audit logs for current user
