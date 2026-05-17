@@ -96,25 +96,25 @@ router.post(
  */
 
 // Get active sessions
-router.get(
-  '/sessions',
-  authenticate,
-  authController.getActiveSessions
-);
+// router.get(
+//   '/sessions',
+//   authenticate,
+//   authController.getActiveSessions
+// );
 
 // Revoke a specific session
-router.delete(
-  '/sessions/:sessionId',
-  authenticate,
-  authController.revokeSession
-);
+// router.delete(
+//   '/sessions/:sessionId',
+//   authenticate,
+//   authController.revokeSession
+// );
 
 // Revoke all other sessions
-router.post(
-  '/sessions/revoke-all-others',
-  authenticate,
-  authController.revokeAllOtherSessions
-);
+// router.post(
+//   '/sessions/revoke-all-others',
+//   authenticate,
+//   authController.revokeAllOtherSessions
+// );
 
 // Get audit logs
 router.get(
