@@ -274,45 +274,63 @@ class AdminService {
    * Get dashboard statistics for admin
    */
   async getDashboardStats() {
-    // Get total programs count
-    const totalPrograms = await models.Program.count({
-      where: { status: 'published' }
-    });
+    try {
+      // Execute all independent queries in parallel
+      const [stats, recentPrograms, pendingMatches] = await Promise.all([
+        this.#getBasicStats(),
+        this.#getRecentProgramsWithStats(),
+        this.#getPendingMatches()
+      ]);
 
-    // Get active mentees count (enrolled and active status)
-    const activeMentees = await models.User.count({
-      where: { 
-        role: 'mentee',
-        status: 'active'
-      }
-    });
+      return {
+        stats,
+        recentPrograms,
+        pendingMatches
+      };
+    } catch (error) {
+      throw new Error(`Failed to fetch dashboard stats: ${error.message}`);
+    }
+  }
 
-    // Get active mentors count
-    const activeMentors = await models.User.count({
-      where: { 
-        role: 'mentor',
-        status: 'active'
-      }
-    });
+  /**
+   * Get basic dashboard statistics (programs, users, completion rate)
+   */
+  async #getBasicStats() {
+    const PUBLISHED_STATUS = 'published';
+    const ACTIVE_STATUSES = ['active', 'matched'];
 
-    // Get completion rate (average of all active enrollments)
-    const completionResult = await models.Enrollment.findOne({
-      attributes: [
-        [sequelize.fn('AVG', sequelize.col('overall_progress_percentage')), 'avgCompletion']
-      ],
-      where: {
-        status: ['active', 'matched']
-      },
-      raw: true
-    });
+    const [totalPrograms, activeMentees, activeMentors, completionResult] = await Promise.all([
+      models.Program.count({ where: { status: PUBLISHED_STATUS } }),
+      models.User.count({ where: { role: 'mentee', status: 'active' } }),
+      models.User.count({ where: { role: 'mentor', status: 'active' } }),
+      models.Enrollment.findOne({
+        attributes: [
+          [sequelize.fn('AVG', sequelize.col('overall_progress_percentage')), 'avgCompletion']
+        ],
+        where: { status: ACTIVE_STATUSES },
+        raw: true
+      })
+    ]);
 
-    const completionRate = completionResult?.avgCompletion 
-      ? Math.round(parseFloat(completionResult.avgCompletion))
-      : 0;
+    const completionRate = this.#parsePercentage(completionResult?.avgCompletion);
 
-    // Get recent programs (top 4 active programs)
+    return {
+      totalPrograms,
+      activeMentees,
+      activeMentors,
+      completionRate
+    };
+  }
+
+  /**
+   * Get recent programs with stats
+   */
+  async #getRecentProgramsWithStats() {
+    const PUBLISHED_STATUS = 'published';
+    const EXCLUDED_STATUSES = ['rejected', 'dropped'];
+
     const recentPrograms = await models.Program.findAll({
-      where: { status: 'published' },
+      where: { status: PUBLISHED_STATUS },
       include: [
         {
           model: models.Enrollment,
@@ -325,55 +343,61 @@ class AdminService {
       limit: 4
     });
 
-    // Format programs with mentor counts and average completion
-    const programsWithStats = await Promise.all(
-      recentPrograms.map(async (program) => {
-        const mentorCount = await models.LevelMentorAssignment.count({
-          distinct: true,
-          col: 'mentor_id',
-          where: { isActive: true },
-          include: [{
-            model: models.ProgramLevel,
-            as: 'level',
-            where: { programId: program.id },
-            attributes: [],
-            required: true
-          }]
-        });
-
-        // Average overallProgressPercentage across all non-dropped/rejected enrollments
-        const avgResult = await models.Enrollment.findOne({
-          attributes: [
-            [sequelize.fn('AVG', sequelize.col('overall_progress_percentage')), 'avg']
-          ],
-          where: {
-            programId: program.id,
-            status: { [Op.notIn]: ['rejected', 'dropped'] }
-          },
-          raw: true
-        });
-
-        const completion = avgResult?.avg
-          ? Math.round(parseFloat(avgResult.avg))
-          : 0;
-
-        return {
-          id: program.id,
-          name: program.name,
-          status: program.status,
-          enrollments: program.enrollments?.length || 0,
-          mentors: mentorCount,
-          completion,
-          startDate: program.startDate || program.createdAt
-        };
-      })
+    return Promise.all(
+      recentPrograms.map(program => this.#enrichProgramWithStats(program, EXCLUDED_STATUSES))
     );
+  }
 
-    // Get pending mentor matches (approved enrollments without mentor assignment)
+  /**
+   * Enrich program data with mentor and completion stats
+   */
+  async #enrichProgramWithStats(program, excludedStatuses) {
+    const [mentorCount, avgResult] = await Promise.all([
+      models.LevelMentorAssignment.count({
+        distinct: true,
+        col: 'mentor_id',
+        where: { isActive: true },
+        include: [{
+          model: models.ProgramLevel,
+          as: 'level',
+          where: { programId: program.id },
+          attributes: [],
+          required: true
+        }]
+      }),
+      models.Enrollment.findOne({
+        attributes: [
+          [sequelize.fn('AVG', sequelize.col('overall_progress_percentage')), 'avg']
+        ],
+        where: {
+          programId: program.id,
+          status: { [Op.notIn]: excludedStatuses }
+        },
+        raw: true
+      })
+    ]);
+
+    const completion = this.#parsePercentage(avgResult?.avg);
+
+    return {
+      id: program.id,
+      name: program.name,
+      status: program.status,
+      enrollments: program.enrollments?.length || 0,
+      mentors: mentorCount,
+      completion,
+      startDate: program.startDate || program.createdAt
+    };
+  }
+
+  /**
+   * Get pending mentor matches
+   */
+  async #getPendingMatches() {
+    const PENDING_STATUSES = ['approved', 'pending_match'];
+
     const pendingMatches = await models.Enrollment.findAll({
-      where: {
-        status: ['approved', 'pending_match']
-      },
+      where: { status: PENDING_STATUSES },
       include: [
         {
           model: models.User,
@@ -390,7 +414,14 @@ class AdminService {
       limit: 5
     });
 
-    const formattedPendingMatches = pendingMatches.map(enrollment => ({
+    return pendingMatches.map(enrollment => this.#formatPendingMatch(enrollment));
+  }
+
+  /**
+   * Format pending match enrollment
+   */
+  #formatPendingMatch(enrollment) {
+    return {
       id: enrollment.id,
       mentee: {
         id: enrollment.mentee.id,
@@ -400,18 +431,14 @@ class AdminService {
       program: enrollment.program.name,
       enrolledAt: enrollment.enrolledAt,
       waitTime: this.calculateWaitTime(enrollment.enrolledAt)
-    }));
-
-    return {
-      stats: {
-        totalPrograms,
-        activeMentees,
-        activeMentors,
-        completionRate
-      },
-      recentPrograms: programsWithStats,
-      pendingMatches: formattedPendingMatches
     };
+  }
+
+  /**
+   * Parse and round percentage values
+   */
+  #parsePercentage(value) {
+    return value ? Math.round(parseFloat(value)) : 0;
   }
 
   /**

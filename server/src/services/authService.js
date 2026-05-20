@@ -459,7 +459,7 @@ class AuthService {
    */
   async getCurrentUser(userId) {
     const user = await models.User.findByPk(userId, {
-      attributes: { exclude: ['password'] },
+      attributes: { exclude: ['password', 'passwordHash'] },
       include: [
         { model: models.MentorProfile, as: 'mentorProfile' },
         { model: models.MenteeProfile, as: 'menteeProfile' },
