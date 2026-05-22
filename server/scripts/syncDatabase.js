@@ -1,6 +1,7 @@
 const path = require('path');
-require('dotenv').config({ path: path.resolve(__dirname, `../.env.${process.env.NODE_ENV || 'development'}`) });
-require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
+// require('dotenv').config({ path: path.resolve(__dirname, `../.env.${process.env.NODE_ENV || 'development'}`) });
+// require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
+require('dotenv').config();
 const { sequelize, models } = require('../src/db');
 
 /**
