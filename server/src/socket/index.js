@@ -7,8 +7,22 @@ let io = null;
 const userSockets = new Map();
 
 function getCorsOrigins() {
-  const raw = process.env.CLIENT_URL || 'http://localhost:3000';
-  return raw.split(',').map((origin) => origin.trim()).filter(Boolean);
+  const patterns = (process.env.CLIENT_URL || 'http://localhost:3000')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+
+  return (origin, callback) => {
+    if (!origin) return callback(null, true);
+    const allowed = patterns.some((pattern) => {
+      if (pattern.includes('*')) {
+        const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace('\\*', '[^.]+');
+        return new RegExp('^' + escaped + '$').test(origin);
+      }
+      return pattern === origin;
+    });
+    callback(allowed ? null : new Error('Not allowed by CORS'), allowed);
+  };
 }
 
 async function socketAuthMiddleware(socket, next) {
