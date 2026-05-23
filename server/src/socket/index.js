@@ -16,7 +16,7 @@ function getCorsOrigins() {
     if (!origin) return callback(null, true);
     const allowed = patterns.some((pattern) => {
       if (pattern.includes('*')) {
-        const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace('\\*', '[^.]+');
+        const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace('*', '[^.]+');
         return new RegExp('^' + escaped + '$').test(origin);
       }
       return pattern === origin;

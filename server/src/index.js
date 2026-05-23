@@ -26,7 +26,7 @@ function isOriginAllowed(origin) {
   return allowedOrigins.some((allowed) => {
     if (allowed.includes('*')) {
       // Convert wildcard pattern to regex, e.g. https://*.vercel.app
-      const escaped = allowed.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace('\\*', '[^.]+');
+      const escaped = allowed.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace('*', '[^.]+');
       return new RegExp('^' + escaped + '$').test(origin);
     }
     return allowed === origin;
@@ -39,6 +39,7 @@ app.use(cors({
     if (!origin || isOriginAllowed(origin)) {
       return callback(null, true);
     }
+    console.warn(`[CORS] Blocked origin: "${origin}" | Allowed patterns: ${JSON.stringify(allowedOrigins)}`);
     callback(new Error('Not allowed by CORS'));
   },
   credentials: true
