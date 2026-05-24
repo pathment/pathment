@@ -128,7 +128,21 @@ class GroqService {
         console.error('Response status:', error.response.status);
         console.error('Response data:', error.response.data);
       }
-      throw new ValidationError(`Failed to generate roadmap: ${error.message}`);
+       
+      // Handle specific API errors with user-friendly messages
+      let userMessage = `Failed to generate roadmap: ${error.message}`;
+      
+      if (error.message.includes('413') || error.message.includes('Request too large')) {
+        userMessage = 'Roadmap generation request is too large. Please try with fewer weeks or simpler requirements.';
+      } else if (error.message.includes('429') || error.message.includes('rate limit')) {
+        userMessage = 'Too many requests. Please wait a moment and try again.';
+      } else if (error.message.includes('401') || error.message.includes('Unauthorized')) {
+        userMessage = 'API authentication failed. Please check your Groq API key.';
+      } else if (error.message.includes('500') || error.message.includes('Internal Server Error')) {
+        userMessage = 'Groq service is temporarily unavailable. Please try again later.';
+      }
+      
+      throw new ValidationError(userMessage);
     }
   }
 
