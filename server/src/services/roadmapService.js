@@ -71,7 +71,8 @@ class RoadmapService {
             estimatedHours: taskData.estimatedHours || 5,
             taskOrder: taskData.orderIndex || 1,
             acceptanceCriteria: taskData.acceptanceCriteria || [],
-            deliverable: taskData.deliverable || 'Task completion'
+            deliverable: taskData.deliverable || 'Task completion',
+            pointsBase: taskData.points || 10 
           });
         }
       }
@@ -379,7 +380,8 @@ class RoadmapService {
               estimatedHours: sourceTask.estimatedHours,
               taskOrder: sourceTask.taskOrder || sourceTask.orderIndex || 1,
               acceptanceCriteria: sourceTask.acceptanceCriteria,
-              deliverable: sourceTask.deliverable || 'Complete the assigned task'
+              deliverable: sourceTask.deliverable || 'Complete the assigned task',
+              pointsBase: sourceTask.pointsBase || 10
             });
           }
         }
@@ -441,7 +443,8 @@ class RoadmapService {
               estimatedHours: taskData.estimatedHours || 5,
               taskOrder: taskData.taskOrder || taskData.orderIndex || 1,
               acceptanceCriteria: taskData.acceptanceCriteria || [],
-              deliverable: taskData.deliverable || 'Task completion'
+              deliverable: taskData.deliverable || 'Task completion',
+              pointsBase: taskData.pointsBase || taskData.points || 10 
             });
           }
         }

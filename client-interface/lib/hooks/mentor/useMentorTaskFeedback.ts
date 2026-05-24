@@ -61,7 +61,7 @@ export function useMentorTaskFeedback(taskId: string): UseMentorTaskFeedbackRetu
   const [feedbackText, setFeedbackText] = useState('');
   const [revisionNotes, setRevisionNotes] = useState('');
   const [decision, setDecision] = useState<'approve' | 'revision' | null>(null);
-  const [pointsAwarded, setPointsAwarded] = useState(10);
+  const [pointsAwarded, setPointsAwarded] = useState(0);
   const [inlineFeedback, setInlineFeedback] = useState<InlineFeedbackItem[]>([]);
 
   const [error, setError] = useState('');
@@ -80,9 +80,11 @@ export function useMentorTaskFeedback(taskId: string): UseMentorTaskFeedbackRetu
         if (taskData.submissions && taskData.submissions.length > 0) {
           setSubmission(taskData.submissions[0]);
         }
-        if (taskData.pointsBase) {
-          setPointsAwarded(taskData.pointsBase);
-        }
+        // ✅ Fix: correct path + nullish coalescing
+      const pointsBase = taskData?.roadmapTask?.pointsBase ?? 0;
+      if (pointsBase > 0) {
+        setPointsAwarded(pointsBase);
+      }
       } catch (err: unknown) {
         setError(extractApiErrorMessage(err, 'Failed to load task'));
       } finally {

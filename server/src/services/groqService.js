@@ -206,6 +206,11 @@ Create a ${levelDuration}-week roadmap with:
 5. Define clear acceptance criteria for each task
 6. Specify deliverables (what the learner should submit)
 7. Include a weekly milestone
+8. Assign points to each task based on type and difficulty
+  - reading/video: 5 points
+  - exercise/quiz: 10 points
+  - assignment: 15 points
+  - project: 20-30 points (scale with difficulty)
 
 **Task Types:**
 - reading: Reading articles, documentation, books
@@ -243,7 +248,8 @@ Respond with this exact structure:
           "estimatedHours": 5,
           "orderIndex": 1,
           "acceptanceCriteria": ["criteria 1", "criteria 2"],
-          "deliverable": "What to submit"
+          "deliverable": "What to submit",
+          "points": 10
         }
       ]
     }
@@ -256,7 +262,8 @@ CRITICAL RULES:
 - NO explanations before or after the JSON
 - Ensure all quotes are properly escaped
 - Make sure all strings are complete (no unterminated strings)
-- Keep descriptions concise (max 200 characters each)`;
+- Keep descriptions concise (max 200 characters each)
+- "points" must reflect task type and difficulty, NOT a fixed value`
   }
 
   /**
@@ -281,7 +288,8 @@ CRITICAL RULES:
         acceptanceCriteria: Array.isArray(task.acceptanceCriteria) 
           ? task.acceptanceCriteria 
           : [],
-        estimatedHours: parseInt(task.estimatedHours) || 5
+        estimatedHours: parseInt(task.estimatedHours) || 5,
+        points: parseInt(task.points) || 10
       })) || []
     }));
 
