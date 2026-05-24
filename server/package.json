@@ -1,0 +1,49 @@
+{
+  "name": "pathment-server",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon --watch src --exec node src/index.js",
+    "db:create": "node scripts/createTables.js",
+    "db:sync": "node scripts/syncDatabase.js",
+    "db:sync:alter": "node scripts/syncDatabase.js --alter",
+    "db:reset": "node scripts/resetDatabase.js",
+    "migrate": "sequelize db:migrate",
+    "seed": "sequelize db:seed:all",
+    "seed:admin": "node scripts/seedAdmin.js",
+    "test:db": "node scripts/testDbConnection.js",
+    "check:tables": "node scripts/checkTables.js",
+    "test": "jest --runInBand",
+    "test:watch": "jest --runInBand --watch",
+    "test:coverage": "jest --runInBand --coverage"
+  },
+  "dependencies": {
+    "axios": "^1.13.2",
+    "bcrypt": "^5.1.1",
+    "bull": "^4.16.5",
+    "cloudinary": "^2.9.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.6.1",
+    "express": "^4.18.2",
+    "joi": "^18.0.1",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.0.2",
+    "openai": "^6.9.1",
+    "pg": "^8.11.0",
+    "pg-hstore": "^2.3.4",
+    "qrcode": "^1.5.4",
+    "resend": "^6.12.0",
+    "sequelize": "^6.32.1",
+    "socket.io": "^4.8.1",
+    "speakeasy": "^2.0.0",
+    "winston": "^3.18.3"
+  },
+  "devDependencies": {
+    "jest": "^30.4.2",
+    "nodemon": "^2.0.22",
+    "sequelize-cli": "^6.6.0",
+    "supertest": "^7.2.2"
+  }
+}
