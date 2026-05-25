@@ -61,3 +61,7 @@ export type {
   TaskModalState,
   WeekModalState,
 } from './useProgramRoadmap';
+
+export { useAnalyticsOverview } from './useAnalyticsOverview';
+export type { AnalyticsOverview } from './useAnalyticsOverview';
+

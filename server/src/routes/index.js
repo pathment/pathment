@@ -17,6 +17,7 @@ const profileRoutes = require('./profile');
 const skillRoutes = require('./skills');
 const messagingRoutes = require('./messaging');
 const gamificationRoutes = require('./gamification');
+const analyticsRoutes = require('./analytics');
 
 /**
  * API Routes
@@ -40,6 +41,7 @@ router.use('/skills', skillRoutes);
 
 // Admin routes (protected)
 router.use('/admin', adminRoutes);
+router.use('/admin/analytics', analyticsRoutes);
 
 // Program routes (includes nested level and roadmap routes)
 router.use('/programs', programRoutes);
