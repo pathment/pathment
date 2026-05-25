@@ -140,35 +140,42 @@ export default function AdminInvitesPage() {
           <h2>Create Invite</h2>
         </div>
 
-        <form onSubmit={handleCreateInvite} className="grid md:grid-cols-4 gap-3">
-          <input
-            type="email"
-            value={form.email}
-            onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
-            placeholder="invitee@company.com"
-            className="md:col-span-2 w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
-          <select
-            value={form.role}
-            onChange={(e) => setForm((prev) => ({ ...prev, role: e.target.value as 'mentor' | 'mentee' }))}
-            className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          >
-            <option value="mentee">Mentee</option>
-            <option value="mentor">Mentor</option>
-          </select>
-          <input
-            type="number"
-            min={1}
-            max={720}
-            value={form.expiresInHours}
-            onChange={(e) => setForm((prev) => ({ ...prev, expiresInHours: Number(e.target.value) || 72 }))}
-            className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            title="Expiry in hours"
-          />
+        <form onSubmit={handleCreateInvite} className="space-y-4">
+          <div className="grid md:grid-cols-4 gap-3">
+            <input
+              type="email"
+              value={form.email}
+              onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
+              placeholder="invitee@company.com"
+              className="md:col-span-2 w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+            <select
+              value={form.role}
+              onChange={(e) => setForm((prev) => ({ ...prev, role: e.target.value as 'mentor' | 'mentee' }))}
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="mentee">Mentee</option>
+              <option value="mentor">Mentor</option>
+            </select>
+            <div className="space-y-1">
+              <div className="text-xs text-slate-600 font-medium">
+                Expires in <span className="font-medium text-slate-700">{form.expiresInHours}</span> hours
+              </div>
+              <input
+                type="number"
+                min={1}
+                max={720}
+                value={form.expiresInHours}
+                onChange={(e) => setForm((prev) => ({ ...prev, expiresInHours: Number(e.target.value) || 72 }))}
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                title="Expiry in hours"
+              />
+            </div>
+          </div>
           <button
             type="submit"
             disabled={creating}
-            className="md:col-span-4 inline-flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white px-5 py-2.5 rounded-lg"
+            className="inline-flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white px-5 py-2.5 rounded-lg"
           >
             {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
             Create Invite Link
