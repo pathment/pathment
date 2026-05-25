@@ -79,6 +79,7 @@ export default function FeedbackProvision({ params }: PageProps) {
   const taskDescription = task.roadmapTask?.description || task.description;
   const taskDeliverable = task.roadmapTask?.deliverable || task.deliverable;
   const acceptanceCriteria = task.roadmapTask?.acceptanceCriteria || task.acceptanceCriteria || [];
+  const maxPoints = task.roadmapTask?.pointsBase || 10;
 
   return (
     <div className="space-y-6">
@@ -406,9 +407,17 @@ export default function FeedbackProvision({ params }: PageProps) {
             <input
               type="number"
               value={pointsAwarded}
-              onChange={(e) => setPointsAwarded(Number(e.target.value))}
+              onChange={(e) => {
+                const value = e.target.value;
+                const numericValue = Number(value);
+                const cleanedValue = value === ''
+                  ? 0
+                  : Math.min(Math.max(0, numericValue), maxPoints);
+
+                setPointsAwarded(cleanedValue);
+              }}
               min="0"
-              max="100"
+              max={maxPoints}
               className="w-32 px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
