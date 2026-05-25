@@ -157,9 +157,9 @@ export default function AdminInvitesPage() {
               <option value="mentee">Mentee</option>
               <option value="mentor">Mentor</option>
             </select>
-            <div className="space-y-1">
-              <div className="text-xs text-slate-600 font-medium">
-                Expires in <span className="font-medium text-slate-700">{form.expiresInHours}</span> hours
+            <div className="relative flex items-center">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <span className="text-slate-500 text-sm">Expires in</span>
               </div>
               <input
                 type="number"
@@ -167,9 +167,12 @@ export default function AdminInvitesPage() {
                 max={720}
                 value={form.expiresInHours}
                 onChange={(e) => setForm((prev) => ({ ...prev, expiresInHours: Number(e.target.value) || 72 }))}
-                className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full pl-[5.5rem] pr-10 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 title="Expiry in hours"
               />
+              <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                <span className="text-slate-500 text-sm">hrs</span>
+              </div>
             </div>
           </div>
           <button
