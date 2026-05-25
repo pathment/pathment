@@ -31,6 +31,7 @@ export interface UseMentorTaskFeedbackReturn {
   feedbackError: string;
   decisionError: string;
   revisionError: string;
+  pointsError: string;
   setRating: (v: number) => void;
   setHoveredRating: (v: number) => void;
   setFeedbackText: (v: string) => void;
@@ -41,6 +42,7 @@ export interface UseMentorTaskFeedbackReturn {
   setFeedbackError: (v: string) => void;
   setDecisionError: (v: string) => void;
   setRevisionError: (v: string) => void;
+  setPointsError: (v: string) => void;
   addInlineFeedback: () => void;
   updateInlineFeedback: (id: number, field: string, value: string) => void;
   removeInlineFeedback: (id: number) => void;
@@ -61,7 +63,7 @@ export function useMentorTaskFeedback(taskId: string): UseMentorTaskFeedbackRetu
   const [feedbackText, setFeedbackText] = useState('');
   const [revisionNotes, setRevisionNotes] = useState('');
   const [decision, setDecision] = useState<'approve' | 'revision' | null>(null);
-  const [pointsAwarded, setPointsAwarded] = useState(10);
+  const [pointsAwarded, setPointsAwarded] = useState(0);
   const [inlineFeedback, setInlineFeedback] = useState<InlineFeedbackItem[]>([]);
 
   const [error, setError] = useState('');
@@ -69,6 +71,7 @@ export function useMentorTaskFeedback(taskId: string): UseMentorTaskFeedbackRetu
   const [feedbackError, setFeedbackError] = useState('');
   const [decisionError, setDecisionError] = useState('');
   const [revisionError, setRevisionError] = useState('');
+  const [pointsError, setPointsError] = useState('');
 
   useEffect(() => {
     if (!taskId) return;
@@ -80,8 +83,8 @@ export function useMentorTaskFeedback(taskId: string): UseMentorTaskFeedbackRetu
         if (taskData.submissions && taskData.submissions.length > 0) {
           setSubmission(taskData.submissions[0]);
         }
-        if (taskData.pointsBase) {
-          setPointsAwarded(taskData.pointsBase);
+        if (taskData.roadmapTask?.pointsBase) {
+          setPointsAwarded(taskData.roadmapTask.pointsBase);
         }
       } catch (err: unknown) {
         setError(extractApiErrorMessage(err, 'Failed to load task'));
@@ -117,6 +120,7 @@ export function useMentorTaskFeedback(taskId: string): UseMentorTaskFeedbackRetu
       setFeedbackError('');
       setDecisionError('');
       setRevisionError('');
+      setPointsError('');
 
       if (!submission) {
         setError('No submission found');
@@ -140,6 +144,13 @@ export function useMentorTaskFeedback(taskId: string): UseMentorTaskFeedbackRetu
       if (decision === 'revision' && !revisionNotes.trim()) {
         setRevisionError('Revision notes are required when requesting a revision.');
         hasError = true;
+      }
+      if (decision === 'approve') {
+        const maxPoints = task?.roadmapTask?.pointsBase ?? 10;
+        if (pointsAwarded > maxPoints) {
+          setPointsError(`Maximum points are ${maxPoints}.`);
+          hasError = true;
+        }
       }
       if (hasError) return;
 
@@ -173,6 +184,7 @@ export function useMentorTaskFeedback(taskId: string): UseMentorTaskFeedbackRetu
       decision,
       revisionNotes,
       pointsAwarded,
+      task,
       inlineFeedback,
       router,
     ]
@@ -196,6 +208,7 @@ export function useMentorTaskFeedback(taskId: string): UseMentorTaskFeedbackRetu
     feedbackError,
     decisionError,
     revisionError,
+    pointsError,
     setRating,
     setHoveredRating,
     setFeedbackText,
@@ -206,6 +219,7 @@ export function useMentorTaskFeedback(taskId: string): UseMentorTaskFeedbackRetu
     setFeedbackError,
     setDecisionError,
     setRevisionError,
+    setPointsError,
     addInlineFeedback,
     updateInlineFeedback,
     removeInlineFeedback,

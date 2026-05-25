@@ -43,6 +43,7 @@ export default function FeedbackProvision({ params }: PageProps) {
     feedbackError,
     decisionError,
     revisionError,
+    pointsError,
     setRating,
     setHoveredRating,
     setFeedbackText,
@@ -53,6 +54,7 @@ export default function FeedbackProvision({ params }: PageProps) {
     setFeedbackError,
     setDecisionError,
     setRevisionError,
+    setPointsError,
     addInlineFeedback,
     updateInlineFeedback,
     removeInlineFeedback,
@@ -79,6 +81,7 @@ export default function FeedbackProvision({ params }: PageProps) {
   const taskDescription = task.roadmapTask?.description || task.description;
   const taskDeliverable = task.roadmapTask?.deliverable || task.deliverable;
   const acceptanceCriteria = task.roadmapTask?.acceptanceCriteria || task.acceptanceCriteria || [];
+  const maxPoints = task.roadmapTask?.pointsBase || 10;
 
   return (
     <div className="space-y-6">
@@ -406,11 +409,25 @@ export default function FeedbackProvision({ params }: PageProps) {
             <input
               type="number"
               value={pointsAwarded}
-              onChange={(e) => setPointsAwarded(Number(e.target.value))}
+              onChange={(e) => {
+                const value = e.target.value;
+                const numericValue = Number(value);
+                const cleanedValue = value === '' || Number.isNaN(numericValue)
+                  ? 0
+                  : Math.max(0, numericValue);
+
+                setPointsAwarded(cleanedValue);
+                setPointsError('');
+              }}
               min="0"
-              max="100"
               className="w-32 px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
+            {pointsError && (
+              <p className="mt-2 text-sm text-red-600 flex items-center gap-1">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                {pointsError}
+              </p>
+            )}
           </div>
         )}
 

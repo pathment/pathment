@@ -205,7 +205,11 @@ class SubmissionService {
     const submission = await models.TaskSubmission.findByPk(submissionId, {
       include: [{
         model: models.AssignedTask,
-        as: 'assignedTask'
+        as: 'assignedTask',
+        include: [{
+          model: models.RoadmapTask,
+          as: 'roadmapTask'
+        }]
       }]
     });
 
@@ -238,6 +242,24 @@ class SubmissionService {
       throw new ValidationError('Rating must be between 0 and 5');
     }
 
+    const maxPoints = task.roadmapTask?.pointsBase ?? 10;
+
+    if (isApproved && pointsAwarded !== undefined && pointsAwarded !== null) {
+      const parsedPoints = Number(pointsAwarded);
+
+      if (!Number.isFinite(parsedPoints)) {
+        throw new ValidationError('Points awarded must be a valid number');
+      }
+
+      if (parsedPoints < 0) {
+        throw new ValidationError('Points awarded cannot be less than 0');
+      }
+
+      if (parsedPoints > maxPoints) {
+        throw new ValidationError(`Points awarded cannot be greater than maximum marks ${maxPoints}`);
+      }
+    }
+
     // Create feedback
     const feedbackType = inlineFeedback && inlineFeedback.length > 0 ? 'both' : 'general';
     
@@ -268,7 +290,9 @@ class SubmissionService {
 
     if (isApproved) {
       updateData.completedAt = new Date();
-      updateData.pointsAwarded = pointsAwarded || 10;
+      const parsedPoints = Number(pointsAwarded);
+      const safePoints = Number.isFinite(parsedPoints) ? parsedPoints : maxPoints;
+      updateData.pointsAwarded = safePoints;
     } else {
       updateData.revisionCount = task.revisionCount + 1;
     }
@@ -284,9 +308,7 @@ class SubmissionService {
       await this.updateMenteeGamificationProgress(task.menteeId);
 
       const gamificationService = require('./gamificationService');
-      const pointsToAward = Number.isFinite(Number(pointsAwarded))
-        ? Math.max(0, Number(pointsAwarded))
-        : 10;
+      const pointsToAward = updateData.pointsAwarded;
 
       try {
         if (pointsToAward > 0) {
