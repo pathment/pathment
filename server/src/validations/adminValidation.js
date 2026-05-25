@@ -5,7 +5,7 @@ const Joi = require('joi');
  */
 const adminSchemas = {
   createInvite: Joi.object({
-    email: Joi.string().email().required(),
+    email: Joi.string().email().max(255).required(),
     role: Joi.string().valid('mentor', 'mentee').required(),
     expiresInHours: Joi.number().integer().min(1).max(24 * 30).optional()
   }),
@@ -13,13 +13,15 @@ const adminSchemas = {
   createAdmin: Joi.object({
     firstName: Joi.string().min(2).max(50).trim().required(),
     lastName: Joi.string().min(2).max(50).trim().required(),
-    email: Joi.string().email().required(),
+    email: Joi.string().email().max(255).required(),
     password: Joi.string()
       .min(8)
+      .max(72)
       .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/)
       .required()
       .messages({
-        'string.pattern.base': 'Password must contain at least one uppercase letter, one lowercase letter, one number and one special character'
+        'string.pattern.base': 'Password must contain at least one uppercase letter, one lowercase letter, one number and one special character',
+        'string.max': 'Password cannot exceed 72 characters'
       }),
     permissions: Joi.array().items(
       Joi.string().valid(
@@ -50,6 +52,12 @@ const adminSchemas = {
     status: Joi.string().valid('all', 'active', 'used', 'expired', 'revoked').optional(),
     limit: Joi.number().integer().min(1).max(100).optional(),
     offset: Joi.number().integer().min(0).optional()
+  }),
+
+  idParam: Joi.object({
+    id: Joi.string().uuid().required().messages({
+      'string.guid': 'Invalid ID format'
+    })
   })
 };
 

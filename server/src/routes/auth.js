@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const authController = require('../controllers/authController');
-const { validateBody } = require('../middlewares/validate');
-const { authSchemas } = require('../validations/authValidation');
+const { validateBody, validateParams } = require('../middlewares/validate');
+const { authSchemas, paramSchemas } = require('../validations/authValidation');
 const { authenticate } = require('../middlewares/auth');
 
 /**
@@ -19,6 +19,7 @@ router.post(
 // Validate invite token
 router.get(
   '/invites/:token',
+  validateParams(paramSchemas.tokenParam),
   authController.validateInvite
 );
 

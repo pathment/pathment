@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const adminController = require('../controllers/adminController');
-const { validateBody, validateQuery } = require('../middlewares/validate');
+const { validateBody, validateQuery, validateParams } = require('../middlewares/validate');
 const { adminSchemas } = require('../validations/adminValidation');
 const { authenticate, authorize } = require('../middlewares/auth');
 
@@ -49,6 +49,7 @@ router.post(
   '/invites/:id/revoke',
   authenticate,
   authorize('admin'),
+  validateParams(adminSchemas.idParam),
   adminController.revokeRegistrationInvite
 );
 
@@ -57,6 +58,7 @@ router.put(
   '/:id/permissions',
   authenticate,
   authorize('admin'),
+  validateParams(adminSchemas.idParam),
   validateBody(adminSchemas.updatePermissions),
   adminController.updatePermissions
 );
@@ -74,6 +76,7 @@ router.delete(
   '/users/:id',
   authenticate,
   authorize('admin'),
+  validateParams(adminSchemas.idParam),
   adminController.deleteUser
 );
 
@@ -82,6 +85,7 @@ router.put(
   '/users/:id/suspend',
   authenticate,
   authorize('admin'),
+  validateParams(adminSchemas.idParam),
   adminController.suspendUser
 );
 
@@ -90,6 +94,7 @@ router.put(
   '/users/:id/unsuspend',
   authenticate,
   authorize('admin'),
+  validateParams(adminSchemas.idParam),
   adminController.unsuspendUser
 );
 
