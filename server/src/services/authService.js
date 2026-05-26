@@ -121,7 +121,11 @@ class AuthService {
       } else {
         await models.MenteeProfile.create({
           userId: user.id,
-          bio: bio || null,
+            interests: [],                 
+  currentEducation: null,        
+  currentOccupation: null,       
+  priorExperience: null,         
+  preferredLearningStyle: 'visual', 
           learningGoals: [],
           currentLevel: 1,
           totalPoints: 0

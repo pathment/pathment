@@ -45,14 +45,17 @@ class ProfileController {
    */
   completeMenteeProfile = catchAsync(async (req, res) => {
     const userId = req.user.id;
-    const { 
-      currentEducation,
-      currentOccupation,
-      learningGoals,
-      interests,
-      priorExperience,
-      preferredLearningStyle
-    } = req.body;
+   const { 
+  currentEducation,
+  currentOccupation,
+  learningGoals,
+  interests,
+  priorExperience,
+  preferredLearningStyle,
+  linkedinUrl,
+  githubUrl,
+  portfolioUrl
+} = req.body;
 
     // Verify user is a mentee
     const user = await models.User.findByPk(userId);
@@ -61,25 +64,41 @@ class ProfileController {
     }
 
     // Update mentee profile
-    const menteeProfile = await models.MenteeProfile.findOne({ where: { userId } });
-    if (!menteeProfile) {
-      throw new NotFoundError('Mentee profile not found');
-    }
+   // Update or create mentee profile (auto-create if missing)
+let menteeProfile = await models.MenteeProfile.findOne({ where: { userId } });
+if (!menteeProfile) {
+  // Auto-create if it doesn't exist (handles legacy users)
+  menteeProfile = await models.MenteeProfile.create({
+    userId,
+    learningGoals: [],
+    interests: [],
+    currentEducation: null,
+    currentOccupation: null,
+    priorExperience: null,
+    preferredLearningStyle: 'visual',
+    currentLevel: 1,
+    totalPoints: 0
+  });
+}
 
-    await menteeProfile.update({
-      currentEducation,
-      currentOccupation,
-      learningGoals: Array.isArray(learningGoals) ? learningGoals : [learningGoals],
-      interests: Array.isArray(interests) ? interests : [interests],
-      priorExperience,
-      preferredLearningStyle
-    });
+   await menteeProfile.update({
+  currentEducation,
+  currentOccupation,
+  learningGoals: Array.isArray(learningGoals) ? learningGoals : [learningGoals],
+  interests: Array.isArray(interests) ? interests : [interests],
+  priorExperience,
+  preferredLearningStyle,
+  linkedinUrl,
+  githubUrl,
+  portfolioUrl
+});
 
     // Update user onboarding status
-    await user.update({
-      onboardingStep: 1,
-      profileCompleted: false // Will be true after skills are added (step 2)
-    });
+  
+await user.update({
+  onboardingStep: 1,
+  profileCompleted: true  // Profile IS complete; skills are optional
+});
 
     res.json(successResponse(
       PROFILE_MESSAGES.PROFILE_UPDATED,

@@ -26,6 +26,16 @@ module.exports = (sequelize, DataTypes) => {
     interests: {
       type: DataTypes.ARRAY(DataTypes.TEXT)
     },
+     linkedinUrl: {
+      type: DataTypes.STRING(255),
+      field: 'linkedin_url',
+      allowNull: true
+    },
+    githubUrl: {
+      type: DataTypes.STRING(255),
+      field: 'github_url',
+      allowNull: true
+    },
     priorExperience: {
       type: DataTypes.TEXT,
       field: 'prior_experience'
