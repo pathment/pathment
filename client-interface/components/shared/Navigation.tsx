@@ -216,7 +216,7 @@ export default function Navigation({ role }: NavigationProps) {
           {/* Bottom Section */}
           <div className="px-3 py-4 border-t border-slate-100 space-y-1">
             <UserProfileCard />
-            <div className="relative">
+            <div className="relative mt-2">
               {user?.id && (
                 <NotificationDrawer userId={user.id} apiBaseUrl={apiBaseUrl} showLabel />
               )}
@@ -279,4 +279,3 @@ export default function Navigation({ role }: NavigationProps) {
 }
 
 export { Navigation };
-
