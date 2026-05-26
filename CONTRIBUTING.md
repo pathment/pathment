@@ -16,11 +16,11 @@ Thank you for your interest in contributing to Pathment.
    git clone https://github.com/<your-username>/pathment.git
    cd pathment
    ```
-3. **Create a branch** from `main` using the naming rules below.
+3. **Create a branch** from `staging` using the naming rules below.
 4. **Make focused changes** related to a single issue/task.
 5. **Commit** with clear, descriptive messages.
 6. **Push** your branch to your fork.
-7. **Open a Pull Request** against `pathment/pathment:main`.
+7. **Open a Pull Request** against `pathment/pathment:staging`.
 
 ## Branch Naming Convention
 
@@ -117,6 +117,7 @@ When opening a PR:
 - PRs require review from the appropriate code owners.
 - Address review feedback with follow-up commits.
 - Keep CI checks green for impacted projects.
-- Maintainers squash or merge once approvals and checks are complete.
+- Maintainers squash or merge into `staging` once approvals and checks are complete.
+- Changes are promoted from `staging` to `main` by maintainers after validation.
 
 Thank you for helping improve Pathment for the community.
