@@ -6,6 +6,23 @@ const { AUTH_MESSAGES, USER_MESSAGES } = require('../utils/responses/messages');
 const { generateRandomToken, hashToken } = require('../utils/jwt');
 const notificationOrchestrator = require('./notificationOrchestrator');
 
+async function dispatchBulkInviteEmails(createdRecords, clientBaseUrl) {
+  const EMAIL_CONCURRENCY = 10;
+  for (let i = 0; i < createdRecords.length; i += EMAIL_CONCURRENCY) {
+    const chunk = createdRecords.slice(i, i + EMAIL_CONCURRENCY);
+    await Promise.allSettled(
+      chunk.map(record => {
+        const inviteUrl = `${clientBaseUrl}/register?invite=${encodeURIComponent(record.rawToken)}`;
+        return notificationOrchestrator.sendRegistrationInviteEmail({
+          email: record.email,
+          role: record.role,
+          inviteUrl
+        });
+      })
+    );
+  }
+}
+
 class AdminService {
   /**
    * Create one-time registration invite
@@ -563,10 +580,9 @@ class AdminService {
    */
   async bulkCreateRegistrationInvites(inviteRows, createdBy) {
     const BATCH_SIZE = 500;
-    const EMAIL_CONCURRENCY = 10;
     const defaultTtlHours = Number(process.env.REGISTRATION_INVITE_EXPIRY_HOURS) || 72;
     const expiresAt = new Date(Date.now() + defaultTtlHours * 60 * 60 * 1000);
-    const clientBaseUrl = (process.env.CLIENT_URL || 'http://localhost:3001').replace(/\/$/, '');
+    const clientBaseUrl = (process.env.CLIENT_URL || 'http://localhost:3000').replace(/\/$/, '');
 
     const normalized = inviteRows.map(row => ({
       email: row.email.trim().toLowerCase(),
@@ -669,21 +685,9 @@ class AdminService {
     }
 
     // Fire-and-forget: dispatch emails in background with concurrency control
-    setImmediate(async () => {
-      for (let i = 0; i < createdRecords.length; i += EMAIL_CONCURRENCY) {
-        const chunk = createdRecords.slice(i, i + EMAIL_CONCURRENCY);
-        await Promise.allSettled(
-          chunk.map(record => {
-            const inviteUrl = `${clientBaseUrl}/register?invite=${encodeURIComponent(record.rawToken)}`;
-            return notificationOrchestrator.sendRegistrationInviteEmail({
-              email: record.email,
-              role: record.role,
-              inviteUrl
-            });
-          })
-        );
-      }
-    });
+    dispatchBulkInviteEmails(createdRecords, clientBaseUrl).catch((err) =>
+      console.error('[bulk-invite:email-dispatch-error]', err?.message)
+    );
 
     return {
       successCount: createdRecords.length,
