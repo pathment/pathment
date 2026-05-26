@@ -22,6 +22,16 @@ import {
   SearchAndFilterBar,
   AvatarWithInitials,
 } from '@/components/admin/ui';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { useMenteesList, MenteeListItem } from '@/lib/hooks/admin/useMenteesList';
 import { menteeApi } from '@/lib/services/mentee-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
@@ -145,6 +155,8 @@ export default function AdminMenteesListPage() {
 
   const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
   const [suspendLoading, setSuspendLoading] = useState<string | null>(null);
+  const [suspendModalOpen, setSuspendModalOpen] = useState(false);
+  const [suspendRow, setSuspendRow] = useState<MenteeListItem | null>(null);
 
   const handleDelete = async (id: string, name: string) => {
     if (!confirm(`Permanently delete ${name}? This removes all their enrollments and data and cannot be undone.`)) return;
@@ -160,10 +172,23 @@ export default function AdminMenteesListPage() {
     }
   };
 
-  const handleToggleSuspend = async (row: MenteeListItem) => {
+  const handleOpenSuspendModal = (row: MenteeListItem) => {
+    setSuspendRow(row);
+    setSuspendModalOpen(true);
+  };
+
+  const handleCloseSuspendModal = () => {
+    setSuspendModalOpen(false);
+    setSuspendRow(null);
+  };
+
+  const handleConfirmSuspend = async () => {
+    if (!suspendRow) return;
+
+    const row = suspendRow;
     const isSuspended = row.status === 'suspended';
     const name = `${row.firstName} ${row.lastName}`;
-    if (!isSuspended && !confirm(`Suspend ${name}? They will be logged out immediately and cannot log in.`)) return;
+
     try {
       setSuspendLoading(row.id);
       if (isSuspended) {
@@ -173,9 +198,15 @@ export default function AdminMenteesListPage() {
         await menteeApi.suspendUser(row.id);
         toast.success(`${name} has been suspended.`);
       }
+      handleCloseSuspendModal();
       refetch();
     } catch (err: any) {
-      toast.error(extractApiErrorMessage(err, `Failed to ${isSuspended ? 'unsuspend' : 'suspend'} user`));
+      toast.error(
+        extractApiErrorMessage(
+          err,
+          `Failed to ${isSuspended ? 'unsuspend' : 'suspend'} user`,
+        ),
+      );
     } finally {
       setSuspendLoading(null);
     }
@@ -213,7 +244,7 @@ export default function AdminMenteesListPage() {
             Enrollments
           </Link>
           <button
-            onClick={() => handleToggleSuspend(row)}
+            onClick={() => handleOpenSuspendModal(row)}
             disabled={suspendLoading === row.id}
             title={isSuspended ? 'Unsuspend' : 'Suspend'}
             className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors disabled:opacity-50 ${
@@ -305,6 +336,38 @@ export default function AdminMenteesListPage() {
       />
 
       <TablePagination pagination={pagination} isLoading={isLoading} />
+
+      {/* Suspend Confirmation Dialog */}
+      <AlertDialog open={suspendModalOpen} onOpenChange={setSuspendModalOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {suspendRow?.status === 'suspended' ? 'Unsuspend User?' : 'Suspend User?'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {suspendRow?.status === 'suspended'
+                ? `You are about to unsuspend ${suspendRow.firstName} ${suspendRow.lastName}. They will be able to log in again.`
+                : `You are about to suspend ${suspendRow?.firstName} ${suspendRow?.lastName}. They will be logged out immediately and cannot log in until unsuspended.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={suspendLoading === suspendRow?.id}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmSuspend}
+              disabled={suspendLoading === suspendRow?.id}
+              className={suspendRow?.status === 'suspended' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}
+            >
+              {suspendLoading === suspendRow?.id
+                ? 'Processing...'
+                : suspendRow?.status === 'suspended'
+                  ? 'Unsuspend'
+                  : 'Suspend'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
