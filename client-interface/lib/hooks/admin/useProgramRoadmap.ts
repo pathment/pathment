@@ -60,6 +60,11 @@ export interface WeekModalState {
   week?: RoadmapWeek;
 }
 
+interface GenerateConfirmState {
+  isOpen: boolean;
+  hasExistingRoadmap: boolean;
+}
+
 interface UseProgramRoadmapReturn {
   id: string;
   isGenerating: boolean;
@@ -76,6 +81,7 @@ interface UseProgramRoadmapReturn {
   weekModal: WeekModalState | null;
   weekForm: WeekForm;
   savingWeek: boolean;
+  generateConfirmModal: GenerateConfirmState;
   setSelectedLevelId: (id: string) => void;
   setEditingWeek: (week: number | null) => void;
   setTaskModal: (modal: TaskModalState | null) => void;
@@ -83,7 +89,9 @@ interface UseProgramRoadmapReturn {
   setWeekModal: (modal: WeekModalState | null) => void;
   setWeekForm: React.Dispatch<React.SetStateAction<WeekForm>>;
   handleLevelChange: (levelId: string) => void;
-  handleGenerateRoadmap: () => Promise<void>;
+  handleGenerateRoadmap: () => void;
+  confirmGenerateRoadmap: () => Promise<void>;
+  cancelGenerateRoadmap: () => void;
   openAddWeekModal: () => void;
   openEditWeek: (week: RoadmapWeek) => void;
   handleSaveWeek: () => Promise<void>;
@@ -116,6 +124,10 @@ export function useProgramRoadmap(): UseProgramRoadmapReturn {
   const [weekModal, setWeekModal] = useState<WeekModalState | null>(null);
   const [weekForm, setWeekForm] = useState<WeekForm>({ title: '', objectives: [], objectiveInput: '' });
   const [savingWeek, setSavingWeek] = useState(false);
+  const [generateConfirmModal, setGenerateConfirmModal] = useState<GenerateConfirmState>({
+    isOpen: false,
+    hasExistingRoadmap: false,
+  });
 
   const fetchRoadmap = useCallback(async (levelId?: string) => {
     const lvlId = levelId ?? selectedLevelId;
@@ -199,12 +211,18 @@ export function useProgramRoadmap(): UseProgramRoadmapReturn {
     router.push(`/admin/programs/${id}/roadmap?level=${levelId}`);
   }, [id, router]);
 
-  const handleGenerateRoadmap = useCallback(async () => {
-    if (!selectedLevelId) { toast.error('Please select a level first'); return; }
-    const ok = confirm(roadmap.length > 0
-      ? 'This will replace the existing roadmap. Continue?'
-      : 'Generate AI roadmap for this level?');
-    if (!ok) return;
+  const handleGenerateRoadmap = useCallback(() => {
+    if (!selectedLevelId) { 
+      toast.error('Please select a level first'); 
+      return; 
+    }
+    setGenerateConfirmModal({
+      isOpen: true,
+      hasExistingRoadmap: roadmap.length > 0,
+    });
+  }, [selectedLevelId, roadmap.length]);
+
+  const confirmGenerateRoadmap = useCallback(async () => {
     try {
       setIsGenerating(true);
       const response = (await programManagementApi.roadmaps.generate(
@@ -221,8 +239,13 @@ export function useProgramRoadmap(): UseProgramRoadmapReturn {
       toast.error(extractApiErrorMessage(err, 'Failed to generate roadmap'));
     } finally {
       setIsGenerating(false);
+      setGenerateConfirmModal({ isOpen: false, hasExistingRoadmap: false });
     }
-  }, [id, selectedLevelId, roadmap.length, fetchRoadmap]);
+  }, [id, selectedLevelId, fetchRoadmap]);
+
+  const cancelGenerateRoadmap = useCallback(() => {
+    setGenerateConfirmModal({ isOpen: false, hasExistingRoadmap: false });
+  }, []);
 
   const openAddWeekModal = useCallback(() => {
     if (!roadmapId) { toast.error('Roadmap not found. Please generate a roadmap first.'); return; }
@@ -327,8 +350,10 @@ export function useProgramRoadmap(): UseProgramRoadmapReturn {
   return {
     id, isGenerating, loading, roadmap, roadmapId, levels, selectedLevelId, selectedLevel,
     editingWeek, taskModal, taskForm, savingTask, weekModal, weekForm, savingWeek,
+    generateConfirmModal,
     setSelectedLevelId: setSelectedLevelIdRaw, setEditingWeek, setTaskModal, setTaskForm,
-    setWeekModal, setWeekForm, handleLevelChange, handleGenerateRoadmap, openAddWeekModal,
-    openEditWeek, handleSaveWeek, openAddTask, openEditTask, handleSaveTask, deleteTask, deleteWeek,
+    setWeekModal, setWeekForm, handleLevelChange, handleGenerateRoadmap, confirmGenerateRoadmap,
+    cancelGenerateRoadmap, openAddWeekModal, openEditWeek, handleSaveWeek, openAddTask, openEditTask, 
+    handleSaveTask, deleteTask, deleteWeek,
   };
 }

@@ -17,16 +17,17 @@ import {
   Loader2
 } from 'lucide-react';
 import { useProgramRoadmap } from '@/lib/hooks/admin';
+import { GenerateConfirmModal } from '@/components/admin/programs';
 
 export default function RoadmapGenerator() {
   const router = useRouter();
   const {
     id, isGenerating, loading, roadmap, roadmapId, levels,
     selectedLevelId, selectedLevel, editingWeek, taskModal, taskForm, savingTask,
-    weekModal, weekForm, savingWeek,
+    weekModal, weekForm, savingWeek, generateConfirmModal,
     setSelectedLevelId, setEditingWeek, setTaskModal, setTaskForm,
     setWeekModal, setWeekForm,
-    handleLevelChange, handleGenerateRoadmap,
+    handleLevelChange, handleGenerateRoadmap, confirmGenerateRoadmap, cancelGenerateRoadmap,
     openAddWeekModal, openEditWeek, handleSaveWeek,
     openAddTask, openEditTask, handleSaveTask,
     deleteTask, deleteWeek,
@@ -535,6 +536,22 @@ export default function RoadmapGenerator() {
           </div>
         </div>
       )}
+
+      {/* Generate Confirmation Modal */}
+      <GenerateConfirmModal
+        isOpen={generateConfirmModal.isOpen}
+        isLoading={isGenerating}
+        title="Generate AI Roadmap"
+        message={
+          generateConfirmModal.hasExistingRoadmap
+            ? 'This will replace the existing roadmap. All manual edits to this roadmap will be overwritten. Do you want to continue?'
+            : 'Generate an AI-powered learning roadmap for this level?'
+        }
+        confirmText="Generate"
+        cancelText="Cancel"
+        onConfirm={confirmGenerateRoadmap}
+        onCancel={cancelGenerateRoadmap}
+      />
 
       {/* Save Actions */}
       <div className="mt-8 flex justify-end gap-4">
