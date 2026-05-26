@@ -1,0 +1,45 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches:
+      - main
+      - staging
+    paths:
+      - 'server/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to DigitalOcean
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            # Determine which app to restart based on branch
+            BRANCH="${{ github.ref_name }}"
+
+            if [ "$BRANCH" = "main" ]; then
+              APP_DIR=~/apps/pathment
+              PM2_NAME=pathment-devweekends
+            elif [ "$BRANCH" = "staging" ]; then
+              APP_DIR=~/apps/pathment-staging
+              PM2_NAME=pathment-staging
+            fi
+
+            echo "Deploying branch $BRANCH → $PM2_NAME"
+
+            cd $APP_DIR
+            git pull origin $BRANCH
+
+            cd server
+            npm install --production
+
+            pm2 restart $PM2_NAME
+            pm2 save
+
+            echo "✅ $PM2_NAME deployed successfully"
