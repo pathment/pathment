@@ -314,3 +314,32 @@
 [data-sonner-toast][data-type="default"] [data-description] {
   color: #374151 !important;
 }
+/* Points Input - Increment/Decrement Button Control */
+input[type="number"].points-input-disabled::-webkit-outer-spin-button,
+input[type="number"].points-input-disabled::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+  opacity: 0;
+  cursor: not-allowed;
+  pointer-events: none;
+  display: none;
+}
+
+input[type="number"].points-input-enabled::-webkit-outer-spin-button,
+input[type="number"].points-input-enabled::-webkit-inner-spin-button {
+  -webkit-appearance: inner-spin-button;
+  margin: 0;
+  opacity: 1;
+  cursor: auto;
+  pointer-events: auto;
+  display: auto;
+}
+
+/* Firefox support for disabling increment buttons */
+input[type="number"].points-input-disabled {
+  -moz-appearance: textfield;
+}
+
+input[type="number"].points-input-enabled {
+  -moz-appearance: auto;
+}
