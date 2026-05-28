@@ -410,7 +410,7 @@ export default function NotificationDrawer({
                   onClick={handleMarkAllRead}
                   className="px-3 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
                 >
-                  Mark all
+                  Mark all as read
                 </button>
                 <button
                   onClick={() => {
