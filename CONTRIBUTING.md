@@ -54,6 +54,18 @@ node scripts/seedSkills.js
 node scripts/seedAdmin.js
 ```
 
+**Optional — Redis (for bulk invite email queue):**
+
+The bulk invite feature uses Bull backed by Upstash Redis in production. Locally, if `UPSTASH_REDIS_URL` is not set the queue falls back to `localhost:6379`. You can either run a local Redis instance or skip it — the server still starts fine without it.
+
+```bash
+# macOS
+brew install redis && brew services start redis
+
+# Ubuntu/Debian
+sudo apt install redis-server && sudo systemctl start redis
+```
+
 Start server:
 
 ```bash
@@ -101,6 +113,21 @@ By default:
 - Avoid unrelated refactors in feature/bug-fix PRs.
 - Update docs when behavior or workflow changes.
 - Run relevant lint/build/test checks for the changed app(s) before opening a PR.
+
+## Architecture Notes for Contributors
+
+### Background job queue
+
+Bulk invite emails are processed asynchronously via **Bull + Upstash Redis** so the HTTP endpoint returns immediately.
+
+- Queue definition: `server/src/queues/inviteEmailQueue.js`
+- Worker: `server/src/workers/inviteEmailWorker.js`
+- The worker is bootstrapped inside `server/src/index.js` at startup.
+- If you add a new type of background job, follow the same pattern: create a new file in `queues/` and a corresponding file in `workers/`, then require the worker in `index.js`.
+
+### Email delivery
+
+All transactional emails go through `notificationOrchestrator.js` → `emailService.js` (Resend). Bulk invite emails are the only ones queued; all other emails are sent inline or fire-and-forget depending on criticality.
 
 ## Pull Request Guidelines
 

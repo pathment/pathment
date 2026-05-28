@@ -5,23 +5,7 @@ const { ConflictError, NotFoundError, ValidationError } = require('../utils/erro
 const { AUTH_MESSAGES, USER_MESSAGES } = require('../utils/responses/messages');
 const { generateRandomToken, hashToken } = require('../utils/jwt');
 const notificationOrchestrator = require('./notificationOrchestrator');
-
-async function dispatchBulkInviteEmails(createdRecords, clientBaseUrl) {
-  const EMAIL_CONCURRENCY = 10;
-  for (let i = 0; i < createdRecords.length; i += EMAIL_CONCURRENCY) {
-    const chunk = createdRecords.slice(i, i + EMAIL_CONCURRENCY);
-    await Promise.allSettled(
-      chunk.map(record => {
-        const inviteUrl = `${clientBaseUrl}/register?invite=${encodeURIComponent(record.rawToken)}`;
-        return notificationOrchestrator.sendRegistrationInviteEmail({
-          email: record.email,
-          role: record.role,
-          inviteUrl
-        });
-      })
-    );
-  }
-}
+const inviteEmailQueue = require('../queues/inviteEmailQueue');
 
 class AdminService {
   /**
@@ -684,10 +668,16 @@ class AdminService {
       });
     }
 
-    // Fire-and-forget: dispatch emails in background with concurrency control
-    dispatchBulkInviteEmails(createdRecords, clientBaseUrl).catch((err) =>
-      console.error('[bulk-invite:email-dispatch-error]', err?.message)
-    );
+    // Enqueue each invite email as a separate Bull job (Upstash Redis-backed).
+    // Bull retries failed jobs automatically; the queue is processed by inviteEmailWorker.
+    if (createdRecords.length > 0) {
+      const jobs = createdRecords.map(r => ({
+        data: { email: r.email, role: r.role, rawToken: r.rawToken, clientBaseUrl },
+      }));
+      inviteEmailQueue.addBulk(jobs).catch(err =>
+        console.error('[bulk-invite:queue-error]', err.message)
+      );
+    }
 
     return {
       successCount: createdRecords.length,
