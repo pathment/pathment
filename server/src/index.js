@@ -108,6 +108,10 @@ async function start() {
     //   console.log('✓ Database models synchronized');
     // }
 
+    // Start invite email queue worker (Upstash Redis / Bull)
+    require('./workers/inviteEmailWorker');
+    console.log('✓ Invite email queue worker started');
+
     // Start HTTP + Socket.IO server
     initSocket(server);
     if (process.env.NOTIFICATION_SCHEDULER_DISABLED !== 'true') {

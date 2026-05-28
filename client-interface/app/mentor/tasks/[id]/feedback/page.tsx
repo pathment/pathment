@@ -400,27 +400,33 @@ export default function FeedbackProvision({ params }: PageProps) {
           )}
         </div>
 
-        {/* Points (if approved) */}
+         {/* Points (if approved) */}
         {decision === 'approve' && (
           <div>
             <label className="block text-sm text-slate-700 mb-2">
-              Points Awarded
+              Points Awarded <span className="text-slate-500 text-xs">(Max: {maxPoints})</span>
             </label>
             <input
               type="number"
               value={pointsAwarded}
               onChange={(e) => {
-                const value = e.target.value;
-                const numericValue = Number(value);
-                const cleanedValue = value === '' || Number.isNaN(numericValue)
-                  ? 0
-                  : Math.max(0, numericValue);
-
-                setPointsAwarded(cleanedValue);
-                setPointsError('');
+                const newValue = Number(e.target.value);
+                // const maxPoints = task?.roadmapTask?.pointsBase || task?.pointsBase || 10;
+                
+                // Clamp behavior: if user types more than max, show max instead
+                if (newValue > maxPoints) {
+                  setPointsAwarded(maxPoints);
+                } else {
+                  setPointsAwarded(newValue);
+                }
               }}
               min="0"
-              className="w-32 px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              max={task?.roadmapTask?.pointsBase || task?.pointsBase || 10}
+              className={`w-32 px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                pointsAwarded >= maxPoints
+                  ? 'points-input-disabled'
+                  : 'points-input-enabled'
+              }`}
             />
             {pointsError && (
               <p className="mt-2 text-sm text-red-600 flex items-center gap-1">

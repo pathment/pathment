@@ -5,6 +5,7 @@ const { ConflictError, NotFoundError, ValidationError } = require('../utils/erro
 const { AUTH_MESSAGES, USER_MESSAGES } = require('../utils/responses/messages');
 const { generateRandomToken, hashToken } = require('../utils/jwt');
 const notificationOrchestrator = require('./notificationOrchestrator');
+const inviteEmailQueue = require('../queues/inviteEmailQueue');
 
 class AdminService {
   /**
@@ -13,7 +14,7 @@ class AdminService {
   async createRegistrationInvite(inviteData, createdBy) {
     const { email, role, expiresInHours = 72 } = inviteData;
     const normalizedEmail = email.trim().toLowerCase();
-    const defaultInviteTtl = Number(process.env.REGISTRATION_INVITE_EXPIRY_HOURS) || 72;
+    const defaultInviteTtl = 72;
     const ttlHours = Math.max(1, Math.min(24 * 30, Number(expiresInHours) || defaultInviteTtl));
     const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000);
 
@@ -554,6 +555,137 @@ class AdminService {
     await user.destroy();
 
     return { message: `${user.firstName} ${user.lastName} has been deleted` };
+  }
+
+  /**
+   * Bulk create registration invites from a list of {email, role} objects.
+   * Deduplicates against existing users and active invites, then bulk inserts.
+   * Emails are dispatched asynchronously in the background.
+   */
+  async bulkCreateRegistrationInvites(inviteRows, createdBy) {
+    const BATCH_SIZE = 500;
+    const defaultTtlHours = Number(process.env.REGISTRATION_INVITE_EXPIRY_HOURS) || 72;
+    const expiresAt = new Date(Date.now() + defaultTtlHours * 60 * 60 * 1000);
+    const clientBaseUrl = (process.env.CLIENT_URL || 'http://localhost:3000').replace(/\/$/, '');
+
+    const normalized = inviteRows.map(row => ({
+      email: row.email.trim().toLowerCase(),
+      role: row.role.trim().toLowerCase()
+    }));
+
+    const allEmails = [...new Set(normalized.map(r => r.email))];
+
+    const [existingUsers, existingInvites] = await Promise.all([
+      models.User.findAll({
+        where: { email: allEmails },
+        attributes: ['email'],
+        raw: true
+      }),
+      models.RegistrationInvite.findAll({
+        where: {
+          email: allEmails,
+          usedAt: null,
+          revokedAt: null,
+          expiresAt: { [Op.gt]: new Date() }
+        },
+        attributes: ['email', 'role'],
+        raw: true
+      })
+    ]);
+
+    const registeredEmails = new Set(existingUsers.map(u => u.email));
+    const activeInviteKeys = new Set(existingInvites.map(i => `${i.email}::${i.role}`));
+
+    const successfulInvites = [];
+    const skippedInvites = [];
+    const seen = new Set();
+
+    for (const row of normalized) {
+      const dedupeKey = `${row.email}::${row.role}`;
+
+      if (seen.has(dedupeKey)) {
+        skippedInvites.push({ ...row, reason: 'Duplicate row in file' });
+        continue;
+      }
+      seen.add(dedupeKey);
+
+      if (registeredEmails.has(row.email)) {
+        skippedInvites.push({ ...row, reason: 'Already registered' });
+        continue;
+      }
+
+      if (activeInviteKeys.has(dedupeKey)) {
+        skippedInvites.push({ ...row, reason: 'Active invite already exists' });
+        continue;
+      }
+
+      successfulInvites.push(row);
+    }
+
+    const createdRecords = [];
+
+    for (let i = 0; i < successfulInvites.length; i += BATCH_SIZE) {
+      const batch = successfulInvites.slice(i, i + BATCH_SIZE);
+
+      const records = batch.map(row => {
+        const rawToken = generateRandomToken();
+        const tokenHash = hashToken(rawToken);
+        return {
+          tokenHash,
+          rawToken,
+          email: row.email,
+          role: row.role,
+          invitedBy: createdBy,
+          expiresAt
+        };
+      });
+
+      const inserted = await models.RegistrationInvite.bulkCreate(
+        records.map(({ rawToken, ...dbFields }) => dbFields),
+        { returning: true }
+      );
+
+      inserted.forEach((record, idx) => {
+        createdRecords.push({
+          id: record.id,
+          email: record.email,
+          role: record.role,
+          rawToken: records[idx].rawToken
+        });
+      });
+    }
+
+    if (createdRecords.length > 0) {
+      await models.AuditLog.create({
+        userId: createdBy,
+        action: 'BULK_REGISTRATION_INVITES_CREATED',
+        entityType: 'RegistrationInvite',
+        entityId: createdRecords[0].id,
+        newValues: {
+          totalCreated: createdRecords.length,
+          totalSkipped: skippedInvites.length
+        }
+      });
+    }
+
+    // Enqueue each invite email as a separate Bull job (Upstash Redis-backed).
+    // Bull retries failed jobs automatically; the queue is processed by inviteEmailWorker.
+    if (createdRecords.length > 0) {
+      const jobs = createdRecords.map(r => ({
+        data: { email: r.email, role: r.role, rawToken: r.rawToken, clientBaseUrl },
+      }));
+      inviteEmailQueue.addBulk(jobs).catch(err =>
+        console.error('[bulk-invite:queue-error]', err.message)
+      );
+    }
+
+    return {
+      successCount: createdRecords.length,
+      skippedCount: skippedInvites.length,
+      totalProcessed: normalized.length,
+      successfulInvites: createdRecords.map(r => ({ email: r.email, role: r.role })),
+      skippedInvites
+    };
   }
 }
 

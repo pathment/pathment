@@ -50,6 +50,15 @@ const adminSchemas = {
     status: Joi.string().valid('all', 'active', 'used', 'expired', 'revoked').optional(),
     limit: Joi.number().integer().min(1).max(100).optional(),
     offset: Joi.number().integer().min(0).optional()
+  }),
+
+  bulkInvite: Joi.object({
+    invites: Joi.array().items(
+      Joi.object({
+        email: Joi.string().email().required(),
+        role: Joi.string().valid('mentor', 'mentee').required()
+      })
+    ).min(1).max(1000).required()
   })
 };
 

@@ -160,6 +160,19 @@ class AdminController {
     const result = await adminService.unsuspendUser(id, req.user.id);
     res.status(200).json(successResponse(result.message, {}));
   });
+
+  /**
+   * Bulk create registration invites from a JSON array
+   * POST /api/admin/invites/bulk
+   */
+  bulkRegistrationInvites = catchAsync(async (req, res) => {
+    const { invites } = req.body;
+    const report = await adminService.bulkCreateRegistrationInvites(invites, req.user.id);
+
+    res.status(201).json(
+      successResponse('Bulk invites processed successfully', { report }, 201)
+    );
+  });
 }
 
 module.exports = new AdminController();

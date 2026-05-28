@@ -24,7 +24,7 @@ npm run dev
 
 ## ✅ Completed Features
 
-### Authentication Module (Complete)
+### Authentication Module
 - ✅ User registration (mentor/mentee roles)
 - ✅ Login with JWT tokens
 - ✅ Token refresh mechanism
@@ -35,6 +35,15 @@ npm run dev
 - ✅ Standardized error handling
 - ✅ Response formatting utilities
 
+### Admin — Bulk User Invitation via CSV
+- ✅ `POST /api/v1/admin/invites/bulk` — accepts a JSON array of `{ email, role }` rows
+- ✅ Deduplication: skips emails already registered or holding an active invite
+- ✅ Bulk DB insert via Sequelize `bulkCreate` (single round-trip per 500 rows)
+- ✅ Each invite email is enqueued as an independent Bull job — response is returned immediately
+- ✅ Bull worker (`inviteEmailWorker.js`) processes up to 10 emails concurrently
+- ✅ Automatic retries (3 attempts, exponential backoff) on delivery failure
+- ✅ Upstash Redis polling intervals tuned to stay within the free-tier 10k commands/day limit
+
 ### Infrastructure
 - ✅ 43 Sequelize models (users, auth, programs, tasks, messaging, gamification, system, analytics)
 - ✅ Auto-loading model system
@@ -43,25 +52,22 @@ npm run dev
 - ✅ JWT authentication middleware
 - ✅ CORS configuration
 - ✅ Request logging (development)
+- ✅ Bull + Upstash Redis for background job queuing
 
 ## 📁 Project Structure
 
 ```
 server/
 ├── src/
-│   ├── controllers/        # Request handlers
-│   │   └── authController.js
+│   ├── controllers/        # Request handlers (thin — delegate to services)
 │   ├── services/           # Business logic
-│   │   └── authService.js
-│   ├── routes/             # Route definitions
-│   │   ├── index.js
-│   │   └── auth.js
-│   ├── middlewares/        # Express middleware
-│   │   ├── auth.js
-│   │   ├── errorHandler.js
-│   │   └── validate.js
+│   ├── routes/             # Express route definitions
+│   ├── middlewares/        # auth, errorHandler, validate, rateLimit
 │   ├── validations/        # Joi schemas
-│   │   └── authValidation.js
+│   ├── queues/             # Bull queue definitions (Redis-backed)
+│   │   └── inviteEmailQueue.js
+│   ├── workers/            # Bull job processors
+│   │   └── inviteEmailWorker.js
 │   ├── models/             # Sequelize models (43 total)
 │   │   ├── users/          # 6 models
 │   │   ├── auth/           # 4 models
@@ -149,6 +155,8 @@ See [TESTING_AUTH.md](./docs/TESTING_AUTH.md) for comprehensive testing guide.
 - **Authentication**: JWT (jsonwebtoken v9.0.2)
 - **Validation**: Joi
 - **Password Hashing**: bcrypt v5.1.1
+- **Email**: Resend
+- **Background jobs**: Bull v4 + Upstash Redis (serverless Redis — free tier)
 - **Dev Tools**: nodemon, sequelize-cli
 
 ## 📝 Environment Variables
@@ -180,7 +188,65 @@ EMAIL_NOTIFICATION_EMAILS_ENABLED=false
 EMAIL_DISABLED_EVENTS=submission_deadline_passed
 EMAIL_DAILY_LIMIT=100
 EMAIL_DAILY_LIMIT_PER_RECIPIENT=20
+
+# Upstash Redis (Bull queue — bulk invite emails)
+# Get this from https://console.upstash.com → your database → REST URL section
+# Format: rediss://default:<password>@<host>:<port>
+# If absent, falls back to localhost:6379 (local dev without Redis is fine)
+UPSTASH_REDIS_URL=rediss://default:your_password@your-host.upstash.io:6379
 ```
+
+## ⚡ Background Jobs (Bull + Upstash Redis)
+
+Bulk invite emails are sent asynchronously so the HTTP response is returned immediately regardless of cohort size.
+
+### Flow
+
+```
+POST /api/v1/admin/invites/bulk
+        │
+        ▼
+adminService.bulkCreateRegistrationInvites()
+  1. Normalize & deduplicate rows
+  2. Check DB for existing users + active invites
+  3. bulkCreate() all valid records (batched at 500 rows)
+  4. inviteEmailQueue.addBulk(jobs)  ← enqueue one job per invite
+        │
+        ▼
+  Return summary immediately { successCount, skippedCount, ... }
+
+        │  (async, in background)
+        ▼
+inviteEmailWorker.js  (concurrency: 10)
+  per job: build invite URL → notificationOrchestrator.sendRegistrationInviteEmail()
+  on failure: Bull retries up to 3× with exponential backoff (10 s base)
+```
+
+### Queue configuration (Upstash free-tier friendly)
+
+| Setting | Value | Why |
+|---|---|---|
+| `stalledInterval` | 5 min | Default (5 s) would burn ~24 ops/min with zero jobs |
+| `guardInterval` | 5 min | Same reason |
+| `removeOnComplete` | `true` | Jobs deleted immediately — no keys left in Redis |
+| `removeOnFail` | `true` | Same |
+| Worker concurrency | 10 | Sends 10 emails in parallel per tick |
+
+> **Free-tier budget:** Upstash gives 10 000 commands/day. With the tuned intervals, idle overhead is ~2–3 ops/min, leaving the full daily budget for actual job processing.
+
+### Adding a Redis instance (local dev)
+
+If `UPSTASH_REDIS_URL` is not set the queue falls back to `localhost:6379`. Install Redis locally:
+
+```bash
+# macOS
+brew install redis && brew services start redis
+
+# Ubuntu/Debian
+sudo apt install redis-server && sudo systemctl start redis
+```
+
+For local dev without Redis at all, bulk invites degrade gracefully — the queue connection error is logged but the server keeps running.
 
 ## 🔒 Security Features
 

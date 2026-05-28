@@ -35,6 +35,15 @@ router.post(
   adminController.createRegistrationInvite
 );
 
+// Bulk create registration invites
+router.post(
+  '/invites/bulk',
+  authenticate,
+  authorize('admin'),
+  validateBody(adminSchemas.bulkInvite),
+  adminController.bulkRegistrationInvites
+);
+
 // List registration invites
 router.get(
   '/invites',
