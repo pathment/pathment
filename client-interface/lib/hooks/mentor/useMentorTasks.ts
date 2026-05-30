@@ -1,15 +1,20 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-'use client';
+"use client";
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useSearchParams } from 'next/navigation';
-import { taskApi } from '@/lib/services/task-api';
-import { matchingApi } from '@/lib/services/enrollment-api';
-import { useAuth } from '@/lib/context/AuthContext';
-import { extractApiErrorMessage } from '@/lib/utils/api-error';
-import { toast } from 'sonner';
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
+import { taskApi } from "@/lib/services/task-api";
+import { matchingApi } from "@/lib/services/enrollment-api";
+import { useAuth } from "@/lib/context/AuthContext";
+import { extractApiErrorMessage } from "@/lib/utils/api-error";
+import { toast } from "sonner";
 
-export type MentorTaskTab = 'pending' | 'extensions' | 'all' | 'roadmap' | 'create';
+export type MentorTaskTab =
+  | "pending"
+  | "extensions"
+  | "all"
+  | "roadmap"
+  | "create";
 
 export interface CustomTaskFormData {
   menteeId: string;
@@ -25,15 +30,15 @@ export interface CustomTaskFormData {
 }
 
 const EMPTY_FORM: CustomTaskFormData = {
-  menteeId: '',
-  enrollmentId: '',
-  title: '',
-  description: '',
-  type: 'custom',
-  difficulty: 'medium',
-  dueDate: '',
+  menteeId: "",
+  enrollmentId: "",
+  title: "",
+  description: "",
+  type: "custom",
+  difficulty: "medium",
+  dueDate: "",
   pointsBase: 10,
-  deliverable: '',
+  deliverable: "",
   acceptanceCriteria: [],
 };
 
@@ -74,11 +79,18 @@ export interface UseMentorTasksReturn {
   handleProgramChange: (id: string) => void;
   handleLevelChange: (id: string) => void;
   handleMenteeForAssignChange: (id: string) => void;
-  handleAssignRoadmapTask: (taskId: string, weekNumber: number) => Promise<void>;
+  handleAssignRoadmapTask: (
+    taskId: string,
+    weekNumber: number
+  ) => Promise<void>;
 
   // create form
   formData: CustomTaskFormData;
   setFormData: React.Dispatch<React.SetStateAction<CustomTaskFormData>>;
+  programDateRange: {
+    startDate: string;
+    endDate: string;
+  };
   handleMenteeChange: (menteeId: string) => void;
   handleCreateCustomTask: (e: React.FormEvent) => Promise<void>;
 
@@ -94,7 +106,7 @@ export function useMentorTasks(): UseMentorTasksReturn {
   const { user } = useAuth();
   const searchParams = useSearchParams();
 
-  const [activeTab, setActiveTab] = useState<MentorTaskTab>('pending');
+  const [activeTab, setActiveTab] = useState<MentorTaskTab>("pending");
   const [stats, setStats] = useState<any>(null);
   const [statsLoading, setStatsLoading] = useState(true);
 
@@ -109,21 +121,32 @@ export function useMentorTasks(): UseMentorTasksReturn {
   const [menteesLoading, setMenteesLoading] = useState(false);
   const [menteesLoaded, setMenteesLoaded] = useState(false);
 
-  const [mentorLevelAssignments, setMentorLevelAssignments] = useState<any[]>([]);
+  const [mentorLevelAssignments, setMentorLevelAssignments] = useState<any[]>(
+    []
+  );
+
   const [mentorLevelsLoaded, setMentorLevelsLoaded] = useState(false);
   const [mentorLevelsLoading, setMentorLevelsLoading] = useState(false);
 
   const [roadmapData, setRoadmapData] = useState<any>(null);
-  const [selectedProgram, setSelectedProgram] = useState('');
-  const [selectedLevel, setSelectedLevel] = useState('');
-  const [selectedMenteeForAssign, setSelectedMenteeForAssign] = useState('');
+  const [selectedProgram, setSelectedProgram] = useState("");
+  const [selectedLevel, setSelectedLevel] = useState("");
+  const [selectedMenteeForAssign, setSelectedMenteeForAssign] = useState("");
   const [assigningTask, setAssigningTask] = useState<string | null>(null);
 
   const [formData, setFormData] = useState<CustomTaskFormData>(EMPTY_FORM);
 
   const [cancellingTask, setCancellingTask] = useState<string | null>(null);
-  const [cancelReason, setCancelReason] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
+  const [cancelReason, setCancelReason] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+
+  const [programDateRange, setProgramDateRange] = useState<{
+    startDate: string;
+    endDate: string;
+  }>({
+    startDate: "",
+    endDate: "",
+  });
 
   // ─── Fetchers ─────────────────────────────────────────────────────────────
 
@@ -144,10 +167,12 @@ export function useMentorTasks(): UseMentorTasksReturn {
     if (!user?.id) return;
     try {
       setPendingLoading(true);
-      const res = await taskApi.getMentorTasks(user.id, { pendingReview: true });
+      const res = await taskApi.getMentorTasks(user.id, {
+        pendingReview: true,
+      });
       setPendingTasks(res?.data?.tasks || []);
     } catch {
-      toast.error('Failed to load pending tasks');
+      toast.error("Failed to load pending tasks");
     } finally {
       setPendingLoading(false);
     }
@@ -161,7 +186,7 @@ export function useMentorTasks(): UseMentorTasksReturn {
       setAllTasks(res?.data?.tasks || []);
       setAllTasksLoaded(true);
     } catch {
-      toast.error('Failed to load tasks');
+      toast.error("Failed to load tasks");
     } finally {
       setAllTasksLoading(false);
     }
@@ -171,13 +196,16 @@ export function useMentorTasks(): UseMentorTasksReturn {
     if (!user?.id) return [];
     try {
       setMenteesLoading(true);
-      const res = await matchingApi.getMatches({ mentorId: user.id, status: 'active' });
+      const res = await matchingApi.getMatches({
+        mentorId: user.id,
+        status: "active",
+      });
       const list = res?.data?.matches || res?.matches || [];
       setMentees(list);
       setMenteesLoaded(true);
       return list;
     } catch {
-      toast.error('Failed to load mentees');
+      toast.error("Failed to load mentees");
       return [];
     } finally {
       setMenteesLoading(false);
@@ -193,33 +221,37 @@ export function useMentorTasks(): UseMentorTasksReturn {
       setMentorLevelsLoaded(true);
       return list;
     } catch {
-      toast.error('Failed to load assigned levels');
+      toast.error("Failed to load assigned levels");
       return [];
     } finally {
       setMentorLevelsLoading(false);
     }
   }, []);
 
-  const fetchRoadmap = useCallback(async (programId: string, levelId: string, menteeId?: string) => {
-    try {
-      const res = await taskApi.getRoadmapTasks(programId, levelId, menteeId);
-      setRoadmapData(res.data.roadmap);
-    } catch {
-      toast.error('Failed to load roadmap');
-    }
-  }, []);
+  const fetchRoadmap = useCallback(
+    async (programId: string, levelId: string, menteeId?: string) => {
+      try {
+        const res = await taskApi.getRoadmapTasks(programId, levelId, menteeId);
+        setRoadmapData(res.data.roadmap);
+      } catch {
+        toast.error("Failed to load roadmap");
+      }
+    },
+    []
+  );
 
   // ─── Initial boot ─────────────────────────────────────────────────────────
 
   useEffect(() => {
     if (!user?.id) return;
 
-    const paramTab = searchParams.get('tab') as MentorTaskTab | null;
-    const paramMenteeId = searchParams.get('menteeId');
-    const paramProgramId = searchParams.get('programId');
+    const paramTab = searchParams.get("tab") as MentorTaskTab | null;
+    const paramMenteeId = searchParams.get("menteeId");
+    const paramProgramId = searchParams.get("programId");
 
-    const needsMentees = paramTab === 'create' || paramTab === 'roadmap' || !!paramMenteeId;
-    const needsAllTasks = paramTab === 'all' || paramTab === 'extensions';
+    const needsMentees =
+      paramTab === "create" || paramTab === "roadmap" || !!paramMenteeId;
+    const needsAllTasks = paramTab === "all" || paramTab === "extensions";
 
     fetchStats();
     fetchPendingTasks();
@@ -230,21 +262,23 @@ export function useMentorTasks(): UseMentorTasksReturn {
         if (paramMenteeId && list.length > 0) {
           const match = list.find((m: any) => m.menteeId === paramMenteeId);
           if (match) {
-            const programId = paramProgramId || match.enrollment?.programId || '';
-            const levelId = match.levelId || '';
+            const programId =
+              paramProgramId || match.enrollment?.programId || "";
+            const levelId = match.levelId || "";
             setFormData((prev) => ({
               ...prev,
               menteeId: paramMenteeId,
-              enrollmentId: match.enrollmentId || '',
+              enrollmentId: match.enrollmentId || "",
             }));
             setSelectedMenteeForAssign(paramMenteeId);
             if (programId) setSelectedProgram(programId);
             if (levelId) setSelectedLevel(levelId);
-            if (programId && levelId) fetchRoadmap(programId, levelId, paramMenteeId);
+            if (programId && levelId)
+              fetchRoadmap(programId, levelId, paramMenteeId);
           }
         }
         if (paramTab) setActiveTab(paramTab);
-        else if (paramMenteeId) setActiveTab('create');
+        else if (paramMenteeId) setActiveTab("create");
       });
     }
 
@@ -260,13 +294,25 @@ export function useMentorTasks(): UseMentorTasksReturn {
   const handleTabSwitch = useCallback(
     (tab: MentorTaskTab) => {
       setActiveTab(tab);
-      if ((tab === 'all' || tab === 'extensions') && !allTasksLoaded && !allTasksLoading) {
+      if (
+        (tab === "all" || tab === "extensions") &&
+        !allTasksLoaded &&
+        !allTasksLoading
+      ) {
         fetchAllTasks();
       }
-      if ((tab === 'roadmap' || tab === 'create') && !menteesLoaded && !menteesLoading) {
+      if (
+        (tab === "roadmap" || tab === "create") &&
+        !menteesLoaded &&
+        !menteesLoading
+      ) {
         fetchMentees();
       }
-      if ((tab === 'roadmap' || tab === 'create') && !mentorLevelsLoaded && !mentorLevelsLoading) {
+      if (
+        (tab === "roadmap" || tab === "create") &&
+        !mentorLevelsLoaded &&
+        !mentorLevelsLoading
+      ) {
         fetchMentorLevelAssignments();
       }
     },
@@ -288,7 +334,9 @@ export function useMentorTasks(): UseMentorTasksReturn {
   const extensionTasks = useMemo(
     () =>
       allTasks.filter((task) =>
-        task.submissions?.some((s: any) => s.extensionRequested && s.extensionStatus === 'pending')
+        task.submissions?.some(
+          (s: any) => s.extensionRequested && s.extensionStatus === "pending"
+        )
       ),
     [allTasks]
   );
@@ -309,49 +357,59 @@ export function useMentorTasks(): UseMentorTasksReturn {
   const handleAssignRoadmapTask = useCallback(
     async (taskId: string, weekNumber: number) => {
       if (!selectedMenteeForAssign) {
-        toast.error('Please select a mentee first');
+        toast.error("Please select a mentee first");
         return;
       }
       try {
-        const match = mentees.find((m) => m.menteeId === selectedMenteeForAssign);
+        const match = mentees.find(
+          (m) => m.menteeId === selectedMenteeForAssign
+        );
         if (!match) return;
         await taskApi.createCustomTask({
           menteeId: selectedMenteeForAssign,
           enrollmentId: match.enrollmentId,
           title: `Week ${weekNumber} - Roadmap Task`,
-          description: 'Assigned from roadmap',
+          description: "Assigned from roadmap",
           roadmapTaskId: taskId,
         } as any);
-        toast.success('Roadmap task assigned successfully!');
+        toast.success("Roadmap task assigned successfully!");
         setAssigningTask(null);
         if (selectedProgram && selectedLevel)
           fetchRoadmap(selectedProgram, selectedLevel, selectedMenteeForAssign);
         setAllTasksLoaded(false);
       } catch (error: any) {
-        toast.error(extractApiErrorMessage(error, 'Failed to assign task'));
+        toast.error(extractApiErrorMessage(error, "Failed to assign task"));
       }
     },
-    [selectedMenteeForAssign, mentees, selectedProgram, selectedLevel, fetchRoadmap]
+    [
+      selectedMenteeForAssign,
+      mentees,
+      selectedProgram,
+      selectedLevel,
+      fetchRoadmap,
+    ]
   );
 
   const handleCreateCustomTask = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
       if (!formData.menteeId || !formData.title || !formData.description) {
-        toast.error('Please fill in all required fields');
+        toast.error("Please fill in all required fields");
         return;
       }
       try {
         await taskApi.createCustomTask(formData);
-        toast.success('Custom task created successfully!');
+        toast.success("Custom task created successfully!");
         setFormData(EMPTY_FORM);
         fetchStats();
         fetchPendingTasks();
         setAllTasksLoaded(false);
-        setActiveTab('all');
+        setActiveTab("all");
         fetchAllTasks();
       } catch (error: any) {
-        toast.error(extractApiErrorMessage(error, 'Failed to create custom task'));
+        toast.error(
+          extractApiErrorMessage(error, "Failed to create custom task")
+        );
       }
     },
     [formData, fetchStats, fetchPendingTasks, fetchAllTasks]
@@ -360,19 +418,19 @@ export function useMentorTasks(): UseMentorTasksReturn {
   const handleCancelTask = useCallback(
     async (taskId: string) => {
       if (!cancelReason.trim()) {
-        toast.error('Please provide a reason for cancellation');
+        toast.error("Please provide a reason for cancellation");
         return;
       }
       try {
         await taskApi.cancelTask(taskId, cancelReason);
-        toast.success('Task cancelled successfully');
+        toast.success("Task cancelled successfully");
         setCancellingTask(null);
-        setCancelReason('');
+        setCancelReason("");
         fetchStats();
         fetchPendingTasks();
         if (allTasksLoaded) fetchAllTasks();
       } catch (error: any) {
-        toast.error(extractApiErrorMessage(error, 'Failed to cancel task'));
+        toast.error(extractApiErrorMessage(error, "Failed to cancel task"));
       }
     },
     [cancelReason, fetchStats, fetchPendingTasks, allTasksLoaded, fetchAllTasks]
@@ -381,28 +439,37 @@ export function useMentorTasks(): UseMentorTasksReturn {
   const handleMenteeChange = useCallback(
     (menteeId: string) => {
       const match = mentees.find((m) => m.menteeId === menteeId);
-      setFormData((prev) => ({ ...prev, menteeId, enrollmentId: match?.enrollmentId || '' }));
+      setFormData((prev) => ({
+        ...prev,
+        menteeId,
+        enrollmentId: match?.enrollmentId || "",
+      }));
+      setProgramDateRange({
+        startDate: match?.enrollment?.program?.startDate || "",
+        endDate: match?.enrollment?.program?.endDate || "",
+      });
     },
     [mentees]
   );
 
   const handleProgramChange = useCallback((programId: string) => {
     setSelectedProgram(programId);
-    setSelectedLevel('');
-    setSelectedMenteeForAssign('');
+    setSelectedLevel("");
+    setSelectedMenteeForAssign("");
     setRoadmapData(null);
   }, []);
 
   const handleLevelChange = useCallback((levelId: string) => {
     setSelectedLevel(levelId);
-    setSelectedMenteeForAssign('');
+    setSelectedMenteeForAssign("");
     setRoadmapData(null);
   }, []);
 
   const handleMenteeForAssignChange = useCallback(
     (menteeId: string) => {
       setSelectedMenteeForAssign(menteeId);
-      if (selectedProgram && selectedLevel) fetchRoadmap(selectedProgram, selectedLevel, menteeId);
+      if (selectedProgram && selectedLevel)
+        fetchRoadmap(selectedProgram, selectedLevel, menteeId);
     },
     [selectedProgram, selectedLevel, fetchRoadmap]
   );
@@ -436,6 +503,7 @@ export function useMentorTasks(): UseMentorTasksReturn {
     handleAssignRoadmapTask,
     formData,
     setFormData,
+    programDateRange,
     handleMenteeChange,
     handleCreateCustomTask,
     cancellingTask,
