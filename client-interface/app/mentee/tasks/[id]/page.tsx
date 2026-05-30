@@ -1,7 +1,7 @@
-"use client";
+'use client';
 
-import { use } from "react";
-import { useRouter } from "next/navigation";
+import { use } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   CheckCircle2,
   Calendar,
@@ -18,9 +18,9 @@ import {
   MessageSquare,
   ExternalLink,
   Loader2,
-} from "lucide-react";
-import { useTaskDetail } from "@/lib/hooks/mentee";
-import { PageHeader, StatusBadge } from "@/components/admin/ui";
+} from 'lucide-react';
+import { useTaskDetail } from '@/lib/hooks/mentee';
+import { PageHeader, StatusBadge } from '@/components/admin/ui';
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -43,25 +43,20 @@ export default function TaskDetailsPage({ params }: PageProps) {
     return (
       <div className="p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3">
         <AlertCircle className="w-5 h-5 text-red-600 shrink-0" />
-        <p className="text-red-900">{error || "Task not found"}</p>
+        <p className="text-red-900">{error || 'Task not found'}</p>
       </div>
     );
   }
 
-  const taskTitle = task.roadmapTask?.title || task.title || "Untitled Task";
-  const taskDescription =
-    task.roadmapTask?.description || task.description || "";
+  const taskTitle = task.roadmapTask?.title || task.title || 'Untitled Task';
+  const taskDescription = task.roadmapTask?.description || task.description || '';
   const taskDeliverable = task.roadmapTask?.deliverable || task.deliverable;
-  const acceptanceCriteria =
-    task.roadmapTask?.acceptanceCriteria || task.acceptanceCriteria || [];
+  const acceptanceCriteria = task.roadmapTask?.acceptanceCriteria || task.acceptanceCriteria || [];
   const resources = task.roadmapTask?.resources || [];
-  const latestSubmission =
-    task.submissions?.[task.submissions.length - 1] || null;
+  const latestSubmission = task.submissions?.[task.submissions.length - 1] || null;
   const feedback = latestSubmission?.feedback || [];
 
-  const canSubmit = ["in_progress", "revision_needed", "assigned"].includes(
-    task.status,
-  );
+  const canSubmit = ['in_progress', 'revision_needed', 'assigned'].includes(task.status);
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -130,48 +125,41 @@ export default function TaskDetailsPage({ params }: PageProps) {
         </div>
 
         {/* Rating & Points (completed tasks) */}
-        {task.status === "completed" &&
-          (task.finalRating || task.pointsAwarded) && (
-            <div className="mt-4 pt-4 border-t border-slate-100 flex items-center gap-6">
-              {task.finalRating && (
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-0.5">
-                    {[1, 2, 3, 4, 5].map((star) => (
-                      <Star
-                        key={star}
-                        className={`w-5 h-5 ${
-                          star <= parseFloat(task.finalRating)
-                            ? "fill-yellow-400 text-yellow-400"
-                            : "text-slate-200"
-                        }`}
-                      />
-                    ))}
-                  </div>
-                  <span className="text-sm text-slate-600">
-                    {parseFloat(task.finalRating).toFixed(1)} / 5
-                  </span>
+        {task.status === 'completed' && (task.finalRating || task.pointsAwarded) && (
+          <div className="mt-4 pt-4 border-t border-slate-100 flex items-center gap-6">
+            {task.finalRating && (
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-0.5">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <Star
+                      key={star}
+                      className={`w-5 h-5 ${
+                        star <= parseFloat(task.finalRating)
+                          ? 'fill-yellow-400 text-yellow-400'
+                          : 'text-slate-200'
+                      }`}
+                    />
+                  ))}
                 </div>
-              )}
-              {task.pointsAwarded != null && (
-                <div className="flex items-center gap-2">
-                  <Award className="w-5 h-5 text-indigo-500" />
-                  <span className="text-sm font-semibold text-indigo-700">
-                    {task.pointsAwarded} points earned
-                  </span>
-                </div>
-              )}
-            </div>
-          )}
+                <span className="text-sm text-slate-600">{parseFloat(task.finalRating).toFixed(1)} / 5</span>
+              </div>
+            )}
+            {task.pointsAwarded != null && (
+              <div className="flex items-center gap-2">
+                <Award className="w-5 h-5 text-indigo-500" />
+                <span className="text-sm font-semibold text-indigo-700">{task.pointsAwarded} points earned</span>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Cancellation reason */}
-        {task.status === "cancelled" && task.cancellationReason && (
+        {task.status === 'cancelled' && task.cancellationReason && (
           <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
             <XCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
             <div>
               <p className="text-sm font-medium text-red-900">Task Cancelled</p>
-              <p className="text-sm text-red-700 mt-1">
-                {task.cancellationReason}
-              </p>
+              <p className="text-sm text-red-700 mt-1">{task.cancellationReason}</p>
             </div>
           </div>
         )}
@@ -179,30 +167,21 @@ export default function TaskDetailsPage({ params }: PageProps) {
 
       {/* Task Requirements */}
       <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-5">
-        <h2 className="text-lg font-semibold text-slate-900">
-          Task Requirements
-        </h2>
+        <h2 className="text-lg font-semibold text-slate-900">Task Requirements</h2>
 
         {taskDeliverable && (
           <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <p className="text-sm font-medium text-blue-900 mb-1">
-              Deliverable
-            </p>
+            <p className="text-sm font-medium text-blue-900 mb-1">Deliverable</p>
             <p className="text-sm text-blue-800">{taskDeliverable}</p>
           </div>
         )}
 
         {acceptanceCriteria.length > 0 && (
           <div>
-            <h3 className="text-sm font-medium text-slate-700 mb-3">
-              Acceptance Criteria
-            </h3>
+            <h3 className="text-sm font-medium text-slate-700 mb-3">Acceptance Criteria</h3>
             <ul className="space-y-2">
               {acceptanceCriteria.map((criterion: string, index: number) => (
-                <li
-                  key={index}
-                  className="flex items-start gap-2 text-slate-700"
-                >
+                <li key={index} className="flex items-start gap-2 text-slate-700">
                   <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0 mt-0.5" />
                   <span className="text-sm">{criterion}</span>
                 </li>
@@ -213,9 +192,7 @@ export default function TaskDetailsPage({ params }: PageProps) {
 
         {resources.length > 0 && (
           <div>
-            <h3 className="text-sm font-medium text-slate-700 mb-3">
-              Learning Resources
-            </h3>
+            <h3 className="text-sm font-medium text-slate-700 mb-3">Learning Resources</h3>
             <ul className="space-y-2">
               {resources.map((resource: any) => (
                 <li key={resource.id}>
@@ -243,9 +220,7 @@ export default function TaskDetailsPage({ params }: PageProps) {
             <FileText className="w-5 h-5 text-indigo-500" />
             Your Submission
             {task.submissions.length > 1 && (
-              <span className="text-xs text-slate-500 font-normal ml-1">
-                (v{latestSubmission?.version})
-              </span>
+              <span className="text-xs text-slate-500 font-normal ml-1">(v{latestSubmission?.version})</span>
             )}
           </h2>
 
@@ -259,54 +234,42 @@ export default function TaskDetailsPage({ params }: PageProps) {
               {/* Submission text */}
               {latestSubmission.submissionText && (
                 <div>
-                  <p className="text-xs text-slate-500 mb-2">
-                    Submission Description
-                  </p>
+                  <p className="text-xs text-slate-500 mb-2">Submission Description</p>
                   <div
                     className="prose prose-sm max-w-none text-slate-700 bg-slate-50 rounded-lg p-4 border border-slate-100"
-                    dangerouslySetInnerHTML={{
-                      __html: latestSubmission.submissionText,
-                    }}
+                    dangerouslySetInnerHTML={{ __html: latestSubmission.submissionText }}
                   />
                 </div>
               )}
 
               {/* Submission URLs */}
-              {latestSubmission.submissionUrls &&
-                latestSubmission.submissionUrls.length > 0 && (
-                  <div>
-                    <p className="text-xs text-slate-500 mb-2">Project Links</p>
-                    <ul className="space-y-1.5">
-                      {latestSubmission.submissionUrls.map(
-                        (url: string, i: number) => (
-                          <li key={i}>
-                            <a
-                              href={url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-sm text-indigo-600 hover:underline flex items-center gap-2"
-                            >
-                              <ExternalLink className="w-4 h-4" />
-                              {url}
-                            </a>
-                          </li>
-                        ),
-                      )}
-                    </ul>
-                  </div>
-                )}
+              {latestSubmission.submissionUrls && latestSubmission.submissionUrls.length > 0 && (
+                <div>
+                  <p className="text-xs text-slate-500 mb-2">Project Links</p>
+                  <ul className="space-y-1.5">
+                    {latestSubmission.submissionUrls.map((url: string, i: number) => (
+                      <li key={i}>
+                        <a
+                          href={url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-indigo-600 hover:underline flex items-center gap-2"
+                        >
+                          <ExternalLink className="w-4 h-4" />
+                          {url}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               {/* Submitted at */}
               <p className="text-xs text-slate-400 flex items-center gap-1">
                 <Clock className="w-3.5 h-3.5" />
-                Submitted on{" "}
-                {new Date(latestSubmission.submittedAt).toLocaleString()}
+                Submitted on {new Date(latestSubmission.submittedAt).toLocaleString()}
                 {latestSubmission.reviewedAt && (
-                  <>
-                    {" "}
-                    · Reviewed on{" "}
-                    {new Date(latestSubmission.reviewedAt).toLocaleString()}
-                  </>
+                  <> · Reviewed on {new Date(latestSubmission.reviewedAt).toLocaleString()}</>
                 )}
               </p>
             </div>
@@ -322,10 +285,7 @@ export default function TaskDetailsPage({ params }: PageProps) {
             Mentor Feedback
           </h2>
           {feedback.map((fb: any, index: number) => (
-            <div
-              key={fb.id || index}
-              className="p-4 bg-indigo-50 border border-indigo-200 rounded-lg space-y-3"
-            >
+            <div key={fb.id || index} className="p-4 bg-indigo-50 border border-indigo-200 rounded-lg space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <User className="w-4 h-4 text-indigo-500" />
@@ -340,8 +300,8 @@ export default function TaskDetailsPage({ params }: PageProps) {
                         key={star}
                         className={`w-4 h-4 ${
                           star <= fb.rating
-                            ? "fill-yellow-400 text-yellow-400"
-                            : "text-slate-200"
+                            ? 'fill-yellow-400 text-yellow-400'
+                            : 'text-slate-200'
                         }`}
                       />
                     ))}
@@ -350,26 +310,20 @@ export default function TaskDetailsPage({ params }: PageProps) {
               </div>
               {/* Render HTML content safely using dangerouslySetInnerHTML */}
               {(fb.feedbackText || fb.revisionNotes) && (
-                <div
+                <div 
                   className="text-sm text-indigo-800 prose prose-sm max-w-none"
-                  dangerouslySetInnerHTML={{
-                    __html: fb.feedbackText || fb.revisionNotes,
-                  }}
+                  dangerouslySetInnerHTML={{ __html: fb.feedbackText || fb.revisionNotes }}
                 />
               )}
               {fb.strengths && (
                 <div>
-                  <p className="text-xs font-medium text-green-700 mb-1">
-                    Strengths
-                  </p>
+                  <p className="text-xs font-medium text-green-700 mb-1">Strengths</p>
                   <p className="text-sm text-green-800">{fb.strengths}</p>
                 </div>
               )}
               {fb.improvements && (
                 <div>
-                  <p className="text-xs font-medium text-orange-700 mb-1">
-                    Areas for Improvement
-                  </p>
+                  <p className="text-xs font-medium text-orange-700 mb-1">Areas for Improvement</p>
                   <p className="text-sm text-orange-800">{fb.improvements}</p>
                 </div>
               )}
@@ -390,9 +344,7 @@ export default function TaskDetailsPage({ params }: PageProps) {
             onClick={() => router.push(`/mentee/tasks/${task.id}/submit`)}
             className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium transition-colors"
           >
-            {task.status === "revision_needed"
-              ? "Re-submit Work"
-              : "Submit Work"}
+            {task.status === 'revision_needed' ? 'Re-submit Work' : 'Submit Work'}
           </button>
         </div>
       )}
