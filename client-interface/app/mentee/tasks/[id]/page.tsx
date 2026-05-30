@@ -308,8 +308,12 @@ export default function TaskDetailsPage({ params }: PageProps) {
                   </div>
                 )}
               </div>
-              {fb.comments && (
-                <p className="text-sm text-indigo-800">{fb.comments}</p>
+              {/* Render HTML content safely using dangerouslySetInnerHTML */}
+              {(fb.feedbackText || fb.revisionNotes) && (
+                <div 
+                  className="text-sm text-indigo-800 prose prose-sm max-w-none"
+                  dangerouslySetInnerHTML={{ __html: fb.feedbackText || fb.revisionNotes }}
+                />
               )}
               {fb.strengths && (
                 <div>
