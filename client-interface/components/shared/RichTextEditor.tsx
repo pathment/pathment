@@ -17,18 +17,13 @@ import {
   Link as LinkIcon
 } from 'lucide-react';
 
-export function RichTextViewer({
-  content,
-  className = '',
-}: {
+export function RichTextViewer({content, className = ''}: {
   content: string;
-  className?: string;
-}) {
-  return (
+  className?: string;}) 
+  {return (
     <div
       className={`prose prose-sm max-w-none text-slate-700 ${className}`.trim()}
-      dangerouslySetInnerHTML={{ __html: content }}
-    />
+      dangerouslySetInnerHTML={{ __html: content }} />
   );
 }
 
