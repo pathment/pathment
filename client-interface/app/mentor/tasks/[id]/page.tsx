@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { useMentorTaskDetail } from '@/lib/hooks/mentor';
 import { PageHeader, StatusBadge } from '@/components/admin/ui';
+import { RichTextViewer } from '@/components/shared';
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -98,7 +99,7 @@ export default function MentorTaskDetailsPage({ params }: PageProps) {
                 </span>
               )}
             </div>
-            <p className="text-slate-600">{taskDescription}</p>
+            <RichTextViewer content={taskDescription} className="text-slate-600" />
           </div>
               <StatusBadge status={task.status} />
         </div>

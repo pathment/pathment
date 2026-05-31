@@ -30,4 +30,4 @@ export { default as FileUploader } from './FileUploader';
 export { default as Navigation } from './Navigation';
 export { default as OnboardingGuard } from './OnboardingGuard';
 export { RoleGuard } from './RoleGuard';
-export { default as RichTextEditor } from './RichTextEditor';
+export { default as RichTextEditor, RichTextViewer } from './RichTextEditor';
