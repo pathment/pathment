@@ -11,7 +11,9 @@ const NOTIFICATION_EVENTS = {
   SUBMISSION_DEADLINE_PASSED: 'submission_deadline_passed',
   ACCOUNT_CREATED_WELCOME: 'account_created_welcome',
   PASSWORD_RESET: 'password_reset',
-  WEEKLY_PROGRESS_REPORT: 'weekly_progress_report'
+  WEEKLY_PROGRESS_REPORT: 'weekly_progress_report',
+  EXTENSION_REQUESTED: 'extension_requested',
+EXTENSION_HANDLED: 'extension_handled'
 };
 
 const NOTIFICATION_MATRIX = {
@@ -79,7 +81,17 @@ const NOTIFICATION_MATRIX = {
     type: 'system',
     preferenceKey: 'weekly_progress_report',
     channels: { inApp: false, email: true, chat: false }
-  }
+  },
+  [NOTIFICATION_EVENTS.EXTENSION_REQUESTED]: {
+  type: 'task',
+  preferenceKey: 'extension_requested',
+  channels: { inApp: true, email: true, chat: false }
+},
+[NOTIFICATION_EVENTS.EXTENSION_HANDLED]: {
+  type: 'task',
+  preferenceKey: 'extension_handled',
+  channels: { inApp: true, email: true, chat: false }
+}
 };
 
 module.exports = {

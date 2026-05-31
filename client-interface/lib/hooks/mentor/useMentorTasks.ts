@@ -132,6 +132,7 @@ export function useMentorTasks(): UseMentorTasksReturn {
   const [assigningTask, setAssigningTask] = useState<string | null>(null);
 
   const [formData, setFormData] = useState<CustomTaskFormData>(EMPTY_FORM);
+  const [isCreatingTask, setIsCreatingTask] = useState(false);
 
   const [cancellingTask, setCancellingTask] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState('');
@@ -377,6 +378,7 @@ export function useMentorTasks(): UseMentorTasksReturn {
         return;
       }
       try {
+        setIsCreatingTask(true);
         await taskApi.createCustomTask(formData);
         toast.success('Custom task created successfully!');
         setFormData(EMPTY_FORM);
@@ -387,9 +389,11 @@ export function useMentorTasks(): UseMentorTasksReturn {
         fetchAllTasks();
       } catch (error: any) {
         toast.error(extractApiErrorMessage(error, 'Failed to create custom task'));
+      } finally {
+        setIsCreatingTask(false);
       }
     },
-    [formData, fetchStats, fetchPendingTasks, fetchAllTasks]
+    [formData, isCreatingTask, fetchStats, fetchPendingTasks, fetchAllTasks]
   );
 
   const handleCancelTask = useCallback(
