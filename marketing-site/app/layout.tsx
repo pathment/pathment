@@ -1,16 +1,26 @@
 import type { Metadata } from 'next';
-import { Inter, Instrument_Sans } from 'next/font/google';
+import { Inter, JetBrains_Mono, Sora } from 'next/font/google';
 import './globals.css';
 
 const inter = Inter({
   subsets: ['latin'],
   weight: ['300', '400', '500', '600', '700'],
   variable: '--font-inter',
+  display: 'swap',
 });
 
-const instrumentSans = Instrument_Sans({
+const sora = Sora({
   subsets: ['latin'],
-  variable: '--font-instrument',
+  weight: ['400', '500', '600', '700'],
+  variable: '--font-sora',
+  display: 'swap',
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ['latin'],
+  weight: ['400', '500'],
+  variable: '--font-jetbrains',
+  display: 'swap',
 });
 
 export const metadata: Metadata = {
@@ -50,7 +60,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body suppressHydrationWarning className={`${inter.variable} ${instrumentSans.variable}`}>
+      <body
+        suppressHydrationWarning
+        className={`${inter.variable} ${sora.variable} ${jetbrainsMono.variable}`}
+      >
         {children}
       </body>
     </html>
