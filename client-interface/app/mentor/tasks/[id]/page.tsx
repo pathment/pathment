@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { useMentorTaskDetail } from '@/lib/hooks/mentor';
 import { PageHeader, StatusBadge } from '@/components/admin/ui';
+import { RichTextViewer } from '@/components/shared';
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -336,8 +337,14 @@ export default function MentorTaskDetailsPage({ params }: PageProps) {
                   </div>
                 )}
               </div>
-              {fb.comments && (
-                <p className="text-sm text-indigo-800">{fb.comments}</p>
+              {fb.feedbackText && (
+                <RichTextViewer
+                  content={fb.feedbackText}
+                  className="text-sm text-indigo-800"
+                />
+              )}
+              {fb.revisionNotes && (
+                <p className="text-sm text-slate-600">{fb.revisionNotes}</p>
               )}
               {fb.strengths && (
                 <div>
