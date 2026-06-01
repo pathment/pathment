@@ -238,6 +238,15 @@
   font-size: 0.875em;
 }
 
+.ProseMirror pre {
+  background-color: #1f2937;
+  color: #f3f4f6;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  margin: 1rem 0;
+  overflow-x: auto;
+}
+
 .ProseMirror pre code {
   background-color: transparent;
   color: inherit;
