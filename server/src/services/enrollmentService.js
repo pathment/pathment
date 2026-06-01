@@ -273,7 +273,13 @@ class EnrollmentService {
    * Sets status to pending_completion and records who requested it.
    */
   async requestCompletion(enrollmentId, requestedById, requestedByRole) {
-    const enrollment = await models.Enrollment.findByPk(enrollmentId);
+    const enrollment = await models.Enrollment.findByPk(enrollmentId, {
+      include: [
+        { model: models.User, as: 'mentee', attributes: ['id', 'firstName', 'lastName'] },
+        { model: models.Program, as: 'program', attributes: ['id', 'name'] },
+        { model: models.ProgramLevel, as: 'currentLevel', attributes: ['id', 'name'] }
+      ]
+    });
     if (!enrollment) throw new NotFoundError('Enrollment not found');
 
     // Only mentee can self-request; mentor can also request on behalf of mentee
@@ -301,6 +307,32 @@ class EnrollmentService {
       completionRejectionReason: null
     });
 
+    // Notify mentor if the request is submitted by the mentee
+    if (requestedByRole === 'mentee') {
+      const match = await models.MentorMenteeMatch.findOne({
+        where: { enrollmentId, status: 'active' }
+      });
+      if (match) {
+        await notificationOrchestrator.dispatch({
+          eventKey: NOTIFICATION_EVENTS.MENTEE_ENROLLED,
+          recipients: [{ userId: match.mentorId }],
+          payload: {
+            title: 'Level completion requested',
+            message: `${enrollment.mentee.firstName} ${enrollment.mentee.lastName} has requested completion for "${enrollment.currentLevel.name}" in "${enrollment.program.name}".`,
+            actionUrl: `/mentor/mentees/${enrollment.menteeId}`,
+            actionLabel: 'Review Request',
+            relatedEntityType: 'enrollment',
+            relatedEntityId: enrollment.id,
+            emailSubject: 'Pathment: Level Completion Requested'
+          },
+          dedupe: {
+            relatedEntityType: 'level_completion_requested',
+            relatedEntityId: enrollment.id
+          }
+        });
+      }
+    }
+
     return this.getEnrollmentById(enrollmentId);
   }
 
@@ -311,6 +343,8 @@ class EnrollmentService {
   async approveCompletion(enrollmentId, approverId, approverRole) {
     const enrollment = await models.Enrollment.findByPk(enrollmentId, {
       include: [
+        { model: models.User, as: 'mentee', attributes: ['id', 'firstName', 'lastName'] },
+        { model: models.ProgramLevel, as: 'currentLevel', attributes: ['id', 'name'] },
         {
           model: models.Program,
           as: 'program',
@@ -349,6 +383,63 @@ class EnrollmentService {
       completionApprovedByRole: approverRole,
       completedAt: newStatus === 'program_completed' ? new Date() : enrollment.completedAt
     });
+
+    // Send notifications to Mentee and Admin
+    const admins = await models.User.findAll({
+      where: { role: 'admin', status: 'active' },
+      attributes: ['id']
+    });
+
+    const isProgramCompleted = newStatus === 'program_completed';
+    const completionTitle = isProgramCompleted ? 'Program completed!' : 'Level completed!';
+    const menteeMessage = isProgramCompleted
+      ? `Congratulations! You have completed the entire program "${enrollment.program.name}".`
+      : `Congratulations! You have completed "${enrollment.currentLevel.name}" in "${enrollment.program.name}".`;
+
+    const adminTitle = isProgramCompleted ? 'Program completed by mentee' : 'Level completed by mentee';
+    const adminMessage = isProgramCompleted
+      ? `Mentee ${enrollment.mentee.firstName} ${enrollment.mentee.lastName} has completed the program "${enrollment.program.name}".`
+      : `Mentee ${enrollment.mentee.firstName} ${enrollment.mentee.lastName} has completed "${enrollment.currentLevel.name}" in "${enrollment.program.name}".`;
+
+    // Notify Mentee
+    await notificationOrchestrator.dispatch({
+      eventKey: NOTIFICATION_EVENTS.MENTEE_ENROLLED,
+      recipients: [{ userId: enrollment.menteeId }],
+      payload: {
+        title: completionTitle,
+        message: menteeMessage,
+        actionUrl: '/mentee/programs',
+        actionLabel: 'View Programs',
+        relatedEntityType: 'enrollment',
+        relatedEntityId: enrollment.id,
+        emailSubject: `Pathment: ${completionTitle}`
+      },
+      dedupe: {
+        relatedEntityType: isProgramCompleted ? 'program_completed_mentee' : 'level_completed_mentee',
+        relatedEntityId: enrollment.id
+      }
+    });
+
+    // Notify Admins
+    if (admins.length > 0) {
+      await notificationOrchestrator.dispatch({
+        eventKey: NOTIFICATION_EVENTS.MENTEE_ENROLLED,
+        recipients: admins.map(admin => ({ userId: admin.id })),
+        payload: {
+          title: adminTitle,
+          message: adminMessage,
+          actionUrl: '/admin/enrollment/overview',
+          actionLabel: 'View Enrollment',
+          relatedEntityType: 'enrollment',
+          relatedEntityId: enrollment.id,
+          emailSubject: `Pathment: ${adminTitle}`
+        },
+        dedupe: {
+          relatedEntityType: isProgramCompleted ? 'program_completed_admin' : 'level_completed_admin',
+          relatedEntityId: enrollment.id
+        }
+      });
+    }
 
     // Auto-promote: if there is a next level, immediately advance without admin manual step
     if (hasNextLevel) {
