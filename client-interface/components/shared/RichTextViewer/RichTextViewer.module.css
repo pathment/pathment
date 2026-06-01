@@ -1,0 +1,119 @@
+.richTextViewer {
+  color: #334155;
+  font-size: 0.9375rem;
+  line-height: 1.75;
+}
+
+.richTextViewer :global(.rtv-heading) {
+  margin: 0;
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.richTextViewer :global(.rtv-heading-1) {
+  font-size: 2rem;
+  margin: 0 0 0.3rem;
+}
+
+.richTextViewer :global(.rtv-heading-2) {
+  font-size: 1.5rem;
+}
+
+.richTextViewer :global(.rtv-heading-3) {
+  font-size: 1.25rem;
+}
+
+.richTextViewer :global(.rtv-heading-4) {
+  font-size: 1.125rem;
+}
+
+.richTextViewer :global(.rtv-heading-5),
+.richTextViewer :global(.rtv-heading-6) {
+  font-size: 1rem;
+}
+
+.richTextViewer :global(.rtv-paragraph) {
+  margin: 0;
+}
+
+.richTextViewer :global(.rtv-list) {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.richTextViewer :global(.rtv-list-disc) {
+  list-style-type: disc;
+}
+
+.richTextViewer :global(.rtv-list-decimal) {
+  list-style-type: decimal;
+}
+
+.richTextViewer :global(.rtv-list-item) {
+  margin: 0;
+}
+
+.richTextViewer :global(.rtv-link) {
+  color: #4f46e5;
+  text-decoration: underline;
+}
+
+.richTextViewer :global(.rtv-link:hover) {
+  color: #4338ca;
+}
+
+.richTextViewer :global(.rtv-strong) {
+  font-weight: 600;
+}
+
+.richTextViewer :global(.rtv-em) {
+  font-style: italic;
+}
+
+.richTextViewer :global(.rtv-inline-code) {
+  background: #f3f4f6;
+  color: #111827;
+  padding: 0.12rem 0.22rem;
+  border-radius: 0.25rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Courier New', monospace;
+  font-size: 0.92em;
+  line-height: 1.4;
+}
+
+.richTextViewer :global(.rtv-code-block) {
+  background: #f3f4f6;
+  color: #111827;
+  border-radius: 0.5rem;
+  padding: 0.9rem 1rem;
+  overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Courier New', monospace;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  margin: 0;
+  white-space: pre;
+}
+
+.richTextViewer :global(.rtv-code-block code) {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  border-radius: 0;
+  font-size: inherit;
+}
+
+.richTextViewer :global(.rtv-blockquote) {
+  border-left: 4px solid #cbd5e1;
+  padding-left: 1rem;
+  background: #f8fafc;
+  color: #475569;
+  font-style: italic;
+  margin: 0;
+}
+
+.richTextViewer :global(.rtv-image) {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.75rem;
+  margin: 0;
+}

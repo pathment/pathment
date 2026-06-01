@@ -1,6 +1,7 @@
-'use client';
+"use client";
 
 import { cn } from '@/lib/utils/cn';
+import styles from './RichTextViewer.module.css';
 
 interface RichTextViewerProps {
   content: string;
@@ -95,7 +96,7 @@ export function RichTextViewer({ content, className }: RichTextViewerProps) {
 
   return (
     <div
-      className={cn('rich-text-viewer', className)}
+      className={cn(styles.richTextViewer, className)}
       dangerouslySetInnerHTML={{ __html: enhanceRichTextContent(content) }}
     />
   );
