@@ -127,6 +127,7 @@ export default function ProgramDetails() {
   } = useProgramDetail();
 
   const [activeTab, setActiveTab] = useState<'overview' | 'levels' | 'mentors' | 'enrollments'>('overview');
+  const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
 
   useEffect(() => {
     if (activeTab === 'levels' && selectedLevelId) {
@@ -159,6 +160,13 @@ export default function ProgramDetails() {
     );
   }
 
+  const description = program.description || 'No description available';
+  const DESCRIPTION_LIMIT = 250;
+  const isLongDescription = description.length > DESCRIPTION_LIMIT;
+  const displayDescription = isLongDescription && !isDescriptionExpanded
+    ? description.slice(0, DESCRIPTION_LIMIT) + '...'
+    : description;
+
   return (
     <>
       {/* Header */}
@@ -181,7 +189,19 @@ export default function ProgramDetails() {
                 updating={updatingStatus}
               />
             </div>
-            <p className="text-slate-600 mb-4">{program.description || 'No description available'}</p>
+            <div className="mb-4">
+              <p className="text-slate-600 inline">
+                {displayDescription}
+              </p>
+              {isLongDescription && (
+                <button
+                  onClick={() => setIsDescriptionExpanded(!isDescriptionExpanded)}
+                  className="ml-2 text-indigo-600 hover:text-indigo-700 text-sm font-medium focus:outline-none"
+                >
+                  {isDescriptionExpanded ? 'Read Less' : 'Read More'}
+                </button>
+              )}
+            </div>
             {program.tags && program.tags.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {program.tags.map((tag: string, idx: number) => (

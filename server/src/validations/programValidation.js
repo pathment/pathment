@@ -1,5 +1,14 @@
 const Joi = require('joi');
 
+const wordLimit = (limit) => (value, helpers) => {
+  if (!value) return value;
+  const wordCount = value.trim().split(/\s+/).filter(Boolean).length;
+  if (wordCount > limit) {
+    return helpers.message(`Description cannot exceed ${limit} words`);
+  }
+  return value;
+};
+
 const programValidation = {
   // Create program validation
   createProgram: Joi.object({
@@ -15,6 +24,7 @@ const programValidation = {
 
     description: Joi.string()
       .min(10)
+      .custom(wordLimit(1000))
       .required()
       .messages({
         'string.empty': 'Program description is required',
@@ -136,6 +146,7 @@ const programValidation = {
 
     description: Joi.string()
       .min(10)
+      .custom(wordLimit(1000))
       .optional()
       .messages({
         'string.min': 'Description must be at least 10 characters'
@@ -243,6 +254,7 @@ const programValidation = {
 
     description: Joi.string()
       .min(10)
+      .custom(wordLimit(1000))
       .optional(),
 
     startDate: Joi.date()
