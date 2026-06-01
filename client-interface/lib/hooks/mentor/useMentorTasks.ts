@@ -81,6 +81,7 @@ export interface UseMentorTasksReturn {
   setFormData: React.Dispatch<React.SetStateAction<CustomTaskFormData>>;
   handleMenteeChange: (menteeId: string) => void;
   handleCreateCustomTask: (e: React.FormEvent) => Promise<void>;
+  isCreatingTask: boolean;
 
   // cancel
   cancellingTask: string | null;
@@ -120,6 +121,7 @@ export function useMentorTasks(): UseMentorTasksReturn {
   const [assigningTask, setAssigningTask] = useState<string | null>(null);
 
   const [formData, setFormData] = useState<CustomTaskFormData>(EMPTY_FORM);
+  const [isCreatingTask, setIsCreatingTask] = useState(false);
 
   const [cancellingTask, setCancellingTask] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState('');
@@ -337,11 +339,13 @@ export function useMentorTasks(): UseMentorTasksReturn {
   const handleCreateCustomTask = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
+      if (isCreatingTask) return;
       if (!formData.menteeId || !formData.title || !formData.description) {
         toast.error('Please fill in all required fields');
         return;
       }
       try {
+        setIsCreatingTask(true);
         await taskApi.createCustomTask(formData);
         toast.success('Custom task created successfully!');
         setFormData(EMPTY_FORM);
@@ -352,9 +356,11 @@ export function useMentorTasks(): UseMentorTasksReturn {
         fetchAllTasks();
       } catch (error: any) {
         toast.error(extractApiErrorMessage(error, 'Failed to create custom task'));
+      } finally {
+        setIsCreatingTask(false);
       }
     },
-    [formData, fetchStats, fetchPendingTasks, fetchAllTasks]
+    [formData, isCreatingTask, fetchStats, fetchPendingTasks, fetchAllTasks]
   );
 
   const handleCancelTask = useCallback(
@@ -438,6 +444,7 @@ export function useMentorTasks(): UseMentorTasksReturn {
     setFormData,
     handleMenteeChange,
     handleCreateCustomTask,
+    isCreatingTask,
     cancellingTask,
     cancelReason,
     setCancellingTask,

@@ -42,6 +42,7 @@ export default function MentorTasks() {
     setFormData,
     handleMenteeChange,
     handleCreateCustomTask,
+    isCreatingTask,
     cancellingTask,
     cancelReason,
     setCancellingTask,
@@ -775,8 +776,12 @@ export default function MentorTasks() {
                   </div>
 
                   <div className="flex gap-4">
-                    <button type="submit" className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition-colors">
-                      Assign Task
+                    <button
+                      type="submit"
+                      disabled={isCreatingTask}
+                      className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    >
+                      {isCreatingTask ? 'Assigning...' : 'Assign Task'}
                     </button>
                     <button
                       type="button"

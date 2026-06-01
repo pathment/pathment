@@ -171,9 +171,29 @@ class SubmissionService {
       extensionStatus: 'pending'
     });
 
-    return this.getSubmissionById(submission.id);
-  }
+    const fullSubmission = await this.getSubmissionById(submission.id);
 
+    //  ADD: Send notification to mentor
+    await notificationOrchestrator.dispatch({
+      eventKey: NOTIFICATION_EVENTS.EXTENSION_REQUESTED,
+      recipients: [{ userId: task.mentorId }],
+      payload: {
+        title: 'Extension request received',
+        message: `${fullSubmission.assignedTask?.mentee?.firstName || 'Mentee'} requested an extension for "${fullSubmission.assignedTask?.roadmapTask?.title || 'a task'}" for ${extensionData.days || 'additional'} days.`,
+        actionUrl: `/mentor/tasks/${task.id}`,
+        actionLabel: 'Review Request',
+        relatedEntityType: 'task_submission',
+        relatedEntityId: submission.id,
+        emailSubject: 'Pathment: Extension request from mentee'
+      },
+      dedupe: {
+        relatedEntityType: 'extension_requested',
+        relatedEntityId: submission.id
+      }
+    });
+
+    return fullSubmission;
+  }
   /**
    * Approve or reject extension request
    */
@@ -206,13 +226,43 @@ class SubmissionService {
       reviewedAt: new Date()
     });
 
-    if (approved && newDueDate) {
+   let finalDueDate = newDueDate;
+    if (approved) {
+      if (!newDueDate) {
+        // Auto-calculate 3 days from the TASK'S CURRENT DUE DATE 
+        const currentDueDate = new Date(submission.assignedTask.dueDate);
+        currentDueDate.setDate(currentDueDate.getDate() + 3);
+        finalDueDate = currentDueDate.toISOString().split('T')[0];
+      }
       await submission.assignedTask.update({
-        dueDate: newDueDate
+        dueDate: finalDueDate
       });
     }
 
-    return this.getSubmissionById(submissionId);
+    //  ADD: Send notification to mentee
+    const updatedSubmission = await this.getSubmissionById(submissionId);
+    
+    await notificationOrchestrator.dispatch({
+      eventKey: NOTIFICATION_EVENTS.EXTENSION_HANDLED,
+      recipients: [{ userId: submission.assignedTask.menteeId }],
+      payload: {
+        title: approved ? 'Extension approved' : 'Extension request rejected',
+        message: approved
+          ? `Your extension request for "${updatedSubmission.assignedTask?.roadmapTask?.title || 'task'}" was approved. New due date: ${finalDueDate}`
+          : `Your extension request for "${updatedSubmission.assignedTask?.roadmapTask?.title || 'task'}" was rejected.`,
+        actionUrl: `/mentee/tasks/${submission.assignedTask.id}`,
+        actionLabel: 'View Task',
+        relatedEntityType: 'task_submission',
+        relatedEntityId: submission.id,
+        emailSubject: `Pathment: Extension ${approved ? 'approved' : 'rejected'}`
+      },
+      dedupe: {
+        relatedEntityType: 'extension_handled',
+        relatedEntityId: submission.id
+      }
+    });
+
+    return updatedSubmission;
   }
 
   /**
