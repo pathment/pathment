@@ -1,0 +1,129 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+    /* one tight radius across the whole product — sharp, editorial, premium */
+    --r: 3px;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-canvas text-ink font-sans antialiased;
+    /* Plus Jakarta Sans stylistic sets — the editorial detail from the mockup */
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* tabular, mono numerals wherever we mark them */
+  .tnum {
+    font-feature-settings: 'tnum';
+    font-variant-numeric: tabular-nums;
+  }
+
+  :focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(0, 102, 255, 0.35);
+    border-radius: var(--r);
+  }
+
+  /* faint hairline grid texture on the canvas — custom, premium, barely there */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background-image:
+      linear-gradient(to right, rgba(9, 9, 11, 0.022) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(9, 9, 11, 0.022) 1px, transparent 1px);
+    background-size: 56px 56px;
+  }
+  #root {
+    position: relative;
+    z-index: 1;
+  }
+}
+
+@layer components {
+  /* header is solid + hairline, not a trendy blur */
+  .glass {
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: saturate(1.4);
+  }
+
+  .gradient-text {
+    color: inherit;
+  }
+
+  /* flat solid-ink surface for the rare primary hero (not a glow) */
+  .gradient-brand {
+    background: #09090b;
+  }
+
+  /* The core surface: white, hairline, near-square. Shadows are the "AI-ish"
+     tell, so we use almost none — the hairline does the work. */
+  .card {
+    background: #fff;
+    border: 1px solid #e4e4e7;
+    border-radius: var(--r);
+  }
+
+  .card-hover {
+    transition:
+      border-color 0.16s ease,
+      background-color 0.16s ease;
+  }
+  .card-hover:hover {
+    border-color: #18181b;
+  }
+
+  /* AI / insight surface — white card with a thin blue ledger rule, no tint */
+  .ai-panel {
+    background: #fff;
+    border: 1px solid #e4e4e7;
+    border-radius: var(--r);
+    box-shadow: inset 2px 0 0 #0066ff;
+  }
+
+  /* editorial eyebrow — mono, uppercase, hair-tracked */
+  .eyebrow {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 10px;
+    line-height: 1;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #a1a1aa;
+  }
+}
+
+@layer utilities {
+  .rounded-r {
+    border-radius: var(--r);
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 7px;
+    height: 7px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: #e4e4e7;
+    border-radius: 10px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background: #d4d4d8;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}

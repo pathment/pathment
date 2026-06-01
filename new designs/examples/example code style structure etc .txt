@@ -1,0 +1,2214 @@
+```index.tsx
+import "./index.css";
+import React from "react";
+import { render } from "react-dom";
+import { App } from "./App";
+
+render(<App />, document.getElementById("root"));
+
+```
+```App.tsx
+import React, { useState, createContext, useContext } from 'react'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { Sidebar } from './components/shell/Sidebar'
+// Pages
+import { CohortOverview } from './pages/mentor/CohortOverview'
+import { CohortReview } from './pages/mentor/CohortReview'
+import { MenteeProfile } from './pages/mentor/MenteeProfile'
+import { ApprovalsQueue } from './pages/mentor/ApprovalsQueue'
+import { MenteeHome } from './pages/mentee/MenteeHome'
+import { TaskDetail } from './pages/mentee/TaskDetail'
+import { ProgramHealth } from './pages/admin/ProgramHealth'
+type Role = 'mentor' | 'mentee' | 'admin'
+interface RoleContextType {
+  role: Role
+  setRole: (role: Role) => void
+}
+const RoleContext = createContext<RoleContextType | undefined>(undefined)
+export const useRole = () => {
+  const context = useContext(RoleContext)
+  if (!context) throw new Error('useRole must be used within RoleProvider')
+  return context
+}
+const AppShell = ({ children }: { children: React.ReactNode }) => {
+  return (
+    <div className="flex h-screen w-full bg-background overflow-hidden text-foreground font-sans">
+      <Sidebar />
+      <main className="flex-1 overflow-y-auto relative">{children}</main>
+    </div>
+  )
+}
+export function App() {
+  const [role, setRole] = useState<Role>('mentor')
+  return (
+    <RoleContext.Provider
+      value={{
+        role,
+        setRole,
+      }}
+    >
+      <BrowserRouter>
+        <AppShell>
+          <Routes>
+            {/* Mentor Routes */}
+            <Route path="/mentor" element={<CohortOverview />} />
+            <Route path="/mentor/review" element={<CohortReview />} />
+            <Route path="/mentor/mentee/:id" element={<MenteeProfile />} />
+            <Route path="/mentor/approvals" element={<ApprovalsQueue />} />
+
+            {/* Mentee Routes */}
+            <Route path="/mentee" element={<MenteeHome />} />
+            <Route path="/mentee/task/:id" element={<TaskDetail />} />
+
+            {/* Admin Routes */}
+            <Route path="/admin" element={<ProgramHealth />} />
+
+            {/* Redirects based on role */}
+            <Route path="/" element={<Navigate to={`/${role}`} replace />} />
+            <Route path="*" element={<Navigate to={`/${role}`} replace />} />
+          </Routes>
+        </AppShell>
+      </BrowserRouter>
+    </RoleContext.Provider>
+  )
+}
+
+```
+```index.css
+/* --- MANAGED FONT IMPORTS START (do not edit manually) --- */
+/* INTERNAL USE NAME: Heading */
+@import url('https://fonts.googleapis.com/css2?family=Geist:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap');
+/* INTERNAL USE NAME: Mono */
+@import url('https://fonts.googleapis.com/css2?family=Geist+Mono:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap');
+
+/* --- MANAGED FONT IMPORTS END --- */
+
+/* @import url() FONT IMPORTS MUST ALWAYS BE AT THE VERY TOP OF THIS FILE, ABOVE THE TAILWIND IMPORTS — DO NOT DELETE THIS COMMENT */
+
+/* CRITICAL: THE FOLLOWING TAILWIND IMPORTS MUST NEVER BE DELETED OR REORDERED — DO NOT DELETE THIS COMMENT */
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+
+/* END TAILWIND IMPORTS — ALL OTHER CSS MUST GO BELOW THIS LINE */
+
+@custom-variant dark (&:is(.dark *));
+:root {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
+:root.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.145 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.145 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.985 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.396 0.141 25.723);
+  --destructive-foreground: oklch(0.637 0.237 25.331);
+  --border: oklch(0.269 0 0);
+  --input: oklch(0.269 0 0);
+  --ring: oklch(0.439 0 0);
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(0.269 0 0);
+  --sidebar-ring: oklch(0.439 0 0);
+}
+@layer base {
+  * {
+    @apply border-border outline-ring;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+```
+```tailwind.config.js
+export default {
+  darkMode: 'selector',
+  theme: {
+    container: {
+      center: true,
+      padding: '2rem',
+      screens: {
+        '2xl': '1400px'
+      }
+    },
+    extend: {
+      colors: {
+        background: 'var(--background)',
+        foreground: 'var(--foreground)',
+        card: 'var(--card)',
+        'card-foreground': 'var(--card-foreground)',
+        popover: 'var(--popover)',
+        'popover-foreground': 'var(--popover-foreground)',
+        primary: 'var(--primary)',
+        'primary-foreground': 'var(--primary-foreground)',
+        secondary: 'var(--secondary)',
+        'secondary-foreground': 'var(--secondary-foreground)',
+        muted: 'var(--muted)',
+        'muted-foreground': 'var(--muted-foreground)',
+        accent: 'var(--accent)',
+        'accent-foreground': 'var(--accent-foreground)',
+        destructive: 'var(--destructive)',
+        border: 'var(--border)',
+        input: 'var(--input)',
+        ring: 'var(--ring)',
+        'chart-1': 'var(--chart-1)',
+        'chart-2': 'var(--chart-2)',
+        'chart-3': 'var(--chart-3)',
+        'chart-4': 'var(--chart-4)',
+        'chart-5': 'var(--chart-5)',
+        sidebar: 'var(--sidebar)',
+        'sidebar-foreground': 'var(--sidebar-foreground)',
+        'sidebar-primary': 'var(--sidebar-primary)',
+        'sidebar-primary-foreground': 'var(--sidebar-primary-foreground)',
+        'sidebar-accent': 'var(--sidebar-accent)',
+        'sidebar-accent-foreground': 'var(--sidebar-accent-foreground)',
+        'sidebar-border': 'var(--sidebar-border)',
+        'sidebar-ring': 'var(--sidebar-ring)',
+        'destructive-foreground': 'var(--destructive-foreground)'
+      },
+      fontFamily: {
+        heading: ['Geist'],
+        mono: ['"Geist Mono"']
+      }
+    }
+  }
+}
+```
+```canvas.manifest.js
+export const manifest = {
+  screens: {
+    scr_qv04xs: { name: "Mentor — Cohort Overview", route: "/mentor", position: {"x":160,"y":220} },
+    scr_v60yx0: { name: "Mentor — Cohort Review", route: "/mentor/review", position: {"x":1560,"y":220} },
+    scr_bf9g3n: { name: "Mentor — Mentee Profile", route: "/mentor/mentee/m1", position: {"x":2960,"y":220} },
+    scr_5u2x5x: { name: "Mentor — Approvals Queue", route: "/mentor/approvals", position: {"x":4360,"y":220} },
+    scr_m78jfe: { name: "Mentee — This Week", route: "/mentee", position: {"x":160,"y":2200} },
+    scr_bmxl5e: { name: "Mentee — Task Detail", route: "/mentee/task/t1", position: {"x":1560,"y":2200} },
+    scr_2i97co: { name: "Admin — Program Health", route: "/admin", position: {"x":160,"y":4180} },
+  },
+  sections: {
+    sec_ne96us: { name: "Mentor workflow", x: 0, y: 0, width: 5720, height: 1180 },
+    sec_0kt211: { name: "Mentee workflow", x: 0, y: 1980, width: 2920, height: 1180 },
+    sec_8mliam: { name: "Admin oversight", x: 0, y: 3960, width: 1520, height: 1180 },
+  },
+  layers: [
+    { kind: "section", id: "sec_ne96us", children: [
+      { kind: "screen", id: "scr_qv04xs" },
+      { kind: "screen", id: "scr_v60yx0" },
+      { kind: "screen", id: "scr_bf9g3n" },
+      { kind: "screen", id: "scr_5u2x5x" },
+    ] },
+    { kind: "section", id: "sec_0kt211", children: [
+      { kind: "screen", id: "scr_m78jfe" },
+      { kind: "screen", id: "scr_bmxl5e" },
+    ] },
+    { kind: "section", id: "sec_8mliam", children: [
+      { kind: "screen", id: "scr_2i97co" },
+    ] },
+  ],
+}
+
+```
+```useScreenInit.js
+import { useMemo } from 'react'
+import { manifest } from './canvas.manifest.js'
+
+export function useScreenInit() {
+  return useMemo(() => {
+    if (typeof window === 'undefined') return {}
+    const screenId = new URLSearchParams(window.location.search).get('mp_screen')
+    if (!screenId) return {}
+    return manifest?.screens?.[screenId]?.state ?? {}
+  }, [])
+}
+
+```
+```data/mockData.ts
+export type RiskStatus = 'on-track' | 'struggling-despite-effort' | 'disengaged'
+export type Momentum = 'improving' | 'flat' | 'declining'
+
+export interface Mentee {
+  id: string
+  name: string
+  avatar: string
+  program: string
+  level: string
+  week: number
+  progress: {
+    absolute: number
+    relative: number
+  }
+  onTimeRatio: number
+  momentum: Momentum
+  momentumData: { week: number; score: number }[]
+  openBlockers: number
+  pendingApprovals: number
+  riskStatus: RiskStatus
+  aiSummary: string
+  aiSignals: string[]
+  delays: {
+    date: string
+    task: string
+    reason: string
+    category: 'external' | 'scope' | 'avoidance'
+  }[]
+  blockers: {
+    id: string
+    title: string
+    status: 'open' | 'resolved'
+    type: string
+  }[]
+  personality: {
+    consistency: number
+    resilience: number
+    communication: number
+    projectStrength: number
+  }
+  meetings: {
+    date: string
+    sentiment: 'positive' | 'neutral' | 'negative'
+    notes: string
+  }[]
+}
+
+export const mockMentees: Mentee[] = [
+  {
+    id: 'm1',
+    name: 'Sarah Jenkins',
+    avatar: 'SJ',
+    program: 'Frontend Engineering Foundations',
+    level: 'Intermediate',
+    week: 4,
+    progress: { absolute: 45, relative: 92 },
+    onTimeRatio: 60,
+    momentum: 'improving',
+    momentumData: [
+      { week: 1, score: 30 },
+      { week: 2, score: 35 },
+      { week: 3, score: 40 },
+      { week: 4, score: 45 },
+    ],
+    openBlockers: 1,
+    pendingApprovals: 2,
+    riskStatus: 'struggling-despite-effort',
+    aiSummary:
+      'Sarah is falling behind on absolute output but is excelling relative to her constraints. She recently logged significant friction due to a new full-time job schedule. She remains highly communicative and resilient.',
+    aiSignals: [
+      'High relative effort',
+      'Logged job friction',
+      'Consistent communication',
+    ],
+    delays: [
+      {
+        date: '2023-10-12',
+        task: 'React Context API',
+        reason: 'Mandatory overtime at day job',
+        category: 'external',
+      },
+    ],
+    blockers: [
+      {
+        id: 'b1',
+        title: 'Need access to Figma files',
+        status: 'resolved',
+        type: 'access',
+      },
+      {
+        id: 'b2',
+        title: 'Struggling with useEffect dependencies',
+        status: 'open',
+        type: 'knowledge',
+      },
+    ],
+    personality: {
+      consistency: 60,
+      resilience: 95,
+      communication: 90,
+      projectStrength: 85,
+    },
+    meetings: [
+      {
+        date: '2023-10-10',
+        sentiment: 'positive',
+        notes:
+          'Discussed balancing work and study. Agreed to extend deadlines for week 4.',
+      },
+    ],
+  },
+  {
+    id: 'm2',
+    name: 'David Chen',
+    avatar: 'DC',
+    program: 'Frontend Engineering Foundations',
+    level: 'Intermediate',
+    week: 4,
+    progress: { absolute: 20, relative: 25 },
+    onTimeRatio: 30,
+    momentum: 'declining',
+    momentumData: [
+      { week: 1, score: 60 },
+      { week: 2, score: 50 },
+      { week: 3, score: 30 },
+      { week: 4, score: 20 },
+    ],
+    openBlockers: 0,
+    pendingApprovals: 0,
+    riskStatus: 'disengaged',
+    aiSummary:
+      'David has not logged in for 6 days and missed two consecutive deadlines without requesting extensions. No external friction has been logged. High risk of drop-off.',
+    aiSignals: ['No recent logins', 'Missed deadlines', 'No friction logged'],
+    delays: [
+      {
+        date: '2023-10-05',
+        task: 'Component Lifecycle',
+        reason: 'Forgot about the deadline',
+        category: 'avoidance',
+      },
+    ],
+    blockers: [],
+    personality: {
+      consistency: 30,
+      resilience: 40,
+      communication: 20,
+      projectStrength: 50,
+    },
+    meetings: [
+      {
+        date: '2023-09-28',
+        sentiment: 'neutral',
+        notes: 'Seemed distracted. Needs to focus on core concepts.',
+      },
+    ],
+  },
+  {
+    id: 'm3',
+    name: 'Elena Rodriguez',
+    avatar: 'ER',
+    program: 'Product Design Track',
+    level: 'Advanced',
+    week: 8,
+    progress: { absolute: 95, relative: 95 },
+    onTimeRatio: 100,
+    momentum: 'flat',
+    momentumData: [
+      { week: 5, score: 90 },
+      { week: 6, score: 92 },
+      { week: 7, score: 95 },
+      { week: 8, score: 95 },
+    ],
+    openBlockers: 0,
+    pendingApprovals: 1,
+    riskStatus: 'on-track',
+    aiSummary:
+      'Elena is performing exceptionally well across all metrics. She consistently submits high-quality work ahead of schedule and frequently helps peers in the community.',
+    aiSignals: ['Early submissions', 'High quality scores', 'Peer engagement'],
+    delays: [],
+    blockers: [],
+    personality: {
+      consistency: 98,
+      resilience: 90,
+      communication: 95,
+      projectStrength: 98,
+    },
+    meetings: [
+      {
+        date: '2023-10-15',
+        sentiment: 'positive',
+        notes:
+          'Reviewed portfolio piece. Excellent progress. Ready for final project.',
+      },
+    ],
+  },
+  {
+    id: 'm4',
+    name: 'James Wilson',
+    avatar: 'JW',
+    program: 'Data Analytics Cohort',
+    level: 'Beginner',
+    week: 2,
+    progress: { absolute: 60, relative: 85 },
+    onTimeRatio: 75,
+    momentum: 'improving',
+    momentumData: [
+      { week: 1, score: 40 },
+      { week: 2, score: 60 },
+    ],
+    openBlockers: 2,
+    pendingApprovals: 3,
+    riskStatus: 'struggling-despite-effort',
+    aiSummary:
+      'James is facing hardware limitations that are slowing down his local environment setups. He has logged multiple friction events regarding his laptop crashing during data processing.',
+    aiSignals: [
+      'Hardware friction logged',
+      'Strong relative progress',
+      'Multiple open blockers',
+    ],
+    delays: [
+      {
+        date: '2023-10-14',
+        task: 'SQL Joins',
+        reason: 'Laptop crashed during query execution',
+        category: 'external',
+      },
+    ],
+    blockers: [
+      {
+        id: 'b3',
+        title: 'Need cloud environment access',
+        status: 'open',
+        type: 'access',
+      },
+      {
+        id: 'b4',
+        title: 'Local DB setup failing',
+        status: 'open',
+        type: 'technical',
+      },
+    ],
+    personality: {
+      consistency: 80,
+      resilience: 85,
+      communication: 75,
+      projectStrength: 70,
+    },
+    meetings: [],
+  },
+  {
+    id: 'm5',
+    name: 'Aisha Patel',
+    avatar: 'AP',
+    program: 'Frontend Engineering Foundations',
+    level: 'Intermediate',
+    week: 4,
+    progress: { absolute: 80, relative: 80 },
+    onTimeRatio: 90,
+    momentum: 'improving',
+    momentumData: [
+      { week: 1, score: 70 },
+      { week: 2, score: 75 },
+      { week: 3, score: 78 },
+      { week: 4, score: 80 },
+    ],
+    openBlockers: 0,
+    pendingApprovals: 1,
+    riskStatus: 'on-track',
+    aiSummary:
+      'Aisha is progressing steadily. She occasionally struggles with complex logic but always reaches out for help early.',
+    aiSignals: ['Steady progress', 'Proactive communication'],
+    delays: [],
+    blockers: [],
+    personality: {
+      consistency: 85,
+      resilience: 80,
+      communication: 90,
+      projectStrength: 85,
+    },
+    meetings: [],
+  },
+]
+
+export const mockTasks = [
+  {
+    id: 't1',
+    title: 'Build a Custom Hook',
+    type: 'project',
+    dueDate: '2023-10-20',
+    status: 'in-progress',
+    brief:
+      'Create a custom React hook called useLocalStorage that syncs state with the browser localStorage API.',
+    criteria: [
+      { id: 'c1', text: 'Deliverable submitted (GitHub link)', required: true },
+      {
+        id: 'c2',
+        text: 'Meets learning outcome (properly uses useState and useEffect)',
+        required: true,
+      },
+      {
+        id: 'c3',
+        text: 'Submitted on time or delay logged + accepted',
+        required: true,
+      },
+      { id: 'c4', text: 'Includes basic unit tests', required: false },
+    ],
+  },
+  {
+    id: 't2',
+    title: 'State Management Quiz',
+    type: 'quiz',
+    dueDate: '2023-10-18',
+    status: 'completed',
+    brief:
+      'Complete the multiple choice quiz on React state management patterns.',
+    criteria: [],
+  },
+]
+
+export const mockPrograms = [
+  {
+    id: 'p1',
+    name: 'Frontend Engineering Foundations',
+    activeMentees: 145,
+    onTimeRate: 78,
+    dropOffRate: 5,
+    health: 'amber',
+  },
+  {
+    id: 'p2',
+    name: 'Product Design Track',
+    activeMentees: 82,
+    onTimeRate: 92,
+    dropOffRate: 2,
+    health: 'green',
+  },
+  {
+    id: 'p3',
+    name: 'Data Analytics Cohort',
+    activeMentees: 110,
+    onTimeRate: 65,
+    dropOffRate: 12,
+    health: 'red',
+  },
+]
+
+```
+```components/shared/ui.tsx
+import React, { useState } from 'react'
+import { LineChart, Line, ResponsiveContainer } from 'recharts'
+import { CheckCircle2, Circle, AlertCircle, BrainCircuit } from 'lucide-react'
+import { RiskStatus } from '../../data/mockData'
+export const ProgressDual = ({
+  absolute,
+  relative,
+  className = '',
+}: {
+  absolute: number
+  relative: number
+  className?: string
+}) => {
+  return (
+    <div className={`flex flex-col gap-1.5 ${className}`}>
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-muted-foreground font-medium">Absolute</span>
+        <span className="font-mono">{absolute}%</span>
+      </div>
+      <div className="h-1.5 w-full bg-secondary rounded-full overflow-hidden">
+        <div
+          className="h-full bg-primary rounded-full transition-all duration-500"
+          style={{
+            width: `${absolute}%`,
+          }}
+        />
+      </div>
+
+      <div className="flex items-center justify-between text-xs mt-1">
+        <span className="text-muted-foreground font-medium">Relative</span>
+        <span className="font-mono">{relative}%</span>
+      </div>
+      <div className="h-1.5 w-full bg-secondary rounded-full overflow-hidden">
+        <div
+          className="h-full bg-blue-500 rounded-full transition-all duration-500"
+          style={{
+            width: `${relative}%`,
+          }}
+        />
+      </div>
+    </div>
+  )
+}
+export const RiskChip = ({ status }: { status: RiskStatus }) => {
+  const config = {
+    'on-track': {
+      label: 'On Track',
+      classes: 'bg-emerald-500/10 text-emerald-700 border-emerald-200/50',
+    },
+    'struggling-despite-effort': {
+      label: 'Struggling (High Effort)',
+      classes: 'bg-amber-500/10 text-amber-700 border-amber-200/50',
+    },
+    disengaged: {
+      label: 'Disengaged',
+      classes: 'bg-rose-500/10 text-rose-700 border-rose-200/50',
+    },
+  }
+  const { label, classes } = config[status]
+  return (
+    <span
+      className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border ${classes}`}
+    >
+      {label}
+    </span>
+  )
+}
+export const AiSummaryCard = ({
+  summary,
+  signals,
+}: {
+  summary: string
+  signals: string[]
+}) => {
+  return (
+    <div className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-4">
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 bg-indigo-100 p-1.5 rounded-md text-indigo-600">
+          <BrainCircuit className="w-4 h-4" />
+        </div>
+        <div>
+          <p className="text-sm text-indigo-950 leading-relaxed">{summary}</p>
+          <div className="flex flex-wrap gap-2 mt-3">
+            {signals.map((signal, idx) => (
+              <span
+                key={idx}
+                className="inline-flex items-center px-2 py-0.5 rounded bg-white border border-indigo-100 text-xs font-medium text-indigo-700 shadow-sm"
+              >
+                {signal}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+export const MomentumSparkline = ({
+  data,
+  color = '#0f172a',
+}: {
+  data: {
+    score: number
+  }[]
+  color?: string
+}) => {
+  return (
+    <div className="h-8 w-20">
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={data}>
+          <Line
+            type="monotone"
+            dataKey="score"
+            stroke={color}
+            strokeWidth={2}
+            dot={false}
+            isAnimationActive={false}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+export const ApprovalChecklist = ({
+  criteria,
+  onToggle,
+}: {
+  criteria: {
+    id: string
+    text: string
+    required: boolean
+  }[]
+  onToggle?: (id: string) => void
+}) => {
+  const [checked, setChecked] = useState<Set<string>>(new Set())
+  const handleToggle = (id: string) => {
+    const next = new Set(checked)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    setChecked(next)
+    onToggle?.(id)
+  }
+  return (
+    <div className="space-y-2">
+      {criteria.map((c) => (
+        <div
+          key={c.id}
+          className="flex items-start gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
+          onClick={() => handleToggle(c.id)}
+        >
+          <div className="mt-0.5">
+            {checked.has(c.id) ? (
+              <CheckCircle2 className="w-5 h-5 text-primary" />
+            ) : (
+              <Circle className="w-5 h-5 text-muted-foreground" />
+            )}
+          </div>
+          <div className="flex-1">
+            <p
+              className={`text-sm ${checked.has(c.id) ? 'text-muted-foreground line-through' : 'text-foreground'}`}
+            >
+              {c.text}
+            </p>
+            {c.required && (
+              <span className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mt-0.5 block">
+                Required
+              </span>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+```
+```components/shell/Sidebar.tsx
+import React from 'react'
+import { NavLink, useNavigate } from 'react-router-dom'
+import {
+  Users,
+  UserCheck,
+  LayoutDashboard,
+  CheckSquare,
+  Target,
+  Activity,
+  Settings,
+  LogOut,
+} from 'lucide-react'
+import { useRole } from '../../App'
+export const Sidebar = () => {
+  const { role, setRole } = useRole()
+  const navigate = useNavigate()
+  const navItems = {
+    mentor: [
+      {
+        icon: Users,
+        label: 'Cohort Overview',
+        path: '/mentor',
+      },
+      {
+        icon: UserCheck,
+        label: 'Cohort Review',
+        path: '/mentor/review',
+      },
+      {
+        icon: CheckSquare,
+        label: 'Approvals Queue',
+        path: '/mentor/approvals',
+      },
+    ],
+    mentee: [
+      {
+        icon: Target,
+        label: 'This Week',
+        path: '/mentee',
+      },
+      {
+        icon: Activity,
+        label: 'My Progress',
+        path: '/mentee/progress',
+      },
+    ],
+    admin: [
+      {
+        icon: LayoutDashboard,
+        label: 'Program Health',
+        path: '/admin',
+      },
+      {
+        icon: Users,
+        label: 'People Directory',
+        path: '/admin/people',
+      },
+    ],
+  }
+  const items = navItems[role]
+  return (
+    <div className="w-64 border-r border-border bg-sidebar flex flex-col h-screen sticky top-0">
+      <div className="p-6">
+        <div className="flex items-center gap-2 font-heading font-semibold text-xl text-sidebar-foreground">
+          <div className="w-6 h-6 bg-primary rounded-md flex items-center justify-center">
+            <div className="w-3 h-3 bg-primary-foreground rounded-sm" />
+          </div>
+          Pathment
+        </div>
+      </div>
+
+      <nav className="flex-1 px-4 space-y-1">
+        {items.map((item) => (
+          <NavLink
+            key={item.path}
+            to={item.path}
+            className={({ isActive }) =>
+              `flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${isActive ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'}`
+            }
+          >
+            <item.icon className="w-4 h-4" />
+            {item.label}
+          </NavLink>
+        ))}
+      </nav>
+
+      <div className="p-4 border-t border-sidebar-border">
+        <div className="mb-4">
+          <p className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider mb-2 px-2">
+            Demo Role Switcher
+          </p>
+          <select
+            value={role}
+            onChange={(e) => {
+              const newRole = e.target.value as any
+              setRole(newRole)
+              if (newRole === 'mentor') navigate('/mentor')
+              if (newRole === 'mentee') navigate('/mentee')
+              if (newRole === 'admin') navigate('/admin')
+            }}
+            className="w-full bg-sidebar-accent border-none text-sm rounded-md p-2 text-sidebar-foreground focus:ring-1 focus:ring-sidebar-ring"
+          >
+            <option value="mentor">Mentor View</option>
+            <option value="mentee">Mentee View</option>
+            <option value="admin">Super Admin View</option>
+          </select>
+        </div>
+
+        <div className="flex items-center gap-3 px-2 py-2">
+          <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-semibold">
+            {role === 'mentor' ? 'MR' : role === 'mentee' ? 'ME' : 'AD'}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-sidebar-foreground truncate capitalize">
+              {role} User
+            </p>
+            <p className="text-xs text-sidebar-foreground/60 truncate">
+              Active Session
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+```
+```pages/mentor/CohortOverview.tsx
+import React from 'react'
+import { useNavigate } from 'react-router-dom'
+import {
+  Play,
+  Search,
+  Filter,
+  ArrowUpRight,
+  ArrowRight,
+  ArrowDownRight,
+  AlertCircle,
+} from 'lucide-react'
+import { mockMentees } from '../../data/mockData'
+import {
+  ProgressDual,
+  RiskChip,
+  MomentumSparkline,
+} from '../../components/shared/ui'
+import { motion } from 'framer-motion'
+export const CohortOverview = () => {
+  const navigate = useNavigate()
+  return (
+    <div className="p-8 max-w-7xl mx-auto w-full">
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <h1 className="text-2xl font-heading font-semibold tracking-tight">
+            Cohort Overview
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            Frontend Engineering Foundations • Intermediate Level
+          </p>
+        </div>
+        <button
+          onClick={() => navigate('/mentor/review')}
+          className="bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 rounded-md font-medium text-sm flex items-center gap-2 shadow-sm transition-colors"
+        >
+          <Play className="w-4 h-4" />
+          Start Cohort Review
+        </button>
+      </div>
+
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-1 bg-muted/50 p-1 rounded-lg border border-border">
+          {[
+            'Needs attention',
+            'Awaiting my review',
+            'At risk',
+            'Going well',
+            'All',
+          ].map((tab, i) => (
+            <button
+              key={tab}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${i === 4 ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Search mentees..."
+              className="pl-9 pr-4 py-1.5 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring w-64"
+            />
+          </div>
+          <button className="p-1.5 border border-border rounded-md hover:bg-muted text-muted-foreground">
+            <Filter className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
+        <table className="w-full text-sm text-left">
+          <thead className="bg-muted/50 text-muted-foreground font-medium border-b border-border">
+            <tr>
+              <th className="px-6 py-4 font-medium">Mentee</th>
+              <th className="px-6 py-4 font-medium">Status</th>
+              <th className="px-6 py-4 font-medium w-64">
+                Progress (Abs / Rel)
+              </th>
+              <th className="px-6 py-4 font-medium">Momentum</th>
+              <th className="px-6 py-4 font-medium">Action Needed</th>
+              <th className="px-6 py-4 font-medium text-right"></th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {mockMentees.map((mentee, idx) => (
+              <motion.tr
+                initial={{
+                  opacity: 0,
+                  y: 10,
+                }}
+                animate={{
+                  opacity: 1,
+                  y: 0,
+                }}
+                transition={{
+                  delay: idx * 0.05,
+                }}
+                key={mentee.id}
+                className="hover:bg-muted/30 transition-colors group cursor-pointer"
+                onClick={() => navigate(`/mentor/mentee/${mentee.id}`)}
+              >
+                <td className="px-6 py-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-medium text-xs">
+                      {mentee.avatar}
+                    </div>
+                    <div>
+                      <div className="font-medium text-foreground group-hover:text-primary transition-colors">
+                        {mentee.name}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Week {mentee.week}
+                      </div>
+                    </div>
+                  </div>
+                </td>
+                <td className="px-6 py-4">
+                  <RiskChip status={mentee.riskStatus} />
+                </td>
+                <td className="px-6 py-4">
+                  <ProgressDual
+                    absolute={mentee.progress.absolute}
+                    relative={mentee.progress.relative}
+                  />
+                </td>
+                <td className="px-6 py-4">
+                  <div className="flex items-center gap-2">
+                    {mentee.momentum === 'improving' && (
+                      <ArrowUpRight className="w-4 h-4 text-emerald-500" />
+                    )}
+                    {mentee.momentum === 'flat' && (
+                      <ArrowRight className="w-4 h-4 text-muted-foreground" />
+                    )}
+                    {mentee.momentum === 'declining' && (
+                      <ArrowDownRight className="w-4 h-4 text-rose-500" />
+                    )}
+                    <MomentumSparkline
+                      data={mentee.momentumData}
+                      color={
+                        mentee.momentum === 'improving'
+                          ? '#10b981'
+                          : mentee.momentum === 'declining'
+                            ? '#f43f5e'
+                            : '#94a3b8'
+                      }
+                    />
+                  </div>
+                </td>
+                <td className="px-6 py-4">
+                  <div className="flex items-center gap-3">
+                    {mentee.pendingApprovals > 0 && (
+                      <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-blue-50 text-blue-700 text-xs font-medium border border-blue-100">
+                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                        {mentee.pendingApprovals} to review
+                      </span>
+                    )}
+                    {mentee.openBlockers > 0 && (
+                      <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-amber-50 text-amber-700 text-xs font-medium border border-amber-100">
+                        <AlertCircle className="w-3.5 h-3.5" />
+                        {mentee.openBlockers} blocker
+                      </span>
+                    )}
+                    {mentee.pendingApprovals === 0 &&
+                      mentee.openBlockers === 0 && (
+                        <span className="text-muted-foreground text-xs">
+                          None
+                        </span>
+                      )}
+                  </div>
+                </td>
+                <td className="px-6 py-4 text-right">
+                  <button className="text-muted-foreground hover:text-foreground text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+                    View Profile
+                  </button>
+                </td>
+              </motion.tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+```
+```pages/mentor/MenteeProfile.tsx
+import React from 'react'
+import { useParams, Link } from 'react-router-dom'
+import {
+  ChevronLeft,
+  Calendar,
+  Clock,
+  AlertTriangle,
+  MessageSquare,
+  Target,
+  Zap,
+} from 'lucide-react'
+import { mockMentees } from '../../data/mockData'
+import {
+  ProgressDual,
+  RiskChip,
+  AiSummaryCard,
+} from '../../components/shared/ui'
+export const MenteeProfile = () => {
+  const { id } = useParams()
+  const mentee = mockMentees.find((m) => m.id === id) || mockMentees[0]
+  return (
+    <div className="p-8 max-w-6xl mx-auto w-full space-y-8">
+      {/* Breadcrumb & Header */}
+      <div>
+        <Link
+          to="/mentor"
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4 transition-colors"
+        >
+          <ChevronLeft className="w-4 h-4" /> Back to Cohort
+        </Link>
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-16 h-16 rounded-full bg-primary/10 text-primary flex items-center justify-center font-medium text-2xl">
+              {mentee.avatar}
+            </div>
+            <div>
+              <h1 className="text-2xl font-heading font-semibold tracking-tight flex items-center gap-3">
+                {mentee.name}
+                <RiskChip status={mentee.riskStatus} />
+              </h1>
+              <p className="text-muted-foreground mt-1">
+                {mentee.program} • {mentee.level} • Week {mentee.week}
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button className="px-4 py-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded-md text-sm font-medium transition-colors">
+              Log 1:1 Note
+            </button>
+            <button className="px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-md text-sm font-medium transition-colors">
+              Assign Task
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <AiSummaryCard summary={mentee.aiSummary} signals={mentee.aiSignals} />
+
+      <div className="grid grid-cols-3 gap-6">
+        {/* Left Column: Progress & Stats */}
+        <div className="col-span-1 space-y-6">
+          <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+            <h3 className="font-semibold mb-4 flex items-center gap-2">
+              <Target className="w-4 h-4 text-muted-foreground" /> Progress
+              Snapshot
+            </h3>
+            <ProgressDual
+              absolute={mentee.progress.absolute}
+              relative={mentee.progress.relative}
+              className="mb-6"
+            />
+
+            <div className="grid grid-cols-2 gap-4 pt-4 border-t border-border">
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">
+                  On-Time Ratio
+                </p>
+                <p className="text-xl font-mono font-medium">
+                  {mentee.onTimeRatio}%
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">
+                  Cohort Percentile
+                </p>
+                <p className="text-xl font-mono font-medium">Top 40%</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+            <h3 className="font-semibold mb-4 flex items-center gap-2">
+              <Zap className="w-4 h-4 text-muted-foreground" /> Working Style
+            </h3>
+            <div className="space-y-4">
+              {[
+                {
+                  label: 'Consistency',
+                  val: mentee.personality.consistency,
+                },
+                {
+                  label: 'Resilience',
+                  val: mentee.personality.resilience,
+                },
+                {
+                  label: 'Communication',
+                  val: mentee.personality.communication,
+                },
+                {
+                  label: 'Project Strength',
+                  val: mentee.personality.projectStrength,
+                },
+              ].map((trait) => (
+                <div key={trait.label}>
+                  <div className="flex justify-between text-xs mb-1.5">
+                    <span className="text-muted-foreground">{trait.label}</span>
+                    <span className="font-mono">{trait.val}</span>
+                  </div>
+                  <div className="h-1.5 w-full bg-secondary rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-foreground rounded-full"
+                      style={{
+                        width: `${trait.val}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Right Column: History, Delays, Blockers */}
+        <div className="col-span-2 space-y-6">
+          {/* Delays & Blockers */}
+          <div className="grid grid-cols-2 gap-6">
+            <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+              <h3 className="font-semibold mb-4 flex items-center gap-2">
+                <Clock className="w-4 h-4 text-muted-foreground" /> Delays &
+                Reasons
+              </h3>
+              {mentee.delays.length > 0 ? (
+                <div className="space-y-4">
+                  {mentee.delays.map((delay, i) => (
+                    <div
+                      key={i}
+                      className="text-sm border-l-2 border-amber-500 pl-3 py-1"
+                    >
+                      <p className="font-medium">{delay.task}</p>
+                      <p className="text-muted-foreground mt-0.5">
+                        "{delay.reason}"
+                      </p>
+                      <div className="flex items-center gap-2 mt-2">
+                        <span className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
+                          {delay.date}
+                        </span>
+                        <span className="px-1.5 py-0.5 rounded bg-muted text-[10px] uppercase tracking-wider font-semibold">
+                          {delay.category}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No delays logged.
+                </p>
+              )}
+            </div>
+
+            <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+              <h3 className="font-semibold mb-4 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-muted-foreground" />{' '}
+                Blockers
+              </h3>
+              {mentee.blockers.length > 0 ? (
+                <div className="space-y-3">
+                  {mentee.blockers.map((blocker) => (
+                    <div
+                      key={blocker.id}
+                      className={`flex items-start gap-2 p-2.5 rounded-lg border ${blocker.status === 'open' ? 'bg-rose-50/50 border-rose-100' : 'bg-muted/30 border-border'}`}
+                    >
+                      <div
+                        className={`w-2 h-2 rounded-full mt-1.5 ${blocker.status === 'open' ? 'bg-rose-500' : 'bg-emerald-500'}`}
+                      />
+                      <div>
+                        <p
+                          className={`text-sm ${blocker.status === 'open' ? 'font-medium text-rose-950' : 'text-muted-foreground line-through'}`}
+                        >
+                          {blocker.title}
+                        </p>
+                        <span className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mt-1 block">
+                          {blocker.type}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No active blockers.
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* 1:1 Notes */}
+          <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+            <h3 className="font-semibold mb-4 flex items-center gap-2">
+              <MessageSquare className="w-4 h-4 text-muted-foreground" /> 1:1
+              Meeting Notes
+            </h3>
+            {mentee.meetings.length > 0 ? (
+              <div className="space-y-4">
+                {mentee.meetings.map((meeting, i) => (
+                  <div
+                    key={i}
+                    className="p-4 rounded-lg bg-muted/30 border border-border"
+                  >
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                        <Calendar className="w-3.5 h-3.5" /> {meeting.date}
+                      </span>
+                      <span
+                        className={`px-2 py-0.5 rounded text-xs font-medium ${meeting.sentiment === 'positive' ? 'bg-emerald-100 text-emerald-700' : meeting.sentiment === 'negative' ? 'bg-rose-100 text-rose-700' : 'bg-secondary text-secondary-foreground'}`}
+                      >
+                        {meeting.sentiment}
+                      </span>
+                    </div>
+                    <p className="text-sm leading-relaxed">{meeting.notes}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                No meetings logged yet.
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+```
+```pages/mentor/CohortReview.tsx
+import React, { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import {
+  X,
+  Check,
+  MessageSquare,
+  AlertTriangle,
+  ChevronRight,
+  ChevronLeft,
+} from 'lucide-react'
+import { mockMentees, mockTasks } from '../../data/mockData'
+import {
+  ProgressDual,
+  AiSummaryCard,
+  ApprovalChecklist,
+} from '../../components/shared/ui'
+import { motion, AnimatePresence } from 'framer-motion'
+export const CohortReview = () => {
+  const navigate = useNavigate()
+  const [currentIndex, setCurrentIndex] = useState(0)
+  const mentee = mockMentees[currentIndex]
+  const pendingTask = mockTasks[0] // Mocking a pending task for the review
+  const nextMentee = () => {
+    if (currentIndex < mockMentees.length - 1)
+      setCurrentIndex((prev) => prev + 1)
+  }
+  const prevMentee = () => {
+    if (currentIndex > 0) setCurrentIndex((prev) => prev - 1)
+  }
+  return (
+    <div className="fixed inset-0 bg-background z-50 flex flex-col">
+      {/* Top Bar */}
+      <div className="h-14 border-b border-border flex items-center justify-between px-6 bg-card">
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => navigate('/mentor')}
+            className="p-1.5 hover:bg-muted rounded-md text-muted-foreground transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+          <span className="font-medium text-sm">Cohort Review Mode</span>
+        </div>
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          Reviewed{' '}
+          <span className="font-medium text-foreground">
+            {currentIndex + 1}
+          </span>{' '}
+          of{' '}
+          <span className="font-medium text-foreground">
+            {mockMentees.length}
+          </span>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={prevMentee}
+            disabled={currentIndex === 0}
+            className="p-1.5 border border-border rounded-md hover:bg-muted disabled:opacity-50"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <button
+            onClick={nextMentee}
+            disabled={currentIndex === mockMentees.length - 1}
+            className="p-1.5 border border-border rounded-md hover:bg-muted disabled:opacity-50"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      <div className="flex-1 flex overflow-hidden">
+        {/* Left Strip: Progress Dots */}
+        <div className="w-16 border-r border-border bg-muted/20 flex flex-col items-center py-6 gap-3 overflow-y-auto">
+          {mockMentees.map((m, idx) => (
+            <button
+              key={m.id}
+              onClick={() => setCurrentIndex(idx)}
+              className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-medium transition-all ${idx === currentIndex ? 'bg-primary text-primary-foreground ring-2 ring-primary ring-offset-2 ring-offset-background' : 'bg-card border border-border text-muted-foreground hover:border-primary/50'}`}
+            >
+              {m.avatar}
+            </button>
+          ))}
+        </div>
+
+        {/* Center: Mentee Snapshot */}
+        <div className="flex-1 overflow-y-auto p-8 bg-muted/10">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={mentee.id}
+              initial={{
+                opacity: 0,
+                x: 20,
+              }}
+              animate={{
+                opacity: 1,
+                x: 0,
+              }}
+              exit={{
+                opacity: 0,
+                x: -20,
+              }}
+              transition={{
+                duration: 0.2,
+              }}
+              className="max-w-3xl mx-auto space-y-6"
+            >
+              <div className="flex items-center gap-4 mb-8">
+                <div className="w-16 h-16 rounded-full bg-primary/10 text-primary flex items-center justify-center font-medium text-2xl">
+                  {mentee.avatar}
+                </div>
+                <div>
+                  <h2 className="text-3xl font-heading font-semibold tracking-tight">
+                    {mentee.name}
+                  </h2>
+                  <p className="text-muted-foreground mt-1">
+                    Week {mentee.week} • {mentee.program}
+                  </p>
+                </div>
+              </div>
+
+              <AiSummaryCard
+                summary={mentee.aiSummary}
+                signals={mentee.aiSignals}
+              />
+
+              <div className="grid grid-cols-2 gap-6">
+                <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+                  <h3 className="text-sm font-semibold mb-4">Progress</h3>
+                  <ProgressDual
+                    absolute={mentee.progress.absolute}
+                    relative={mentee.progress.relative}
+                  />
+                </div>
+                <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+                  <h3 className="text-sm font-semibold mb-4">Recent Delays</h3>
+                  {mentee.delays.length > 0 ? (
+                    <div className="text-sm">
+                      <p className="font-medium">{mentee.delays[0].task}</p>
+                      <p className="text-muted-foreground mt-1">
+                        "{mentee.delays[0].reason}"
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      No recent delays.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Pending Submission Inline */}
+              <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden mt-8">
+                <div className="bg-muted/50 px-5 py-3 border-b border-border flex justify-between items-center">
+                  <h3 className="font-semibold text-sm">
+                    Pending Approval: {pendingTask.title}
+                  </h3>
+                  <span className="text-xs font-medium bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
+                    Submitted 2h ago
+                  </span>
+                </div>
+                <div className="p-5">
+                  <p className="text-sm text-muted-foreground mb-6">
+                    {pendingTask.brief}
+                  </p>
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+                    Approval Checklist
+                  </h4>
+                  <ApprovalChecklist criteria={pendingTask.criteria} />
+                </div>
+              </div>
+            </motion.div>
+          </AnimatePresence>
+        </div>
+
+        {/* Right: Quick Actions */}
+        <div className="w-80 border-l border-border bg-card p-6 flex flex-col">
+          <h3 className="text-sm font-semibold mb-4">Actions</h3>
+
+          <div className="space-y-3 flex-1">
+            <button className="w-full flex items-center gap-3 p-3 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white transition-colors text-sm font-medium shadow-sm">
+              <Check className="w-4 h-4" /> Approve
+              <span className="ml-auto text-[10px] opacity-70 border border-white/30 px-1.5 rounded">
+                A
+              </span>
+            </button>
+            <button className="w-full flex items-center gap-3 p-3 rounded-lg border border-border hover:bg-muted transition-colors text-sm font-medium">
+              <MessageSquare className="w-4 h-4 text-muted-foreground" />{' '}
+              Approve with notes
+            </button>
+            <button className="w-full flex items-center gap-3 p-3 rounded-lg border border-border hover:bg-muted transition-colors text-sm font-medium">
+              <AlertTriangle className="w-4 h-4 text-amber-500" /> Request
+              changes
+            </button>
+          </div>
+
+          <div className="pt-6 border-t border-border mt-auto space-y-3">
+            <button className="w-full py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+              Log Blocker
+            </button>
+            <button className="w-full py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+              Leave Note
+            </button>
+          </div>
+
+          <div className="mt-6 flex justify-between items-center text-xs text-muted-foreground">
+            <span>Keyboard shortcuts enabled</span>
+            <span className="flex gap-1">
+              <kbd className="px-1.5 border border-border rounded bg-muted font-mono">
+                J
+              </kbd>
+              <kbd className="px-1.5 border border-border rounded bg-muted font-mono">
+                K
+              </kbd>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+```
+```pages/mentor/ApprovalsQueue.tsx
+import React, { useState } from 'react'
+import {
+  CheckSquare,
+  Check,
+  MessageSquare,
+  AlertTriangle,
+  X,
+} from 'lucide-react'
+import { mockTasks, mockMentees } from '../../data/mockData'
+import { ApprovalChecklist } from '../../components/shared/ui'
+export const ApprovalsQueue = () => {
+  const [expandedId, setExpandedId] = useState<string | null>('t1')
+  return (
+    <div className="p-8 max-w-5xl mx-auto w-full">
+      <div className="mb-8">
+        <h1 className="text-2xl font-heading font-semibold tracking-tight">
+          Approvals Queue
+        </h1>
+        <p className="text-muted-foreground mt-1">
+          Review pending submissions across your cohort.
+        </p>
+      </div>
+
+      <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
+        <div className="bg-muted/50 px-6 py-3 border-b border-border flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              className="rounded border-border text-primary focus:ring-primary"
+            />
+            <span className="text-sm font-medium text-muted-foreground">
+              Select all
+            </span>
+          </div>
+          <button className="text-sm font-medium text-primary hover:text-primary/80 transition-colors">
+            Bulk Approve Selected
+          </button>
+        </div>
+
+        <div className="divide-y divide-border">
+          {mockTasks
+            .filter((t) => t.status === 'in-progress')
+            .map((task) => (
+              <div key={task.id} className="group">
+                {/* Row Header */}
+                <div
+                  className="px-6 py-4 flex items-center gap-4 hover:bg-muted/30 cursor-pointer transition-colors"
+                  onClick={() =>
+                    setExpandedId(expandedId === task.id ? null : task.id)
+                  }
+                >
+                  <input
+                    type="checkbox"
+                    className="rounded border-border text-primary focus:ring-primary"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                  <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-medium text-xs shrink-0">
+                    SJ
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-foreground">
+                        {task.title}
+                      </span>
+                      <span className="px-2 py-0.5 rounded-md bg-secondary text-secondary-foreground text-[10px] uppercase tracking-wider font-semibold">
+                        {task.type}
+                      </span>
+                    </div>
+                    <p className="text-sm text-muted-foreground truncate">
+                      Sarah Jenkins • Submitted 2 hours ago
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-sm text-muted-foreground">
+                    {expandedId === task.id ? 'Collapse' : 'Review'}
+                  </div>
+                </div>
+
+                {/* Expanded Inline Review */}
+                {expandedId === task.id && (
+                  <div className="px-6 pb-6 pt-2 bg-muted/10 border-t border-border border-dashed">
+                    <div className="grid grid-cols-3 gap-8">
+                      <div className="col-span-2 space-y-6">
+                        <div>
+                          <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                            Submission Details
+                          </h4>
+                          <div className="p-4 bg-background border border-border rounded-lg text-sm">
+                            <p className="text-blue-600 hover:underline cursor-pointer mb-2">
+                              github.com/sjenkins/custom-hooks-demo
+                            </p>
+                            <p className="text-muted-foreground">
+                              "I struggled a bit with the localStorage sync
+                              timing, but added a debounce to fix it. Let me
+                              know if the tests cover enough edge cases."
+                            </p>
+                          </div>
+                        </div>
+
+                        <div>
+                          <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+                            Approval Checklist
+                          </h4>
+                          <ApprovalChecklist criteria={task.criteria} />
+                        </div>
+                      </div>
+
+                      <div className="col-span-1 space-y-4">
+                        <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                          Feedback & Decision
+                        </h4>
+                        <textarea
+                          placeholder="Add coaching notes or required changes..."
+                          className="w-full h-24 p-3 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+                        />
+                        <div className="space-y-2">
+                          <button className="w-full flex items-center justify-center gap-2 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-md text-sm font-medium transition-colors shadow-sm">
+                            <Check className="w-4 h-4" /> Approve
+                          </button>
+                          <button className="w-full flex items-center justify-center gap-2 py-2 bg-background border border-border hover:bg-muted text-foreground rounded-md text-sm font-medium transition-colors">
+                            <MessageSquare className="w-4 h-4 text-muted-foreground" />{' '}
+                            Approve with notes
+                          </button>
+                          <button className="w-full flex items-center justify-center gap-2 py-2 bg-background border border-border hover:bg-muted text-foreground rounded-md text-sm font-medium transition-colors">
+                            <AlertTriangle className="w-4 h-4 text-amber-500" />{' '}
+                            Request changes
+                          </button>
+                          <button className="w-full flex items-center justify-center gap-2 py-2 text-rose-600 hover:bg-rose-50 rounded-md text-sm font-medium transition-colors">
+                            <X className="w-4 h-4" /> Reject
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+```
+```pages/mentee/MenteeHome.tsx
+import React from 'react'
+import { useNavigate } from 'react-router-dom'
+import {
+  ArrowRight,
+  Calendar,
+  CheckCircle2,
+  Circle,
+  AlertCircle,
+} from 'lucide-react'
+import { ProgressDual } from '../../components/shared/ui'
+import { mockTasks } from '../../data/mockData'
+export const MenteeHome = () => {
+  const navigate = useNavigate()
+  return (
+    <div className="p-8 max-w-5xl mx-auto w-full space-y-8">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-heading font-semibold tracking-tight">
+            Welcome back, Sarah
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            Frontend Engineering Foundations • Week 4
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-8">
+        {/* Main Content */}
+        <div className="col-span-2 space-y-8">
+          {/* Hero Action */}
+          <div className="bg-primary text-primary-foreground rounded-2xl p-8 relative overflow-hidden shadow-md">
+            <div className="relative z-10">
+              <span className="inline-block px-3 py-1 bg-primary-foreground/20 rounded-full text-xs font-semibold tracking-wider uppercase mb-4">
+                Your Next Action
+              </span>
+              <h2 className="text-2xl font-heading font-semibold mb-2">
+                Build a Custom Hook
+              </h2>
+              <p className="text-primary-foreground/80 mb-6 max-w-md">
+                Due in 2 days. You've completed the reading, now it's time to
+                apply it in the project.
+              </p>
+              <button
+                onClick={() => navigate('/mentee/task/t1')}
+                className="bg-background text-foreground hover:bg-muted px-6 py-2.5 rounded-lg font-medium text-sm flex items-center gap-2 transition-colors"
+              >
+                Start Task <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="absolute right-0 top-0 w-64 h-full bg-gradient-to-l from-primary-foreground/10 to-transparent pointer-events-none" />
+          </div>
+
+          {/* This Week's Tasks */}
+          <div>
+            <h3 className="font-semibold mb-4 text-lg">Due This Week</h3>
+            <div className="space-y-3">
+              {mockTasks.map((task) => (
+                <div
+                  key={task.id}
+                  onClick={() => navigate(`/mentee/task/${task.id}`)}
+                  className="flex items-center gap-4 p-4 rounded-xl border border-border bg-card hover:border-primary/50 cursor-pointer transition-colors shadow-sm"
+                >
+                  {task.status === 'completed' ? (
+                    <CheckCircle2 className="w-6 h-6 text-emerald-500 shrink-0" />
+                  ) : (
+                    <Circle className="w-6 h-6 text-muted-foreground shrink-0" />
+                  )}
+                  <div className="flex-1">
+                    <h4
+                      className={`font-medium ${task.status === 'completed' ? 'text-muted-foreground line-through' : 'text-foreground'}`}
+                    >
+                      {task.title}
+                    </h4>
+                    <p className="text-sm text-muted-foreground mt-0.5">
+                      {task.type} • Due {task.dueDate}
+                    </p>
+                  </div>
+                  <ArrowRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Right Rail */}
+        <div className="col-span-1 space-y-6">
+          <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
+            <h3 className="font-semibold mb-4">My Progress</h3>
+            <ProgressDual absolute={45} relative={92} className="mb-6" />
+
+            <div className="bg-amber-50/50 border border-amber-100 rounded-lg p-4">
+              <div className="flex gap-3">
+                <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-amber-900 mb-1">
+                    You're doing great given the circumstances.
+                  </p>
+                  <p className="text-xs text-amber-700/80 leading-relaxed">
+                    Your absolute progress is slightly behind, but we see the
+                    job friction you logged. Keep communicating with your
+                    mentor.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
+            <h3 className="font-semibold mb-4">Upcoming 1:1</h3>
+            <div className="flex items-start gap-4">
+              <div className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center font-medium shrink-0">
+                MR
+              </div>
+              <div>
+                <p className="font-medium text-sm">Mentor Review</p>
+                <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                  <Calendar className="w-3 h-3" /> Tomorrow, 2:00 PM
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+```
+```pages/mentee/TaskDetail.tsx
+import React, { useState } from 'react'
+import { useParams, Link } from 'react-router-dom'
+import { ChevronLeft, Upload, Clock, AlertTriangle, Info } from 'lucide-react'
+import { mockTasks } from '../../data/mockData'
+export const TaskDetail = () => {
+  const { id } = useParams()
+  const task = mockTasks.find((t) => t.id === id) || mockTasks[0]
+  const [activeTab, setActiveTab] = useState<
+    'submit' | 'extension' | 'friction'
+  >('submit')
+  return (
+    <div className="p-8 max-w-4xl mx-auto w-full">
+      <Link
+        to="/mentee"
+        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors"
+      >
+        <ChevronLeft className="w-4 h-4" /> Back to This Week
+      </Link>
+
+      <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
+        {/* Header */}
+        <div className="p-8 border-b border-border">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="px-2 py-0.5 rounded-md bg-secondary text-secondary-foreground text-[10px] uppercase tracking-wider font-semibold">
+              {task.type}
+            </span>
+            <span className="text-sm text-muted-foreground flex items-center gap-1">
+              <Clock className="w-3.5 h-3.5" /> Due {task.dueDate}
+            </span>
+          </div>
+          <h1 className="text-3xl font-heading font-semibold tracking-tight mb-4">
+            {task.title}
+          </h1>
+          <p className="text-muted-foreground leading-relaxed">{task.brief}</p>
+        </div>
+
+        {/* Approval Criteria */}
+        <div className="bg-muted/30 p-8 border-b border-border">
+          <h3 className="text-sm font-semibold mb-4 flex items-center gap-2">
+            <Info className="w-4 h-4 text-muted-foreground" /> How this will be
+            evaluated
+          </h3>
+          <ul className="space-y-2">
+            {task.criteria.map((c) => (
+              <li
+                key={c.id}
+                className="flex items-start gap-2 text-sm text-muted-foreground"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-primary/40 mt-1.5 shrink-0" />
+                <span>
+                  {c.text}{' '}
+                  {c.required && (
+                    <span className="text-[10px] uppercase tracking-wider font-semibold text-primary ml-2">
+                      Required
+                    </span>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {/* Action Area */}
+        <div className="p-8">
+          <div className="flex gap-2 border-b border-border mb-6">
+            {[
+              {
+                id: 'submit',
+                label: 'Submit Work',
+              },
+              {
+                id: 'extension',
+                label: 'Request Extension',
+              },
+              {
+                id: 'friction',
+                label: 'Log Friction',
+              },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === tab.id ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {activeTab === 'submit' && (
+            <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2">
+              <div>
+                <label className="block text-sm font-medium mb-1.5">
+                  Link to work (GitHub, Figma, etc.)
+                </label>
+                <input
+                  type="url"
+                  placeholder="https://"
+                  className="w-full p-2.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1.5">
+                  Notes for your mentor (optional)
+                </label>
+                <textarea
+                  rows={3}
+                  className="w-full p-2.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+                />
+              </div>
+              <button className="bg-primary text-primary-foreground hover:bg-primary/90 px-6 py-2.5 rounded-lg font-medium text-sm flex items-center gap-2 transition-colors">
+                <Upload className="w-4 h-4" /> Submit for Review
+              </button>
+            </div>
+          )}
+
+          {activeTab === 'extension' && (
+            <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2">
+              <div className="bg-blue-50/50 border border-blue-100 rounded-lg p-4 mb-6">
+                <p className="text-sm text-blue-800">
+                  Extensions are always granted if you provide a clear reason.
+                  Your mentor just needs to know what's going on.
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1.5">
+                  Reason Category
+                </label>
+                <select className="w-full p-2.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring">
+                  <option>Select a reason...</option>
+                  <option>Task is harder than expected (Scope)</option>
+                  <option>External life event (External)</option>
+                  <option>Technical blocker</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1.5">
+                  Details
+                </label>
+                <textarea
+                  rows={3}
+                  placeholder="Briefly explain what's holding you up..."
+                  className="w-full p-2.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+                />
+              </div>
+              <button className="bg-secondary text-secondary-foreground hover:bg-secondary/80 px-6 py-2.5 rounded-lg font-medium text-sm transition-colors">
+                Request Extension
+              </button>
+            </div>
+          )}
+
+          {activeTab === 'friction' && (
+            <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2">
+              <div className="bg-amber-50/50 border border-amber-100 rounded-lg p-4 mb-6">
+                <div className="flex gap-3">
+                  <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
+                  <div>
+                    <p className="text-sm font-medium text-amber-900 mb-1">
+                      Logging friction helps us evaluate you fairly.
+                    </p>
+                    <p className="text-xs text-amber-700/80 leading-relaxed">
+                      If life is getting in the way (power outages, job load,
+                      hardware issues), log it here. It adjusts your relative
+                      progress score so your mentor knows you're trying your
+                      best against real obstacles.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 mb-6">
+                {[
+                  'Job Load',
+                  'Domestic / Family',
+                  'Electricity / Power',
+                  'Hardware / Machine',
+                  'Health',
+                  'Connectivity',
+                ].map((type) => (
+                  <label
+                    key={type}
+                    className="flex items-center gap-3 p-3 border border-border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors"
+                  >
+                    <input
+                      type="radio"
+                      name="friction_type"
+                      className="text-primary focus:ring-primary"
+                    />
+                    <span className="text-sm font-medium">{type}</span>
+                  </label>
+                ))}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1.5">
+                  Context (optional)
+                </label>
+                <textarea
+                  rows={2}
+                  className="w-full p-2.5 text-sm border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+                />
+              </div>
+              <button className="bg-secondary text-secondary-foreground hover:bg-secondary/80 px-6 py-2.5 rounded-lg font-medium text-sm transition-colors">
+                Log Friction Event
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+```
+```pages/admin/ProgramHealth.tsx
+import React from 'react'
+import { Activity, Users, Clock, TrendingDown, AlertCircle } from 'lucide-react'
+import { mockPrograms, mockMentees } from '../../data/mockData'
+import { RiskChip } from '../../components/shared/ui'
+export const ProgramHealth = () => {
+  const atRiskMentees = mockMentees.filter((m) => m.riskStatus !== 'on-track')
+  return (
+    <div className="p-8 max-w-7xl mx-auto w-full space-y-8">
+      <div>
+        <h1 className="text-2xl font-heading font-semibold tracking-tight">
+          Program Health Dashboard
+        </h1>
+        <p className="text-muted-foreground mt-1">
+          Org-wide view of program performance and at-risk learners.
+        </p>
+      </div>
+
+      {/* KPI Row */}
+      <div className="grid grid-cols-4 gap-4">
+        {[
+          {
+            label: 'Active Programs',
+            value: '3',
+            icon: Activity,
+          },
+          {
+            label: 'Total Mentees',
+            value: '337',
+            icon: Users,
+          },
+          {
+            label: 'Avg On-Time Rate',
+            value: '78%',
+            icon: Clock,
+          },
+          {
+            label: 'Overall Drop-off',
+            value: '6.3%',
+            icon: TrendingDown,
+          },
+        ].map((kpi, i) => (
+          <div
+            key={i}
+            className="bg-card border border-border rounded-xl p-5 shadow-sm"
+          >
+            <div className="flex items-center gap-3 text-muted-foreground mb-3">
+              <kpi.icon className="w-4 h-4" />
+              <span className="text-sm font-medium">{kpi.label}</span>
+            </div>
+            <p className="text-3xl font-heading font-semibold">{kpi.value}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-3 gap-8">
+        {/* Programs Table */}
+        <div className="col-span-2 bg-card border border-border rounded-xl shadow-sm overflow-hidden">
+          <div className="px-6 py-4 border-b border-border">
+            <h3 className="font-semibold">Active Programs</h3>
+          </div>
+          <table className="w-full text-sm text-left">
+            <thead className="bg-muted/50 text-muted-foreground font-medium border-b border-border">
+              <tr>
+                <th className="px-6 py-3 font-medium">Program Name</th>
+                <th className="px-6 py-3 font-medium">Mentees</th>
+                <th className="px-6 py-3 font-medium">On-Time</th>
+                <th className="px-6 py-3 font-medium">Drop-off</th>
+                <th className="px-6 py-3 font-medium">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {mockPrograms.map((prog) => (
+                <tr
+                  key={prog.id}
+                  className="hover:bg-muted/30 transition-colors"
+                >
+                  <td className="px-6 py-4 font-medium">{prog.name}</td>
+                  <td className="px-6 py-4 font-mono">{prog.activeMentees}</td>
+                  <td className="px-6 py-4 font-mono">{prog.onTimeRate}%</td>
+                  <td className="px-6 py-4 font-mono">{prog.dropOffRate}%</td>
+                  <td className="px-6 py-4">
+                    <span
+                      className={`inline-flex w-2.5 h-2.5 rounded-full ${prog.health === 'green' ? 'bg-emerald-500' : prog.health === 'amber' ? 'bg-amber-500' : 'bg-rose-500'}`}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Org-wide At Risk */}
+        <div className="col-span-1 bg-card border border-border rounded-xl shadow-sm overflow-hidden flex flex-col">
+          <div className="px-6 py-4 border-b border-border flex items-center justify-between">
+            <h3 className="font-semibold flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-500" /> Org-wide At
+              Risk
+            </h3>
+            <span className="text-xs font-medium bg-muted px-2 py-0.5 rounded-full">
+              {atRiskMentees.length}
+            </span>
+          </div>
+          <div className="divide-y divide-border overflow-y-auto flex-1">
+            {atRiskMentees.map((mentee) => (
+              <div
+                key={mentee.id}
+                className="p-4 hover:bg-muted/30 transition-colors cursor-pointer"
+              >
+                <div className="flex justify-between items-start mb-2">
+                  <div>
+                    <p className="font-medium text-sm">{mentee.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {mentee.program}
+                    </p>
+                  </div>
+                  <RiskChip status={mentee.riskStatus} />
+                </div>
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {mentee.aiSignals.slice(0, 2).map((sig, i) => (
+                    <span
+                      key={i}
+                      className="text-[10px] px-1.5 py-0.5 bg-muted rounded text-muted-foreground border border-border"
+                    >
+                      {sig}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+```

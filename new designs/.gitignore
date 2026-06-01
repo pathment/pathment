@@ -1,0 +1,19 @@
+# dependencies
+node_modules
+
+# build output
+dist
+
+# vercel
+.vercel
+
+# local logs
+*.log
+dev-server.log
+
+# typescript build info
+*.tsbuildinfo
+
+# vite generated declaration/js from config
+vite.config.d.ts
+vite.config.js
