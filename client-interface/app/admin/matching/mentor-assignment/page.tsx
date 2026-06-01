@@ -5,10 +5,13 @@ import { useState } from 'react';
 import { Search, Sparkles, Star, Users, Loader2, ExternalLink, ChevronLeft, ChevronRight, ChevronDown, ChevronUp } from 'lucide-react';
 import { useMentorAssignment } from '@/lib/hooks/admin';
 import { PageHeader } from '@/components/admin/ui';
+import { GenerateConfirmModal } from '@/components/admin/programs/GenerateConfirmModal';
 
 export default function MentorAssignment() {
   const [showAISuggestions, setShowAISuggestions] = useState(true);
+  const [isAutoMatchModalOpen, setIsAutoMatchModalOpen] = useState(false);
 
+  
   // ── per-enrollment manual override state ────────────────────────────────
   const [overrides, setOverrides] = useState<Record<string, {
     open: boolean;
@@ -58,6 +61,19 @@ export default function MentorAssignment() {
   return (
     <>
       {/* Header */}
+      <GenerateConfirmModal
+        isOpen={isAutoMatchModalOpen}
+        isLoading={autoMatching}
+        title="Confirm Auto-Match"
+        message={`Auto-match all pending enrollments${selectedProgram ? ' in this program' : ''}? This will assign the top AI-suggested mentor to each unmatched mentee.`}
+        confirmText="Auto-Match"
+        cancelText="Cancel"
+        onConfirm={async () => {
+          await handleAutoMatch();
+          setIsAutoMatchModalOpen(false);
+        }}
+        onCancel={() => setIsAutoMatchModalOpen(false)}
+      />
       <PageHeader
         title="Mentor Assignment"
         subtitle="Match mentees with mentors using AI-powered recommendations"
@@ -79,7 +95,7 @@ export default function MentorAssignment() {
                 based on expertise, availability, and teaching style compatibility.
               </p>
               <button
-                onClick={handleAutoMatch}
+                onClick={() => setIsAutoMatchModalOpen(true)}
                 disabled={autoMatching || enrollments.length === 0}
                 className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg text-sm transition-colors flex items-center gap-2"
               >
@@ -129,7 +145,7 @@ export default function MentorAssignment() {
       ) : (
         <div className="grid lg:grid-cols-2 gap-8">
           {/* ── Pending Matches ───────────────────────────────────────────── */}
-          <div>
+              <div>
             <div className="bg-white rounded-2xl border border-slate-200">
               <div className="px-6 py-5 border-b border-slate-200 flex items-center justify-between">
                 <h2 className="text-slate-900">Pending Matches</h2>
@@ -216,7 +232,7 @@ export default function MentorAssignment() {
                       )}
 
                       {/* ── Manual Override ─────────────────────────────── */}
-                      <div className="mt-3 border border-slate-200 rounded-xl overflow-hidden">
+                                      <div className="mt-3 border border-slate-200 rounded-xl overflow-hidden">
                         <button
                           type="button"
                           onClick={() => {
@@ -236,7 +252,7 @@ export default function MentorAssignment() {
                         {overrides[enrollment.id]?.open && (
                           <div className="p-4 bg-white border-t border-slate-200 space-y-3">
                             {/* Level picker */}
-                            <div>
+                                                  <div>
                               <label className="block text-slate-600 text-xs mb-1.5">Level</label>
                               <select
                                 value={overrides[enrollment.id]?.levelId || currentLevel?.id || ''}
@@ -255,7 +271,7 @@ export default function MentorAssignment() {
                             </div>
 
                             {/* Mentor picker */}
-                            <div>
+                                                  <div>
                               <label className="block text-slate-600 text-xs mb-1.5">Mentor</label>
                               <select
                                 value={overrides[enrollment.id]?.mentorId || ''}
@@ -301,7 +317,7 @@ export default function MentorAssignment() {
           </div>
 
           {/* ── Available Mentors ─────────────────────────────────────────── */}
-          <div>
+              <div>
             <div className="bg-white rounded-2xl border border-slate-200">
               <div className="px-6 py-5 border-b border-slate-200 flex items-center justify-between">
                 <div>
