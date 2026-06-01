@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { useTaskDetail } from '@/lib/hooks/mentee';
 import { PageHeader, StatusBadge } from '@/components/admin/ui';
+import { RichTextViewer } from '@/components/shared';
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -79,7 +80,9 @@ export default function TaskDetailsPage({ params }: PageProps) {
                 </span>
               )}
             </div>
+            
             <p className="text-slate-600">{taskDescription}</p>
+            
           </div>
           <StatusBadge status={task.status} />
         </div>
@@ -235,10 +238,10 @@ export default function TaskDetailsPage({ params }: PageProps) {
               {latestSubmission.submissionText && (
                 <div>
                   <p className="text-xs text-slate-500 mb-2">Submission Description</p>
-                  <div
-                    className="prose prose-sm max-w-none text-slate-700 bg-slate-50 rounded-lg p-4 border border-slate-100"
-                    dangerouslySetInnerHTML={{ __html: latestSubmission.submissionText }}
-                  />
+                  <RichTextViewer
+                  content={latestSubmission.submissionText}
+                  className="text-sm text-indigo-800"
+                />
                 </div>
               )}
 
@@ -308,8 +311,14 @@ export default function TaskDetailsPage({ params }: PageProps) {
                   </div>
                 )}
               </div>
-              {fb.comments && (
-                <p className="text-sm text-indigo-800">{fb.comments}</p>
+              {fb.feedbackText && (
+                <RichTextViewer
+                  content={fb.feedbackText}
+                  className="text-sm text-indigo-800"
+                />
+              )}
+              {fb.revisionNotes && (
+                <p className="text-sm text-slate-600">{fb.revisionNotes}</p>
               )}
               {fb.strengths && (
                 <div>

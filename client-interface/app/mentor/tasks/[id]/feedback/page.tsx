@@ -18,6 +18,7 @@ import {
 import RichTextEditor from '@/components/shared/RichTextEditor';
 import { useMentorTaskFeedback } from '@/lib/hooks/mentor';
 import { PageHeader } from '@/components/admin/ui';
+import { RichTextViewer } from '@/components/shared';
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -190,7 +191,10 @@ export default function FeedbackProvision({ params }: PageProps) {
         <h3 className="text-lg text-slate-900 mb-4">Mentee&apos;s Submission</h3>
         
         <div className="prose prose-sm max-w-none mb-6 p-4 bg-slate-50 rounded-lg">
-          <div dangerouslySetInnerHTML={{ __html: submission.submissionText }} />
+           <RichTextViewer 
+                  content={submission.submissionText}
+                  className="prose prose-sm max-w-none text-slate-700 bg-slate-50 rounded-lg p-4 border border-slate-100"
+                />
         </div>
 
         {/* Links */}

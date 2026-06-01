@@ -31,3 +31,4 @@ export { default as Navigation } from './Navigation';
 export { default as OnboardingGuard } from './OnboardingGuard';
 export { RoleGuard } from './RoleGuard';
 export { default as RichTextEditor } from './RichTextEditor';
+export { RichTextViewer } from './RichTextViewer';

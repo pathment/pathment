@@ -238,13 +238,124 @@
   font-size: 0.875em;
 }
 
-.ProseMirror pre {
-  background-color: #1f2937;
-  color: #f3f4f6;
-  padding: 1rem;
+.rich-text-viewer {
+  color: #334155;
+  font-size: 0.9375rem;
+  line-height: 1.75;
+}
+
+.rich-text-viewer .rtv-heading {
+  margin: 0;
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.rich-text-viewer .rtv-heading-1 {
+  font-size: 2rem;
+  margin: 0 0 0.3rem;
+}
+
+.rich-text-viewer .rtv-heading-2 {
+  font-size: 1.5rem;
+}
+
+.rich-text-viewer .rtv-heading-3 {
+  font-size: 1.25rem;
+}
+
+.rich-text-viewer .rtv-heading-4 {
+  font-size: 1.125rem;
+}
+
+.rich-text-viewer .rtv-heading-5,
+.rich-text-viewer .rtv-heading-6 {
+  font-size: 1rem;
+}
+
+.rich-text-viewer .rtv-paragraph {
+  margin: 0;
+}
+
+.rich-text-viewer .rtv-list {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.rich-text-viewer .rtv-list-disc {
+  list-style-type: disc;
+}
+
+.rich-text-viewer .rtv-list-decimal {
+  list-style-type: decimal;
+}
+
+.rich-text-viewer .rtv-list-item {
+  margin: 0;
+}
+
+.rich-text-viewer .rtv-link {
+  color: #4f46e5;
+  text-decoration: underline;
+}
+
+.rich-text-viewer .rtv-link:hover {
+  color: #4338ca;
+}
+
+.rich-text-viewer .rtv-strong {
+  font-weight: 600;
+}
+
+.rich-text-viewer .rtv-em {
+  font-style: italic;
+}
+
+.rich-text-viewer .rtv-inline-code {
+  background: #f3f4f6;
+  color: #111827;
+  padding: 0.12rem 0.22rem;
+  border-radius: 0.25rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Courier New', monospace;
+  font-size: 0.92em;
+  line-height: 1.4;
+}
+
+.rich-text-viewer .rtv-code-block {
+  background: #f3f4f6;
+  color: #111827;
   border-radius: 0.5rem;
-  margin: 1rem 0;
+  padding: 0.9rem 1rem;
   overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Courier New', monospace;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  margin: 0;
+  white-space: pre;
+}
+
+.rich-text-viewer .rtv-code-block code {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  border-radius: 0;
+  font-size: inherit;
+}
+
+.rich-text-viewer .rtv-blockquote {
+  border-left: 4px solid #cbd5e1;
+  padding-left: 1rem;
+  background: #f8fafc;
+  color: #475569;
+  font-style: italic;
+  margin: 0;
+}
+
+.rich-text-viewer .rtv-image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.75rem;
+  margin: 0;
 }
 
 .ProseMirror pre code {
