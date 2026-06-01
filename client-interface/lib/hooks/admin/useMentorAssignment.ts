@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { enrollmentApi, matchingApi, mentorApi } from '@/lib/services/enrollment-api';
 import { programManagementApi } from '@/lib/services/program-api';
@@ -77,6 +77,9 @@ export function useMentorAssignment(): UseMentorAssignmentReturn {
   const [overrideLevelMentors, setOverrideLevelMentors] = useState<Record<string, any[]>>({});
   const [loading, setLoading] = useState(true);
 
+  const fetchedSuggestionsRef = useRef<Set<string>>(new Set());
+  const fetchedMentorsRef = useRef<Set<string>>(new Set());
+
   // ── available mentors ──────────────────────────────────────────────────────
   const [allMentors, setAllMentors] = useState<MentorAssignmentMentor[]>([]);
   const [mentorsLoading, setMentorsLoading] = useState(false);
@@ -120,22 +123,47 @@ export function useMentorAssignment(): UseMentorAssignmentReturn {
       const list = response?.data?.enrollments || response?.enrollments || [];
       setEnrollments(list);
 
-      // Fetch level mentors + AI suggestions per enrollment
-      for (const enrollment of list) {
-        if (!enrollment.currentLevel?.id) continue;
+      // Extract unique level IDs we haven't fetched yet
+      const levelIdsToFetch = Array.from(
+        new Set(
+          list
+            .map((e: any) => e.currentLevel?.id)
+            .filter((id: any) => id && !fetchedMentorsRef.current.has(id))
+        )
+      ) as string[];
 
-        try {
-          const mRes = await matchingApi.getLevelMentors(enrollment.currentLevel.id);
-          const mentorsList = mRes?.data?.mentors || mRes?.mentors || [];
-          setLevelMentors(prev => ({ ...prev, [enrollment.currentLevel.id]: mentorsList }));
-        } catch { /* non-fatal */ }
+      // Fetch level mentors in parallel
+      await Promise.all(
+        levelIdsToFetch.map(async (levelId) => {
+          fetchedMentorsRef.current.add(levelId);
+          try {
+            const mRes = await matchingApi.getLevelMentors(levelId);
+            const mentorsList = mRes?.data?.mentors || mRes?.mentors || [];
+            setLevelMentors((prev) => ({ ...prev, [levelId]: mentorsList }));
+          } catch {
+            fetchedMentorsRef.current.delete(levelId);
+          }
+        })
+      );
 
-        try {
-          const sRes = await matchingApi.getSuggestions(enrollment.id);
-          const suggestionsList = sRes?.data?.suggestions || sRes?.suggestions || [];
-          setSuggestions(prev => ({ ...prev, [enrollment.id]: suggestionsList }));
-        } catch { /* non-fatal */ }
-      }
+      // Extract enrollment IDs we haven't fetched suggestions for
+      const enrollmentIdsToFetch = list
+        .map((e: any) => e.id)
+        .filter((id: string) => id && !fetchedSuggestionsRef.current.has(id));
+
+      // Fetch suggestions in parallel
+      await Promise.all(
+        enrollmentIdsToFetch.map(async (enrollmentId) => {
+          fetchedSuggestionsRef.current.add(enrollmentId);
+          try {
+            const sRes = await matchingApi.getSuggestions(enrollmentId);
+            const suggestionsList = sRes?.data?.suggestions || sRes?.suggestions || [];
+            setSuggestions((prev) => ({ ...prev, [enrollmentId]: suggestionsList }));
+          } catch {
+            fetchedSuggestionsRef.current.delete(enrollmentId);
+          }
+        })
+      );
     } catch {
       toast.error('Failed to load enrollments');
     } finally {
