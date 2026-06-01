@@ -214,8 +214,6 @@ export function useMentorAssignment(): UseMentorAssignmentReturn {
 
   // ── auto-match all pending ─────────────────────────────────────────────────
   const handleAutoMatch = useCallback(async () => {
-    const scope = selectedProgram ? ' in this program' : '';
-    if (!confirm(`Auto-match all pending enrollments${scope}? This will assign the top AI-suggested mentor to each unmatched mentee.`)) return;
     try {
       setAutoMatching(true);
       const response = await matchingApi.autoMatchPending(selectedProgram || undefined);
