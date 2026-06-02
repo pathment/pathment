@@ -382,21 +382,57 @@ export const MESSAGE_TEMPLATES: MessageTemplate[] = [
   },
 ];
 
-/* The org-wide DEFAULT schedule — applied to every mentee, overridable per
-   individual. Each slot is a "track": a roadmap chain or a recurring task.
-   The headline example: Anytime runs Frontend → Backend as a roadmap chain. */
+/* The org-wide DEFAULT schedule — our methodology, applied to every mentee and
+   overridable per individual. Each slot is a "track": a roadmap chain or a
+   recurring task.
+
+   Weekdays (Mon–Fri) run the structured day:
+     journaling (15 min) → morning reading → breakfast + Mindset talk →
+     core roadmap work → lunch + Engineering talk → dinner + Dean talk.
+   Weekends (Sat–Sun) are just the 10-hour grind + family time.
+
+   The three talks ride their meals; core work runs Frontend → Backend as a
+   roadmap chain. */
 export const DEFAULT_SCHEDULE: Schedule = [
+  // ---- Weekdays (Mon–Fri) ----
+  {
+    id: 'journaling',
+    label: 'Journaling',
+    time: '7:00 AM',
+    days: 'weekdays',
+    kind: 'recurring',
+    recurring: { title: 'Journaling (15 min)', type: 'discussion', recurrence: 'daily', brief: 'Fifteen minutes of journaling to set intentions for the day.' },
+  },
+  {
+    id: 'reading',
+    label: 'Morning reading',
+    time: '7:30 AM',
+    days: 'weekdays',
+    kind: 'recurring',
+    recurring: { title: 'Morning reading', type: 'reading', recurrence: 'daily', brief: 'A focused reading block to start the day sharp.' },
+  },
   {
     id: 'morning',
-    label: 'Morning',
+    label: 'Breakfast',
     time: '8:30 AM',
+    days: 'weekdays',
     kind: 'recurring',
-    recurring: { title: 'Mindset talk', type: 'discussion', recurrence: 'daily', brief: 'A short morning talk to set the right mindset for the day.' },
+    recurring: { title: 'Mindset talk', type: 'discussion', recurrence: 'daily', brief: 'A short talk over breakfast to set the right mindset for the day.' },
+  },
+  {
+    id: 'anytime',
+    label: 'Core work',
+    time: 'Flexible',
+    days: 'weekdays',
+    kind: 'roadmap',
+    roadmapChain: [2, 1], // Frontend Craft → Backend Foundations
+    bookable: true, // mentees can book a 1:1 with their mentor in this slot
   },
   {
     id: 'lunch',
     label: 'Lunch',
     time: '1:00 PM',
+    days: 'weekdays',
     kind: 'recurring',
     recurring: { title: 'Engineering talk', type: 'discussion', recurrence: 'daily', brief: 'A lunchtime talk to fall in love with engineering.' },
   },
@@ -404,16 +440,26 @@ export const DEFAULT_SCHEDULE: Schedule = [
     id: 'dinner',
     label: 'Dinner',
     time: '7:00 PM',
+    days: 'weekdays',
     kind: 'recurring',
-    recurring: { title: 'Dean talk', type: 'discussion', recurrence: 'daily', brief: 'An evening talk from the dean.' },
+    recurring: { title: 'Dean talk', type: 'discussion', recurrence: 'daily', brief: 'An evening talk from the dean over dinner.' },
+  },
+  // ---- Weekend (Sat–Sun) ----
+  {
+    id: 'grind',
+    label: 'Weekend grind',
+    time: '9:00 AM',
+    days: 'weekends',
+    kind: 'recurring',
+    recurring: { title: 'Weekend grind (10 hours)', type: 'project', recurrence: 'weekly', brief: 'A long, focused 10-hour build block — the weekend grind.' },
   },
   {
-    id: 'anytime',
-    label: 'Anytime',
-    time: 'Flexible',
-    kind: 'roadmap',
-    roadmapChain: [2, 1], // Frontend Craft → Backend Foundations
-    bookable: true, // mentees can book a 1:1 with their mentor in this slot
+    id: 'family',
+    label: 'Family time',
+    time: 'Evening',
+    days: 'weekends',
+    kind: 'recurring',
+    recurring: { title: 'Family time', type: 'discussion', recurrence: 'weekly', brief: 'Step away from the screen and spend time with family.' },
   },
 ];
 
@@ -423,27 +469,32 @@ export const SCHEDULE_TEMPLATES: ScheduleTemplate[] = [
   {
     id: 1,
     name: 'Org Standard Day',
-    description: 'Published by the organization — the day structure every clan can adopt. Fill the slots per mentee after assigning.',
+    description: 'Our methodology: a structured Mon–Fri (journaling, reading, three talks with meals, core work) and a weekend that is just the 10-hour grind plus family time. Fill the slots per mentee after assigning.',
     source: 'org',
     schedule: DEFAULT_SCHEDULE,
     // pure structure: named time slots, no tasks/roadmaps
     blocks: [
-      { id: 101, label: 'Morning talk', time: '8:30 AM' },
-      { id: 102, label: 'Lunch talk', time: '1:00 PM' },
-      { id: 103, label: 'Dinner talk', time: '7:00 PM' },
-      { id: 104, label: 'Core work', time: 'Flexible', bookable: true },
+      { id: 101, label: 'Journaling', time: '7:00 AM', days: 'weekdays' },
+      { id: 102, label: 'Morning reading', time: '7:30 AM', days: 'weekdays' },
+      { id: 103, label: 'Breakfast + Mindset talk', time: '8:30 AM', days: 'weekdays' },
+      { id: 104, label: 'Core work', time: 'Flexible', days: 'weekdays', bookable: true },
+      { id: 105, label: 'Lunch + Engineering talk', time: '1:00 PM', days: 'weekdays' },
+      { id: 106, label: 'Dinner + Dean talk', time: '7:00 PM', days: 'weekdays' },
+      { id: 107, label: 'Weekend grind', time: '9:00 AM', days: 'weekends' },
+      { id: 108, label: 'Family time', time: 'Evening', days: 'weekends' },
     ],
   },
   {
     id: 2,
     name: 'Interview Prep Day',
-    description: 'A heads-down structure: deep-work morning, midday session, evening recap.',
+    description: 'A heads-down structure: deep-work weekdays, midday session, and a heavy weekend grind.',
     source: 'mentor',
     schedule: DEFAULT_SCHEDULE,
     blocks: [
-      { id: 201, label: 'Deep work', time: '9:00 AM' },
-      { id: 202, label: 'Session', time: '12:30 PM', bookable: true },
-      { id: 203, label: 'Recap', time: '6:00 PM' },
+      { id: 201, label: 'Deep work', time: '9:00 AM', days: 'weekdays' },
+      { id: 202, label: 'Session', time: '12:30 PM', days: 'weekdays', bookable: true },
+      { id: 203, label: 'Recap', time: '6:00 PM', days: 'weekdays' },
+      { id: 204, label: 'Weekend grind', time: '9:00 AM', days: 'weekends' },
     ],
   },
 ];

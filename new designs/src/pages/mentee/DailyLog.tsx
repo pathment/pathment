@@ -15,8 +15,14 @@ import { Page, PageHeader } from '@/components/Page';
 import { Card, Badge, Button, SectionLabel, cx, TASK_TYPE_LABEL } from '@/lib/ui';
 import { Field, TextArea } from '@/components/overlays';
 import { useStore } from '@/store/AppStore';
-import { slotLabel } from '@/lib/ai';
+import { slotLabel, slotRunsOn } from '@/lib/ai';
 import type { ScheduleSlot } from '@/lib/types';
+
+/* parse a 'YYYY-MM-DD' key into a local Date (no timezone drift) */
+function dateFromKey(key: string): Date {
+  const [y, m, d] = key.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
 
 /* slots are dynamic now — pick an icon by position (sunrise → midday → evening
    → flexible, then cycle). */
@@ -101,7 +107,11 @@ export function DailyLog() {
   };
 
   const isBackfill = activeKey !== days[0].key;
-  const scheduledSlots = schedule.filter((s) => s.kind !== 'empty');
+  // only show the slots that actually run on the selected day — weekdays carry
+  // the structured day, weekends are just the grind + family time
+  const activeDate = dateFromKey(activeKey);
+  const isWeekend = activeDate.getDay() === 0 || activeDate.getDay() === 6;
+  const scheduledSlots = schedule.filter((s) => s.kind !== 'empty' && slotRunsOn(s.days, activeDate));
 
   return (
     <Page>
@@ -151,7 +161,13 @@ export function DailyLog() {
             {/* schedule slots (the talks) */}
             <div className="mb-2 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-ink-faint">
               <CalendarDays className="h-3 w-3" /> Your schedule
+              <span className="text-ink-faint">· {isWeekend ? 'Weekend — grind + family' : 'Weekday'}</span>
             </div>
+            {scheduledSlots.length === 0 && (
+              <p className="rounded-r border border-dashed border-hairline px-3 py-3 text-center text-xs text-ink-faint">
+                Nothing scheduled for this day.
+              </p>
+            )}
             <div className="space-y-1.5">
               {scheduledSlots.map((cfg, i) => {
                 const Icon = iconFor(i);

@@ -11,6 +11,7 @@ import {
 import { Page, PageHeader } from '@/components/Page';
 import { Card, Badge, Button, Avatar, SectionLabel, cx } from '@/lib/ui';
 import { Drawer, SelectInput, Field, TextInput, TextArea } from '@/components/overlays';
+import { SLOT_DAYS_META } from '@/lib/ai';
 import { useStore } from '@/store/AppStore';
 import type { ScheduleTemplate, TimeBlock } from '@/lib/types';
 
@@ -204,10 +205,14 @@ function CreateScheduleDrawer({
   onCreate: (name: string, description: string, blocks: TimeBlock[]) => void;
 }) {
   const seed = (): TimeBlock[] => [
-    { id: 1, label: 'Morning talk', time: '8:30 AM' },
-    { id: 2, label: 'Lunch talk', time: '1:00 PM' },
-    { id: 3, label: 'Dinner talk', time: '7:00 PM' },
-    { id: 4, label: 'Core work', time: 'Flexible', bookable: true },
+    { id: 1, label: 'Journaling', time: '7:00 AM', days: 'weekdays' },
+    { id: 2, label: 'Morning reading', time: '7:30 AM', days: 'weekdays' },
+    { id: 3, label: 'Breakfast + Mindset talk', time: '8:30 AM', days: 'weekdays' },
+    { id: 4, label: 'Core work', time: 'Flexible', days: 'weekdays', bookable: true },
+    { id: 5, label: 'Lunch + Engineering talk', time: '1:00 PM', days: 'weekdays' },
+    { id: 6, label: 'Dinner + Dean talk', time: '7:00 PM', days: 'weekdays' },
+    { id: 7, label: 'Weekend grind', time: '9:00 AM', days: 'weekends' },
+    { id: 8, label: 'Family time', time: 'Evening', days: 'weekends' },
   ];
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -228,7 +233,7 @@ function CreateScheduleDrawer({
   const addBlock = () =>
     setBlocks((prev) => [
       ...prev,
-      { id: (prev.at(-1)?.id ?? 0) + 1, label: '', time: '' },
+      { id: (prev.at(-1)?.id ?? 0) + 1, label: '', time: '', days: 'weekdays' },
     ]);
   const removeBlock = (id: number) => setBlocks((prev) => prev.filter((b) => b.id !== id));
 
@@ -288,8 +293,18 @@ function CreateScheduleDrawer({
                   value={b.time}
                   onChange={(e) => setBlock(b.id, { time: e.target.value })}
                   placeholder="9:00 AM"
-                  className="h-8 w-24 py-1 text-xs"
+                  className="h-8 w-20 py-1 text-xs"
                 />
+                <SelectInput
+                  value={b.days ?? 'weekdays'}
+                  onChange={(e) => setBlock(b.id, { days: e.target.value as TimeBlock['days'] })}
+                  className="h-8 w-24 py-1 text-xs"
+                  title="When this block runs"
+                >
+                  <option value="everyday">Every day</option>
+                  <option value="weekdays">Weekdays</option>
+                  <option value="weekends">Weekend</option>
+                </SelectInput>
                 <button
                   onClick={() => setBlock(b.id, { bookable: !b.bookable })}
                   title={b.bookable ? '1:1 bookable — click to disable' : 'Allow 1:1 booking here'}
@@ -345,6 +360,14 @@ function TemplateCard({
             <Clock className="h-3.5 w-3.5 shrink-0 text-ink-faint" />
             <span className="w-20 shrink-0 font-mono text-[10px] text-ink-mute tnum">{b.time}</span>
             <span className="min-w-0 flex-1 truncate text-sm text-ink-soft">{b.label}</span>
+            <span
+              className={cx(
+                'shrink-0 font-mono text-[9px] uppercase tracking-[0.1em]',
+                (b.days ?? 'everyday') === 'weekends' ? 'text-amber-600' : 'text-ink-faint',
+              )}
+            >
+              {SLOT_DAYS_META[b.days ?? 'everyday'].short}
+            </span>
             {b.bookable && (
               <span title="Mentees can book a 1:1 here">
                 <CalendarClock className="h-3.5 w-3.5 shrink-0 text-emerald-600" />

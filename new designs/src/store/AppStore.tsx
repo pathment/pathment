@@ -69,6 +69,7 @@ import type {
   ScheduledMeeting,
   Schedule,
   SlotConfig,
+  SlotDays,
   ScheduleTemplate,
   DailyLogEntry,
   AvailabilitySlot,
@@ -172,7 +173,7 @@ interface Store {
   setSlot: (menteeId: number, slotId: ScheduleSlot, patch: Partial<SlotConfig>) => void;
   applyScheduleToAll: (schedule: Schedule) => void;
   // add a brand-new slot to one mentee's schedule (ad-hoc, outside a template)
-  addSlot: (menteeId: number, block: { label: string; time?: string; bookable?: boolean }) => void;
+  addSlot: (menteeId: number, block: { label: string; time?: string; days?: SlotDays; bookable?: boolean }) => void;
   removeSlot: (menteeId: number, slotId: ScheduleSlot) => void;
   // start a slot's roadmap chain for a mentee, at a chosen step of the first roadmap
   startSlotRoadmap: (menteeId: number, slot: ScheduleSlot, startStep?: number) => void;
@@ -757,6 +758,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
           id: `slot-${idRef.current++ + 1}`,
           label: block.label || 'New slot',
           time: block.time,
+          days: block.days ?? 'everyday',
           kind: 'empty',
           bookable: block.bookable,
         };
@@ -889,6 +891,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       id: `blk-${b.id}`,
       label: b.label,
       time: b.time,
+      days: b.days ?? 'everyday',
       kind: 'empty' as const,
       bookable: b.bookable,
     }));

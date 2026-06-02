@@ -1,4 +1,4 @@
-import type { AIProvider, AIFeature, DelayCategory, TaskType, Effort, ScheduleSlot } from './types';
+import type { AIProvider, AIFeature, DelayCategory, TaskType, Effort, ScheduleSlot, SlotDays } from './types';
 
 export const PROVIDER_META: Record<
   AIProvider,
@@ -162,3 +162,30 @@ export function slotLabel(id: string, schedule?: SlotConfigLike[]): string {
   return id.charAt(0).toUpperCase() + id.slice(1);
 }
 type SlotConfigLike = { id: string; label: string };
+
+/* ----------------------------------------------------------------
+   Day cadence — weekdays run the structured day (talks, reading,
+   journaling, core work); weekends are the long grind + family time.
+----------------------------------------------------------------- */
+export const SLOT_DAYS_META: Record<SlotDays, { label: string; short: string }> = {
+  everyday: { label: 'Every day', short: 'Daily' },
+  weekdays: { label: 'Weekdays · Mon–Fri', short: 'Mon–Fri' },
+  weekends: { label: 'Weekend · Sat–Sun', short: 'Sat–Sun' },
+};
+
+export const SLOT_DAYS_ORDER: SlotDays[] = ['everyday', 'weekdays', 'weekends'];
+
+/* Does a slot with this cadence run on the given date? */
+export function slotRunsOn(days: SlotDays | undefined, date: Date): boolean {
+  const dow = date.getDay(); // 0 Sun … 6 Sat
+  const weekend = dow === 0 || dow === 6;
+  const d = days ?? 'everyday';
+  if (d === 'everyday') return true;
+  if (d === 'weekends') return weekend;
+  return !weekend; // weekdays
+}
+
+/* Bucket a slot's cadence into weekday vs weekend for grouped display. */
+export function slotDayBucket(days: SlotDays | undefined): SlotDays {
+  return days ?? 'everyday';
+}

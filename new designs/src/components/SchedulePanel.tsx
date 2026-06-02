@@ -19,11 +19,13 @@ import {
 import { Card, Badge, Button, SectionLabel, cx, TASK_TYPE_LABEL } from '@/lib/ui';
 import { Modal, Field, TextInput, SelectInput, Segmented } from '@/components/overlays';
 import { TrackManager } from '@/components/TrackManager';
+import { SLOT_DAYS_META, SLOT_DAYS_ORDER } from '@/lib/ai';
 import { useStore } from '@/store/AppStore';
 import type {
   Mentee,
   SlotConfig,
   SlotKind,
+  SlotDays,
   TaskType,
   Recurrence,
 } from '@/lib/types';
@@ -57,6 +59,14 @@ export function SchedulePanel({ mentee }: { mentee: Mentee }) {
 
   const manageSlot = schedule.find((s) => s.id === manageSlotId) ?? null;
 
+  // group slots by cadence (everyday / weekdays / weekends) so the structured
+  // Mon–Fri day and the weekend grind read as distinct blocks
+  const dayBuckets = SLOT_DAYS_ORDER.map((d) => ({
+    d,
+    slots: schedule.filter((s) => (s.days ?? 'everyday') === d),
+  })).filter((b) => b.slots.length > 0);
+  const showDayHeaders = dayBuckets.length > 1;
+
   const editSlot = schedule.find((s) => s.id === editSlotId) ?? null;
 
   return (
@@ -70,8 +80,19 @@ export function SchedulePanel({ mentee }: { mentee: Mentee }) {
         <span className="font-medium text-ink-mute">Assign / Change</span> on any slot, or add a new one.
       </p>
 
-      <div className="space-y-2.5">
-        {schedule.map((cfg, i) => {
+      <div className="space-y-4">
+        {dayBuckets.map((bucket) => (
+          <div key={bucket.d} className="space-y-2.5">
+            {showDayHeaders && (
+              <div className="flex items-center gap-2 pt-0.5">
+                <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-mute">
+                  {SLOT_DAYS_META[bucket.d].label}
+                </span>
+                <span className="h-px flex-1 bg-hairline" />
+              </div>
+            )}
+            {bucket.slots.map((cfg) => {
+          const i = schedule.indexOf(cfg);
           const Icon = iconFor(i);
 
           // roadmap-chain progress for this slot
@@ -216,8 +237,10 @@ export function SchedulePanel({ mentee }: { mentee: Mentee }) {
                 </div>
               </div>
             </div>
-          );
-        })}
+              );
+            })}
+          </div>
+        ))}
 
         {schedule.length === 0 && (
           <p className="rounded-r border border-dashed border-hairline px-3 py-4 text-center text-xs text-ink-faint">
@@ -279,15 +302,17 @@ function SlotEditor({
   const [rTitle, setRTitle] = useState(config.recurring?.title ?? '');
   const [rType, setRType] = useState<TaskType>(config.recurring?.type ?? 'reading');
   const [rRec, setRRec] = useState<Recurrence>(config.recurring?.recurrence ?? 'daily');
+  const [days, setDays] = useState<SlotDays>(config.days ?? 'everyday');
 
   const toggleRoadmap = (id: number) =>
     setChain((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
   const save = () => {
     if (kind === 'roadmap') {
-      onSave({ kind: chain.length ? 'roadmap' : 'empty', roadmapChain: chain, recurring: undefined });
+      onSave({ days, kind: chain.length ? 'roadmap' : 'empty', roadmapChain: chain, recurring: undefined });
     } else {
       onSave({
+        days,
         kind: rTitle.trim() ? 'recurring' : 'empty',
         recurring: rTitle.trim() ? { title: rTitle.trim(), type: rType, recurrence: rRec } : undefined,
         roadmapChain: undefined,
@@ -313,6 +338,18 @@ function SlotEditor({
       }
     >
       <div className="space-y-4">
+        <Field label="Runs on" hint="Weekdays carry the structured day; weekends are the grind + family time.">
+          <Segmented
+            value={days}
+            onChange={setDays}
+            options={[
+              { value: 'everyday', label: 'Every day' },
+              { value: 'weekdays', label: 'Weekdays' },
+              { value: 'weekends', label: 'Weekend' },
+            ]}
+          />
+        </Field>
+
         <Segmented
           value={kind}
           onChange={setKind}
@@ -410,16 +447,17 @@ function SlotEditor({
   );
 }
 
-/* add a brand-new slot (label + time) to just this mentee's schedule */
+/* add a brand-new slot (label + time + cadence) to just this mentee's schedule */
 function AddSlotModal({
   onClose,
   onAdd,
 }: {
   onClose: () => void;
-  onAdd: (block: { label: string; time?: string; bookable?: boolean }) => void;
+  onAdd: (block: { label: string; time?: string; days?: SlotDays; bookable?: boolean }) => void;
 }) {
   const [label, setLabel] = useState('');
   const [time, setTime] = useState('');
+  const [days, setDays] = useState<SlotDays>('weekdays');
   const [bookable, setBookable] = useState(false);
 
   return (
@@ -433,7 +471,7 @@ function AddSlotModal({
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={() => onAdd({ label: label.trim() || 'New slot', time: time.trim() || undefined, bookable })} disabled={!label.trim()}>
+          <Button onClick={() => onAdd({ label: label.trim() || 'New slot', time: time.trim() || undefined, days, bookable })} disabled={!label.trim()}>
             <Plus className="h-4 w-4" /> Add slot
           </Button>
         </div>
@@ -445,6 +483,17 @@ function AddSlotModal({
         </Field>
         <Field label="Time" hint="Optional — e.g. 9:00 AM or Flexible.">
           <TextInput value={time} onChange={(e) => setTime(e.target.value)} placeholder="9:00 AM" />
+        </Field>
+        <Field label="Runs on" hint="Weekdays carry the structured day; weekends are the grind + family time.">
+          <Segmented
+            value={days}
+            onChange={setDays}
+            options={[
+              { value: 'everyday', label: 'Every day' },
+              { value: 'weekdays', label: 'Weekdays' },
+              { value: 'weekends', label: 'Weekend' },
+            ]}
+          />
         </Field>
         <label className="flex items-center gap-2 text-sm text-ink-soft">
           <input type="checkbox" checked={bookable} onChange={(e) => setBookable(e.target.checked)} />

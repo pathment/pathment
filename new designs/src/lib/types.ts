@@ -60,6 +60,10 @@ export interface Attachment {
 export type ScheduleSlot = string;
 export type Recurrence = 'once' | 'daily' | 'weekly';
 
+/* When in the week a slot runs. Weekdays carry the structured day (talks,
+   reading, journaling, core work); weekends are the long grind + family time. */
+export type SlotDays = 'everyday' | 'weekdays' | 'weekends';
+
 /* Scoring: an automatic speed score (from submit-vs-due) plus an optional
    mentor quality score. */
 export interface TaskScore {
@@ -190,6 +194,8 @@ export interface SlotConfig {
   /* the slot's name + time, inherited from the assigned schedule's block */
   label: string;
   time?: string;
+  /* which days this slot runs (default everyday). Weekends are grind + family. */
+  days?: SlotDays;
   kind: SlotKind;
   /* roadmap chain — ordered roadmap ids; mentee advances through them. When one
      completes the mentor confirms starting the next. */
@@ -222,8 +228,9 @@ export interface AvailabilitySlot {
    per-mentee, only after the schedule is assigned to them. */
 export interface TimeBlock {
   id: number;
-  label: string; // 'Morning talk', 'Lunch talk', 'Core work'
+  label: string; // 'Breakfast', 'Lunch', 'Weekend grind'
   time: string; // '8:30 AM' or 'Flexible'
+  days?: SlotDays; // weekday structure vs weekend grind (default everyday)
   bookable?: boolean; // mentees can book a 1:1 in this block
 }
 
