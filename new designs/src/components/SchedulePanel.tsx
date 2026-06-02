@@ -188,13 +188,6 @@ export function SchedulePanel({ mentee }: { mentee: Mentee }) {
                       <span className="min-w-0 flex-1 truncate text-[11px] text-ink-soft">
                         {activeRm.steps[activeProg.currentStep]?.title}
                       </span>
-                      <button
-                        onClick={() => setManageSlotId(cfg.id)}
-                        className="rounded-r inline-flex shrink-0 items-center gap-1 px-1.5 py-1 text-[11px] font-medium text-brand-600 transition-colors hover:underline"
-                        title="Manage this track — jump steps, switch roadmap"
-                      >
-                        <SlidersHorizontal className="h-3.5 w-3.5" /> Manage
-                      </button>
                     </div>
                   )}
                 </div>
@@ -203,6 +196,18 @@ export function SchedulePanel({ mentee }: { mentee: Mentee }) {
                   {cfg.kind === 'roadmap' && chain.length > 0 && !activeProg && (
                     <Button variant="soft" size="sm" onClick={() => startSlotRoadmap(mentee.id, cfg.id)}>
                       <Play className="h-3.5 w-3.5" /> Start
+                    </Button>
+                  )}
+                  {/* manage the roadmap's tasks for this mentee — jump steps,
+                      switch roadmap, reassign the active task. Always available. */}
+                  {cfg.kind === 'roadmap' && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setManageSlotId(cfg.id)}
+                      title="Manage tasks in this slot — jump steps, switch roadmap, reassign the task"
+                    >
+                      <SlidersHorizontal className="h-3.5 w-3.5" /> Tasks
                     </Button>
                   )}
                   <button

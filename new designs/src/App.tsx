@@ -12,6 +12,12 @@ import { Roadmaps } from '@/pages/mentor/Roadmaps';
 import { Schedules } from '@/pages/mentor/Schedules';
 import { Documents } from '@/pages/mentor/Documents';
 import { MentorOnboarding } from '@/pages/mentor/Onboarding';
+import { Reports } from '@/pages/mentor/Reports';
+import { Leaderboard } from '@/pages/mentor/Leaderboard';
+import { Rewards } from '@/pages/mentor/Rewards';
+import { MentorSpec } from '@/pages/mentor/MentorSpec';
+import { ProgressScores } from '@/pages/mentor/ProgressScores';
+import { Promotions } from '@/pages/mentor/Promotions';
 
 import { ThisWeek } from '@/pages/mentee/ThisWeek';
 import { TaskDetail } from '@/pages/mentee/TaskDetail';
@@ -24,6 +30,11 @@ import { ProgramHealth } from '@/pages/admin/ProgramHealth';
 import { People } from '@/pages/admin/People';
 import { OrgInsights } from '@/pages/admin/OrgInsights';
 import { ReleaseNotes } from '@/pages/admin/ReleaseNotes';
+import { Clans } from '@/pages/admin/Clans';
+import { ClanRequests } from '@/pages/admin/ClanRequests';
+import { Announcements } from '@/pages/admin/Announcements';
+
+import { Community } from '@/pages/mentee/Community';
 
 export function App() {
   return (
@@ -44,6 +55,12 @@ export function App() {
             <Route path="/mentor/settings" element={<Settings />} />
             <Route path="/mentor/roadmaps" element={<Roadmaps />} />
             <Route path="/mentor/schedules" element={<Schedules />} />
+            <Route path="/mentor/scores" element={<ProgressScores />} />
+            <Route path="/mentor/reports" element={<Reports />} />
+            <Route path="/mentor/leaderboard" element={<Leaderboard />} />
+            <Route path="/mentor/rewards" element={<Rewards />} />
+            <Route path="/mentor/promotions" element={<Promotions />} />
+            <Route path="/mentor/spec" element={<MentorSpec />} />
             <Route path="/mentor/library" element={<Documents />} />
             <Route path="/mentor/mentee/:id" element={<MenteeProfile />} />
 
@@ -54,13 +71,17 @@ export function App() {
             <Route path="/mentee/progress" element={<MyProgress />} />
             <Route path="/mentee/blockers" element={<Blockers />} />
             <Route path="/mentee/meetings" element={<Meetings />} />
+            <Route path="/mentee/community" element={<Community />} />
 
             {/* Admin */}
             <Route path="/admin/health" element={<ProgramHealth />} />
+            <Route path="/admin/clans" element={<Clans />} />
             <Route path="/admin/people" element={<People />} />
             {/* admin-scoped profile so opening a person keeps the admin shell */}
             <Route path="/admin/people/:id" element={<MenteeProfile />} />
+            <Route path="/admin/requests" element={<ClanRequests />} />
             <Route path="/admin/insights" element={<OrgInsights />} />
+            <Route path="/admin/announcements" element={<Announcements />} />
             <Route path="/admin/library" element={<Documents />} />
             <Route path="/admin/release-notes" element={<ReleaseNotes />} />
 
