@@ -12,6 +12,7 @@ import { Roadmaps } from '@/pages/mentor/Roadmaps';
 import { Schedules } from '@/pages/mentor/Schedules';
 import { Documents } from '@/pages/mentor/Documents';
 import { MentorOnboarding } from '@/pages/mentor/Onboarding';
+import { Mentees } from '@/pages/mentor/Mentees';
 import { Reports } from '@/pages/mentor/Reports';
 import { Leaderboard } from '@/pages/mentor/Leaderboard';
 import { Rewards } from '@/pages/mentor/Rewards';
@@ -49,6 +50,7 @@ export function App() {
 
             {/* Mentor */}
             <Route path="/mentor/cockpit" element={<Cockpit />} />
+            <Route path="/mentor/mentees" element={<Mentees />} />
             <Route path="/mentor/review" element={<CohortReview />} />
             <Route path="/mentor/approvals" element={<Approvals />} />
             <Route path="/mentor/at-risk" element={<AtRisk />} />

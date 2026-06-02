@@ -80,6 +80,7 @@ export function CommandPalette({
     const base: Cmd[] = [
       { id: 'assign', label: 'Assign a task…', icon: Plus, group: 'Actions', run: () => onAssign(), keywords: 'new create task' },
       nav('Cockpit', '/mentor/cockpit', LayoutGrid),
+      nav('My Mentees', '/mentor/mentees', Users),
       nav('Cohort Review', '/mentor/review', CalendarRange),
       nav('Approvals', '/mentor/approvals', ClipboardCheck),
       nav('At-risk', '/mentor/at-risk', ShieldAlert),

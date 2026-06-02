@@ -38,6 +38,7 @@ export interface NavItem {
 export const NAV: Record<Role, NavItem[]> = {
   mentor: [
     { to: '/mentor/cockpit', label: 'Cockpit', icon: LayoutGrid },
+    { to: '/mentor/mentees', label: 'My Mentees', icon: Users },
     { to: '/mentor/review', label: 'Cohort Review', icon: CalendarRange },
     { to: '/mentor/approvals', label: 'Approvals', icon: ClipboardCheck, badge: 'approvals' },
     { to: '/mentor/at-risk', label: 'At-risk', icon: ShieldAlert, badge: 'risk' },
