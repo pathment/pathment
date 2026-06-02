@@ -141,11 +141,10 @@ export const TYPE_DEFAULT_SLOT: Record<TaskType, ScheduleSlot> = {
   quiz: 'dinner',
 };
 
-/* Display meta for the four schedule slots. */
-export const SLOT_META: Record<
-  ScheduleSlot,
-  { label: string; blurb: string }
-> = {
+/* Display meta for the legacy default slots. Schedules are dynamic now, so this
+   is only a fallback for the four default-schedule ids. Use slotLabel() for any
+   slot id, which falls back here and then to the raw id. */
+export const SLOT_META: Record<string, { label: string; blurb: string }> = {
   morning: { label: 'Morning', blurb: 'Start the day — reading, mindset' },
   lunch: { label: 'Lunch', blurb: 'Midday — talks, discussion' },
   dinner: { label: 'Dinner', blurb: 'Evening — quizzes, review' },
@@ -153,3 +152,13 @@ export const SLOT_META: Record<
 };
 
 export const SLOT_ORDER: ScheduleSlot[] = ['morning', 'lunch', 'dinner', 'anytime'];
+
+/* Resolve a human label for any slot id: prefer the live schedule's slot, then
+   the legacy meta, then a title-cased id. Works for both default and custom. */
+export function slotLabel(id: string, schedule?: SlotConfigLike[]): string {
+  const fromSched = schedule?.find((s) => s.id === id)?.label;
+  if (fromSched) return fromSched;
+  if (SLOT_META[id]) return SLOT_META[id].label;
+  return id.charAt(0).toUpperCase() + id.slice(1);
+}
+type SlotConfigLike = { id: string; label: string };

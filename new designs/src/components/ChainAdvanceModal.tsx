@@ -2,13 +2,13 @@ import { useState, useEffect } from 'react';
 import { GitBranch, ArrowRight, X } from 'lucide-react';
 import { Modal, Field, SelectInput } from './overlays';
 import { Avatar, Button, TASK_TYPE_LABEL } from '@/lib/ui';
-import { SLOT_META } from '@/lib/ai';
+import { slotLabel } from '@/lib/ai';
 import { useStore } from '@/store/AppStore';
 
 /* When a mentee finishes a roadmap inside a slot's chain, the mentor is asked
    to confirm starting the next roadmap (and can pick a start step). */
 export function ChainAdvanceModal() {
-  const { pendingChainAdvance, confirmChainAdvance, dismissChainAdvance, roadmaps, getMentee } =
+  const { pendingChainAdvance, confirmChainAdvance, dismissChainAdvance, roadmaps, getMentee, getSchedule } =
     useStore();
   const [startStep, setStartStep] = useState(0);
 
@@ -21,13 +21,14 @@ export function ChainAdvanceModal() {
   const mentee = getMentee(menteeId);
   const rm = roadmaps.find((r) => r.id === nextRoadmapId);
   if (!mentee || !rm) return null;
+  const slotName = slotLabel(slot, getSchedule(menteeId));
 
   return (
     <Modal
       open
       onClose={dismissChainAdvance}
       title="Roadmap complete — start the next?"
-      subtitle={`${mentee.name} finished their ${SLOT_META[slot].label.toLowerCase()} roadmap`}
+      subtitle={`${mentee.name} finished their ${slotName.toLowerCase()} roadmap`}
       footer={
         <div className="flex items-center justify-end gap-2">
           <Button variant="ghost" onClick={dismissChainAdvance}>
@@ -44,7 +45,7 @@ export function ChainAdvanceModal() {
           <Avatar initials={mentee.avatar} name={mentee.name} size="sm" />
           <div className="min-w-0">
             <div className="truncate text-sm font-medium text-ink">{mentee.name}</div>
-            <div className="text-xs text-ink-mute">{SLOT_META[slot].label} track</div>
+            <div className="text-xs text-ink-mute">{slotName} track</div>
           </div>
         </div>
 

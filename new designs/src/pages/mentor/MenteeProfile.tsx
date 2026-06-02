@@ -44,14 +44,15 @@ import {
   FRICTION_META,
   cx,
 } from '@/lib/ui';
-import { SLOT_META } from '@/lib/ai';
+import { slotLabel } from '@/lib/ai';
 import type { Mentee, Task } from '@/lib/types';
 
 /* Mentor's read of the mentee's daily logs — what they did each day. */
 function DailyLogCard({ menteeId }: { menteeId: number }) {
-  const { getDailyLogs, getMentee } = useStore();
+  const { getDailyLogs, getMentee, getSchedule } = useStore();
   const logs = getDailyLogs(menteeId).slice(0, 5);
   const mentee = getMentee(menteeId);
+  const schedule = getSchedule(menteeId);
   return (
     <Card className="p-5">
       <SectionLabel>Daily log</SectionLabel>
@@ -64,7 +65,7 @@ function DailyLogCard({ menteeId }: { menteeId: number }) {
             const items: { key: string; label: string; note?: string; kind: 'slot' | 'task' }[] = [
               ...l.slotsDone.map((s) => ({
                 key: s,
-                label: SLOT_META[s].label,
+                label: slotLabel(s, schedule),
                 note: l.itemNotes?.[s],
                 kind: 'slot' as const,
               })),

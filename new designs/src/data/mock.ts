@@ -380,25 +380,37 @@ export const MESSAGE_TEMPLATES: MessageTemplate[] = [
 /* The org-wide DEFAULT schedule — applied to every mentee, overridable per
    individual. Each slot is a "track": a roadmap chain or a recurring task.
    The headline example: Anytime runs Frontend → Backend as a roadmap chain. */
-export const DEFAULT_SCHEDULE: Schedule = {
-  morning: {
+export const DEFAULT_SCHEDULE: Schedule = [
+  {
+    id: 'morning',
+    label: 'Morning',
+    time: '8:30 AM',
     kind: 'recurring',
     recurring: { title: 'Mindset talk', type: 'discussion', recurrence: 'daily', brief: 'A short morning talk to set the right mindset for the day.' },
   },
-  lunch: {
+  {
+    id: 'lunch',
+    label: 'Lunch',
+    time: '1:00 PM',
     kind: 'recurring',
     recurring: { title: 'Engineering talk', type: 'discussion', recurrence: 'daily', brief: 'A lunchtime talk to fall in love with engineering.' },
   },
-  dinner: {
+  {
+    id: 'dinner',
+    label: 'Dinner',
+    time: '7:00 PM',
     kind: 'recurring',
     recurring: { title: 'Dean talk', type: 'discussion', recurrence: 'daily', brief: 'An evening talk from the dean.' },
   },
-  anytime: {
+  {
+    id: 'anytime',
+    label: 'Anytime',
+    time: 'Flexible',
     kind: 'roadmap',
     roadmapChain: [2, 1], // Frontend Craft → Backend Foundations
     bookable: true, // mentees can book a 1:1 with their mentor in this slot
   },
-};
+];
 
 /* Named, reusable schedule templates. The org publishes one (inheritable by
    any mentor); mentors create their own and assign mentees to them. */

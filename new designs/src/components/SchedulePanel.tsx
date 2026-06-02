@@ -12,69 +12,77 @@ import {
   ChevronRight,
   CalendarClock,
   Plus,
+  Trash2,
 } from 'lucide-react';
 import { Card, Badge, Button, SectionLabel, cx, TASK_TYPE_LABEL } from '@/lib/ui';
 import { Modal, Field, TextInput, SelectInput, Segmented } from '@/components/overlays';
-import { SLOT_META, SLOT_ORDER } from '@/lib/ai';
 import { useStore } from '@/store/AppStore';
 import type {
   Mentee,
-  ScheduleSlot,
-  SlotKind,
   SlotConfig,
+  SlotKind,
   TaskType,
   Recurrence,
 } from '@/lib/types';
 
-const SLOT_ICON: Record<ScheduleSlot, typeof Sun> = {
-  morning: Sunrise,
-  lunch: Sun,
-  dinner: Moon,
-  anytime: Clock,
-};
+/* slots no longer have fixed names — pick an icon by position so a day reads
+   sunrise → midday → evening → flexible, then cycles. */
+const SLOT_ICONS = [Sunrise, Sun, Moon, Clock];
+const iconFor = (i: number) => SLOT_ICONS[i % SLOT_ICONS.length];
 
 const TYPES: TaskType[] = ['reading', 'discussion', 'video', 'quiz', 'assignment', 'project'];
 
-/* The schedule = a mentee's day in 4 slots. Each slot is a "track": a roadmap
-   chain (auto-advancing) or a recurring task. Edit per person; the org default
-   is the starting point. */
+/* The schedule = a mentee's day as an ordered list of slots. Each slot is a
+   "track": a roadmap chain (auto-advancing) or a recurring task. Built from the
+   schedule you assigned; edit each slot per person. */
 export function SchedulePanel({ mentee }: { mentee: Mentee }) {
-  const { getSchedule, setSlot, roadmaps, roadmapProgress, startSlotRoadmap, toggleSlotBookable } = useStore();
+  const {
+    getSchedule,
+    setSlot,
+    addSlot,
+    removeSlot,
+    roadmaps,
+    roadmapProgress,
+    startSlotRoadmap,
+    toggleSlotBookable,
+  } = useStore();
   const schedule = getSchedule(mentee.id);
-  const [editSlot, setEditSlot] = useState<ScheduleSlot | null>(null);
+  const [editSlotId, setEditSlotId] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+
+  const editSlot = schedule.find((s) => s.id === editSlotId) ?? null;
 
   return (
     <Card className="p-5">
       <div className="mb-1 flex items-center justify-between">
         <SectionLabel>Schedule &amp; tracks</SectionLabel>
+        <span className="font-mono text-[10px] text-ink-faint tnum">{schedule.length} slots</span>
       </div>
       <p className="mb-3 text-[11px] leading-relaxed text-ink-faint">
-        Assign a roadmap or recurring task into each slot — different per mentee. Use{' '}
-        <span className="font-medium text-ink-mute">Assign / Change</span> on any slot.
+        Assign a roadmap or recurring task into each slot. Different per mentee. Use{' '}
+        <span className="font-medium text-ink-mute">Assign / Change</span> on any slot, or add a new one.
       </p>
 
       <div className="space-y-2.5">
-        {SLOT_ORDER.map((slot) => {
-          const cfg = schedule[slot];
-          const Icon = SLOT_ICON[slot];
-          const meta = SLOT_META[slot];
+        {schedule.map((cfg, i) => {
+          const Icon = iconFor(i);
 
           // roadmap-chain progress for this slot
           const chain = cfg.roadmapChain ?? [];
           const activeProg = roadmapProgress.find(
-            (p) => p.menteeId === mentee.id && p.slot === slot && !p.completed,
+            (p) => p.menteeId === mentee.id && p.slot === cfg.id && !p.completed,
           );
           const activeRm = activeProg ? roadmaps.find((r) => r.id === activeProg.roadmapId) : undefined;
 
           return (
-            <div key={slot} className="rounded-r border border-hairline">
+            <div key={cfg.id} className="rounded-r border border-hairline">
               <div className="flex items-center gap-3 px-3 py-2.5">
                 <span className="grid h-8 w-8 shrink-0 place-items-center border border-hairline text-ink-mute">
                   <Icon className="h-4 w-4" />
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-ink">{cfg.label ?? meta.label}</span>
+                    <span className="text-sm font-medium text-ink">{cfg.label}</span>
                     {cfg.time && (
                       <span className="font-mono text-[10px] text-ink-faint">{cfg.time}</span>
                     )}
@@ -97,12 +105,12 @@ export function SchedulePanel({ mentee }: { mentee: Mentee }) {
                   {/* what's in this slot */}
                   {cfg.kind === 'roadmap' ? (
                     <div className="mt-0.5 flex flex-wrap items-center gap-1 text-xs text-ink-mute">
-                      {chain.map((rid, i) => {
+                      {chain.map((rid, idx) => {
                         const rm = roadmaps.find((r) => r.id === rid);
                         const isActive = activeProg?.roadmapId === rid;
                         return (
                           <span key={rid} className="flex items-center gap-1">
-                            {i > 0 && <ChevronRight className="h-3 w-3 text-ink-faint" />}
+                            {idx > 0 && <ChevronRight className="h-3 w-3 text-ink-faint" />}
                             <span className={cx(isActive && 'font-medium text-brand-700')}>
                               {rm?.name ?? 'Roadmap'}
                             </span>
@@ -120,7 +128,7 @@ export function SchedulePanel({ mentee }: { mentee: Mentee }) {
                     </div>
                   ) : (
                     <button
-                      onClick={() => setEditSlot(slot)}
+                      onClick={() => setEditSlotId(cfg.id)}
                       className="mt-0.5 inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
                     >
                       <Plus className="h-3 w-3" /> Assign a roadmap or recurring task
@@ -136,12 +144,12 @@ export function SchedulePanel({ mentee }: { mentee: Mentee }) {
 
                 <div className="flex shrink-0 items-center gap-1">
                   {cfg.kind === 'roadmap' && chain.length > 0 && !activeProg && (
-                    <Button variant="soft" size="sm" onClick={() => startSlotRoadmap(mentee.id, slot)}>
+                    <Button variant="soft" size="sm" onClick={() => startSlotRoadmap(mentee.id, cfg.id)}>
                       <Play className="h-3.5 w-3.5" /> Start
                     </Button>
                   )}
                   <button
-                    onClick={() => toggleSlotBookable(mentee.id, slot)}
+                    onClick={() => toggleSlotBookable(mentee.id, cfg.id)}
                     title={cfg.bookable ? 'Mentee can book a 1:1 here — click to disable' : 'Allow 1:1 booking in this slot'}
                     className={cx(
                       'rounded-r grid h-8 w-8 place-items-center transition-colors',
@@ -156,27 +164,57 @@ export function SchedulePanel({ mentee }: { mentee: Mentee }) {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setEditSlot(slot)}
+                    onClick={() => setEditSlotId(cfg.id)}
                     title="Assign or change what runs in this slot"
                   >
                     <Pencil className="h-3.5 w-3.5" />
                     {cfg.kind === 'empty' ? 'Assign' : 'Change'}
                   </Button>
+                  <button
+                    onClick={() => removeSlot(mentee.id, cfg.id)}
+                    title="Remove this slot"
+                    className="rounded-r grid h-8 w-8 place-items-center text-ink-faint hover:bg-neutral-100 hover:text-[#FF3B30]"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
                 </div>
               </div>
             </div>
           );
         })}
+
+        {schedule.length === 0 && (
+          <p className="rounded-r border border-dashed border-hairline px-3 py-4 text-center text-xs text-ink-faint">
+            No slots yet. Assign a schedule from the Schedules page, or add a slot below.
+          </p>
+        )}
       </div>
+
+      {/* add a one-off slot to just this mentee */}
+      <button
+        onClick={() => setAdding(true)}
+        className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
+      >
+        <Plus className="h-3.5 w-3.5" /> Add a slot
+      </button>
 
       {editSlot && (
         <SlotEditor
-          slot={editSlot}
-          config={schedule[editSlot]}
-          onClose={() => setEditSlot(null)}
-          onSave={(cfg) => {
-            setSlot(mentee.id, editSlot, cfg);
-            setEditSlot(null);
+          config={editSlot}
+          onClose={() => setEditSlotId(null)}
+          onSave={(patch) => {
+            setSlot(mentee.id, editSlot.id, patch);
+            setEditSlotId(null);
+          }}
+        />
+      )}
+
+      {adding && (
+        <AddSlotModal
+          onClose={() => setAdding(false)}
+          onAdd={(block) => {
+            addSlot(mentee.id, block);
+            setAdding(false);
           }}
         />
       )}
@@ -186,15 +224,13 @@ export function SchedulePanel({ mentee }: { mentee: Mentee }) {
 
 /* edit one slot: choose roadmap-chain or recurring task */
 function SlotEditor({
-  slot,
   config,
   onClose,
   onSave,
 }: {
-  slot: ScheduleSlot;
   config: SlotConfig;
   onClose: () => void;
-  onSave: (cfg: SlotConfig) => void;
+  onSave: (patch: Partial<SlotConfig>) => void;
 }) {
   const { roadmaps } = useStore();
   const orgAndLocal = roadmaps; // any roadmap can be chained
@@ -208,15 +244,13 @@ function SlotEditor({
     setChain((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
   const save = () => {
-    // preserve the slot's name/time/bookable from the schedule structure
-    const base = { label: config.label, time: config.time, bookable: config.bookable };
     if (kind === 'roadmap') {
-      onSave({ ...base, kind: chain.length ? 'roadmap' : 'empty', roadmapChain: chain });
+      onSave({ kind: chain.length ? 'roadmap' : 'empty', roadmapChain: chain, recurring: undefined });
     } else {
       onSave({
-        ...base,
         kind: rTitle.trim() ? 'recurring' : 'empty',
         recurring: rTitle.trim() ? { title: rTitle.trim(), type: rType, recurrence: rRec } : undefined,
+        roadmapChain: undefined,
       });
     }
   };
@@ -225,7 +259,7 @@ function SlotEditor({
     <Modal
       open
       onClose={onClose}
-      title={`${config.label ?? SLOT_META[slot].label}${config.time ? ` · ${config.time}` : ''}`}
+      title={`${config.label}${config.time ? ` · ${config.time}` : ''}`}
       subtitle="Link this part of the day to a roadmap chain or a recurring task"
       footer={
         <div className="flex items-center justify-end gap-2">
@@ -331,6 +365,51 @@ function SlotEditor({
             </div>
           </>
         )}
+      </div>
+    </Modal>
+  );
+}
+
+/* add a brand-new slot (label + time) to just this mentee's schedule */
+function AddSlotModal({
+  onClose,
+  onAdd,
+}: {
+  onClose: () => void;
+  onAdd: (block: { label: string; time?: string; bookable?: boolean }) => void;
+}) {
+  const [label, setLabel] = useState('');
+  const [time, setTime] = useState('');
+  const [bookable, setBookable] = useState(false);
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Add a slot"
+      subtitle="A new part of the day for this mentee. Fill it with a roadmap or recurring task after."
+      footer={
+        <div className="flex items-center justify-end gap-2">
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={() => onAdd({ label: label.trim() || 'New slot', time: time.trim() || undefined, bookable })} disabled={!label.trim()}>
+            <Plus className="h-4 w-4" /> Add slot
+          </Button>
+        </div>
+      }
+    >
+      <div className="space-y-4">
+        <Field label="Name">
+          <TextInput value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. Standup, Deep work, Pairing" autoFocus />
+        </Field>
+        <Field label="Time" hint="Optional — e.g. 9:00 AM or Flexible.">
+          <TextInput value={time} onChange={(e) => setTime(e.target.value)} placeholder="9:00 AM" />
+        </Field>
+        <label className="flex items-center gap-2 text-sm text-ink-soft">
+          <input type="checkbox" checked={bookable} onChange={(e) => setBookable(e.target.checked)} />
+          Allow 1:1 booking in this slot
+        </label>
       </div>
     </Modal>
   );

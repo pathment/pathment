@@ -12,14 +12,9 @@ import {
 import { Page } from '@/components/Page';
 import { DualProgress } from '@/components/DualProgress';
 import { useStore } from '@/store/AppStore';
-import type { Task, ScheduleSlot, Recurrence } from '@/lib/types';
+import { slotLabel } from '@/lib/ai';
+import type { Task, Recurrence } from '@/lib/types';
 
-const SLOT_LABEL: Record<ScheduleSlot, string> = {
-  morning: 'Morning',
-  lunch: 'Lunch',
-  dinner: 'Dinner',
-  anytime: 'Anytime',
-};
 const RECUR_LABEL: Record<Recurrence, string> = {
   once: '',
   daily: 'Daily',
@@ -154,7 +149,7 @@ export function ThisWeek() {
                               {task.slot && task.slot !== 'anytime' && (
                                 <>
                                   <span className="text-ink-faint">&middot;</span>
-                                  <span>{SLOT_LABEL[task.slot]}</span>
+                                  <span>{slotLabel(task.slot)}</span>
                                 </>
                               )}
                             </div>

@@ -169,8 +169,11 @@ interface Store {
 
   // schedule — parts of the day, each a "track" (roadmap chain or recurring)
   getSchedule: (menteeId: number) => Schedule;
-  setSlot: (menteeId: number, slot: ScheduleSlot, config: SlotConfig) => void;
+  setSlot: (menteeId: number, slotId: ScheduleSlot, patch: Partial<SlotConfig>) => void;
   applyScheduleToAll: (schedule: Schedule) => void;
+  // add a brand-new slot to one mentee's schedule (ad-hoc, outside a template)
+  addSlot: (menteeId: number, block: { label: string; time?: string; bookable?: boolean }) => void;
+  removeSlot: (menteeId: number, slotId: ScheduleSlot) => void;
   // start a slot's roadmap chain for a mentee, at a chosen step of the first roadmap
   startSlotRoadmap: (menteeId: number, slot: ScheduleSlot, startStep?: number) => void;
   // named schedule templates — create, inherit org ones, assign to mentees
@@ -419,7 +422,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         );
         const slot = task.slot;
         const sched = schedulesRef.current[menteeId] ?? DEFAULT_SCHEDULE;
-        const chain = slot ? sched[slot]?.roadmapChain ?? [] : [];
+        const slotCfg = slot ? sched.find((s) => s.id === slot) : undefined;
+        const chain = slotCfg?.roadmapChain ?? [];
         const pos = chain.indexOf(rm.id);
         const nextRoadmapId = pos >= 0 ? chain[pos + 1] : undefined;
         if (slot && nextRoadmapId != null) {
@@ -430,7 +434,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
             role: 'mentor',
             kind: 'system',
             title: `Roadmap complete — ready to start "${nextRm?.name}"?`,
-            body: `Confirm to move them to the next roadmap in their ${slot} track.`,
+            body: `Confirm to move them to the next roadmap in their ${slotCfg?.label ?? slot} track.`,
             menteeId,
             to: `/mentor/mentee/${menteeId}`,
           });
@@ -703,12 +707,40 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     [schedules],
   );
   const setSlot = useCallback<Store['setSlot']>(
-    (menteeId, slot, config) => {
+    (menteeId, slotId, patch) => {
       setSchedules((prev) => {
         const cur = prev[menteeId] ?? DEFAULT_SCHEDULE;
-        return { ...prev, [menteeId]: { ...cur, [slot]: config } };
+        const next = cur.map((s) => (s.id === slotId ? { ...s, ...patch, id: s.id } : s));
+        return { ...prev, [menteeId]: next };
       });
       toast('Schedule updated');
+    },
+    [toast],
+  );
+  const addSlot = useCallback<Store['addSlot']>(
+    (menteeId, block) => {
+      setSchedules((prev) => {
+        const cur = prev[menteeId] ?? DEFAULT_SCHEDULE;
+        const newSlot: SlotConfig = {
+          id: `slot-${idRef.current++ + 1}`,
+          label: block.label || 'New slot',
+          time: block.time,
+          kind: 'empty',
+          bookable: block.bookable,
+        };
+        return { ...prev, [menteeId]: [...cur, newSlot] };
+      });
+      toast('Slot added');
+    },
+    [toast],
+  );
+  const removeSlot = useCallback<Store['removeSlot']>(
+    (menteeId, slotId) => {
+      setSchedules((prev) => {
+        const cur = prev[menteeId] ?? DEFAULT_SCHEDULE;
+        return { ...prev, [menteeId]: cur.filter((s) => s.id !== slotId) };
+      });
+      toast('Slot removed');
     },
     [toast],
   );
@@ -726,34 +758,33 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const startSlotRoadmap = useCallback<Store['startSlotRoadmap']>(
     (menteeId, slot, startStep = 0) => {
       const sched = schedules[menteeId] ?? DEFAULT_SCHEDULE;
-      const chain = sched[slot]?.roadmapChain ?? [];
+      const slotCfg = sched.find((s) => s.id === slot);
+      const chain = slotCfg?.roadmapChain ?? [];
       const firstId = chain[0];
       if (firstId == null) return;
       assignRoadmapCore(menteeId, firstId, startStep, slot);
       const rm = roadmaps.find((r) => r.id === firstId);
       const m = mentees.find((x) => x.id === menteeId);
-      toast(`Started "${rm?.name}" for ${m ? m.name.split(' ')[0] : 'mentee'} (${slot})`);
+      toast(`Started "${rm?.name}" for ${m ? m.name.split(' ')[0] : 'mentee'} (${slotCfg?.label ?? slot})`);
     },
     [schedules, assignRoadmapCore, roadmaps, mentees, toast],
   );
 
   /* ---------------- schedule templates ---------------- */
+  // Build a pure-structure schedule (empty, labeled, timed slots) from a
+  // template's blocks. Roadmaps / recurring tasks are dropped in per mentee.
+  const buildScheduleFromBlocks = (blocks: TimeBlock[]): Schedule =>
+    blocks.map((b) => ({
+      id: `blk-${b.id}`,
+      label: b.label,
+      time: b.time,
+      kind: 'empty' as const,
+      bookable: b.bookable,
+    }));
   const createScheduleTemplate = useCallback<Store['createScheduleTemplate']>(
     (name, description, blocks) => {
       const id = idRef.current++ + 1;
-      // A schedule is structure only — empty, labeled, timed slots. Roadmaps/
-      // recurring tasks are dropped in per-mentee after assignment.
-      const order: ScheduleSlot[] = ['morning', 'lunch', 'dinner', 'anytime'];
-      const schedule: Schedule = {
-        morning: { kind: 'empty' },
-        lunch: { kind: 'empty' },
-        dinner: { kind: 'empty' },
-        anytime: { kind: 'empty' },
-      };
-      blocks.forEach((b, i) => {
-        const slot = order[Math.min(i, order.length - 1)];
-        schedule[slot] = { kind: 'empty', label: b.label, time: b.time, bookable: b.bookable };
-      });
+      const schedule = buildScheduleFromBlocks(blocks);
       setScheduleTemplates((prev) => [
         ...prev,
         { id, name, description, source: 'mentor', blocks, schedule },
@@ -783,25 +814,11 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       const tpl = scheduleTemplates.find((t) => t.id === templateId);
       if (!tpl) return;
       // A schedule is pure structure: assigning it gives EMPTY, labeled, timed
-      // slots. The mentor fills each slot (roadmap or recurring task) afterward.
-      const order: ScheduleSlot[] = ['morning', 'lunch', 'dinner', 'anytime'];
-      const buildEmpty = (): Schedule => {
-        const s: Schedule = {
-          morning: { kind: 'empty' },
-          lunch: { kind: 'empty' },
-          dinner: { kind: 'empty' },
-          anytime: { kind: 'empty' },
-        };
-        tpl.blocks.forEach((b, i) => {
-          const slot = order[Math.min(i, order.length - 1)];
-          s[slot] = { kind: 'empty', label: b.label, time: b.time, bookable: b.bookable };
-        });
-        return s;
-      };
+      // slots (one per block, any number). The mentor fills each slot afterward.
       setSchedules((prev) => {
         const next = { ...prev };
         menteeIds.forEach((id) => {
-          next[id] = buildEmpty();
+          next[id] = buildScheduleFromBlocks(tpl.blocks);
         });
         return next;
       });
@@ -815,8 +832,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     (menteeId, slot) => {
       setSchedules((prev) => {
         const cur = prev[menteeId] ?? DEFAULT_SCHEDULE;
-        const slotCfg = cur[slot];
-        return { ...prev, [menteeId]: { ...cur, [slot]: { ...slotCfg, bookable: !slotCfg.bookable } } };
+        const next = cur.map((s) => (s.id === slot ? { ...s, bookable: !s.bookable } : s));
+        return { ...prev, [menteeId]: next };
       });
     },
     [],
@@ -824,7 +841,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const bookableSlots = useCallback<Store['bookableSlots']>(
     (menteeId) => {
       const sched = schedulesRef.current[menteeId] ?? DEFAULT_SCHEDULE;
-      return (Object.keys(sched) as ScheduleSlot[]).filter((s) => sched[s].bookable);
+      return sched.filter((s) => s.bookable).map((s) => s.id);
     },
     [],
   );
@@ -1507,6 +1524,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       saveTaskTemplate,
       getSchedule,
       setSlot,
+      addSlot,
+      removeSlot,
       applyScheduleToAll,
       startSlotRoadmap,
       scheduleTemplates,
@@ -1583,7 +1602,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       createTrack, renameTrack, archiveTrack, createTrackFromTemplate, assignTask,
       bulkAssignTask, moveTaskToTrack, saveTaskTemplate, roadmaps, roadmapProgress,
       createRoadmap, importRoadmap, assignRoadmap, bulkAssignRoadmap,
-      getSchedule, setSlot, applyScheduleToAll, startSlotRoadmap,
+      getSchedule, setSlot, addSlot, removeSlot, applyScheduleToAll, startSlotRoadmap,
       scheduleTemplates, createScheduleTemplate, inheritOrgTemplate, assignTemplateToMentees, toggleSlotBookable, bookableSlots,
       getDailyLogs, saveDailyLog,
       availabilitySlots, addAvailabilitySlot, removeAvailabilitySlot, bookAvailabilitySlot,

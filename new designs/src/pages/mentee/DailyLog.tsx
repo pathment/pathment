@@ -15,15 +15,13 @@ import { Page, PageHeader } from '@/components/Page';
 import { Card, Badge, Button, SectionLabel, cx, TASK_TYPE_LABEL } from '@/lib/ui';
 import { Field, TextArea } from '@/components/overlays';
 import { useStore } from '@/store/AppStore';
-import { SLOT_META, SLOT_ORDER } from '@/lib/ai';
+import { slotLabel } from '@/lib/ai';
 import type { ScheduleSlot } from '@/lib/types';
 
-const SLOT_ICON: Record<ScheduleSlot, typeof Sun> = {
-  morning: Sunrise,
-  lunch: Sun,
-  dinner: Moon,
-  anytime: Clock,
-};
+/* slots are dynamic now — pick an icon by position (sunrise → midday → evening
+   → flexible, then cycle). */
+const SLOT_ICONS = [Sunrise, Sun, Moon, Clock];
+const iconFor = (i: number) => SLOT_ICONS[i % SLOT_ICONS.length];
 
 /* Build the last N day options (today first) for the picker, so a mentee can
    log today or backfill a missed day in one tap. */
@@ -103,7 +101,7 @@ export function DailyLog() {
   };
 
   const isBackfill = activeKey !== days[0].key;
-  const scheduledSlots = SLOT_ORDER.filter((s) => schedule[s].kind !== 'empty');
+  const scheduledSlots = schedule.filter((s) => s.kind !== 'empty');
 
   return (
     <Page>
@@ -155,11 +153,10 @@ export function DailyLog() {
               <CalendarDays className="h-3 w-3" /> Your schedule
             </div>
             <div className="space-y-1.5">
-              {scheduledSlots.map((slot) => {
-                const Icon = SLOT_ICON[slot];
-                const cfg = schedule[slot];
-                const label =
-                  cfg.kind === 'recurring' ? cfg.recurring?.title : `${SLOT_META[slot].label} track`;
+              {scheduledSlots.map((cfg, i) => {
+                const Icon = iconFor(i);
+                const slot = cfg.id;
+                const label = cfg.kind === 'recurring' ? cfg.recurring?.title ?? cfg.label : cfg.label;
                 const on = slotsDone.has(slot);
                 return (
                   <div
@@ -181,7 +178,7 @@ export function DailyLog() {
                           {label}
                         </span>
                         <span className="font-mono text-[10px] uppercase tracking-wider text-ink-faint">
-                          {SLOT_META[slot].label}
+                          {cfg.label}{cfg.time ? ` · ${cfg.time}` : ''}
                         </span>
                       </span>
                     </button>
@@ -285,7 +282,7 @@ export function DailyLog() {
                   <div className="mt-2 flex flex-wrap gap-1">
                     {l.slotsDone.map((s) => (
                       <Badge key={s} tone="emerald">
-                        {SLOT_META[s].label}
+                        {slotLabel(s, schedule)}
                       </Badge>
                     ))}
                     {l.tasksDone.map((tid) => {

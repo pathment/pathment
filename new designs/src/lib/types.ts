@@ -53,8 +53,11 @@ export interface Attachment {
   url: string;
 }
 
-/* When a task happens in the day (for schedule-linked / recurring work). */
-export type ScheduleSlot = 'morning' | 'lunch' | 'dinner' | 'anytime';
+/* A slot id. Schedules are dynamic now: a slot id is just a stable string that
+   matches a SlotConfig.id in a mentee's Schedule. The default schedule reuses
+   the legacy names ('morning' | 'lunch' | 'dinner' | 'anytime') as its ids so
+   seeded tasks and logs keep lining up; custom schedules mint their own ids. */
+export type ScheduleSlot = string;
 export type Recurrence = 'once' | 'daily' | 'weekly';
 
 /* Scoring: an automatic speed score (from submit-vs-due) plus an optional
@@ -181,10 +184,13 @@ export interface RecurringConfig {
 }
 
 export interface SlotConfig {
-  kind: SlotKind;
+  /* stable slot id — matches the schedule block it came from. Used to link
+     tasks, roadmap progress, daily-log ticks, and review groups to this slot. */
+  id: string;
   /* the slot's name + time, inherited from the assigned schedule's block */
-  label?: string;
+  label: string;
   time?: string;
+  kind: SlotKind;
   /* roadmap chain — ordered roadmap ids; mentee advances through them. When one
      completes the mentor confirms starting the next. */
   roadmapChain?: number[];
@@ -194,8 +200,9 @@ export interface SlotConfig {
   bookable?: boolean;
 }
 
-/* A mentee's full day schedule: one config per slot. */
-export type Schedule = Record<ScheduleSlot, SlotConfig>;
+/* A mentee's full day schedule: an ORDERED list of slots. Any number of slots,
+   each with its own id/label/time — built from the assigned schedule's blocks. */
+export type Schedule = SlotConfig[];
 
 /* ----------------------------------------------------------------
    1:1 availability — Calendly-style. The mentor publishes concrete time

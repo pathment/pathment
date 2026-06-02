@@ -10,9 +10,9 @@ import {
 } from 'lucide-react';
 import { Page, PageHeader } from '@/components/Page';
 import { Card, Badge, Button, Avatar, SectionLabel, cx } from '@/lib/ui';
-import { Drawer, SelectInput } from '@/components/overlays';
+import { Drawer, SelectInput, Field, TextInput, TextArea } from '@/components/overlays';
 import { useStore } from '@/store/AppStore';
-import type { ScheduleTemplate } from '@/lib/types';
+import type { ScheduleTemplate, TimeBlock } from '@/lib/types';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
 const TIMES = ['9:00 AM', '10:00 AM', '11:00 AM', '12:30 PM', '2:00 PM', '3:30 PM', '5:00 PM'];
@@ -23,6 +23,7 @@ export function Schedules() {
     scheduleTemplates,
     inheritOrgTemplate,
     assignTemplateToMentees,
+    createScheduleTemplate,
     mentees,
     availabilitySlots,
     addAvailabilitySlot,
@@ -33,6 +34,7 @@ export function Schedules() {
   const orgTemplates = scheduleTemplates.filter((t) => t.source === 'org');
   const myTemplates = scheduleTemplates.filter((t) => t.source === 'mentor');
   const [assignFor, setAssignFor] = useState<ScheduleTemplate | null>(null);
+  const [creating, setCreating] = useState(false);
 
   // new-availability-slot form
   const [aDay, setADay] = useState('Tue');
@@ -46,9 +48,14 @@ export function Schedules() {
         title="Schedules"
         subtitle="Build a day-shape once, assign it to mentees — same structure, their own tasks"
         actions={
-          <Button onClick={() => setAssignFor(myTemplates[0] ?? scheduleTemplates[0] ?? null)} disabled={scheduleTemplates.length === 0}>
-            <Users className="h-4 w-4" /> Assign a schedule
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setCreating(true)}>
+              <Plus className="h-4 w-4" /> New schedule
+            </Button>
+            <Button onClick={() => setAssignFor(myTemplates[0] ?? scheduleTemplates[0] ?? null)} disabled={scheduleTemplates.length === 0}>
+              <Users className="h-4 w-4" /> Assign a schedule
+            </Button>
+          </div>
         }
       />
 
@@ -170,7 +177,142 @@ export function Schedules() {
           setAssignFor(null);
         }}
       />
+
+      {/* CREATE DRAWER — freeform time blocks (pure structure) */}
+      <CreateScheduleDrawer
+        open={creating}
+        onClose={() => setCreating(false)}
+        onCreate={(name, description, blocks) => {
+          createScheduleTemplate(name, description, blocks);
+          setCreating(false);
+        }}
+      />
     </Page>
+  );
+}
+
+/* Build a custom schedule = a list of named time blocks. PURE STRUCTURE: no
+   tasks or roadmaps here. Those get dropped into the slots per mentee, after
+   the schedule is assigned. */
+function CreateScheduleDrawer({
+  open,
+  onClose,
+  onCreate,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onCreate: (name: string, description: string, blocks: TimeBlock[]) => void;
+}) {
+  const seed = (): TimeBlock[] => [
+    { id: 1, label: 'Morning talk', time: '8:30 AM' },
+    { id: 2, label: 'Lunch talk', time: '1:00 PM' },
+    { id: 3, label: 'Dinner talk', time: '7:00 PM' },
+    { id: 4, label: 'Core work', time: 'Flexible', bookable: true },
+  ];
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [blocks, setBlocks] = useState<TimeBlock[]>(seed());
+
+  const reset = () => {
+    setName('');
+    setDescription('');
+    setBlocks(seed());
+  };
+  const close = () => {
+    reset();
+    onClose();
+  };
+
+  const setBlock = (id: number, patch: Partial<TimeBlock>) =>
+    setBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, ...patch } : b)));
+  const addBlock = () =>
+    setBlocks((prev) => [
+      ...prev,
+      { id: (prev.at(-1)?.id ?? 0) + 1, label: '', time: '' },
+    ]);
+  const removeBlock = (id: number) => setBlocks((prev) => prev.filter((b) => b.id !== id));
+
+  const valid = name.trim() && blocks.length > 0 && blocks.every((b) => b.label.trim());
+
+  return (
+    <Drawer
+      open={open}
+      onClose={close}
+      width="max-w-lg"
+      title="New schedule"
+      subtitle="Define the day's time blocks. Structure only — you fill each slot per mentee after assigning."
+      footer={
+        <div className="flex items-center justify-between">
+          <span className="font-mono text-[11px] text-ink-faint tnum">{blocks.length} slots</span>
+          <Button
+            disabled={!valid}
+            onClick={() =>
+              onCreate(
+                name.trim(),
+                description.trim(),
+                blocks.map((b) => ({ ...b, label: b.label.trim(), time: b.time.trim() || 'Flexible' })),
+              )
+            }
+          >
+            <Check className="h-4 w-4" /> Create schedule
+          </Button>
+        </div>
+      }
+    >
+      <div className="space-y-4">
+        <Field label="Schedule name">
+          <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Bootcamp Day, Interview Prep" autoFocus />
+        </Field>
+        <Field label="Description" hint="Optional — what this day-shape is for.">
+          <TextArea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="A heads-down structure with three talks and core work." />
+        </Field>
+
+        <div>
+          <div className="mb-2 flex items-center justify-between">
+            <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-faint">Time blocks</span>
+            <button onClick={addBlock} className="inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline">
+              <Plus className="h-3.5 w-3.5" /> Add block
+            </button>
+          </div>
+          <div className="space-y-2">
+            {blocks.map((b) => (
+              <div key={b.id} className="rounded-r flex items-center gap-2 border border-hairline p-2">
+                <Clock className="h-3.5 w-3.5 shrink-0 text-ink-faint" />
+                <TextInput
+                  value={b.label}
+                  onChange={(e) => setBlock(b.id, { label: e.target.value })}
+                  placeholder="Block name (e.g. Standup)"
+                  className="h-8 flex-1 py-1 text-xs"
+                />
+                <TextInput
+                  value={b.time}
+                  onChange={(e) => setBlock(b.id, { time: e.target.value })}
+                  placeholder="9:00 AM"
+                  className="h-8 w-24 py-1 text-xs"
+                />
+                <button
+                  onClick={() => setBlock(b.id, { bookable: !b.bookable })}
+                  title={b.bookable ? '1:1 bookable — click to disable' : 'Allow 1:1 booking here'}
+                  className={cx(
+                    'rounded-r grid h-8 w-8 shrink-0 place-items-center transition-colors',
+                    b.bookable ? 'text-emerald-600 hover:bg-emerald-50' : 'text-ink-faint hover:bg-neutral-100 hover:text-ink',
+                  )}
+                >
+                  <CalendarClock className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={() => removeBlock(b.id)}
+                  title="Remove block"
+                  className="rounded-r grid h-8 w-8 shrink-0 place-items-center text-ink-faint hover:bg-neutral-100 hover:text-[#FF3B30]"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </Drawer>
   );
 }
 

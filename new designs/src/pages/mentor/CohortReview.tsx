@@ -47,9 +47,13 @@ import {
   cx,
 } from '@/lib/ui';
 import type { Task, AttendanceStatus, Mentee, DelayEvent } from '@/lib/types';
-import { DELAY_CATEGORY_META, SLOT_META, SLOT_ORDER, TYPE_DEFAULT_SLOT } from '@/lib/ai';
+import { DELAY_CATEGORY_META, TYPE_DEFAULT_SLOT } from '@/lib/ai';
 import { Sunrise, Sun, Moon } from 'lucide-react';
 import type { ScheduleSlot } from '@/lib/types';
+
+/* dynamic schedule slots — icon by position */
+const REVIEW_SLOT_ICONS = [Sunrise, Sun, Moon, Clock];
+const reviewIconFor = (i: number) => REVIEW_SLOT_ICONS[i % REVIEW_SLOT_ICONS.length];
 
 /* Find the delay/extension reason that matches a task (by first word of the
    logged task name) — same heuristic the ReviewDrawer uses. */
@@ -154,21 +158,33 @@ export function CohortReview() {
   const focused = pending[focus] ?? pending[0];
   const schedule = getSchedule(m.id);
 
-  // Group this mentee's review tasks by their schedule slot (Morning → Lunch →
-  // Dinner → Anytime). A task's slot is its own slot, else its type's default.
+  // Group this mentee's review tasks by their schedule slot, in the schedule's
+  // own order. A task's slot is its own slot id, else its type's default. Tasks
+  // whose slot doesn't match any of this mentee's slots fall into "Other".
   const slotOf = (t: Task): ScheduleSlot => t.slot ?? TYPE_DEFAULT_SLOT[t.type];
   const slotGroups = useMemo(() => {
-    const buckets: Record<ScheduleSlot, { pending: Task[]; reviewed: Task[] }> = {
-      morning: { pending: [], reviewed: [] },
-      lunch: { pending: [], reviewed: [] },
-      dinner: { pending: [], reviewed: [] },
-      anytime: { pending: [], reviewed: [] },
+    const groups = schedule.map((cfg) => ({
+      id: cfg.id,
+      label: cfg.label,
+      time: cfg.time,
+      kind: cfg.kind,
+      pending: [] as Task[],
+      reviewed: [] as Task[],
+    }));
+    const other = {
+      id: '__other',
+      label: 'Other',
+      time: undefined as string | undefined,
+      kind: 'empty' as const,
+      pending: [] as Task[],
+      reviewed: [] as Task[],
     };
-    pending.forEach((t) => buckets[slotOf(t)].pending.push(t));
-    reviewedHere.forEach((t) => buckets[slotOf(t)].reviewed.push(t));
-    return buckets;
+    const bucketFor = (id: string) => groups.find((g) => g.id === id) ?? other;
+    pending.forEach((t) => bucketFor(slotOf(t)).pending.push(t));
+    reviewedHere.forEach((t) => bucketFor(slotOf(t)).reviewed.push(t));
+    return [...groups, other];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pending, reviewedHere]);
+  }, [pending, reviewedHere, schedule]);
 
   const go = (idx: number) => {
     setFocus(0);
@@ -446,28 +462,25 @@ export function CohortReview() {
               <p className="py-4 text-center text-sm text-ink-faint">Nothing waiting — move on.</p>
             ) : (
               <div className="space-y-4">
-                {SLOT_ORDER.map((slot) => {
-                  const group = slotGroups[slot];
+                {slotGroups.map((group, gi) => {
                   if (group.pending.length === 0 && group.reviewed.length === 0) return null;
-                  const SlotIcon =
-                    slot === 'morning' ? Sunrise : slot === 'lunch' ? Sun : slot === 'dinner' ? Moon : Clock;
-                  const slotCfg = schedule[slot];
+                  const SlotIcon = reviewIconFor(gi);
                   const trackLabel =
-                    slotCfg?.kind === 'roadmap'
+                    group.kind === 'roadmap'
                       ? 'Roadmap track'
-                      : slotCfg?.kind === 'recurring'
+                      : group.kind === 'recurring'
                         ? 'Recurring'
                         : null;
                   return (
-                    <div key={slot}>
+                    <div key={group.id}>
                       {/* slot header — the "track" for this part of the day */}
                       <div className="mb-1.5 flex items-center gap-2">
                         <SlotIcon className="h-3.5 w-3.5 text-ink-faint" />
                         <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-ink-mute">
-                          {SLOT_META[slot].label}
+                          {group.label}
                         </span>
-                        {trackLabel && <Badge tone={slotCfg?.kind === 'roadmap' ? 'brand' : 'violet'}>{trackLabel}</Badge>}
-                        <span className="text-[11px] text-ink-faint">{SLOT_META[slot].blurb}</span>
+                        {trackLabel && <Badge tone={group.kind === 'roadmap' ? 'brand' : 'violet'}>{trackLabel}</Badge>}
+                        {group.time && <span className="text-[11px] text-ink-faint">{group.time}</span>}
                       </div>
 
                       <div className="space-y-2">

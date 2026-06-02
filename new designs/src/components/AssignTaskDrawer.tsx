@@ -9,12 +9,9 @@ import type { TaskType, Effort, ScheduleSlot, Recurrence } from '@/lib/types';
 const TYPES: TaskType[] = ['project', 'assignment', 'quiz', 'reading', 'video', 'discussion'];
 const EFFORTS: Effort[] = ['xs', 's', 'm', 'l'];
 
-const SLOTS: { value: ScheduleSlot; label: string; icon: typeof Sun }[] = [
-  { value: 'anytime', label: 'Anytime', icon: Clock },
-  { value: 'morning', label: 'Morning', icon: Sunrise },
-  { value: 'lunch', label: 'Lunch', icon: Sun },
-  { value: 'dinner', label: 'Dinner', icon: Moon },
-];
+/* slot icons by position — schedules are dynamic, so options come from the
+   mentee's own schedule (with a generic fallback for bulk-assign). */
+const SLOT_ICONS = [Clock, Sunrise, Sun, Moon];
 const RECURRENCES: { value: Recurrence; label: string }[] = [
   { value: 'once', label: 'One-off' },
   { value: 'daily', label: 'Daily' },
@@ -33,7 +30,25 @@ export function AssignTaskDrawer({
   onClose: () => void;
   menteeId?: number; // when omitted, multi-select is forced on
 }) {
-  const { mentees, assignTask, bulkAssignTask, templates, saveTaskTemplate } = useStore();
+  const { mentees, assignTask, bulkAssignTask, templates, saveTaskTemplate, getSchedule } = useStore();
+
+  // slot choices: a single mentee's real schedule slots, else a generic set
+  const slotOptions = useMemo<{ value: ScheduleSlot; label: string }[]>(() => {
+    const anytime = { value: 'anytime', label: 'Anytime' };
+    if (menteeId !== undefined) {
+      const sched = getSchedule(menteeId);
+      const fromSched = sched
+        .filter((s) => s.id !== 'anytime')
+        .map((s) => ({ value: s.id, label: s.label }));
+      return [anytime, ...fromSched];
+    }
+    return [
+      anytime,
+      { value: 'morning', label: 'Morning' },
+      { value: 'lunch', label: 'Lunch' },
+      { value: 'dinner', label: 'Dinner' },
+    ];
+  }, [menteeId, getSchedule]);
 
   const [mode, setMode] = useState<'create' | 'library'>('create');
   const [title, setTitle] = useState('');
@@ -259,19 +274,22 @@ export function AssignTaskDrawer({
               <div className="grid grid-cols-2 gap-4">
                 <Field label="Schedule slot">
                   <div className="flex flex-wrap gap-1.5">
-                    {SLOTS.map((s) => (
-                      <button
-                        key={s.value}
-                        onClick={() => setSlot(s.value)}
-                        className={cx(
-                          'rounded-r inline-flex items-center gap-1 border px-2 py-1 text-xs transition-colors',
-                          slot === s.value ? 'border-ink bg-ink text-white' : 'border-hairline text-ink-mute hover:border-ink',
-                        )}
-                      >
-                        <s.icon className="h-3 w-3" />
-                        {s.label}
-                      </button>
-                    ))}
+                    {slotOptions.map((s, i) => {
+                      const Icon = SLOT_ICONS[i % SLOT_ICONS.length];
+                      return (
+                        <button
+                          key={s.value}
+                          onClick={() => setSlot(s.value)}
+                          className={cx(
+                            'rounded-r inline-flex items-center gap-1 border px-2 py-1 text-xs transition-colors',
+                            slot === s.value ? 'border-ink bg-ink text-white' : 'border-hairline text-ink-mute hover:border-ink',
+                          )}
+                        >
+                          <Icon className="h-3 w-3" />
+                          {s.label}
+                        </button>
+                      );
+                    })}
                   </div>
                 </Field>
                 <Field label="Repeats" hint="Recurring tasks like a daily talk or morning reading.">
