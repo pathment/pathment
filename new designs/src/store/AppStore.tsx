@@ -301,6 +301,8 @@ interface Store {
   testKey: (id: string) => void;
   setRoute: (feature: AIFeature, keyId: string | null) => void;
   setMentorPref: (patch: Partial<typeof CURRENT_MENTOR>) => void;
+  onboarded: boolean;
+  completeOnboarding: () => void;
 }
 
 const StoreContext = createContext<Store | null>(null);
@@ -329,6 +331,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const [aiKeys, setAiKeys] = useState<AIKey[]>(DEFAULT_AI_KEYS);
   const [routing, setRouting] = useState<AIRouting>(DEFAULT_AI_ROUTING);
   const [mentor, setMentor] = useState(CURRENT_MENTOR);
+  const [onboarded, setOnboarded] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>(SEED_NOTIFICATIONS);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [roadmaps, setRoadmaps] = useState<Roadmap[]>(ROADMAPS);
@@ -1783,6 +1786,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const setMentorPref = useCallback<Store['setMentorPref']>((patch) => {
     setMentor((prev) => ({ ...prev, ...patch }));
   }, []);
+  const completeOnboarding = useCallback(() => setOnboarded(true), []);
 
   const value = useMemo<Store>(
     () => ({
@@ -1895,6 +1899,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       testKey,
       setRoute,
       setMentorPref,
+      onboarded,
+      completeOnboarding,
     }),
     [
       mentees, mentor, currentMenteeId, getMentee, reviewTask, unreview, quickAction, scoreTask, bulkReview, logMeeting,
@@ -1918,6 +1924,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       insights, getInsights, logInsight, submitTask, requestExtension,
       logFriction, notifications, unread, notify, markRead, markAllRead, toasts,
       dismissToast, aiKeys, routing, addKey, removeKey, testKey, setRoute, setMentorPref,
+      onboarded, completeOnboarding,
     ],
   );
 

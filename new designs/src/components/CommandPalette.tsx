@@ -17,6 +17,7 @@ import {
   CornerDownLeft,
   GitBranch,
   BookOpen,
+  Rocket,
   type LucideIcon,
 } from 'lucide-react';
 import { useStore } from '@/store/AppStore';
@@ -85,6 +86,7 @@ export function CommandPalette({
       nav('Roadmaps', '/mentor/roadmaps', GitBranch),
       nav('Schedules', '/mentor/schedules', CalendarRange),
       nav('Library', '/mentor/library', BookOpen),
+      nav('Mentor onboarding', '/mentor/onboarding', Rocket),
       nav('Settings', '/mentor/settings', SettingsIcon),
       nav('This Week (mentee)', '/mentee/this-week', ListTodo),
       nav('My Progress (mentee)', '/mentee/progress', LineChart),

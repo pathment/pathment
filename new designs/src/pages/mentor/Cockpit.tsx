@@ -7,6 +7,8 @@ import {
   Flag,
   ArrowUpRight,
   Clock,
+  Rocket,
+  ArrowRight,
 } from 'lucide-react';
 import { Page, PageHeader } from '@/components/Page';
 import { useStore } from '@/store/AppStore';
@@ -140,7 +142,7 @@ function MenteeCard({ m, onOpen }: { m: Mentee; onOpen: () => void }) {
 
 export function Cockpit() {
   const navigate = useNavigate();
-  const { mentees, mentor } = useStore();
+  const { mentees, mentor, onboarded } = useStore();
   const [filter, setFilter] = useState<Filter>('all');
 
   const list = useMemo(() => {
@@ -177,6 +179,26 @@ export function Cockpit() {
           </button>
         }
       />
+
+      {!onboarded && (
+        <button
+          onClick={() => navigate('/mentor/onboarding')}
+          className="rounded-r mb-6 flex w-full items-center gap-3 border border-hairline bg-[#0066FF]/[0.04] px-4 py-3 text-left transition-colors hover:border-[#0066FF]"
+        >
+          <span className="grid h-9 w-9 shrink-0 place-items-center border border-[#0066FF]/30 text-[#0066FF]">
+            <Rocket className="h-4 w-4" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-medium text-ink">Finish setting up your mentor profile</span>
+            <span className="block text-xs text-ink-mute">
+              Profile, AI key, a schedule to adopt, and your 1:1 availability. About two minutes.
+            </span>
+          </span>
+          <span className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-[#0066FF]">
+            Start <ArrowRight className="h-3.5 w-3.5" />
+          </span>
+        </button>
+      )}
 
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatChip icon={ClipboardCheck} value={totals.pending} label="Awaiting review" accent="bg-brand-500" />

@@ -11,6 +11,7 @@ import { Settings } from '@/pages/mentor/Settings';
 import { Roadmaps } from '@/pages/mentor/Roadmaps';
 import { Schedules } from '@/pages/mentor/Schedules';
 import { Documents } from '@/pages/mentor/Documents';
+import { MentorOnboarding } from '@/pages/mentor/Onboarding';
 
 import { ThisWeek } from '@/pages/mentee/ThisWeek';
 import { TaskDetail } from '@/pages/mentee/TaskDetail';
@@ -29,6 +30,9 @@ export function App() {
     <AppStoreProvider>
       <BrowserRouter>
         <Routes>
+          {/* full-screen mentor onboarding — no app shell */}
+          <Route path="/mentor/onboarding" element={<MentorOnboarding />} />
+
           <Route element={<AppShell />}>
             <Route index element={<Navigate to="/mentor/cockpit" replace />} />
 
