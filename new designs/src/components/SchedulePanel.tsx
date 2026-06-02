@@ -9,13 +9,16 @@ import {
   Play,
   Pencil,
   Check,
+  ChevronLeft,
   ChevronRight,
   CalendarClock,
   Plus,
   Trash2,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { Card, Badge, Button, SectionLabel, cx, TASK_TYPE_LABEL } from '@/lib/ui';
 import { Modal, Field, TextInput, SelectInput, Segmented } from '@/components/overlays';
+import { TrackManager } from '@/components/TrackManager';
 import { useStore } from '@/store/AppStore';
 import type {
   Mentee,
@@ -44,11 +47,15 @@ export function SchedulePanel({ mentee }: { mentee: Mentee }) {
     roadmaps,
     roadmapProgress,
     startSlotRoadmap,
+    nudgeRoadmapStep,
     toggleSlotBookable,
   } = useStore();
   const schedule = getSchedule(mentee.id);
   const [editSlotId, setEditSlotId] = useState<string | null>(null);
+  const [manageSlotId, setManageSlotId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+
+  const manageSlot = schedule.find((s) => s.id === manageSlotId) ?? null;
 
   const editSlot = schedule.find((s) => s.id === editSlotId) ?? null;
 
@@ -135,9 +142,37 @@ export function SchedulePanel({ mentee }: { mentee: Mentee }) {
                     </button>
                   )}
                   {activeRm && activeProg && (
-                    <div className="mt-1 text-[11px] text-ink-faint">
-                      On {activeRm.name} · step {Math.min(activeProg.currentStep + 1, activeRm.steps.length)}/
-                      {activeRm.steps.length}
+                    <div className="mt-1.5 flex items-center gap-1.5">
+                      {/* fast step control — move them up/down the roadmap */}
+                      <div className="rounded-r inline-flex items-center border border-hairline">
+                        <button
+                          onClick={() => nudgeRoadmapStep(mentee.id, cfg.id, -1)}
+                          title="Back a step"
+                          className="grid h-7 w-7 place-items-center text-ink-mute transition-colors hover:bg-neutral-100 hover:text-ink"
+                        >
+                          <ChevronLeft className="h-3.5 w-3.5" />
+                        </button>
+                        <span className="border-x border-hairline px-2 font-mono text-[10px] text-ink-soft tnum">
+                          {Math.min(activeProg.currentStep + 1, activeRm.steps.length)}/{activeRm.steps.length}
+                        </span>
+                        <button
+                          onClick={() => nudgeRoadmapStep(mentee.id, cfg.id, 1)}
+                          title="Forward a step"
+                          className="grid h-7 w-7 place-items-center text-ink-mute transition-colors hover:bg-neutral-100 hover:text-ink"
+                        >
+                          <ChevronRight className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                      <span className="min-w-0 flex-1 truncate text-[11px] text-ink-mute">
+                        {activeRm.steps[activeProg.currentStep]?.title}
+                      </span>
+                      <button
+                        onClick={() => setManageSlotId(cfg.id)}
+                        className="rounded-r inline-flex items-center gap-1 px-1.5 py-1 text-[11px] font-medium text-brand-600 transition-colors hover:underline"
+                        title="Manage this track — jump steps, switch roadmap"
+                      >
+                        <SlidersHorizontal className="h-3.5 w-3.5" /> Manage
+                      </button>
                     </div>
                   )}
                 </div>
@@ -218,6 +253,10 @@ export function SchedulePanel({ mentee }: { mentee: Mentee }) {
           }}
         />
       )}
+
+      {manageSlot && (
+        <TrackManager menteeId={mentee.id} slot={manageSlot} onClose={() => setManageSlotId(null)} />
+      )}
     </Card>
   );
 }
@@ -260,7 +299,7 @@ function SlotEditor({
       open
       onClose={onClose}
       title={`${config.label}${config.time ? ` · ${config.time}` : ''}`}
-      subtitle="Link this part of the day to a roadmap chain or a recurring task"
+      subtitle="Roadmaps are templates that auto-assign tasks. Pick a roadmap chain or a recurring task for this slot."
       footer={
         <div className="flex items-center justify-end gap-2">
           <Button variant="ghost" onClick={onClose}>

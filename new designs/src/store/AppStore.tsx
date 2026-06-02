@@ -176,6 +176,12 @@ interface Store {
   removeSlot: (menteeId: number, slotId: ScheduleSlot) => void;
   // start a slot's roadmap chain for a mentee, at a chosen step of the first roadmap
   startSlotRoadmap: (menteeId: number, slot: ScheduleSlot, startStep?: number) => void;
+  // per-individual roadmap control: jump to an absolute step, nudge +/-1, or
+  // switch the active roadmap in a slot. Each re-assigns the matching task (the
+  // task carries the score; the roadmap is just the template that drives it).
+  setRoadmapStep: (menteeId: number, slot: ScheduleSlot, step: number) => void;
+  nudgeRoadmapStep: (menteeId: number, slot: ScheduleSlot, delta: number) => void;
+  switchSlotRoadmap: (menteeId: number, slot: ScheduleSlot, roadmapId: number, startStep?: number) => void;
   // named schedule templates — create, inherit org ones, assign to mentees
   scheduleTemplates: ScheduleTemplate[];
   createScheduleTemplate: (name: string, description: string, blocks: TimeBlock[]) => number;
@@ -374,6 +380,32 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   /* ---------------- roadmap advancement helper ----------------
      When an approved task is roadmap-linked, advance that mentee's
      roadmap progress and auto-assign the next step's task. */
+  // a roadmap is a TEMPLATE — its step becomes a real assigned task (which is
+  // what gets scored). One builder, reused everywhere a step turns into a task.
+  const buildRoadmapTask = (id: number, rm: Roadmap, step: RoadmapStep, slot?: ScheduleSlot): Task => ({
+    id,
+    title: `Roadmap: ${step.title}`,
+    type: step.type,
+    status: 'assigned',
+    due: `+${step.dueOffsetDays ?? 7}d`,
+    track: rm.name,
+    roadmapId: rm.id,
+    roadmapStepId: step.id,
+    effort: step.effort,
+    brief: step.brief,
+    criteria: step.criteria,
+    slot,
+  });
+  // replace the slot's OPEN roadmap task (assigned/in_progress) with a fresh one
+  // for the given step. Submitted/scored tasks are left intact as history.
+  const reassignSlotTask = (menteeId: number, slot: ScheduleSlot, rm: Roadmap, step: RoadmapStep) =>
+    patchMentee(menteeId, (m) => {
+      const kept = m.tasks.filter(
+        (t) => !(t.slot === slot && t.roadmapId != null && (t.status === 'assigned' || t.status === 'in_progress')),
+      );
+      return { ...m, tasks: [buildRoadmapTask(idRef.current++ + 1, rm, step, slot), ...kept] };
+    });
+
   const advanceRoadmap = useCallback(
     (menteeId: number, task: Task) => {
       if (!task.roadmapId) return;
@@ -768,6 +800,85 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       toast(`Started "${rm?.name}" for ${m ? m.name.split(' ')[0] : 'mentee'} (${slotCfg?.label ?? slot})`);
     },
     [schedules, assignRoadmapCore, roadmaps, mentees, toast],
+  );
+
+  /* jump a mentee to an absolute step of the active roadmap in a slot */
+  const setRoadmapStep = useCallback<Store['setRoadmapStep']>(
+    (menteeId, slot, step) => {
+      const prog = roadmapProgress.find((p) => p.menteeId === menteeId && p.slot === slot && !p.completed);
+      if (!prog) {
+        toast('Start a roadmap in this slot first');
+        return;
+      }
+      const rm = roadmaps.find((r) => r.id === prog.roadmapId);
+      if (!rm) return;
+      const s = Math.max(0, Math.min(step, rm.steps.length - 1));
+      setRoadmapProgress((prev) =>
+        prev.map((p) =>
+          p.menteeId === menteeId && p.roadmapId === rm.id && p.slot === slot
+            ? { ...p, currentStep: s, completed: false }
+            : p,
+        ),
+      );
+      reassignSlotTask(menteeId, slot, rm, rm.steps[s]);
+      toast(`Moved to step ${s + 1}: ${rm.steps[s].title}`);
+    },
+    [roadmapProgress, roadmaps, toast],
+  );
+
+  /* nudge +/-1 step. At the end, offer the next roadmap in the chain. */
+  const nudgeRoadmapStep = useCallback<Store['nudgeRoadmapStep']>(
+    (menteeId, slot, delta) => {
+      const prog = roadmapProgress.find((p) => p.menteeId === menteeId && p.slot === slot && !p.completed);
+      if (!prog) {
+        toast('Start a roadmap in this slot first');
+        return;
+      }
+      const rm = roadmaps.find((r) => r.id === prog.roadmapId);
+      if (!rm) return;
+      const target = prog.currentStep + delta;
+      if (target < 0) {
+        toast('Already at the first step');
+        return;
+      }
+      if (target > rm.steps.length - 1) {
+        const sched = schedulesRef.current[menteeId] ?? DEFAULT_SCHEDULE;
+        const chain = sched.find((s) => s.id === slot)?.roadmapChain ?? [];
+        const pos = chain.indexOf(rm.id);
+        const nextId = pos >= 0 ? chain[pos + 1] : undefined;
+        if (nextId != null) {
+          setPendingChainAdvance({ menteeId, slot, nextRoadmapId: nextId });
+          toast(`"${rm.name}" finished — confirm the next roadmap`);
+        } else {
+          toast('Already at the last step of the chain');
+        }
+        return;
+      }
+      setRoadmapStep(menteeId, slot, target);
+    },
+    [roadmapProgress, roadmaps, setRoadmapStep, toast],
+  );
+
+  /* switch the active roadmap in a slot (e.g. move them onto a different one) */
+  const switchSlotRoadmap = useCallback<Store['switchSlotRoadmap']>(
+    (menteeId, slot, roadmapId, startStep = 0) => {
+      const rm = roadmaps.find((r) => r.id === roadmapId);
+      if (!rm) return;
+      const s = Math.max(0, Math.min(startStep, rm.steps.length - 1));
+      setRoadmapProgress((prev) => {
+        // retire any other active roadmap in this slot, then (re)seat this one
+        const adjusted = prev.map((p) =>
+          p.menteeId === menteeId && p.slot === slot && p.roadmapId !== roadmapId && !p.completed
+            ? { ...p, completed: true }
+            : p,
+        );
+        const without = adjusted.filter((p) => !(p.menteeId === menteeId && p.roadmapId === roadmapId && p.slot === slot));
+        return [...without, { menteeId, roadmapId, currentStep: s, startedAt: 'Today', slot }];
+      });
+      reassignSlotTask(menteeId, slot, rm, rm.steps[s]);
+      toast(`Switched to "${rm.name}"`);
+    },
+    [roadmaps, toast],
   );
 
   /* ---------------- schedule templates ---------------- */
@@ -1528,6 +1639,9 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       removeSlot,
       applyScheduleToAll,
       startSlotRoadmap,
+      setRoadmapStep,
+      nudgeRoadmapStep,
+      switchSlotRoadmap,
       scheduleTemplates,
       createScheduleTemplate,
       inheritOrgTemplate,
@@ -1603,6 +1717,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       bulkAssignTask, moveTaskToTrack, saveTaskTemplate, roadmaps, roadmapProgress,
       createRoadmap, importRoadmap, assignRoadmap, bulkAssignRoadmap,
       getSchedule, setSlot, addSlot, removeSlot, applyScheduleToAll, startSlotRoadmap,
+      setRoadmapStep, nudgeRoadmapStep, switchSlotRoadmap,
       scheduleTemplates, createScheduleTemplate, inheritOrgTemplate, assignTemplateToMentees, toggleSlotBookable, bookableSlots,
       getDailyLogs, saveDailyLog,
       availabilitySlots, addAvailabilitySlot, removeAvailabilitySlot, bookAvailabilitySlot,

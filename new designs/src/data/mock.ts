@@ -288,8 +288,9 @@ export const CURRENT_MENTEE = MENTEES[0];
 
 /* Which mentees are on which roadmap, and the step they're on. */
 export const SEED_ROADMAP_PROGRESS: RoadmapProgress[] = [
-  { roadmapId: 1, menteeId: 1, currentStep: 2, startedAt: 'Apr 2025' }, // Aisha on Backend Foundations, step 3 (auth)
-  { roadmapId: 90, menteeId: 2, currentStep: 0, startedAt: 'May 2025' },
+  // Aisha on Backend Foundations, step 3 (auth) — in her "anytime" slot's chain
+  { roadmapId: 1, menteeId: 1, currentStep: 2, startedAt: 'Apr 2025', slot: 'anytime' },
+  { roadmapId: 90, menteeId: 2, currentStep: 0, startedAt: 'May 2025', slot: 'anytime' },
 ];
 
 /* ----------------------------------------------------------------
