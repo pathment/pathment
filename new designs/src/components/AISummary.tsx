@@ -12,10 +12,12 @@ export function AISummary({
   summary,
   signals,
   defaultOpen = true,
+  eyebrow = 'state of this mentee',
 }: {
   summary: string;
   signals: string[];
   defaultOpen?: boolean;
+  eyebrow?: string;
 }) {
   const [open, setOpen] = useState(defaultOpen);
 
@@ -26,7 +28,7 @@ export function AISummary({
           <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-brand-600">
             Pathment AI
           </span>
-          <span className="text-[11px] text-ink-faint">· state of this mentee</span>
+          <span className="text-[11px] text-ink-faint">· {eyebrow}</span>
         </div>
         <button
           onClick={() => setOpen((o) => !o)}
@@ -44,7 +46,7 @@ export function AISummary({
           {signals.map((s) => (
             <span
               key={s}
-              className="rounded-md bg-neutral-50 px-2 py-1 font-mono text-[11px] text-ink-mute ring-1 ring-hairline"
+              className="rounded-r bg-neutral-50 px-2 py-1 font-mono text-[11px] text-ink-mute ring-1 ring-hairline"
             >
               {s}
             </span>

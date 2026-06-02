@@ -11,10 +11,13 @@ export function DualProgress({
   absolute,
   relative,
   compact = false,
+  self = false,
 }: {
   absolute: number;
   relative: number;
   compact?: boolean;
+  /** second-person copy for a mentee viewing their own progress */
+  self?: boolean;
 }) {
   const gap = relative - absolute;
 
@@ -55,20 +58,22 @@ export function DualProgress({
           <span className="font-mono text-sm font-semibold text-brand-700 tnum">{relative}%</span>
         </div>
         <ProgressBar value={relative} tone="brand" height="h-2" />
-        <p className="mt-1 text-xs text-ink-faint">Given their logged circumstances.</p>
+        <p className="mt-1 text-xs text-ink-faint">
+          {self ? 'Given the circumstances you have logged.' : 'Given their logged circumstances.'}
+        </p>
       </div>
       {Math.abs(gap) >= 8 && (
-        <div className="flex items-start gap-2 rounded-xl bg-neutral-50 px-3 py-2 text-xs text-ink-mute ring-1 ring-hairline">
+        <div className="rounded-r flex items-start gap-2 bg-neutral-50 px-3 py-2 text-xs text-ink-mute ring-1 ring-hairline">
           <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ink-faint" />
           {gap > 0 ? (
             <span>
-              Excelling against real constraints - {gap} pts above plan once friction is
-              accounted for. Don&apos;t over-push.
+              {self ? 'You are excelling' : 'Excelling'} against real constraints - {gap} pts above
+              plan once friction is accounted for.{self ? ' Be proud of that.' : ' Do not over-push.'}
             </span>
           ) : (
             <span>
-              Ahead on raw output but {Math.abs(gap)} pts lower relative - may be coasting on
-              easy ground. Consider a stretch.
+              Ahead on raw output but {Math.abs(gap)} pts lower relative -{' '}
+              {self ? 'a stretch goal could keep things challenging.' : 'may be coasting on easy ground. Consider a stretch.'}
             </span>
           )}
         </div>

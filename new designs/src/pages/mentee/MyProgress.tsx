@@ -72,6 +72,7 @@ export function MyProgress() {
       {/* Self-facing AI read - full width so it reads cleanly */}
       <div className="mb-6">
         <AISummary
+          eyebrow="your current state"
           summary="You're keeping steady momentum even through a busy week. A couple of submissions are with your mentor, and the blocker you flagged early shows good instincts. Measured against your real circumstances, you're ahead of plan - be proud of that."
           signals={me.aiSignals}
           defaultOpen={false}
@@ -81,7 +82,7 @@ export function MyProgress() {
       {/* Dual progress */}
       <Card>
         <SectionLabel>Your progress, two ways</SectionLabel>
-        <DualProgress absolute={me.absoluteProgress} relative={me.relativeProgress} />
+        <DualProgress absolute={me.absoluteProgress} relative={me.relativeProgress} self />
         <p className="mt-4 text-xs leading-relaxed text-ink-mute">
           <span className="font-medium text-ink-soft">Absolute</span> is your raw output against
           the plan. <span className="font-medium text-brand-700">Relative</span> accounts for the
