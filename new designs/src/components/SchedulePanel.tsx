@@ -93,20 +93,21 @@ export function SchedulePanel({ mentee }: { mentee: Mentee }) {
                     {cfg.time && (
                       <span className="font-mono text-[10px] text-ink-faint">{cfg.time}</span>
                     )}
+                    {/* a slot's kind reads as a single quiet tag, not a stack of chips */}
                     {cfg.kind === 'roadmap' && (
-                      <Badge tone="brand">
+                      <span className="inline-flex items-center gap-1 font-mono text-[9px] uppercase tracking-[0.1em] text-brand-600">
                         <GitBranch className="h-3 w-3" /> Roadmap
-                      </Badge>
+                      </span>
                     )}
                     {cfg.kind === 'recurring' && (
-                      <Badge tone="violet">
+                      <span className="inline-flex items-center gap-1 font-mono text-[9px] uppercase tracking-[0.1em] text-violet-600">
                         <Repeat className="h-3 w-3" /> Recurring
-                      </Badge>
+                      </span>
                     )}
                     {cfg.bookable && (
-                      <Badge tone="emerald">
-                        <CalendarClock className="h-3 w-3" /> 1:1 bookable
-                      </Badge>
+                      <span className="inline-flex items-center gap-1 font-mono text-[9px] uppercase tracking-[0.1em] text-emerald-600">
+                        <CalendarClock className="h-3 w-3" /> 1:1
+                      </span>
                     )}
                   </div>
                   {/* what's in this slot */}
@@ -142,9 +143,9 @@ export function SchedulePanel({ mentee }: { mentee: Mentee }) {
                     </button>
                   )}
                   {activeRm && activeProg && (
-                    <div className="mt-1.5 flex items-center gap-1.5">
+                    <div className="mt-2 flex items-center gap-2 rounded-r border border-hairline bg-neutral-50/60 px-2 py-1.5">
                       {/* fast step control — move them up/down the roadmap */}
-                      <div className="rounded-r inline-flex items-center border border-hairline">
+                      <div className="rounded-r inline-flex items-center border border-hairline bg-white">
                         <button
                           onClick={() => nudgeRoadmapStep(mentee.id, cfg.id, -1)}
                           title="Back a step"
@@ -163,12 +164,12 @@ export function SchedulePanel({ mentee }: { mentee: Mentee }) {
                           <ChevronRight className="h-3.5 w-3.5" />
                         </button>
                       </div>
-                      <span className="min-w-0 flex-1 truncate text-[11px] text-ink-mute">
+                      <span className="min-w-0 flex-1 truncate text-[11px] text-ink-soft">
                         {activeRm.steps[activeProg.currentStep]?.title}
                       </span>
                       <button
                         onClick={() => setManageSlotId(cfg.id)}
-                        className="rounded-r inline-flex items-center gap-1 px-1.5 py-1 text-[11px] font-medium text-brand-600 transition-colors hover:underline"
+                        className="rounded-r inline-flex shrink-0 items-center gap-1 px-1.5 py-1 text-[11px] font-medium text-brand-600 transition-colors hover:underline"
                         title="Manage this track — jump steps, switch roadmap"
                       >
                         <SlidersHorizontal className="h-3.5 w-3.5" /> Manage

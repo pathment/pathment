@@ -44,7 +44,7 @@ export const MENTEES: Mentee[] = [
     momentum: 'up',
     risk: 'low',
     lastActive: '2h ago',
-    pendingApprovals: 2,
+    pendingApprovals: 4,
     openBlockers: 1,
     onTimeRate: 84,
     sentiment: 'positive',
@@ -60,17 +60,16 @@ export const MENTEES: Mentee[] = [
     ],
     personality: { consistency: 85, communication: 78, resilience: 92, independence: 70 },
     tasks: [
-      { id: 101, title: 'Build REST API for blog platform', type: 'project', status: 'submitted', due: 'Today', submittedAt: '2h ago', track: 'Core', brief: 'Implement a CRUD API with auth-protected routes and pagination.', criteria: ['Repo link present', 'Auth on write routes', 'Pagination working', 'README with setup'], artifact: 'github.com/aisha-k/blog-api' },
-      { id: 102, title: 'Read: Database Indexing Strategies', type: 'reading', status: 'in_progress', due: 'Tomorrow', track: 'Core' },
-      { id: 103, title: 'Quiz: SQL Fundamentals', type: 'quiz', status: 'completed', due: 'Yesterday', score: 92, track: 'Core' },
-      { id: 104, title: 'Refactor: extract service layer', type: 'assignment', status: 'submitted', due: 'Today', submittedAt: '40m ago', track: 'Stretch', brief: 'Move business logic out of route handlers into a service layer.', criteria: ['Routes are thin', 'Services unit-tested', 'No logic in controllers'], artifact: 'github.com/aisha-k/blog-api/pull/12', extensionRequested: true },
-      { id: 105, title: 'Mindset talk', type: 'discussion', status: 'completed', due: 'Daily', track: 'Talks', slot: 'morning', recurrence: 'daily', score: 100 },
+      // roadmap-driven work — Backend Foundations, current step (Add authentication)
+      { id: 109, title: 'Roadmap: Add authentication', type: 'project', status: 'assigned', due: '+7d', track: 'Backend Foundations', slot: 'anytime', roadmapId: 1, roadmapStepId: 13, brief: 'Add authentication to your CRUD API.', criteria: ['Auth on write routes', 'Tokens validated'], effort: 'l' },
+      // core + stretch
+      { id: 101, title: 'Build REST API for blog platform', type: 'project', status: 'submitted', due: 'Today', submittedAt: '2h ago', track: 'Core', slot: 'anytime', brief: 'Implement a CRUD API with auth-protected routes and pagination.', criteria: ['Repo link present', 'Auth on write routes', 'Pagination working', 'README with setup'], artifact: 'github.com/aisha-k/blog-api' },
+      { id: 102, title: 'Read: Database Indexing Strategies', type: 'reading', status: 'in_progress', due: 'Tomorrow', track: 'Core', slot: 'anytime' },
+      { id: 103, title: 'Quiz: SQL Fundamentals', type: 'quiz', status: 'completed', due: 'Yesterday', score: 92, scoreDetail: { speed: 96, mentor: 5 }, track: 'Core', slot: 'anytime' },
+      { id: 104, title: 'Refactor: extract service layer', type: 'assignment', status: 'submitted', due: 'Today', submittedAt: '40m ago', track: 'Stretch', slot: 'anytime', brief: 'Move business logic out of route handlers into a service layer.', criteria: ['Routes are thin', 'Services unit-tested', 'No logic in controllers'], artifact: 'github.com/aisha-k/blog-api/pull/12', extensionRequested: true },
+      // talk reflections — the schedule runs the talks; these are the submissions
       { id: 110, title: 'Mindset talk reflection', type: 'discussion', status: 'submitted', due: 'Today', submittedAt: '1h ago', track: 'Talks', slot: 'morning', recurrence: 'daily', brief: 'One thing from this morning’s mindset talk you’ll apply today.', artifact: 'notion.so/aisha/mindset' },
       { id: 111, title: 'Dean talk takeaways', type: 'discussion', status: 'submitted', due: 'Today', submittedAt: '20m ago', track: 'Talks', slot: 'dinner', recurrence: 'daily', criteria: ['Posted', 'Replied to a peer'] },
-      { id: 106, title: 'Mindset talk', type: 'discussion', status: 'assigned', due: 'Daily', track: 'Habits', slot: 'morning', recurrence: 'daily', brief: 'A short morning talk to set the day’s mindset.' },
-      { id: 107, title: 'Engineering talk — fall in love with the craft', type: 'discussion', status: 'assigned', due: 'Daily', track: 'Habits', slot: 'lunch', recurrence: 'daily' },
-      { id: 108, title: 'Personal branding block', type: 'assignment', status: 'in_progress', due: 'Fri', track: 'Stretch', slot: 'anytime', brief: 'Spend focused time improving your professional brand.' },
-      { id: 109, title: 'Roadmap: Add authentication', type: 'project', status: 'assigned', due: '+7d', track: 'Backend Foundations', roadmapId: 1, roadmapStepId: 13, brief: 'Add authentication to your CRUD API.', criteria: ['Auth on write routes', 'Tokens validated'], effort: 'l' },
     ],
     blockers: [
       { id: 1, title: 'Stuck on JWT refresh-token flow', category: 'technical', severity: 'medium', daysOpen: 2, taskId: 109, taskTitle: 'Roadmap: Add authentication' },
@@ -112,9 +111,11 @@ export const MENTEES: Mentee[] = [
     ],
     personality: { consistency: 55, communication: 72, resilience: 95, independence: 60 },
     tasks: [
-      { id: 201, title: 'Responsive dashboard layout', type: 'project', status: 'submitted', due: '2 days late', submittedAt: '3h ago', late: true, track: 'Core', brief: 'Build a responsive admin dashboard from the provided Figma.', criteria: ['Matches breakpoints', 'No layout shift', 'Accessible nav'], artifact: 'github.com/diego-m/dashboard' },
-      { id: 202, title: 'Reading: Flexbox deep-dive', type: 'reading', status: 'in_progress', due: 'Overdue', late: true, track: 'Core' },
-      { id: 203, title: 'Quiz: HTML semantics', type: 'quiz', status: 'assigned', due: 'Fri', track: 'Core' },
+      // roadmap-driven work — just started Frontend Craft (first in his chain)
+      { id: 204, title: 'Roadmap: Component composition', type: 'reading', status: 'in_progress', due: '+3d', track: 'Frontend Craft', slot: 'anytime', roadmapId: 2, roadmapStepId: 21, brief: 'Learn to compose small, reusable components.' },
+      { id: 201, title: 'Responsive dashboard layout', type: 'project', status: 'submitted', due: '2 days late', submittedAt: '3h ago', late: true, track: 'Core', slot: 'anytime', brief: 'Build a responsive admin dashboard from the provided Figma.', criteria: ['Matches breakpoints', 'No layout shift', 'Accessible nav'], artifact: 'github.com/diego-m/dashboard' },
+      { id: 202, title: 'Reading: Flexbox deep-dive', type: 'reading', status: 'in_progress', due: 'Overdue', late: true, track: 'Core', slot: 'anytime' },
+      { id: 203, title: 'Quiz: HTML semantics', type: 'quiz', status: 'assigned', due: 'Fri', track: 'Core', slot: 'anytime' },
     ],
     blockers: [
       { id: 1, title: 'Power outages blocking evening work', category: 'access', severity: 'high', daysOpen: 9 },
@@ -288,16 +289,19 @@ export const CURRENT_MENTEE = MENTEES[0];
 
 /* Which mentees are on which roadmap, and the step they're on. */
 export const SEED_ROADMAP_PROGRESS: RoadmapProgress[] = [
-  // Aisha on Backend Foundations, step 3 (auth) — in her "anytime" slot's chain
+  // Aisha finished Frontend Craft, now on Backend Foundations step 3 (auth) —
+  // both live in her "anytime" slot's chain (Frontend Craft -> Backend Foundations)
+  { roadmapId: 2, menteeId: 1, currentStep: 2, startedAt: 'Mar 2025', slot: 'anytime', completed: true },
   { roadmapId: 1, menteeId: 1, currentStep: 2, startedAt: 'Apr 2025', slot: 'anytime' },
-  { roadmapId: 90, menteeId: 2, currentStep: 0, startedAt: 'May 2025', slot: 'anytime' },
+  // Diego just started the first roadmap in his chain (Frontend Craft)
+  { roadmapId: 2, menteeId: 2, currentStep: 0, startedAt: 'May 2025', slot: 'anytime' },
 ];
 
 /* ----------------------------------------------------------------
    Seed notifications (brief §7.3) — mentor inbox + mentee inbox.
 ----------------------------------------------------------------- */
 export const SEED_NOTIFICATIONS: Notification[] = [
-  { id: 9001, role: 'mentor', kind: 'review', title: '2 submissions waiting', body: 'Aisha Khan submitted 2 tasks for review.', at: '2h ago', menteeId: 1, to: '/mentor/approvals' },
+  { id: 9001, role: 'mentor', kind: 'review', title: '4 submissions waiting', body: 'Aisha Khan submitted 4 tasks for review.', at: '2h ago', menteeId: 1, to: '/mentor/approvals' },
   { id: 9002, role: 'mentor', kind: 'friction', title: 'Diego logged an electricity outage', body: 'Area-wide power cut — third this month.', at: '5h ago', menteeId: 2, to: '/mentor/mentee/2' },
   { id: 9003, role: 'mentor', kind: 'blocker', title: 'Priya has gone quiet', body: 'No activity in 6 days, 2 nudges unanswered.', at: '1d ago', menteeId: 3, to: '/mentor/mentee/3' },
   { id: 9101, role: 'mentee', kind: 'nudge', title: 'Gentle nudge from Pathment', body: 'Your "Database Indexing" reading is due tomorrow — you\'ve got this.', at: '3h ago', to: '/mentee/task/102' },
