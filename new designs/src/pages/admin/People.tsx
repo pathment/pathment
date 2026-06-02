@@ -63,7 +63,7 @@ export function People() {
 
   // mentor roster — at least the current mentor, with a live load read.
   const mentorRows = useMemo(() => {
-    const load = mentees.filter((m) => m.program === 'Full-Stack Web').length;
+    const load = mentees.filter((m) => m.program === 'Full-Stack Web Development').length;
     return [{ ...mentor, load }];
   }, [mentees, mentor]);
 
@@ -152,7 +152,7 @@ export function People() {
                 <PersonCard
                   key={m.id}
                   m={m}
-                  onOpen={() => navigate(`/mentor/mentee/${m.id}`)}
+                  onOpen={() => navigate(`/admin/people/${m.id}`)}
                 />
               ))}
             </div>

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Trash2, Download, ArrowRight, GitBranch, Users } from 'lucide-react';
+import { Plus, Trash2, Download, ArrowRight, GitBranch, Users, Pencil } from 'lucide-react';
 import { Page, PageHeader } from '@/components/Page';
 import { Card, Badge, Button, Avatar, SectionLabel, cx, TASK_TYPE_LABEL } from '@/lib/ui';
 import { Drawer, Field, TextInput, TextArea, SelectInput } from '@/components/overlays';
@@ -24,11 +24,21 @@ function blankStep(): DraftStep {
 }
 
 export function Roadmaps() {
-  const { roadmaps, roadmapProgress, mentees, getMentee, createRoadmap, importRoadmap, assignRoadmap } =
-    useStore();
+  const {
+    roadmaps,
+    roadmapProgress,
+    mentees,
+    getMentee,
+    createRoadmap,
+    updateRoadmap,
+    deleteRoadmap,
+    importRoadmap,
+    assignRoadmap,
+  } = useStore();
 
-  // create-roadmap drawer
+  // create/edit-roadmap drawer
   const [createOpen, setCreateOpen] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [steps, setSteps] = useState<DraftStep[]>([blankStep()]);
@@ -51,7 +61,23 @@ export function Roadmaps() {
   };
 
   const openCreate = () => {
+    setEditingId(null);
     resetCreate();
+    setCreateOpen(true);
+  };
+
+  const openEdit = (r: Roadmap) => {
+    setEditingId(r.id);
+    setName(r.name);
+    setDescription(r.description ?? '');
+    setSteps(
+      r.steps.map((s) => ({
+        title: s.title,
+        type: s.type,
+        effort: s.effort ?? 'm',
+        dueOffsetDays: String(s.dueOffsetDays ?? 7),
+      })),
+    );
     setCreateOpen(true);
   };
 
@@ -75,8 +101,13 @@ export function Roadmaps() {
         dueOffsetDays: Number.isFinite(due) ? due : undefined,
       };
     });
-    createRoadmap(name.trim(), description.trim(), built);
+    if (editingId != null) {
+      updateRoadmap(editingId, { name: name.trim(), description: description.trim(), steps: built });
+    } else {
+      createRoadmap(name.trim(), description.trim(), built);
+    }
     setCreateOpen(false);
+    setEditingId(null);
     resetCreate();
   };
 
@@ -134,6 +165,21 @@ export function Roadmaps() {
                           ))}
                         </div>
                       )}
+                      {/* edit / delete this roadmap */}
+                      <div className="mt-2 flex items-center gap-3">
+                        <button
+                          onClick={() => openEdit(r)}
+                          className="inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
+                        >
+                          <Pencil className="h-3.5 w-3.5" /> Edit
+                        </button>
+                        <button
+                          onClick={() => deleteRoadmap(r.id)}
+                          className="inline-flex items-center gap-1 text-xs font-medium text-ink-faint transition-colors hover:text-[#FF3B30]"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" /> Delete
+                        </button>
+                      </div>
                     </div>
 
                     {/* inline assign control — relative starting point per person */}
@@ -294,20 +340,29 @@ export function Roadmaps() {
         )}
       </section>
 
-      {/* CREATE ROADMAP DRAWER */}
+      {/* CREATE / EDIT ROADMAP DRAWER */}
       <Drawer
         open={createOpen}
-        onClose={() => setCreateOpen(false)}
-        title="New roadmap"
+        onClose={() => {
+          setCreateOpen(false);
+          setEditingId(null);
+        }}
+        title={editingId != null ? 'Edit roadmap' : 'New roadmap'}
         subtitle="Name it, then add an ordered list of steps."
         width="max-w-2xl"
         footer={
           <div className="flex items-center justify-end gap-2">
-            <Button variant="ghost" onClick={() => setCreateOpen(false)}>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setCreateOpen(false);
+                setEditingId(null);
+              }}
+            >
               Cancel
             </Button>
             <Button onClick={saveRoadmap} disabled={!canSave}>
-              <Plus className="h-4 w-4" /> Create roadmap
+              <Plus className="h-4 w-4" /> {editingId != null ? 'Save changes' : 'Create roadmap'}
             </Button>
           </div>
         }

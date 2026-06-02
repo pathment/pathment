@@ -12,7 +12,7 @@ import { Page, PageHeader } from '@/components/Page';
 import { useStore } from '@/store/AppStore';
 
 export function Meetings() {
-  const { currentMenteeId, getMentee, mentor, getMeetings, availabilitySlots, bookAvailabilitySlot } = useStore();
+  const { currentMenteeId, getMentee, mentor, getMeetings, availabilitySlots, bookAvailabilitySlot, requestMeeting } = useStore();
   const me = getMentee(currentMenteeId)!;
 
   const notes = me.notes;
@@ -38,7 +38,7 @@ export function Meetings() {
                 <div className="mt-0.5 text-sm text-ink-mute">{mentor.role}</div>
                 <div className="mt-1 text-xs text-ink-faint">{mentor.program}</div>
                 <div className="mt-4 flex flex-wrap items-center gap-2">
-                  <Button variant="outline" size="sm">
+                  <Button variant="outline" size="sm" onClick={() => requestMeeting(me.id)}>
                     <MessageSquare className="h-3.5 w-3.5" />
                     Message
                   </Button>
@@ -55,10 +55,14 @@ export function Meetings() {
 
                 {/* booking — pick from the exact times the mentor published */}
                 {openSlots.length === 0 ? (
-                  <p className="mt-3 text-xs text-ink-faint">
-                    {mentor.name.split(' ')[0]} hasn&apos;t opened any 1:1 times yet — they&apos;ll
-                    reach out or publish some.
-                  </p>
+                  <div className="mt-3">
+                    <p className="text-xs text-ink-faint">
+                      {mentor.name.split(' ')[0]} hasn&apos;t opened any 1:1 times yet.
+                    </p>
+                    <Button variant="soft" size="sm" className="mt-2" onClick={() => requestMeeting(me.id)}>
+                      <CalendarRange className="h-3.5 w-3.5" /> Request a 1:1
+                    </Button>
+                  </div>
                 ) : (
                   booking && (
                     <div className="mt-4 rounded-r border border-hairline p-3">

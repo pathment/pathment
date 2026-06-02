@@ -159,6 +159,7 @@ export interface Roadmap {
   steps: RoadmapStep[];
   source: 'local' | 'org';
   published?: boolean; // org roadmaps available to import
+  importedFrom?: number; // org roadmap id this local copy was imported from
   skillTags?: string[];
 }
 

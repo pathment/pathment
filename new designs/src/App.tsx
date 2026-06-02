@@ -54,6 +54,8 @@ export function App() {
             {/* Admin */}
             <Route path="/admin/health" element={<ProgramHealth />} />
             <Route path="/admin/people" element={<People />} />
+            {/* admin-scoped profile so opening a person keeps the admin shell */}
+            <Route path="/admin/people/:id" element={<MenteeProfile />} />
             <Route path="/admin/insights" element={<OrgInsights />} />
             <Route path="/admin/library" element={<Documents />} />
             <Route path="/admin/release-notes" element={<ReleaseNotes />} />

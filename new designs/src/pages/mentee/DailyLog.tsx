@@ -56,11 +56,18 @@ export function DailyLog() {
   const activeDay = days.find((d) => d.key === activeKey)!;
   const existing = logs.find((l) => l.dateKey === activeKey);
 
-  // tasks the mentee can tick for the day — their open/active assigned tasks
-  const dayTasks = useMemo(
-    () => me.tasks.filter((t) => t.status !== 'rejected'),
-    [me.tasks],
-  );
+  // tasks the mentee can tick for the day — open tasks whose slot runs that day
+  const dayTasks = useMemo(() => {
+    const d = dateFromKey(activeKey);
+    return me.tasks.filter((t) => {
+      if (t.status === 'rejected' || t.status === 'completed') return false;
+      if (t.slot) {
+        const cfg = schedule.find((s) => s.id === t.slot);
+        if (cfg && !slotRunsOn(cfg.days, d)) return false;
+      }
+      return true;
+    });
+  }, [me.tasks, activeKey, schedule]);
 
   // working state for the day being edited (seeded from any existing log)
   const [slotsDone, setSlotsDone] = useState<Set<ScheduleSlot>>(new Set(existing?.slotsDone ?? []));

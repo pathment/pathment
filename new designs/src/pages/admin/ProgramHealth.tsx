@@ -12,8 +12,8 @@ import {
   CalendarClock,
 } from 'lucide-react';
 import { Page, PageHeader } from '@/components/Page';
-import { PROGRAMS } from '@/data/mock';
 import { useStore } from '@/store/AppStore';
+import { Modal, Field, TextInput } from '@/components/overlays';
 import {
   Avatar,
   Badge,
@@ -63,15 +63,16 @@ function avg(nums: number[]) {
 
 export function ProgramHealth() {
   const navigate = useNavigate();
-  const { mentees } = useStore();
+  const { mentees, programs, addProgram } = useStore();
   const [filter, setFilter] = useState<FilterKey>('all');
+  const [creating, setCreating] = useState(false);
 
   const totalMentees = useMemo(
-    () => PROGRAMS.reduce((sum, p) => sum + p.cohortSize, 0),
-    [],
+    () => programs.reduce((sum, p) => sum + p.cohortSize, 0),
+    [programs],
   );
-  const avgCompletion = useMemo(() => avg(PROGRAMS.map((p) => p.completion)), []);
-  const avgOnTime = useMemo(() => avg(PROGRAMS.map((p) => p.onTime)), []);
+  const avgCompletion = useMemo(() => avg(programs.map((p) => p.completion)), [programs]);
+  const avgOnTime = useMemo(() => avg(programs.map((p) => p.onTime)), [programs]);
 
   // live at-risk roll-up — anyone not on track, worst first (high → watch)
   const atRiskMentees = useMemo(
@@ -82,20 +83,21 @@ export function ProgramHealth() {
     [mentees],
   );
 
-  // top KPI blends the program fixtures with the live cohort so the "at-risk"
-  // count stays internally consistent with the roll-up below.
+  // top KPI is the sum of each clan's at-risk count. The live Phoenix cohort's
+  // at-risk mentees are already reflected in that clan's fixture, so we do NOT
+  // add them again (that double-counted them against the roll-up below).
   const totalAtRisk = useMemo(
-    () => PROGRAMS.reduce((sum, p) => sum + p.atRisk, 0) + atRiskMentees.length,
-    [atRiskMentees.length],
+    () => programs.reduce((sum, p) => sum + p.atRisk, 0),
+    [programs],
   );
 
   // sort red first, then amber, then green
   const sorted = useMemo(
     () =>
-      [...PROGRAMS].sort(
+      [...programs].sort(
         (a, b) => STATUS_META[a.status].rank - STATUS_META[b.status].rank,
       ),
-    [],
+    [programs],
   );
 
   const visible = useMemo(
@@ -106,12 +108,12 @@ export function ProgramHealth() {
   // worst program for the "at a glance" callout
   const worst = useMemo(
     () =>
-      [...PROGRAMS].sort((a, b) => {
+      [...programs].sort((a, b) => {
         const r = STATUS_META[a.status].rank - STATUS_META[b.status].rank;
         if (r !== 0) return r;
         return b.dropoff - a.dropoff;
       })[0],
-    [],
+    [programs],
   );
 
   const stats: {
@@ -130,13 +132,23 @@ export function ProgramHealth() {
     <Page>
       <PageHeader
         title="Clan health"
-        subtitle={`Across the organization — ${PROGRAMS.length} clans, ${totalMentees} members`}
+        subtitle={`Across the organization · ${programs.length} clans, ${totalMentees} members`}
         actions={
-          <Button>
+          <Button onClick={() => setCreating(true)}>
             <Plus className="h-4 w-4" /> New clan
           </Button>
         }
       />
+
+      {creating && (
+        <CreateClanModal
+          onClose={() => setCreating(false)}
+          onCreate={(input) => {
+            addProgram(input);
+            setCreating(false);
+          }}
+        />
+      )}
 
       {/* KPI strip */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -178,8 +190,8 @@ export function ProgramHealth() {
           const active = filter === f.key;
           const count =
             f.key === 'all'
-              ? PROGRAMS.length
-              : PROGRAMS.filter((p) => p.status === f.key).length;
+              ? programs.length
+              : programs.filter((p) => p.status === f.key).length;
           return (
             <button
               key={f.key}
@@ -238,7 +250,7 @@ export function ProgramHealth() {
               <AtRiskRow
                 key={m.id}
                 m={m}
-                onOpen={() => navigate(`/mentor/mentee/${m.id}`)}
+                onOpen={() => navigate(`/admin/people/${m.id}`)}
               />
             ))}
           </Card>
@@ -354,5 +366,55 @@ function ProgramRow({ p, onOpen }: { p: Program; onOpen: () => void }) {
         ))}
       </div>
     </Card>
+  );
+}
+
+/* ----------------------------------------------------------------
+   create a new clan (program group)
+----------------------------------------------------------------- */
+function CreateClanModal({
+  onClose,
+  onCreate,
+}: {
+  onClose: () => void;
+  onCreate: (input: { name: string; program: string; leader: string }) => void;
+}) {
+  const [name, setName] = useState('');
+  const [program, setProgram] = useState('');
+  const [leader, setLeader] = useState('');
+  const valid = name.trim() && program.trim() && leader.trim();
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="New clan"
+      subtitle="A group of mentees under a clan leader, running one program."
+      footer={
+        <div className="flex items-center justify-end gap-2">
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            disabled={!valid}
+            onClick={() => onCreate({ name: name.trim(), program: program.trim(), leader: leader.trim() })}
+          >
+            <Plus className="h-4 w-4" /> Create clan
+          </Button>
+        </div>
+      }
+    >
+      <div className="space-y-4">
+        <Field label="Clan name">
+          <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Orion Clan" autoFocus />
+        </Field>
+        <Field label="Program">
+          <TextInput value={program} onChange={(e) => setProgram(e.target.value)} placeholder="e.g. Full-Stack Web Development" />
+        </Field>
+        <Field label="Clan leader (mentor)">
+          <TextInput value={leader} onChange={(e) => setLeader(e.target.value)} placeholder="e.g. Sarah Chen" />
+        </Field>
+      </div>
+    </Modal>
   );
 }

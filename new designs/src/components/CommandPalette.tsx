@@ -15,6 +15,8 @@ import {
   MessageSquare,
   Bell,
   CornerDownLeft,
+  GitBranch,
+  BookOpen,
   type LucideIcon,
 } from 'lucide-react';
 import { useStore } from '@/store/AppStore';
@@ -80,11 +82,15 @@ export function CommandPalette({
       nav('Cohort Review', '/mentor/review', CalendarRange),
       nav('Approvals', '/mentor/approvals', ClipboardCheck),
       nav('At-risk', '/mentor/at-risk', ShieldAlert),
+      nav('Roadmaps', '/mentor/roadmaps', GitBranch),
+      nav('Schedules', '/mentor/schedules', CalendarRange),
+      nav('Library', '/mentor/library', BookOpen),
       nav('Settings', '/mentor/settings', SettingsIcon),
       nav('This Week (mentee)', '/mentee/this-week', ListTodo),
       nav('My Progress (mentee)', '/mentee/progress', LineChart),
       nav('Program Health (admin)', '/admin/health', Activity),
       nav('People (admin)', '/admin/people', Users),
+      nav('Release Notes (admin)', '/admin/release-notes', Activity),
     ];
     const people: Cmd[] = mentees.flatMap((m) => [
       {

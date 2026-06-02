@@ -79,9 +79,12 @@ export function OneOnOneDrawer({
   onClose: () => void;
   mentee: Mentee | null;
 }) {
-  const { logMeeting } = useStore();
+  const { logMeeting, getCollaborators, mentor } = useStore();
   const [saved, setSaved] = useState(false);
 
+  const collaborators = mentee ? getCollaborators(mentee.id).filter((c) => c.status === 'active') : [];
+  const [kind, setKind] = useState('1:1');
+  const [loggedBy, setLoggedBy] = useState(mentor.name);
   const [sentiment, setSentiment] = useState<Sentiment>('neutral');
   const [summary, setSummary] = useState('');
   const [personalityRead, setPersonalityRead] = useState('');
@@ -104,6 +107,8 @@ export function OneOnOneDrawer({
 
   const reset = () => {
     setSaved(false);
+    setKind('1:1');
+    setLoggedBy(mentor.name);
     setSentiment('neutral');
     setSummary('');
     setPersonalityRead('');
@@ -134,6 +139,8 @@ export function OneOnOneDrawer({
       nextSteps: nextSteps.length ? nextSteps : undefined,
       personality: personality ?? undefined,
       blockers: blockers.length ? blockers : undefined,
+      kind,
+      by: loggedBy,
     });
     setSaved(true);
   };
@@ -172,6 +179,29 @@ export function OneOnOneDrawer({
         </div>
       ) : (
         <div className="space-y-5">
+          {/* Session type + who logged it (attribution) */}
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Session type">
+              <SelectInput value={kind} onChange={(e) => setKind(e.target.value)}>
+                <option value="1:1">1:1</option>
+                <option value="Pairing session">Pairing session</option>
+                <option value="Career chat">Career chat</option>
+                <option value="Psychological session">Psychological session</option>
+                <option value="Check-in">Check-in</option>
+              </SelectInput>
+            </Field>
+            <Field label="Logged by" hint="Attribute this to yourself or an invited specialist.">
+              <SelectInput value={loggedBy} onChange={(e) => setLoggedBy(e.target.value)}>
+                <option value={mentor.name}>{mentor.name} (you)</option>
+                {collaborators.map((c) => (
+                  <option key={c.id} value={c.name}>
+                    {c.name} · {c.role}
+                  </option>
+                ))}
+              </SelectInput>
+            </Field>
+          </div>
+
           {/* Sentiment */}
           <Field label="Sentiment / engagement read">
             <div>

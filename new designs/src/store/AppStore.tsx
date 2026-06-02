@@ -29,9 +29,11 @@ import {
   DOCUMENTS,
   SEED_INSIGHTS,
   SEED_ROADMAP_PROGRESS,
+  PROGRAMS,
 } from '@/data/mock';
 import type {
   Mentee,
+  ProgramHealth,
   Task,
   TaskType,
   Blocker,
@@ -94,6 +96,7 @@ interface MeetingInput {
   personality?: Personality;
   blockers?: Array<{ title: string; category: Blocker['category']; severity: Blocker['severity'] }>;
   kind?: string; // '1:1', 'Psychological session', etc.
+  by?: string; // who logged it (mentor or an invited collaborator)
 }
 
 interface ReviewInput {
@@ -175,6 +178,7 @@ interface Store {
   // add a brand-new slot to one mentee's schedule (ad-hoc, outside a template)
   addSlot: (menteeId: number, block: { label: string; time?: string; days?: SlotDays; bookable?: boolean }) => void;
   removeSlot: (menteeId: number, slotId: ScheduleSlot) => void;
+  moveSlot: (menteeId: number, slotId: ScheduleSlot, dir: 'up' | 'down') => void;
   // start a slot's roadmap chain for a mentee, at a chosen step of the first roadmap
   startSlotRoadmap: (menteeId: number, slot: ScheduleSlot, startStep?: number) => void;
   // per-individual roadmap control: jump to an absolute step, nudge +/-1, or
@@ -213,6 +217,9 @@ interface Store {
   addAvailabilitySlot: (slot: Omit<AvailabilitySlot, 'id'>) => void;
   removeAvailabilitySlot: (id: number) => void;
   bookAvailabilitySlot: (id: number, menteeId: number) => void;
+  requestMeeting: (menteeId: number, note?: string) => void;
+  programs: ProgramHealth[];
+  addProgram: (input: { name: string; program: string; leader: string }) => void;
 
   // super-admin release notes broadcast to mentors
   releaseNotes: ReleaseNote[];
@@ -239,6 +246,8 @@ interface Store {
   roadmaps: Roadmap[];
   roadmapProgress: RoadmapProgress[];
   createRoadmap: (name: string, description: string, steps: RoadmapStep[]) => number;
+  updateRoadmap: (id: number, patch: { name?: string; description?: string; steps?: RoadmapStep[] }) => void;
+  deleteRoadmap: (id: number) => void;
   importRoadmap: (orgRoadmapId: number) => number;
   /* startStep lets a mentee join at the point that matches their current
      standing — relative to their journey, not an absolute step 1. */
@@ -326,6 +335,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const [roadmapProgress, setRoadmapProgress] = useState<RoadmapProgress[]>(SEED_ROADMAP_PROGRESS);
   const [schedules, setSchedules] = useState<Record<number, Schedule>>({});
   const [scheduleTemplates, setScheduleTemplates] = useState<ScheduleTemplate[]>(SCHEDULE_TEMPLATES);
+  const [programs, setPrograms] = useState<ProgramHealth[]>(PROGRAMS);
   const [dailyLogs, setDailyLogs] = useState<DailyLogEntry[]>(SEED_DAILY_LOGS);
   const [availabilitySlots, setAvailabilitySlots] = useState<AvailabilitySlot[]>(SEED_AVAILABILITY);
   const [releaseNotes, setReleaseNotes] = useState<ReleaseNote[]>(SEED_RELEASE_NOTES);
@@ -632,11 +642,18 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   /* ---------------- attendance ---------------- */
   const markAttendance = useCallback<Store['markAttendance']>(
     (menteeId, status) => {
+      let toggledOff = false;
       setAttendance((prev) => {
+        const current = prev.find((a) => a.menteeId === menteeId && a.sessionDate === SESSION_DATE);
         const without = prev.filter((a) => !(a.menteeId === menteeId && a.sessionDate === SESSION_DATE));
+        // clicking the same status again clears it (undo a mis-click)
+        if (current?.status === status) {
+          toggledOff = true;
+          return without;
+        }
         return [...without, { menteeId, sessionDate: SESSION_DATE, status }];
       });
-      if (status === 'absent') {
+      if (!toggledOff && status === 'absent') {
         const m = mentees.find((x) => x.id === menteeId);
         notify({ role: 'mentor', kind: 'system', title: `${m?.name ?? 'Mentee'} marked absent`, body: 'Recorded for this week’s review.', menteeId });
       }
@@ -658,17 +675,53 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     },
     [toast],
   );
+  const updateRoadmap = useCallback<Store['updateRoadmap']>(
+    (id, patch) => {
+      setRoadmaps((prev) =>
+        prev.map((r) =>
+          r.id === id
+            ? {
+                ...r,
+                name: patch.name ?? r.name,
+                description: patch.description ?? r.description,
+                steps: patch.steps ?? r.steps,
+              }
+            : r,
+        ),
+      );
+      toast('Roadmap updated');
+    },
+    [toast],
+  );
+  const deleteRoadmap = useCallback<Store['deleteRoadmap']>(
+    (id) => {
+      setRoadmaps((prev) => prev.filter((r) => r.id !== id));
+      // clear any progress tied to the deleted roadmap
+      setRoadmapProgress((prev) => prev.filter((p) => p.roadmapId !== id));
+      toast('Roadmap deleted');
+    },
+    [toast],
+  );
   const importRoadmap = useCallback<Store['importRoadmap']>(
     (orgRoadmapId) => {
       const org = roadmaps.find((r) => r.id === orgRoadmapId);
-      const id = idRef.current++ + 1;
-      if (org) {
-        setRoadmaps((prev) => [
-          ...prev,
-          { ...org, id, source: 'local', published: false, name: org.name.replace(/^Org:\s*/, '') },
-        ]);
-        toast(`Imported "${org.name}"`);
+      if (!org) return -1;
+      const cleanName = org.name.replace(/^Org:\s*/, '');
+      // don't import the same org roadmap twice
+      const existing = roadmaps.find((r) => r.source === 'local' && r.importedFrom === orgRoadmapId);
+      if (existing) {
+        toast(`"${cleanName}" is already in your roadmaps`);
+        return existing.id;
       }
+      const id = idRef.current++ + 1;
+      // deep-clone and re-key step ids so two roadmaps never share step ids
+      // (advance/unreview match tasks to steps by roadmapStepId)
+      const steps = org.steps.map((s, i) => ({ ...s, id: id * 1000 + i }));
+      setRoadmaps((prev) => [
+        ...prev,
+        { ...org, id, steps, source: 'local', published: false, importedFrom: orgRoadmapId, name: cleanName },
+      ]);
+      toast(`Imported "${cleanName}"`);
       return id;
     },
     [roadmaps, toast],
@@ -741,6 +794,20 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     (menteeId) => schedules[menteeId] ?? DEFAULT_SCHEDULE,
     [schedules],
   );
+  // drop a slot's active roadmap progress + its still-open roadmap task. Used
+  // when a slot is removed or changed away from a roadmap so nothing orphans.
+  const retireSlotRoadmap = useCallback((menteeId: number, slotId: string) => {
+    setRoadmapProgress((prev) =>
+      prev.filter((p) => !(p.menteeId === menteeId && p.slot === slotId && !p.completed)),
+    );
+    patchMentee(menteeId, (m) => ({
+      ...m,
+      tasks: m.tasks.filter(
+        (t) => !(t.slot === slotId && t.roadmapId != null && (t.status === 'assigned' || t.status === 'in_progress')),
+      ),
+    }));
+  }, [patchMentee]);
+
   const setSlot = useCallback<Store['setSlot']>(
     (menteeId, slotId, patch) => {
       setSchedules((prev) => {
@@ -748,9 +815,11 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         const next = cur.map((s) => (s.id === slotId ? { ...s, ...patch, id: s.id } : s));
         return { ...prev, [menteeId]: next };
       });
+      // if this slot is no longer a roadmap, retire any roadmap it was driving
+      if (patch.kind && patch.kind !== 'roadmap') retireSlotRoadmap(menteeId, slotId);
       toast('Schedule updated');
     },
-    [toast],
+    [retireSlotRoadmap, toast],
   );
   const addSlot = useCallback<Store['addSlot']>(
     (menteeId, block) => {
@@ -776,9 +845,27 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         const cur = prev[menteeId] ?? DEFAULT_SCHEDULE;
         return { ...prev, [menteeId]: cur.filter((s) => s.id !== slotId) };
       });
+      // clean up any roadmap progress + open task tied to the removed slot
+      retireSlotRoadmap(menteeId, slotId);
       toast('Slot removed');
     },
-    [toast],
+    [retireSlotRoadmap, toast],
+  );
+  // reorder a slot within a mentee's schedule (move up / down by one)
+  const moveSlot = useCallback<Store['moveSlot']>(
+    (menteeId, slotId, dir) => {
+      setSchedules((prev) => {
+        const cur = prev[menteeId] ?? DEFAULT_SCHEDULE;
+        const i = cur.findIndex((s) => s.id === slotId);
+        if (i < 0) return prev;
+        const j = dir === 'up' ? i - 1 : i + 1;
+        if (j < 0 || j >= cur.length) return prev;
+        const next = [...cur];
+        [next[i], next[j]] = [next[j], next[i]];
+        return { ...prev, [menteeId]: next };
+      });
+    },
+    [],
   );
   const applyScheduleToAll = useCallback<Store['applyScheduleToAll']>(
     (schedule) => {
@@ -1052,6 +1139,53 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     },
     [notify, toast],
   );
+  // admin creates a new clan (program group)
+  const addProgram = useCallback<Store['addProgram']>(
+    (input) => {
+      const id = idRef.current++ + 1;
+      const initials = input.leader
+        .split(' ')
+        .map((w) => w[0])
+        .join('')
+        .slice(0, 2)
+        .toUpperCase();
+      const clan: ProgramHealth = {
+        id,
+        name: input.name,
+        program: input.program,
+        leader: input.leader,
+        leaderAvatar: initials || 'NA',
+        status: 'green',
+        cohortSize: 0,
+        completion: 0,
+        onTime: 0,
+        dropoff: 0,
+        extensions: 0,
+        blockers: 0,
+        mentorLoad: '1 mentor · new',
+        atRisk: 0,
+      };
+      setPrograms((prev) => [clan, ...prev]);
+      toast(`Clan "${input.name}" created`);
+    },
+    [toast],
+  );
+  // mentee asks their mentor to connect / open a 1:1 time
+  const requestMeeting = useCallback<Store['requestMeeting']>(
+    (menteeId, note) => {
+      const m = mentees.find((x) => x.id === menteeId);
+      notify({
+        role: 'mentor',
+        kind: 'meeting',
+        title: `${m?.name ?? 'A mentee'} requested a 1:1`,
+        body: note?.trim() || 'They asked to connect. Publish a time or reach out.',
+        menteeId,
+        to: `/mentor/mentee/${menteeId}`,
+      });
+      toast('Request sent to your mentor');
+    },
+    [mentees, notify, toast],
+  );
 
   /* ---------------- super-admin release notes ---------------- */
   const publishReleaseNote = useCallback<Store['publishReleaseNote']>(
@@ -1060,20 +1194,24 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         { ...note, id: idRef.current++ + 1, at: 'just now', by: 'Org · Admin' },
         ...prev,
       ]);
-      // deliver to every mentor in-app (email is simulated by the channel flag)
-      notify({
-        role: 'mentor',
-        kind: 'system',
-        title: note.title,
-        body: note.body,
-        to: '/mentor/library',
-      });
+      // only push an in-app message when the in_app channel was chosen; email is
+      // simulated by the channel flag. Scope is noted in the toast.
+      if (note.channels.includes('in_app')) {
+        notify({
+          role: 'mentor',
+          kind: 'system',
+          title: note.program ? `${note.title} (${note.program})` : note.title,
+          body: note.body,
+          to: '/mentor/library',
+        });
+      }
       const via = note.channels.includes('email')
         ? note.channels.includes('in_app')
           ? 'in-app + email'
           : 'email only'
         : 'in-app only';
-      toast(`Released to mentors (${via})`);
+      const scope = note.program ? note.program : 'all programs';
+      toast(`Released to ${scope} (${via})`);
     },
     [notify, toast],
   );
@@ -1238,7 +1376,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
           personalityRead: input.personalityRead,
           issues: input.issues,
           nextSteps: input.nextSteps,
-          by: actingAs,
+          by: input.by ?? actingAs,
           kind: input.kind ?? '1:1',
         };
         const newBlockers: Blocker[] = (input.blockers ?? []).map((b) => ({
@@ -1522,9 +1660,16 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       const owner = findTaskOwner(taskId);
       if (!owner) return;
       const task = owner.tasks.find((t) => t.id === taskId);
+      // normalize an ISO date ('2026-06-15') to the app's friendly label ('Jun 15')
+      const fmtDue = (d: string) => {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
+        const [y, mo, da] = d.split('-').map(Number);
+        return new Date(y, mo - 1, da).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      };
       patchMentee(owner.id, (m) => ({
         ...m,
-        tasks: m.tasks.map((t) => (t.id === taskId ? { ...t, due: newDue } : t)),
+        // mark the request so it surfaces in the mentor's review extension lens
+        tasks: m.tasks.map((t) => (t.id === taskId ? { ...t, due: fmtDue(newDue), extensionRequested: true } : t)),
         delays: [
           {
             id: idRef.current++ + 1,
@@ -1670,6 +1815,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       setSlot,
       addSlot,
       removeSlot,
+      moveSlot,
       applyScheduleToAll,
       startSlotRoadmap,
       setRoadmapStep,
@@ -1689,6 +1835,9 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       addAvailabilitySlot,
       removeAvailabilitySlot,
       bookAvailabilitySlot,
+      requestMeeting,
+      programs,
+      addProgram,
       releaseNotes,
       publishReleaseNote,
       collaborators,
@@ -1702,6 +1851,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       roadmaps,
       roadmapProgress,
       createRoadmap,
+      updateRoadmap,
+      deleteRoadmap,
       importRoadmap,
       assignRoadmap,
       bulkAssignRoadmap,
@@ -1750,12 +1901,13 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       updatePersonality, acceptDelay, addBlocker, resolveBlocker, sendNudge, getTracks,
       createTrack, renameTrack, archiveTrack, createTrackFromTemplate, assignTask,
       bulkAssignTask, moveTaskToTrack, saveTaskTemplate, roadmaps, roadmapProgress,
-      createRoadmap, importRoadmap, assignRoadmap, bulkAssignRoadmap,
-      getSchedule, setSlot, addSlot, removeSlot, applyScheduleToAll, startSlotRoadmap,
+      createRoadmap, updateRoadmap, deleteRoadmap, importRoadmap, assignRoadmap, bulkAssignRoadmap,
+      getSchedule, setSlot, addSlot, removeSlot, moveSlot, applyScheduleToAll, startSlotRoadmap,
       setRoadmapStep, nudgeRoadmapStep, switchSlotRoadmap,
       scheduleTemplates, createScheduleTemplate, updateScheduleTemplate, deleteScheduleTemplate, inheritOrgTemplate, assignTemplateToMentees, toggleSlotBookable, bookableSlots,
       getDailyLogs, saveDailyLog,
-      availabilitySlots, addAvailabilitySlot, removeAvailabilitySlot, bookAvailabilitySlot,
+      availabilitySlots, addAvailabilitySlot, removeAvailabilitySlot, bookAvailabilitySlot, requestMeeting,
+      programs, addProgram,
       releaseNotes, publishReleaseNote,
       collaborators, getCollaborators, inviteCollaborator, actingAs, setActingAs,
       pendingChainAdvance, confirmChainAdvance, dismissChainAdvance,

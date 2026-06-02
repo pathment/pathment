@@ -22,6 +22,7 @@ import {
 } from '@/lib/ui';
 import { Page } from '@/components/Page';
 import { useStore } from '@/store/AppStore';
+import { slotLabel } from '@/lib/ai';
 import type { FrictionKind } from '@/lib/types';
 
 type Panel = 'submit' | 'extension' | 'blocker';
@@ -48,7 +49,7 @@ function Confirmation({ title, body }: { title: string; body: string }) {
 export function TaskDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { currentMenteeId, getMentee, submitTask, requestExtension, logFriction } = useStore();
+  const { currentMenteeId, getMentee, getSchedule, submitTask, requestExtension, logFriction } = useStore();
   const me = getMentee(currentMenteeId)!;
   const task = me.tasks.find((t) => String(t.id) === id);
 
@@ -123,7 +124,7 @@ export function TaskDetail() {
           {task.slot && task.slot !== 'anytime' && (
             <>
               <span className="text-ink-faint">&middot;</span>
-              <span className="capitalize">{task.slot} slot</span>
+              <span>{slotLabel(task.slot, getSchedule(me.id))} slot</span>
             </>
           )}
           {task.track && (

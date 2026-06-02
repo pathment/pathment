@@ -173,7 +173,7 @@ function Topbar({
       <div className="ml-auto flex items-center gap-1.5">
         {role !== 'mentee' && (
           <button
-            onClick={onAssign}
+            onClick={() => (role === 'admin' ? navigate('/admin/health') : onAssign())}
             className="rounded-r hidden items-center gap-2 border border-ink bg-ink px-3.5 py-2 text-sm font-medium text-white transition-colors hover:bg-neutral-800 sm:inline-flex"
           >
             <Plus className="h-4 w-4" />
