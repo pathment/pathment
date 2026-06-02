@@ -57,7 +57,7 @@ export function InsightsPanel({ menteeId }: { menteeId: number }) {
     setNote('');
   };
 
-  // Summary strip — counts per kind, in a stable order.
+  // Summary strip - counts per kind, in a stable order.
   const counts = KIND_ORDER.map((k) => ({
     kind: k,
     label: KIND_META[k].label.toLowerCase(),
@@ -140,7 +140,7 @@ export function InsightsPanel({ menteeId }: { menteeId: number }) {
       {/* Timeline */}
       {insights.length === 0 ? (
         <p className="pt-4 text-sm text-ink-faint">
-          No insights logged yet &mdash; capture what you learn in syncs and 1:1s.
+          No insights logged yet - capture what you learn in syncs and 1:1s.
         </p>
       ) : (
         <div className="mt-4 space-y-3">

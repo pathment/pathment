@@ -37,14 +37,14 @@ function buildGroups(mentees: Mentee[]): Group[] {
     {
       key: 'disengaged',
       label: 'Disengaged',
-      desc: 'Behind with no logged reason — effort is missing, not just obstacles. Reach out directly.',
+      desc: 'Behind with no logged reason - effort is missing, not just obstacles. Reach out directly.',
       tone: 'rose',
       members: disengaged,
     },
     {
       key: 'struggling',
       label: 'Struggling despite effort',
-      desc: 'Fighting real constraints — strong relative progress. Protect their deadlines, don’t push harder.',
+      desc: 'Fighting real constraints - strong relative progress. Protect their deadlines, don’t push harder.',
       tone: 'amber',
       members: struggling,
     },
@@ -122,7 +122,7 @@ function RiskCard({ m }: { m: Mentee }) {
 
       {disengaged && nudges >= 2 && (
         <p className="mb-3 text-[11px] text-ink-faint">
-          {nudges} automated nudges sent · 0 replies — time for a human message.
+          {nudges} automated nudges sent · 0 replies - time for a human message.
         </p>
       )}
 
@@ -160,12 +160,12 @@ export function AtRisk() {
     <Page>
       <PageHeader
         title="At-risk"
-        subtitle="Ranked by Pathment AI — who's slipping, and why"
+        subtitle="Ranked by Pathment AI - who's slipping, and why"
       />
 
       {total === 0 ? (
         <Card className="grid place-items-center py-16 text-center">
-          <p className="text-sm text-ink-mute">No one is flagged right now — the cohort is steady.</p>
+          <p className="text-sm text-ink-mute">No one is flagged right now - the cohort is steady.</p>
         </Card>
       ) : (
         <div className="space-y-8">

@@ -27,7 +27,7 @@ export function ChainAdvanceModal() {
     <Modal
       open
       onClose={dismissChainAdvance}
-      title="Roadmap complete — start the next?"
+      title="Roadmap complete - start the next?"
       subtitle={`${mentee.name} finished their ${slotName.toLowerCase()} roadmap`}
       footer={
         <div className="flex items-center justify-end gap-2">

@@ -27,7 +27,7 @@ const PERIOD_OPTIONS: Array<{ value: Period; label: string }> = [
 ];
 
 /* ----------------------------------------------------------------
-   past reports — local mock archive
+   past reports - local mock archive
 ----------------------------------------------------------------- */
 interface PastReport {
   id: string;

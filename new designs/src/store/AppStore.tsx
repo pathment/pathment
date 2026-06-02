@@ -81,7 +81,7 @@ import type {
 } from '@/lib/types';
 
 /* ----------------------------------------------------------------
-   In-session store — the single source of truth across ALL three roles.
+   In-session store - the single source of truth across ALL three roles.
    Seeds from mock data; every action (review, 1:1, blocker, delay, nudge,
    tracks, assignment, mentee submissions, AI keys) mutates here so the whole
    app reflects it live without a backend.
@@ -140,7 +140,7 @@ interface Store {
 
   // mentor actions
   reviewTask: (menteeId: number, taskId: number, input: ReviewInput) => void;
-  // revert a review — task goes back to submitted, score/decision cleared, and
+  // revert a review - task goes back to submitted, score/decision cleared, and
   // any roadmap auto-advance is rolled back. For accidental approvals.
   unreview: (menteeId: number, taskId: number) => void;
   quickAction: (menteeId: number, taskId: number, action: 'approve' | 'retry', comment?: string) => void;
@@ -171,7 +171,7 @@ interface Store {
   moveTaskToTrack: (menteeId: number, taskId: number, trackId: number) => void;
   saveTaskTemplate: (input: TaskInput) => string;
 
-  // schedule — parts of the day, each a "track" (roadmap chain or recurring)
+  // schedule - parts of the day, each a "track" (roadmap chain or recurring)
   getSchedule: (menteeId: number) => Schedule;
   setSlot: (menteeId: number, slotId: ScheduleSlot, patch: Partial<SlotConfig>) => void;
   applyScheduleToAll: (schedule: Schedule) => void;
@@ -187,18 +187,18 @@ interface Store {
   setRoadmapStep: (menteeId: number, slot: ScheduleSlot, step: number) => void;
   nudgeRoadmapStep: (menteeId: number, slot: ScheduleSlot, delta: number) => void;
   switchSlotRoadmap: (menteeId: number, slot: ScheduleSlot, roadmapId: number, startStep?: number) => void;
-  // named schedule templates — create, inherit org ones, assign to mentees
+  // named schedule templates - create, inherit org ones, assign to mentees
   scheduleTemplates: ScheduleTemplate[];
   createScheduleTemplate: (name: string, description: string, blocks: TimeBlock[]) => number;
   updateScheduleTemplate: (id: number, patch: { name?: string; description?: string; blocks?: TimeBlock[] }) => void;
   deleteScheduleTemplate: (id: number) => void;
   inheritOrgTemplate: (orgTemplateId: number) => number; // clone an org template to a mentor one
   assignTemplateToMentees: (templateId: number, menteeIds: number[]) => void;
-  // 1:1 availability — mark which slots a mentee can book a call in
+  // 1:1 availability - mark which slots a mentee can book a call in
   toggleSlotBookable: (menteeId: number, slot: ScheduleSlot) => void;
   bookableSlots: (menteeId: number) => ScheduleSlot[];
 
-  // daily progress log — mentee ticks off schedule + tasks per day, with notes
+  // daily progress log - mentee ticks off schedule + tasks per day, with notes
   getDailyLogs: (menteeId: number) => DailyLogEntry[];
   saveDailyLog: (
     menteeId: number,
@@ -225,7 +225,7 @@ interface Store {
   releaseNotes: ReleaseNote[];
   publishReleaseNote: (note: Omit<ReleaseNote, 'id' | 'at' | 'by'>) => void;
 
-  // collaborators — invite specialists onto a mentee; everything they log is
+  // collaborators - invite specialists onto a mentee; everything they log is
   // attributed to them. `actingAs` is who the current session logs data as.
   collaborators: Collaborator[];
   getCollaborators: (menteeId: number) => Collaborator[];
@@ -250,7 +250,7 @@ interface Store {
   deleteRoadmap: (id: number) => void;
   importRoadmap: (orgRoadmapId: number) => number;
   /* startStep lets a mentee join at the point that matches their current
-     standing — relative to their journey, not an absolute step 1. */
+     standing - relative to their journey, not an absolute step 1. */
   assignRoadmap: (menteeId: number, roadmapId: number, startStep?: number) => void;
   bulkAssignRoadmap: (menteeIds: number[], roadmapId: number, startStep?: number) => void;
 
@@ -276,7 +276,7 @@ interface Store {
   getMessages: (menteeId: number) => Message[];
   sendMessage: (menteeId: number, body: string, channels: MessageChannel[], templateId?: string) => void;
 
-  // scheduling — 1:1s a mentor books
+  // scheduling - 1:1s a mentor books
   meetings: ScheduledMeeting[];
   getMeetings: (menteeId: number) => ScheduledMeeting[];
   scheduleMeeting: (menteeId: number, m: Omit<ScheduledMeeting, 'id' | 'menteeId' | 'status'>) => void;
@@ -396,7 +396,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   /* ---------------- roadmap advancement helper ----------------
      When an approved task is roadmap-linked, advance that mentee's
      roadmap progress and auto-assign the next step's task. */
-  // a roadmap is a TEMPLATE — its step becomes a real assigned task (which is
+  // a roadmap is a TEMPLATE - its step becomes a real assigned task (which is
   // what gets scored). One builder, reused everywhere a step turns into a task.
   const buildRoadmapTask = (id: number, rm: Roadmap, step: RoadmapStep, slot?: ScheduleSlot): Task => ({
     id,
@@ -460,9 +460,9 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
           menteeId,
           taskId: newTask.id,
         });
-        toast(`Roadmap advanced → "${nextStep.title}" assigned`);
+        toast(`Roadmap advanced to "${nextStep.title}" assigned`);
       } else {
-        // roadmap complete — mark it, then see if its slot's chain has a next one
+        // roadmap complete - mark it, then see if its slot's chain has a next one
         setRoadmapProgress((prev) =>
           prev.map((p) =>
             p.menteeId === menteeId && p.roadmapId === rm.id ? { ...p, completed: true } : p,
@@ -481,12 +481,12 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
           notify({
             role: 'mentor',
             kind: 'system',
-            title: `Roadmap complete — ready to start "${nextRm?.name}"?`,
+            title: `Roadmap complete - ready to start "${nextRm?.name}"?`,
             body: `Confirm to move them to the next roadmap in their ${slotCfg?.label ?? slot} track.`,
             menteeId,
             to: `/mentor/mentee/${menteeId}`,
           });
-          toast(`Roadmap "${rm.name}" complete — confirm the next one`);
+          toast(`Roadmap "${rm.name}" complete - confirm the next one`);
         } else {
           toast(`Roadmap "${rm.name}" complete 🎉`);
         }
@@ -578,7 +578,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         // cancel a queued chain advance triggered by this mentee's completion
         setPendingChainAdvance((p) => (p && p.menteeId === menteeId ? null : p));
       }
-      toast('Review undone — back to submitted');
+      toast('Review undone - back to submitted');
     },
     [patchMentee, roadmaps, toast],
   );
@@ -599,7 +599,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         body: input.notes,
         taskId,
       });
-      // toast offers an Undo — instant recovery from a mis-click / errant key
+      // toast offers an Undo - instant recovery from a mis-click / errant key
       toast(verb, () => unreview(menteeId, taskId));
     },
     [applyReview, notify, toast, unreview],
@@ -729,7 +729,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     },
     [roadmaps, toast],
   );
-  /* core (no toast) — reused by single + bulk assignment */
+  /* core (no toast) - reused by single + bulk assignment */
   const assignRoadmapCore = useCallback(
     (menteeId: number, roadmapId: number, startStep = 0, slot?: ScheduleSlot) => {
       const rm = roadmaps.find((r) => r.id === roadmapId);
@@ -782,7 +782,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     [assignRoadmapCore, roadmaps, mentees, toast],
   );
 
-  /* fast bulk — one roadmap to many mentees in a click */
+  /* fast bulk - one roadmap to many mentees in a click */
   const bulkAssignRoadmap = useCallback<Store['bulkAssignRoadmap']>(
     (menteeIds, roadmapId, startStep = 0) => {
       menteeIds.forEach((id) => assignRoadmapCore(id, roadmapId, startStep));
@@ -942,7 +942,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         const nextId = pos >= 0 ? chain[pos + 1] : undefined;
         if (nextId != null) {
           setPendingChainAdvance({ menteeId, slot, nextRoadmapId: nextId });
-          toast(`"${rm.name}" finished — confirm the next roadmap`);
+          toast(`"${rm.name}" finished - confirm the next roadmap`);
         } else {
           toast('Already at the last step of the chain');
         }
@@ -1056,7 +1056,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         });
         return next;
       });
-      toast(`"${tpl.name}" assigned to ${menteeIds.length} mentee${menteeIds.length === 1 ? '' : 's'} — now fill the slots`);
+      toast(`"${tpl.name}" assigned to ${menteeIds.length} mentee${menteeIds.length === 1 ? '' : 's'} - now fill the slots`);
     },
     [scheduleTemplates, toast],
   );
@@ -1453,7 +1453,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         role: 'mentee',
         kind: 'nudge',
         title: 'A gentle nudge from your mentor',
-        body: message ?? 'Checking in — let me know if anything is blocking you.',
+        body: message ?? 'Checking in - let me know if anything is blocking you.',
         menteeId,
       });
       toast(`Nudge sent${m ? ` to ${m.name.split(' ')[0]}` : ''}`);
@@ -1683,7 +1683,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
             accepted: false,
             date: 'Today',
             category: 'external',
-            aiRationale: 'Newly logged — pending the mentor’s read against this mentee’s friction history.',
+            aiRationale: 'Newly logged - pending the mentor’s read against this mentee’s friction history.',
           },
           ...m.delays,
         ],
@@ -1724,7 +1724,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
             accepted: false,
             date: 'Today',
             category: 'external',
-            aiRationale: 'External friction just logged — counts in the relative-progress lens once accepted.',
+            aiRationale: 'External friction just logged - counts in the relative-progress lens once accepted.',
           },
           ...m.delays,
         ],
@@ -1738,7 +1738,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
         taskId,
         to: `/mentor/mentee/${owner.id}`,
       });
-      toast('Friction logged — your mentor can see it');
+      toast('Friction logged - your mentor can see it');
     },
     [findTaskOwner, patchMentee, notify, toast],
   );

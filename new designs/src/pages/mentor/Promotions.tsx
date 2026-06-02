@@ -27,7 +27,7 @@ import {
 import { useStore } from '@/store/AppStore';
 
 /* ----------------------------------------------------------------
-   Promotion pipeline — strong mentees can become co-mentors. A
+   Promotion pipeline - strong mentees can become co-mentors. A
    candidate flows nominated -> interview -> approved -> promoted.
    All pipeline state is local; mentee data is read-only from store.
 ----------------------------------------------------------------- */

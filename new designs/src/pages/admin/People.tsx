@@ -61,7 +61,7 @@ export function People() {
     });
   }, [mentees, query, risk]);
 
-  // mentor roster — at least the current mentor, with a live load read.
+  // mentor roster - at least the current mentor, with a live load read.
   const mentorRows = useMemo(() => {
     const load = mentees.filter((m) => m.program === 'Full-Stack Web Development').length;
     return [{ ...mentor, load }];
@@ -74,7 +74,7 @@ export function People() {
         subtitle="Everyone across your programs"
       />
 
-      {/* segment toggle — mentees | mentors */}
+      {/* segment toggle - mentees | mentors */}
       <div className="mb-4 inline-flex rounded-r border border-hairline bg-white p-0.5">
         {SEGMENTS.map((s) => {
           const active = segment === s.key;

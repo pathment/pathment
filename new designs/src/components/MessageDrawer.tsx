@@ -130,7 +130,7 @@ export function MessageDrawer({
             </div>
           </div>
 
-          <Field label="Message" hint="Tweak the wording — it's your voice that lands.">
+          <Field label="Message" hint="Tweak the wording - it's your voice that lands.">
             <TextArea
               rows={8}
               value={body}

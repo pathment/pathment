@@ -18,7 +18,7 @@ import { Card, Badge, Button, SectionLabel, cx } from '@/lib/ui';
 import { useStore } from '@/store/AppStore';
 
 /* ----------------------------------------------------------------
-   The mentor spec — a reference page that complements the onboarding
+   The mentor spec - a reference page that complements the onboarding
    wizard. Mission, principles, responsibilities, conduct, FAQs.
 ----------------------------------------------------------------- */
 
@@ -63,7 +63,7 @@ const PRINCIPLES: Principle[] = [
 
 const RESPONSIBILITIES: string[] = [
   'Run a weekly review for every active mentee in your clan',
-  'Keep at-risk flags current — raise, lower, and clear them as the week changes',
+  'Keep at-risk flags current - raise, lower, and clear them as the week changes',
   'Hold scheduled 1:1s and log a short note after each one',
   'Record insights with attribution so the trail survives a handoff',
   'Respond to flagged blockers within the 24-hour SLA',
@@ -126,7 +126,7 @@ const FAQS: Faq[] = [
   },
   {
     q: 'How is the weekend grind structured?',
-    a: 'Weekdays carry the structured rhythm — journaling, reading, three talks paired with meals, and core work. Weekends are the ten-hour deep-work grind, balanced with deliberate family time. The cadence is the methodology, not a suggestion.',
+    a: 'Weekdays carry the structured rhythm - journaling, reading, three talks paired with meals, and core work. Weekends are the ten-hour deep-work grind, balanced with deliberate family time. The cadence is the methodology, not a suggestion.',
   },
 ];
 
@@ -152,7 +152,7 @@ export function MentorSpec() {
         actions={<Badge tone="brand">{mentor.role}</Badge>}
       />
 
-      {/* HERO — mission + methodology */}
+      {/* HERO - mission + methodology */}
       <Card className="mb-6 p-6">
         <div className="eyebrow mb-3">Pathment · Mentoring</div>
         <p className="max-w-2xl text-lg font-medium leading-snug text-ink">
@@ -265,7 +265,7 @@ export function MentorSpec() {
         </ul>
       </Card>
 
-      {/* FAQS — accordion */}
+      {/* FAQS - accordion */}
       <SectionLabel>FAQs</SectionLabel>
       <Card className="mb-8 p-0">
         <ul className="divide-y divide-hairline">

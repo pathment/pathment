@@ -59,7 +59,7 @@ export function Settings() {
         subtitle="Connect your own AI keys, route them per feature, and set your mentoring capacity."
       />
 
-      {/* AI CONNECTIONS — bring your own key */}
+      {/* AI CONNECTIONS - bring your own key */}
       <Card className="mb-6 p-0">
         <div className="flex items-center justify-between border-b border-hairline px-5 py-4">
           <div>
@@ -68,7 +68,7 @@ export function Settings() {
               <span className="text-sm font-semibold text-ink">AI connections</span>
             </div>
             <p className="mt-0.5 text-xs text-ink-mute">
-              Bring your own keys. They stay yours — route different providers to different features.
+              Bring your own keys. They stay yours - route different providers to different features.
             </p>
           </div>
           <Button onClick={() => setAddOpen(true)}>
@@ -255,7 +255,7 @@ export function Settings() {
             <TextInput
               value={label}
               onChange={(e) => setLabel(e.target.value)}
-              placeholder={`e.g. ${PROVIDER_META[provider].label} — my account`}
+              placeholder={`e.g. ${PROVIDER_META[provider].label} - my account`}
             />
           </Field>
           <Field label="API key">

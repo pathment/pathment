@@ -16,7 +16,7 @@ import type { SlotConfig } from '@/lib/types';
 /* Per-individual roadmap control for one slot. The roadmap is a TEMPLATE: its
    steps auto-assign real tasks, and the assigned task is what carries the score.
    Here the mentor can jump a mentee to any step, switch the active roadmap, or
-   move along the chain — fast, no ceremony. */
+   move along the chain - fast, no ceremony. */
 export function TrackManager({
   menteeId,
   slot,
@@ -57,7 +57,7 @@ export function TrackManager({
       }
     >
       <div className="space-y-5">
-        {/* CHAIN — switch which roadmap is active */}
+        {/* CHAIN - switch which roadmap is active */}
         <div>
           <SectionLabel>Roadmap chain · template</SectionLabel>
           {chain.length === 0 ? (
@@ -122,7 +122,7 @@ export function TrackManager({
           </div>
         </div>
 
-        {/* STEPS — jump to any step of the active roadmap */}
+        {/* STEPS - jump to any step of the active roadmap */}
         {activeRm && activeProg ? (
           <div>
             <div className="mb-1.5 flex items-center justify-between">
@@ -172,7 +172,7 @@ export function TrackManager({
           </p>
         )}
 
-        {/* THE ASSIGNED TASK — this is what gets scored */}
+        {/* THE ASSIGNED TASK - this is what gets scored */}
         <div>
           <SectionLabel>Assigned task · scored here</SectionLabel>
           {activeTask ? (

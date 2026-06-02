@@ -52,7 +52,7 @@ export function Schedules() {
     <Page>
       <PageHeader
         title="Schedules"
-        subtitle="Build a day-shape once, assign it to mentees — same structure, their own tasks"
+        subtitle="Build a day-shape once, assign it to mentees - same structure, their own tasks"
         actions={
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={() => setCreating(true)}>
@@ -65,7 +65,7 @@ export function Schedules() {
         }
       />
 
-      {/* MY 1:1 AVAILABILITY — Calendly-style: publish concrete bookable times */}
+      {/* MY 1:1 AVAILABILITY - Calendly-style: publish concrete bookable times */}
       <section className="mb-8">
         <SectionLabel>My 1:1 availability</SectionLabel>
         <Card className="p-5">
@@ -100,7 +100,7 @@ export function Schedules() {
 
           {/* published slots */}
           {availabilitySlots.length === 0 ? (
-            <p className="text-sm text-ink-faint">No times published yet — add a few above.</p>
+            <p className="text-sm text-ink-faint">No times published yet - add a few above.</p>
           ) : (
             <div className="flex flex-wrap gap-2">
               {availabilitySlots.map((s) => {
@@ -184,7 +184,7 @@ export function Schedules() {
         }}
       />
 
-      {/* CREATE / EDIT DRAWER — freeform time blocks (pure structure) */}
+      {/* CREATE / EDIT DRAWER - freeform time blocks (pure structure) */}
       <ScheduleEditorDrawer
         open={creating || !!editingTpl}
         template={editingTpl}
@@ -281,7 +281,7 @@ function ScheduleEditorDrawer({
       subtitle={
         editing
           ? 'Change the time blocks. Mentees already on this schedule keep their current slots.'
-          : "Define the day's time blocks. Structure only — you fill each slot per mentee after assigning."
+          : "Define the day's time blocks. Structure only - you fill each slot per mentee after assigning."
       }
       footer={
         <div className="flex items-center justify-between">
@@ -311,7 +311,7 @@ function ScheduleEditorDrawer({
         <Field label="Schedule name">
           <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Bootcamp Day, Interview Prep" autoFocus />
         </Field>
-        <Field label="Description" hint="Optional — what this day-shape is for.">
+        <Field label="Description" hint="Optional - what this day-shape is for.">
           <TextArea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="A heads-down structure with three talks and core work." />
         </Field>
 
@@ -350,7 +350,7 @@ function ScheduleEditorDrawer({
                 </SelectInput>
                 <button
                   onClick={() => setBlock(b.id, { bookable: !b.bookable })}
-                  title={b.bookable ? '1:1 bookable — click to disable' : 'Allow 1:1 booking here'}
+                  title={b.bookable ? '1:1 bookable - click to disable' : 'Allow 1:1 booking here'}
                   className={cx(
                     'rounded-r grid h-8 w-8 shrink-0 place-items-center transition-colors',
                     b.bookable ? 'text-emerald-600 hover:bg-emerald-50' : 'text-ink-faint hover:bg-neutral-100 hover:text-ink',
@@ -398,7 +398,7 @@ function TemplateCard({
         {tpl.description && <p className="mt-1 text-xs text-ink-mute">{tpl.description}</p>}
       </div>
 
-      {/* pure time structure — no tasks/roadmaps live in a schedule */}
+      {/* pure time structure - no tasks/roadmaps live in a schedule */}
       <div className="flex-1 divide-y divide-hairline">
         {tpl.blocks.map((b) => (
           <div key={b.id} className="flex items-center gap-3 px-5 py-2.5">
@@ -423,7 +423,7 @@ function TemplateCard({
       </div>
 
       <div className="flex items-center justify-between gap-2 border-t border-hairline bg-neutral-50/60 px-5 py-3">
-        <span className="text-[11px] text-ink-faint">Structure only — fill slots per mentee after assigning</span>
+        <span className="text-[11px] text-ink-faint">Structure only - fill slots per mentee after assigning</span>
         <div className="flex items-center gap-2">
           {onEdit && (
             <Button variant="outline" size="sm" onClick={onEdit}>

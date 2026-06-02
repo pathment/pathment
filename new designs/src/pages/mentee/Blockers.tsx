@@ -6,7 +6,7 @@ import { Modal, Field, TextArea, Segmented, SelectInput } from '@/components/ove
 import { useStore } from '@/store/AppStore';
 import type { Blocker, BlockerCategory } from '@/lib/types';
 
-/* Severity colour mapping — high reads as the accent red, medium amber, low quiet. */
+/* Severity colour mapping - high reads as the accent red, medium amber, low quiet. */
 const SEVERITY_TONE: Record<Blocker['severity'], 'rose' | 'amber' | 'neutral'> = {
   high: 'rose',
   medium: 'amber',
@@ -90,7 +90,7 @@ export function Blockers() {
   const resolved = me.blockers.filter((b) => b.resolved);
   const hasAny = me.blockers.length > 0;
 
-  // active tasks this blocker could be about — keeps blockers relevant, not floating
+  // active tasks this blocker could be about - keeps blockers relevant, not floating
   const activeTasks = me.tasks.filter((t) => t.status !== 'completed' && t.status !== 'rejected');
 
   const [addOpen, setAddOpen] = useState(false);
@@ -120,7 +120,7 @@ export function Blockers() {
     <Page>
       <PageHeader
         title="Blockers"
-        subtitle="What's slowing you down — your mentor can see these"
+        subtitle="What's slowing you down - your mentor can see these"
         actions={
           <Button onClick={() => setAddOpen(true)}>
             <Plus className="h-4 w-4" /> Add blocker
@@ -133,7 +133,7 @@ export function Blockers() {
           <span className="grid h-10 w-10 place-items-center border border-emerald-200 text-emerald-600">
             <CheckCircle2 className="h-5 w-5" />
           </span>
-          <div className="text-sm font-medium text-ink">No blockers right now — clear runway.</div>
+          <div className="text-sm font-medium text-ink">No blockers right now - clear runway.</div>
           <p className="max-w-sm text-xs leading-relaxed text-ink-mute">
             If anything starts to slow you down, log it here. Flagging early helps your mentor
             support you and keeps your progress measured fairly.
@@ -160,7 +160,7 @@ export function Blockers() {
             ) : (
               <Card>
                 <p className="text-sm text-ink-mute">
-                  Nothing open right now — anything you&apos;ve cleared is below.
+                  Nothing open right now - anything you&apos;ve cleared is below.
                 </p>
               </Card>
             )}
@@ -180,13 +180,13 @@ export function Blockers() {
         </div>
       )}
 
-      {/* Logged friction — circumstances counting in the mentee's favour */}
+      {/* Logged friction - circumstances counting in the mentee's favour */}
       {me.delays.length > 0 && (
         <div className="mt-6">
           <SectionLabel>Logged friction</SectionLabel>
           <Card className="p-0">
             <div className="border-b border-hairline px-4 py-3 text-xs leading-relaxed text-ink-mute">
-              Circumstances you&apos;ve logged. These count in your favour — your mentor weighs them
+              Circumstances you&apos;ve logged. These count in your favour - your mentor weighs them
               against your progress.
             </div>
             <div className="divide-y divide-neutral-100">
@@ -215,12 +215,12 @@ export function Blockers() {
         </div>
       )}
 
-      {/* Add blocker — mentee flags what's slowing them down */}
+      {/* Add blocker - mentee flags what's slowing them down */}
       <Modal
         open={addOpen}
         onClose={() => setAddOpen(false)}
         title="Add a blocker"
-        subtitle="Flagging early helps your mentor support you — and it counts in your favour."
+        subtitle="Flagging early helps your mentor support you - and it counts in your favour."
         footer={
           <div className="flex items-center justify-end gap-2">
             <Button variant="ghost" onClick={() => setAddOpen(false)}>
@@ -245,7 +245,7 @@ export function Blockers() {
           {activeTasks.length > 0 && (
             <Field label="Which task is this about?" hint="Linking it helps your mentor see exactly where you're stuck.">
               <SelectInput value={taskId} onChange={(e) => setTaskId(e.target.value)}>
-                <option value="">General — not task-specific</option>
+                <option value="">General - not task-specific</option>
                 {activeTasks.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.title}

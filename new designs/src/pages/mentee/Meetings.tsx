@@ -53,7 +53,7 @@ export function Meetings() {
                   </Button>
                 </div>
 
-                {/* booking — pick from the exact times the mentor published */}
+                {/* booking - pick from the exact times the mentor published */}
                 {openSlots.length === 0 ? (
                   <div className="mt-3">
                     <p className="text-xs text-ink-faint">

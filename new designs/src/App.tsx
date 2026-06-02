@@ -42,7 +42,7 @@ export function App() {
     <AppStoreProvider>
       <BrowserRouter>
         <Routes>
-          {/* full-screen mentor onboarding — no app shell */}
+          {/* full-screen mentor onboarding - no app shell */}
           <Route path="/mentor/onboarding" element={<MentorOnboarding />} />
 
           <Route element={<AppShell />}>

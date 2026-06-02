@@ -26,11 +26,11 @@ const CHANGE_REASONS = [
 ];
 
 const RESOLUTIONS = [
-  'Approved — better fit',
-  'Approved — capacity available',
-  'Denied — clan at capacity',
-  'Denied — within cooldown window',
-  'Deferred — revisit next cycle',
+  'Approved - better fit',
+  'Approved - capacity available',
+  'Denied - clan at capacity',
+  'Denied - within cooldown window',
+  'Deferred - revisit next cycle',
 ];
 
 type ReqStatus = 'pending' | 'approved' | 'denied';

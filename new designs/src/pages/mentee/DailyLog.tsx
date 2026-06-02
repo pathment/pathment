@@ -24,7 +24,7 @@ function dateFromKey(key: string): Date {
   return new Date(y, m - 1, d);
 }
 
-/* slots are dynamic now — pick an icon by position (sunrise → midday → evening
+/* slots are dynamic now - pick an icon by position (sunrise → midday → evening
    → flexible, then cycle). */
 const SLOT_ICONS = [Sunrise, Sun, Moon, Clock];
 const iconFor = (i: number) => SLOT_ICONS[i % SLOT_ICONS.length];
@@ -56,7 +56,7 @@ export function DailyLog() {
   const activeDay = days.find((d) => d.key === activeKey)!;
   const existing = logs.find((l) => l.dateKey === activeKey);
 
-  // tasks the mentee can tick for the day — open tasks whose slot runs that day
+  // tasks the mentee can tick for the day - open tasks whose slot runs that day
   const dayTasks = useMemo(() => {
     const d = dateFromKey(activeKey);
     return me.tasks.filter((t) => {
@@ -114,7 +114,7 @@ export function DailyLog() {
   };
 
   const isBackfill = activeKey !== days[0].key;
-  // only show the slots that actually run on the selected day — weekdays carry
+  // only show the slots that actually run on the selected day - weekdays carry
   // the structured day, weekends are just the grind + family time
   const activeDate = dateFromKey(activeKey);
   const isWeekend = activeDate.getDay() === 0 || activeDate.getDay() === 6;
@@ -127,7 +127,7 @@ export function DailyLog() {
         subtitle="Tick off your day, jot a note, and backfill anything you missed"
       />
 
-      {/* DAY PICKER — today + backfill */}
+      {/* DAY PICKER - today + backfill */}
       <div className="mb-5 flex gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
         {days.map((d) => {
           const logged = logs.some((l) => l.dateKey === d.key);
@@ -168,7 +168,7 @@ export function DailyLog() {
             {/* schedule slots (the talks) */}
             <div className="mb-2 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-ink-faint">
               <CalendarDays className="h-3 w-3" /> Your schedule
-              <span className="text-ink-faint">· {isWeekend ? 'Weekend — grind + family' : 'Weekday'}</span>
+              <span className="text-ink-faint">· {isWeekend ? 'Weekend - grind + family' : 'Weekday'}</span>
             </div>
             {scheduledSlots.length === 0 && (
               <p className="rounded-r border border-dashed border-hairline px-3 py-3 text-center text-xs text-ink-faint">
@@ -285,12 +285,12 @@ export function DailyLog() {
           </Card>
         </div>
 
-        {/* COMBINED TIMELINE — what was done on each day */}
+        {/* COMBINED TIMELINE - what was done on each day */}
         <div className="lg:col-span-1">
           <SectionLabel>Your week, day by day</SectionLabel>
           {logs.length === 0 ? (
             <Card className="py-8 text-center text-sm text-ink-mute">
-              Nothing logged yet — tick off today and it&apos;ll show here.
+              Nothing logged yet - tick off today and it&apos;ll show here.
             </Card>
           ) : (
             <div className="space-y-3">

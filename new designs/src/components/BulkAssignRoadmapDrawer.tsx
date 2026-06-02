@@ -5,7 +5,7 @@ import { Avatar, Badge, Button, cx, RISK_META, RiskDot } from '@/lib/ui';
 import { useStore } from '@/store/AppStore';
 import type { Roadmap } from '@/lib/types';
 
-/* Fast bulk roadmap assignment — searchable list, click-click-click to
+/* Fast bulk roadmap assignment - searchable list, click-click-click to
    multi-select, select-all, pick a relative start step, assign in one shot. */
 export function BulkAssignRoadmapDrawer({
   open,
@@ -109,7 +109,7 @@ export function BulkAssignRoadmapDrawer({
       ) : (
         <div className="space-y-4">
           {/* relative starting step */}
-          <Field label="Start everyone at" hint="Place mentees relative to their journey — not always step 1.">
+          <Field label="Start everyone at" hint="Place mentees relative to their journey - not always step 1.">
             <SelectInput value={startStep} onChange={(e) => setStartStep(Number(e.target.value))}>
               {roadmap.steps.map((s, idx) => (
                 <option key={s.id} value={idx}>

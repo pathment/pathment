@@ -21,7 +21,7 @@ import { Badge, Button, Card, SectionLabel, cx } from '@/lib/ui';
 import type { Document, DocCategory } from '@/lib/types';
 
 /* ----------------------------------------------------------------
-   category meta — tone + icon + label for each DocCategory
+   category meta - tone + icon + label for each DocCategory
 ----------------------------------------------------------------- */
 type Tone = 'neutral' | 'brand' | 'emerald' | 'amber' | 'sky' | 'violet';
 
@@ -170,7 +170,7 @@ export function Documents() {
         </Card>
       ) : (
         <div className="mt-6 space-y-8">
-          {/* pinned first — emphasized with a left accent rule */}
+          {/* pinned first - emphasized with a left accent rule */}
           {pinned.length > 0 && (
             <section>
               <SectionLabel>Pinned</SectionLabel>
@@ -210,7 +210,7 @@ export function Documents() {
 
       <ReadDrawer doc={active} onClose={() => setActive(null)} />
 
-      {/* add / publish a document — available to mentors & admins */}
+      {/* add / publish a document - available to mentors & admins */}
       <Modal
         open={addOpen}
         onClose={() => setAddOpen(false)}
@@ -301,7 +301,7 @@ function DocCard({
             </span>
           )}
           <Badge tone={meta.tone}>{meta.label}</Badge>
-          {/* manage controls — appear on hover */}
+          {/* manage controls - appear on hover */}
           <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
             <button
               onClick={(e) => stop(e, onPin)}
@@ -346,7 +346,7 @@ function DocCard({
 }
 
 /* ----------------------------------------------------------------
-   read drawer — title, meta, expanded summary + placeholder body
+   read drawer - title, meta, expanded summary + placeholder body
 ----------------------------------------------------------------- */
 function ReadDrawer({ doc, onClose }: { doc: Document | null; onClose: () => void }) {
   const meta = doc ? CATEGORY_META[doc.category] : null;
@@ -397,7 +397,7 @@ function ReadDrawer({ doc, onClose }: { doc: Document | null; onClose: () => voi
             <p>
               Good mentorship is less about having the answers and more about
               asking the question that unlocks the next step. Start every session
-              by reading where the mentee actually is &mdash; not where the
+              by reading where the mentee actually is - not where the
               roadmap says they should be. The gap between those two is the work.
             </p>
             <p>
@@ -410,7 +410,7 @@ function ReadDrawer({ doc, onClose }: { doc: Document | null; onClose: () => voi
             <p>
               Keep feedback specific, kind, and actionable. When you approve with
               notes, point to one thing done well and one thing to push on next
-              time. When you request changes, make the path back obvious &mdash;
+              time. When you request changes, make the path back obvious -
               the goal is momentum, never a dead end. Close by agreeing on the
               single most important thing to move before you next talk.
             </p>

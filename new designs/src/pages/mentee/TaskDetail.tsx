@@ -157,7 +157,7 @@ export function TaskDetail() {
                 ))}
               </ul>
               <p className="mt-3 text-xs text-ink-faint">
-                This is the bar &mdash; no surprises. Hit these and you&apos;re good.
+                This is the bar - no surprises. Hit these and you&apos;re good.
               </p>
             </Card>
           )}
@@ -194,7 +194,7 @@ export function TaskDetail() {
               {panel === 'submit' &&
                 (justSubmitted || task.status === 'submitted' ? (
                   <Confirmation
-                    title="Submitted &mdash; nicely done"
+                    title="Submitted - nicely done"
                     body="Your mentor will review this and get back to you. No need to do anything else right now."
                   />
                 ) : (
@@ -260,7 +260,7 @@ export function TaskDetail() {
                   <div className="space-y-4">
                     <p className="rounded-xl bg-neutral-50 px-3 py-2 text-xs leading-relaxed text-ink-mute">
                       Asking for more time is completely fine. Extensions with a logged reason
-                      are looked at fairly &mdash; this isn&apos;t held against you.
+                      are looked at fairly - this isn&apos;t held against you.
                     </p>
                     <div>
                       <label className="mb-1.5 block text-sm font-medium text-ink">
@@ -331,7 +331,7 @@ export function TaskDetail() {
               {panel === 'blocker' &&
                 (blockDone ? (
                   <Confirmation
-                    title="Logged &mdash; thank you"
+                    title="Logged - thank you"
                     body="Your mentor can now see what you're up against. Logging this counts in your favor and helps them support you."
                   />
                 ) : (
@@ -339,7 +339,7 @@ export function TaskDetail() {
                     <p className="ai-panel flex items-start gap-2 p-3 text-xs leading-relaxed text-ink-soft">
                       <Heart className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand-600" />
                       <span>
-                        Logging this helps your mentor see your real circumstances &mdash; it
+                        Logging this helps your mentor see your real circumstances - it
                         counts in your favor, not against you.
                       </span>
                     </p>

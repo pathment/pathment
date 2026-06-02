@@ -32,7 +32,7 @@ export type FrictionKind =
 
 export type BlockerCategory = 'technical' | 'knowledge' | 'access' | 'personal';
 
-/* How the AI reads a delay (brief §7.1) — the fairness lens. */
+/* How the AI reads a delay (brief §7.1) - the fairness lens. */
 export type DelayCategory = 'external' | 'scope' | 'avoidance';
 
 /* The four review outcomes (brief §6.2). */
@@ -67,8 +67,8 @@ export type SlotDays = 'everyday' | 'weekdays' | 'weekends';
 /* Scoring: an automatic speed score (from submit-vs-due) plus an optional
    mentor quality score. */
 export interface TaskScore {
-  speed?: number; // 0–100, auto
-  mentor?: number; // 1–5, optional
+  speed?: number; // 0-100, auto
+  mentor?: number; // 1-5, optional
 }
 
 export interface Task {
@@ -93,7 +93,7 @@ export interface Task {
   // scheduling / recurrence
   slot?: ScheduleSlot;
   recurrence?: Recurrence;
-  // roadmap linkage — approving advances the roadmap and assigns the next step
+  // roadmap linkage - approving advances the roadmap and assigns the next step
   roadmapId?: number;
   roadmapStepId?: number;
   extensionRequested?: boolean;
@@ -118,7 +118,7 @@ export interface Track {
   createdAt: string;
 }
 
-/* Reusable library item — a task you can drop into any track in one click. */
+/* Reusable library item - a task you can drop into any track in one click. */
 export interface TaskTemplate {
   id: string;
   title: string;
@@ -138,7 +138,7 @@ export interface TrackTemplate {
 }
 
 /* ----------------------------------------------------------------
-   Roadmaps — an ordered sequence of steps. Approving a roadmap-linked
+   Roadmaps - an ordered sequence of steps. Approving a roadmap-linked
    task advances the roadmap and auto-assigns the next step's task.
    Roadmaps can be authored locally or imported from the organization.
 ----------------------------------------------------------------- */
@@ -189,7 +189,7 @@ export interface RecurringConfig {
 }
 
 export interface SlotConfig {
-  /* stable slot id — matches the schedule block it came from. Used to link
+  /* stable slot id - matches the schedule block it came from. Used to link
      tasks, roadmap progress, daily-log ticks, and review groups to this slot. */
   id: string;
   /* the slot's name + time, inherited from the assigned schedule's block */
@@ -198,7 +198,7 @@ export interface SlotConfig {
   /* which days this slot runs (default everyday). Weekends are grind + family. */
   days?: SlotDays;
   kind: SlotKind;
-  /* roadmap chain — ordered roadmap ids; mentee advances through them. When one
+  /* roadmap chain - ordered roadmap ids; mentee advances through them. When one
      completes the mentor confirms starting the next. */
   roadmapChain?: number[];
   /* recurring task config (when kind === 'recurring') */
@@ -208,11 +208,11 @@ export interface SlotConfig {
 }
 
 /* A mentee's full day schedule: an ORDERED list of slots. Any number of slots,
-   each with its own id/label/time — built from the assigned schedule's blocks. */
+   each with its own id/label/time - built from the assigned schedule's blocks. */
 export type Schedule = SlotConfig[];
 
 /* ----------------------------------------------------------------
-   1:1 availability — Calendly-style. The mentor publishes concrete time
+   1:1 availability - Calendly-style. The mentor publishes concrete time
    slots; mentees book one and it becomes a ScheduledMeeting.
 ----------------------------------------------------------------- */
 export interface AvailabilitySlot {
@@ -224,7 +224,7 @@ export interface AvailabilitySlot {
   takenBy?: number; // menteeId
 }
 
-/* A time block in a schedule — PURE STRUCTURE: a named slot at a time.
+/* A time block in a schedule - PURE STRUCTURE: a named slot at a time.
    A schedule has NO tasks or roadmaps. Those are assigned into the slots
    per-mentee, only after the schedule is assigned to them. */
 export interface TimeBlock {
@@ -243,14 +243,14 @@ export interface ScheduleTemplate {
   name: string;
   description?: string;
   source: 'org' | 'mentor';
-  /* the schedule's named time blocks — structure only */
+  /* the schedule's named time blocks - structure only */
   blocks: TimeBlock[];
   /* per-mentee fill of those slots happens after assignment (see Schedule) */
   schedule: Schedule;
 }
 
 /* ----------------------------------------------------------------
-   Release notes — the super admin broadcasts an update to mentors
+   Release notes - the super admin broadcasts an update to mentors
    (optionally scoped to a program), delivered in-app and/or by email.
 ----------------------------------------------------------------- */
 export interface ReleaseNote {
@@ -271,20 +271,20 @@ export interface ScheduleAssignment {
 }
 
 /* ----------------------------------------------------------------
-   Daily log — a mentee ticks off what they did each day against their
+   Daily log - a mentee ticks off what they did each day against their
    schedule (the slot talks) and assigned tasks, with a quick note.
    Missed days can be backfilled by picking the date.
 ----------------------------------------------------------------- */
 export interface DailyLogEntry {
   id: number;
   menteeId: number;
-  date: string; // 'Mon May 26' — the day this log is for (may be backfilled)
+  date: string; // 'Mon May 26' - the day this log is for (may be backfilled)
   dateKey: string; // stable sort/lookup key, e.g. '2025-05-26'
   /* slots the mentee completed that day (the recurring talks) */
   slotsDone: ScheduleSlot[];
   /* assigned-task ids they marked done that day */
   tasksDone: number[];
-  /* per-item notes — keyed by slot ('morning') or task id ('t101'), so a
+  /* per-item notes - keyed by slot ('morning') or task id ('t101'), so a
      mentee can say what they did for the morning talk specifically */
   itemNotes?: Record<string, string>;
   /* free-text reflection for the day */
@@ -293,7 +293,7 @@ export interface DailyLogEntry {
 }
 
 /* ----------------------------------------------------------------
-   Attendance — captured during the weekly quick review (standup).
+   Attendance - captured during the weekly quick review (standup).
 ----------------------------------------------------------------- */
 export type AttendanceStatus = 'present' | 'absent' | 'excused';
 
@@ -304,7 +304,7 @@ export interface AttendanceRecord {
 }
 
 /* ----------------------------------------------------------------
-   Documents — an org-shared library all mentors see (mentorship
+   Documents - an org-shared library all mentors see (mentorship
    guidance + general reading).
 ----------------------------------------------------------------- */
 export type DocCategory = 'guidance' | 'reading' | 'template' | 'policy';
@@ -322,7 +322,7 @@ export interface Document {
 }
 
 /* ----------------------------------------------------------------
-   Mentor-logged insights about a mentee (outside /review) — captured
+   Mentor-logged insights about a mentee (outside /review) - captured
    from text syncs, 1:1s, observation. Feeds the mentee's insight
    dashboard (personality, analytical skills, issues, strengths).
 ----------------------------------------------------------------- */
@@ -380,7 +380,7 @@ export interface MeetingNote {
 }
 
 /* ----------------------------------------------------------------
-   Collaborators — other mentors/specialists invited to work with a mentee
+   Collaborators - other mentors/specialists invited to work with a mentee
    (e.g. a psychologist for a session). They can log data too, and everything
    they log is attributed to them.
 ----------------------------------------------------------------- */
@@ -432,7 +432,7 @@ export interface Mentee {
   nudgesSent?: number;
 }
 
-/* A "Clan" — a group of mentees under a mentor (the clan leader), running the
+/* A "Clan" - a group of mentees under a mentor (the clan leader), running the
    same schedule-driven program. (Type name kept as ProgramHealth to avoid
    churn; the product language is "Clan".) */
 export interface ProgramHealth {
@@ -453,7 +453,7 @@ export interface ProgramHealth {
 }
 
 /* ----------------------------------------------------------------
-   AI configuration — "bring your own key" (brief §7, §8.1 mentor settings)
+   AI configuration - "bring your own key" (brief §7, §8.1 mentor settings)
 ----------------------------------------------------------------- */
 export type AIProvider = 'groq' | 'openai' | 'anthropic' | 'gemini' | 'custom';
 
@@ -507,7 +507,7 @@ export interface Notification {
 }
 
 /* ----------------------------------------------------------------
-   Direct messages — a mentor can send a custom message to any mentee
+   Direct messages - a mentor can send a custom message to any mentee
    (e.g. someone drifting off-track), optionally also delivered by email.
 ----------------------------------------------------------------- */
 export type MessageChannel = 'in_app' | 'email';
@@ -531,7 +531,7 @@ export interface MessageTemplate {
 }
 
 /* ----------------------------------------------------------------
-   Scheduling — 1:1s a mentor books with a mentee, with a slot.
+   Scheduling - 1:1s a mentor books with a mentee, with a slot.
 ----------------------------------------------------------------- */
 export type MeetingKind = '1:1' | 'standup' | 'review' | 'pairing';
 

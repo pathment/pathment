@@ -59,7 +59,7 @@ export function ThisWeek() {
         </p>
       </div>
 
-      {/* Hero — single most important next action */}
+      {/* Hero - single most important next action */}
       {hero && (
         <Card className="mb-6 overflow-hidden border-transparent p-0 animate-scale-in">
           <div className="gradient-brand px-6 py-6 text-white sm:px-7">
@@ -78,7 +78,7 @@ export function ThisWeek() {
               </span>
               {hero.late && (
                 <span className="rounded-full bg-white/25 px-2.5 py-0.5 text-xs font-medium">
-                  Running late &mdash; that&apos;s okay
+                  Running late - that&apos;s okay
                 </span>
               )}
             </div>
@@ -181,7 +181,7 @@ export function ThisWeek() {
               compact
             />
             <p className="mt-3 text-xs leading-relaxed text-ink-mute">
-              You&apos;re holding up well given a busy week &mdash; your relative progress
+              You&apos;re holding up well given a busy week - your relative progress
               reflects the real circumstances you&apos;ve logged.
             </p>
           </Card>
@@ -194,7 +194,7 @@ export function ThisWeek() {
               <span className="text-sm font-semibold text-ink">Need to flag something?</span>
             </div>
             <p className="mt-2 text-xs leading-relaxed text-ink-mute">
-              Life happens. If something&apos;s slowing you down, log it &mdash; it helps your
+              Life happens. If something&apos;s slowing you down, log it - it helps your
               mentor see the full picture and counts in your favor.
             </p>
             {hero && (

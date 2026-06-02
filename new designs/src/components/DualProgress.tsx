@@ -62,12 +62,12 @@ export function DualProgress({
           <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ink-faint" />
           {gap > 0 ? (
             <span>
-              Excelling against real constraints — {gap} pts above plan once friction is
+              Excelling against real constraints - {gap} pts above plan once friction is
               accounted for. Don&apos;t over-push.
             </span>
           ) : (
             <span>
-              Ahead on raw output but {Math.abs(gap)} pts lower relative — may be coasting on
+              Ahead on raw output but {Math.abs(gap)} pts lower relative - may be coasting on
               easy ground. Consider a stretch.
             </span>
           )}

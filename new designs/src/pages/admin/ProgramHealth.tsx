@@ -74,7 +74,7 @@ export function ProgramHealth() {
   const avgCompletion = useMemo(() => avg(programs.map((p) => p.completion)), [programs]);
   const avgOnTime = useMemo(() => avg(programs.map((p) => p.onTime)), [programs]);
 
-  // live at-risk roll-up — anyone not on track, worst first (high → watch)
+  // live at-risk roll-up - anyone not on track, worst first (high → watch)
   const atRiskMentees = useMemo(
     () =>
       mentees
@@ -174,7 +174,7 @@ export function ProgramHealth() {
         <div className="min-w-0 flex-1">
           <AiTag>At a glance</AiTag>
           <p className="mt-1 text-sm leading-relaxed text-ink-soft">
-            <span className="font-semibold text-ink">{worst.name}</span> needs intervention —{' '}
+            <span className="font-semibold text-ink">{worst.name}</span> needs intervention -{' '}
             {worst.dropoff}% drop-off, {worst.atRisk} at-risk mentees and {worst.blockers} open
             blockers. Its {worst.mentorLoad.toLowerCase()}.
           </p>
@@ -228,13 +228,13 @@ export function ProgramHealth() {
         )}
       </div>
 
-      {/* org-wide at-risk roll-up — from the live store (§7.4) */}
+      {/* org-wide at-risk roll-up - from the live store (§7.4) */}
       <section className="mt-10">
         <div className="mb-3 flex items-end justify-between">
           <div>
             <SectionLabel>At-risk across the org</SectionLabel>
             <p className="-mt-2 text-xs text-ink-mute">
-              Live cohort — {atRiskMentees.length} need a closer look, worst first.
+              Live cohort - {atRiskMentees.length} need a closer look, worst first.
             </p>
           </div>
           <Badge tone="rose">{atRiskMentees.length} flagged</Badge>

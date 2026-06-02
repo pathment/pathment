@@ -47,7 +47,7 @@ import {
 import { slotLabel } from '@/lib/ai';
 import type { Mentee, Task } from '@/lib/types';
 
-/* Mentor's read of the mentee's daily logs — what they did each day. */
+/* Mentor's read of the mentee's daily logs - what they did each day. */
 function DailyLogCard({ menteeId }: { menteeId: number }) {
   const { getDailyLogs, getMentee, getSchedule } = useStore();
   const logs = getDailyLogs(menteeId).slice(0, 5);
@@ -120,7 +120,7 @@ function DailyLogCard({ menteeId }: { menteeId: number }) {
   );
 }
 
-/* Collaborators — invite specialists (e.g. a psychologist) to work with this
+/* Collaborators - invite specialists (e.g. a psychologist) to work with this
    mentee and log attributed data. */
 function CollaboratorsCard({ menteeId }: { menteeId: number }) {
   const { getCollaborators, inviteCollaborator } = useStore();
@@ -157,7 +157,7 @@ function CollaboratorsCard({ menteeId }: { menteeId: number }) {
         </div>
       )}
       <p className="mt-3 text-[11px] leading-relaxed text-ink-faint">
-        Anything a collaborator logs is attributed to them — so you always know who saw what, and why.
+        Anything a collaborator logs is attributed to them - so you always know who saw what, and why.
       </p>
 
       <Modal
@@ -242,7 +242,7 @@ export function MenteeProfile() {
       <Page>
         <p className="text-sm text-ink-mute">Mentee not found.</p>
         <Link to="/mentor/cockpit" className="text-sm text-brand-600">
-          ← Back to cockpit
+          Back to cockpit
         </Link>
       </Page>
     );
@@ -325,13 +325,13 @@ export function MenteeProfile() {
         </div>
       </div>
 
-      {/* AI summary — top of the story */}
+      {/* AI summary - top of the story */}
       <div className="mb-6">
         <AISummary summary={m.aiSummary} signals={m.aiSignals} />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* LEFT — progress + work */}
+        {/* LEFT - progress + work */}
         <div className="space-y-6 lg:col-span-2">
           <Card className="p-5">
             <SectionLabel>Progress snapshot</SectionLabel>
@@ -354,7 +354,7 @@ export function MenteeProfile() {
             </div>
           </Card>
 
-          {/* Pending approvals — inline review */}
+          {/* Pending approvals - inline review */}
           {pending.length > 0 && (
             <Card className="p-5">
               <div className="mb-3 flex items-center justify-between">
@@ -412,7 +412,7 @@ export function MenteeProfile() {
             </div>
           </Card>
 
-          {/* Delays & reasons — with the AI fairness lens + accept */}
+          {/* Delays & reasons - with the AI fairness lens + accept */}
           {m.delays.length > 0 && (
             <Card className="p-5">
               <SectionLabel>Delays &amp; reasons</SectionLabel>
@@ -458,7 +458,7 @@ export function MenteeProfile() {
           )}
         </div>
 
-        {/* RIGHT — personality, blockers, 1:1 */}
+        {/* RIGHT - personality, blockers, 1:1 */}
         <div className="space-y-6">
           <SchedulePanel mentee={m} />
           <CollaboratorsCard menteeId={m.id} />
@@ -474,7 +474,7 @@ export function MenteeProfile() {
             </div>
             <PersonalityBars p={m.personality} />
             <p className="mt-3 text-[11px] leading-relaxed text-ink-faint">
-              Built from submission patterns, delay reasons and 1:1 notes — refine it in a 1:1.
+              Built from submission patterns, delay reasons and 1:1 notes - refine it in a 1:1.
             </p>
           </Card>
 

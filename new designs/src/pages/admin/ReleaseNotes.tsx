@@ -6,7 +6,7 @@ import { Modal, Field, TextInput, TextArea, SelectInput } from '@/components/ove
 import { useStore } from '@/store/AppStore';
 import { PROGRAMS } from '@/data/mock';
 
-/* Super-admin broadcasts updates to mentors — across all programs or a specific
+/* Super-admin broadcasts updates to mentors - across all programs or a specific
    one, delivered in-app and/or by email. */
 export function ReleaseNotes() {
   const { releaseNotes, publishReleaseNote } = useStore();
@@ -39,7 +39,7 @@ export function ReleaseNotes() {
     <Page>
       <PageHeader
         title="Release notes"
-        subtitle="Broadcast updates to mentors — across all programs or just one"
+        subtitle="Broadcast updates to mentors - across all programs or just one"
         actions={
           <Button onClick={() => setOpen(true)}>
             <Megaphone className="h-4 w-4" /> New release note

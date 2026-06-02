@@ -28,7 +28,7 @@ export function cx(...parts: Array<string | false | null | undefined>) {
 }
 
 /* ----------------------------------------------------------------
-   Avatar — monochrome monogram tile. Sharp corners, mono type, a single
+   Avatar - monochrome monogram tile. Sharp corners, mono type, a single
    hairline. No rainbow fills (that's the generic-SaaS tell). Identity comes
    from the ink-on-paper tile + a tiny mono initial, like a filing label.
 ----------------------------------------------------------------- */
@@ -62,7 +62,7 @@ export function Avatar({
 }
 
 /* ----------------------------------------------------------------
-   Badge — flat hairline-outlined label. White ground, colored ink + border,
+   Badge - flat hairline-outlined label. White ground, colored ink + border,
    no pastel fill, near-square corners, mono type. Reads like a stamped tag.
 ----------------------------------------------------------------- */
 type Tone = 'neutral' | 'brand' | 'emerald' | 'amber' | 'rose' | 'sky' | 'violet';
@@ -228,7 +228,7 @@ export function SectionLabel({ children }: { children: ReactNode }) {
 }
 
 /* ----------------------------------------------------------------
-   AI marker — deliberately quiet. A small blue dot + a mono label.
+   AI marker - deliberately quiet. A small blue dot + a mono label.
    Recognizable as the AI layer without any sparkle/glow.
 ----------------------------------------------------------------- */
 export function AiTag({ children = 'Pathment AI' }: { children?: ReactNode }) {

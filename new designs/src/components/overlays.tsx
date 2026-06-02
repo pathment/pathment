@@ -3,7 +3,7 @@ import { X } from 'lucide-react';
 import { cx } from '@/lib/ui';
 
 /* ----------------------------------------------------------------
-   Drawer — right-side panel. Swiss: white, hairline, mono header.
+   Drawer - right-side panel. Swiss: white, hairline, mono header.
 ----------------------------------------------------------------- */
 export function Drawer({
   open,
@@ -70,7 +70,7 @@ export function Drawer({
 }
 
 /* ----------------------------------------------------------------
-   Modal — centered. For short, focused forms (add key).
+   Modal - centered. For short, focused forms (add key).
 ----------------------------------------------------------------- */
 export function Modal({
   open,
@@ -121,7 +121,7 @@ export function Modal({
 }
 
 /* ----------------------------------------------------------------
-   Form primitives — mono labels, hairline inputs (matches mockup)
+   Form primitives - mono labels, hairline inputs (matches mockup)
 ----------------------------------------------------------------- */
 export function Field({
   label,
@@ -158,7 +158,7 @@ export function SelectInput(props: React.SelectHTMLAttributes<HTMLSelectElement>
   return <select {...props} className={cx(inputBase, 'cursor-pointer', props.className)} />;
 }
 
-/* Segmented control — for sentiment / small enum choices */
+/* Segmented control - for sentiment / small enum choices */
 export function Segmented<T extends string>({
   value,
   onChange,
@@ -187,7 +187,7 @@ export function Segmented<T extends string>({
   );
 }
 
-/* Slider — for personality dimensions */
+/* Slider - for personality dimensions */
 export function Slider({
   value,
   onChange,

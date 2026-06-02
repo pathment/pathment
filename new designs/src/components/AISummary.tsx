@@ -3,7 +3,7 @@ import { ChevronDown } from 'lucide-react';
 import { cx } from '@/lib/ui';
 
 /**
- * The per-mentee AI summary (brief §7.5). Deliberately understated — a quiet
+ * The per-mentee AI summary (brief §7.5). Deliberately understated - a quiet
  * white card with a thin blue ledger rule (via `.ai-panel`), not a tinted
  * glowing box. Always shows the signals it used so it's explainable, and never
  * the sole gate on a decision.

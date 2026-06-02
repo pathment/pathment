@@ -11,7 +11,7 @@ import type { Roadmap, RoadmapStep, TaskType, Effort } from '@/lib/types';
 const TASK_TYPES: TaskType[] = ['assignment', 'project', 'quiz', 'reading', 'video', 'discussion'];
 const EFFORTS: Effort[] = ['xs', 's', 'm', 'l'];
 
-/* A draft step in the create form — string-typed inputs we coerce on save. */
+/* A draft step in the create form - string-typed inputs we coerce on save. */
 interface DraftStep {
   title: string;
   type: TaskType;
@@ -124,7 +124,7 @@ export function Roadmaps() {
     <Page>
       <PageHeader
         title="Roadmaps"
-        subtitle="Guided sequences — assign relative to each person's journey; approving a step auto-assigns the next"
+        subtitle="Guided sequences - assign relative to each person's journey; approving a step auto-assigns the next"
         actions={
           <Button onClick={openCreate}>
             <Plus className="h-4 w-4" /> New roadmap
@@ -182,7 +182,7 @@ export function Roadmaps() {
                       </div>
                     </div>
 
-                    {/* inline assign control — relative starting point per person */}
+                    {/* inline assign control - relative starting point per person */}
                     <div className="flex flex-col items-end gap-1.5">
                       <div className="flex items-center gap-2">
                         <SelectInput
@@ -504,7 +504,7 @@ export function Roadmaps() {
         </div>
       </Drawer>
 
-      {/* fast bulk assign — searchable, click-select, assign to many */}
+      {/* fast bulk assign - searchable, click-select, assign to many */}
       <BulkAssignRoadmapDrawer
         open={bulkFor !== null}
         onClose={() => setBulkFor(null)}

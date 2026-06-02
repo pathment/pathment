@@ -36,7 +36,7 @@ const initials = (name: string) =>
     .slice(0, 2)
     .toUpperCase() || 'NA';
 
-/* First-run mentor onboarding — a short, skippable wizard that wires straight
+/* First-run mentor onboarding - a short, skippable wizard that wires straight
    into the live store: profile, an optional AI key, a methodology schedule to
    adopt, and a few 1:1 availability slots. */
 export function MentorOnboarding() {
@@ -102,7 +102,7 @@ export function MentorOnboarding() {
   return (
     <div className="min-h-screen bg-[#FAFAF8] text-ink">
       <div className="mx-auto flex min-h-screen max-w-2xl flex-col px-5 py-8">
-        {/* header — wordmark + stepper */}
+        {/* header - wordmark + stepper */}
         <div className="mb-8">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -348,7 +348,7 @@ function AiStep(props: {
       </span>
       <h2 className="mt-4 text-lg font-semibold tracking-tight">Bring your own AI key</h2>
       <p className="mt-1 max-w-prose text-sm text-ink-mute">
-        Pathment routes each AI feature through your key. Nothing leaves your account. Optional — you can
+        Pathment routes each AI feature through your key. Nothing leaves your account. Optional - you can
         add this later in Settings.
       </p>
       <div className="mt-5 space-y-4">
@@ -370,7 +370,7 @@ function AiStep(props: {
         </Field>
         <p className="text-xs text-ink-faint">{meta.hint}</p>
         <Field label="Label">
-          <TextInput value={keyLabel} onChange={(e) => setKeyLabel(e.target.value)} placeholder={`e.g. ${meta.label} — primary`} />
+          <TextInput value={keyLabel} onChange={(e) => setKeyLabel(e.target.value)} placeholder={`e.g. ${meta.label} - primary`} />
         </Field>
         <Field label="API key" hint={meta.keyPrefix ? `Usually starts with ${meta.keyPrefix}` : 'Any OpenAI-compatible key.'}>
           <TextInput
@@ -398,7 +398,7 @@ function ScheduleStep({
     <Card className="p-8">
       <SectionLabel>Adopt a schedule</SectionLabel>
       <p className="mb-4 max-w-prose text-sm text-ink-mute">
-        Pick a published schedule to start from. It is pure structure — you fill each slot with a roadmap
+        Pick a published schedule to start from. It is pure structure - you fill each slot with a roadmap
         or recurring task per mentee after assigning. You can edit or switch it any time.
       </p>
       <div className="space-y-2">
@@ -458,7 +458,7 @@ function AvailabilityStep(props: {
     <Card className="p-8">
       <SectionLabel>Your 1:1 availability</SectionLabel>
       <p className="mb-4 max-w-prose text-sm text-ink-mute">
-        Publish a few concrete times you are free. Mentees book one and it becomes a 1:1. Optional — add
+        Publish a few concrete times you are free. Mentees book one and it becomes a 1:1. Optional - add
         more later from Schedules.
       </p>
       <div className="mb-4 flex flex-wrap items-end gap-2 rounded-r border border-hairline bg-neutral-50/60 p-3">
@@ -533,7 +533,7 @@ function DoneStep({
 }) {
   const rows = [
     { icon: User, label: 'Profile', value: `${name.trim() || 'Mentor'} · ${program.trim() || 'Program'}` },
-    { icon: Sparkles, label: 'AI key', value: hasKey ? 'Connected' : 'Skipped — add later in Settings' },
+    { icon: Sparkles, label: 'AI key', value: hasKey ? 'Connected' : 'Skipped - add later in Settings' },
     { icon: GitBranch, label: 'Schedule', value: scheduleName ? `Adopting ${scheduleName}` : 'None selected' },
     { icon: CalendarClock, label: '1:1 availability', value: availCount > 0 ? `${availCount} slot${availCount === 1 ? '' : 's'} published` : 'Skipped' },
   ];

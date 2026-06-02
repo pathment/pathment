@@ -17,7 +17,7 @@ import {
 import type { Mentee } from '@/lib/types';
 
 /* ----------------------------------------------------------------
-   Time window — changing it nudges the computed score so the board
+   Time window - changing it nudges the computed score so the board
    feels like it is reading a live slice of the program, not a static
    snapshot. The offset is deterministic per window.
 ----------------------------------------------------------------- */
@@ -67,7 +67,7 @@ function clanOf(m: Mentee): string {
 }
 
 /* ----------------------------------------------------------------
-   Personality narrative — composed from the mentee's own stats so the
+   Personality narrative - composed from the mentee's own stats so the
    report reads as written, not templated. Pairs with their aiSummary.
 ----------------------------------------------------------------- */
 function narrate(m: Mentee): string {
@@ -251,7 +251,7 @@ export function ProgressScores() {
       <Drawer
         open={open !== null}
         onClose={() => setOpenId(null)}
-        title={open ? `${open.name} — personality report` : 'Personality report'}
+        title={open ? `${open.name} - personality report` : 'Personality report'}
         subtitle={open ? clanOf(open) : undefined}
       >
         {open && (
@@ -299,7 +299,7 @@ export function ProgressScores() {
                 onChange={(e) =>
                   setFeedback((prev) => ({ ...prev, [open.id]: e.target.value }))
                 }
-                placeholder="Write your read of this mentee — what is working, what to adjust, and the next step you would set."
+                placeholder="Write your read of this mentee - what is working, what to adjust, and the next step you would set."
               />
               <div className="mt-2 flex items-center justify-between">
                 <span

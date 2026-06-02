@@ -31,7 +31,7 @@ function levelFor(xp: number): number {
   return Math.floor(xp / 500) + 1;
 }
 
-/* A deterministic streak from the id — no randomness across renders. */
+/* A deterministic streak from the id - no randomness across renders. */
 function streakFor(m: Mentee): number {
   return 3 + ((m.id * 7 + m.onTimeRate) % 19);
 }
@@ -175,7 +175,7 @@ export function Leaderboard() {
 
                     <span className="flex flex-wrap items-center justify-end gap-1 sm:justify-start">
                       {r.badges.length === 0 ? (
-                        <span className="font-mono text-[11px] text-ink-faint">—</span>
+                        <span className="font-mono text-[11px] text-ink-faint">-</span>
                       ) : (
                         r.badges.map((b) => <Badge key={b}>{b}</Badge>)
                       )}
@@ -233,7 +233,7 @@ export function Leaderboard() {
 }
 
 /* ----------------------------------------------------------------
-   Podium card — rank 1 sits taller and centered.
+   Podium card - rank 1 sits taller and centered.
 ----------------------------------------------------------------- */
 function PodiumCard({ r, rank }: { r: Ranked; rank: number }) {
   const first = rank === 1;

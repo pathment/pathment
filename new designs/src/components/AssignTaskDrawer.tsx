@@ -9,7 +9,7 @@ import type { TaskType, Effort, ScheduleSlot, Recurrence } from '@/lib/types';
 const TYPES: TaskType[] = ['project', 'assignment', 'quiz', 'reading', 'video', 'discussion'];
 const EFFORTS: Effort[] = ['xs', 's', 'm', 'l'];
 
-/* slot icons by position — schedules are dynamic, so options come from the
+/* slot icons by position - schedules are dynamic, so options come from the
    mentee's own schedule (with a generic fallback for bulk-assign). */
 const SLOT_ICONS = [Clock, Sunrise, Sun, Moon];
 const RECURRENCES: { value: Recurrence; label: string }[] = [
@@ -270,7 +270,7 @@ export function AssignTaskDrawer({
                 </Field>
               </div>
 
-              {/* schedule — slot + recurrence (mindset talk, morning reading…) */}
+              {/* schedule - slot + recurrence (mindset talk, morning reading…) */}
               <div className="grid grid-cols-2 gap-4">
                 <Field label="Schedule slot">
                   <div className="flex flex-wrap gap-1.5">

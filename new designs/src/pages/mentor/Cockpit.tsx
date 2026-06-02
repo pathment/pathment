@@ -232,7 +232,7 @@ export function Cockpit() {
 
       {list.length === 0 && (
         <Card className="grid place-items-center py-16 text-center">
-          <p className="text-sm text-ink-mute">No mentees match this filter — nice and quiet.</p>
+          <p className="text-sm text-ink-mute">No mentees match this filter - nice and quiet.</p>
         </Card>
       )}
     </Page>

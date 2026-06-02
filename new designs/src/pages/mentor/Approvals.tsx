@@ -36,7 +36,7 @@ export function Approvals() {
     return items;
   }, [mentees]);
 
-  // recently reviewed (this session) — show as a calm trailing list
+  // recently reviewed (this session) - show as a calm trailing list
   const reviewed = useMemo(() => {
     const items: QueueItem[] = [];
     for (const m of mentees) {
@@ -180,7 +180,7 @@ export function Approvals() {
                   <Badge tone={s.tone}>{s.label}</Badge>
                   <button
                     onClick={() => unreview(mentee.id, task.id)}
-                    title="Un-approve — send back to review"
+                    title="Un-approve - send back to review"
                     className="rounded-r inline-flex items-center gap-1 px-1.5 py-1 text-[11px] text-ink-faint transition-colors hover:text-[#FF3B30]"
                   >
                     <Undo2 className="h-3.5 w-3.5" /> Undo

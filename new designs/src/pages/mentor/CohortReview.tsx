@@ -51,12 +51,12 @@ import { DELAY_CATEGORY_META, TYPE_DEFAULT_SLOT } from '@/lib/ai';
 import { Sunrise, Sun, Moon } from 'lucide-react';
 import type { ScheduleSlot } from '@/lib/types';
 
-/* dynamic schedule slots — icon by position */
+/* dynamic schedule slots - icon by position */
 const REVIEW_SLOT_ICONS = [Sunrise, Sun, Moon, Clock];
 const reviewIconFor = (i: number) => REVIEW_SLOT_ICONS[i % REVIEW_SLOT_ICONS.length];
 
 /* Find the delay/extension reason that matches a task (by first word of the
-   logged task name) — same heuristic the ReviewDrawer uses. */
+   logged task name) - same heuristic the ReviewDrawer uses. */
 function findDelay(m: Mentee, task: Task): DelayEvent | undefined {
   return (
     m.delays.find((d) =>
@@ -66,7 +66,7 @@ function findDelay(m: Mentee, task: Task): DelayEvent | undefined {
 }
 
 /* ----------------------------------------------------------------
-   Submission row — quick approve for speed, plus a prominent "Review"
+   Submission row - quick approve for speed, plus a prominent "Review"
    that opens the detailed side drawer (brief, artifact, checklist,
    approve / approve+notes / request-changes / reject).
 ----------------------------------------------------------------- */
@@ -144,7 +144,7 @@ export function CohortReview() {
   const [seen, setSeen] = useState<Set<number>>(new Set([0]));
   // deferred = mentees skipped to come back to later (e.g. late joiners)
   const [deferred, setDeferred] = useState<Set<number>>(new Set());
-  // focused submission index — J/K cycles through this mentee's submissions
+  // focused submission index - J/K cycles through this mentee's submissions
   const [focus, setFocus] = useState(0);
   const [showHelp, setShowHelp] = useState(false);
   const [addBlocker_, setAddBlocker] = useState(false);
@@ -208,7 +208,7 @@ export function CohortReview() {
   const next = () => go(nextNonDeferred(i));
   const prev = () => go(Math.max(i - 1, 0));
 
-  // skip current mentee — defer them and jump to the next person
+  // skip current mentee - defer them and jump to the next person
   const skip = () => {
     setDeferred((d) => new Set(d).add(i));
     const target = nextNonDeferred(i);
@@ -313,7 +313,7 @@ export function CohortReview() {
             variant="outline"
             size="sm"
             onClick={skip}
-            title="Skip — come back to them later (e.g. running late)"
+            title="Skip - come back to them later (e.g. running late)"
           >
             <SkipForward className="h-4 w-4" /> Skip
           </Button>
@@ -323,7 +323,7 @@ export function CohortReview() {
         </div>
       </div>
 
-      {/* deferred — late joiners / skipped, come back when ready */}
+      {/* deferred - late joiners / skipped, come back when ready */}
       {deferred.size > 0 && (
         <div className="mb-4 flex flex-wrap items-center gap-2 rounded-r border border-amber-200 bg-amber-50/40 px-3 py-2">
           <span className="inline-flex items-center gap-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-amber-700">
@@ -342,7 +342,7 @@ export function CohortReview() {
         </div>
       )}
 
-      {/* progress dots — colored by attendance once marked */}
+      {/* progress dots - colored by attendance once marked */}
       <div className="mb-6 flex items-center gap-1.5">
         {mentees.map((mm, idx) => {
           const att = getAttendance(mm.id);
@@ -402,7 +402,7 @@ export function CohortReview() {
 
           <AISummary summary={m.aiSummary} signals={m.aiSignals} defaultOpen={false} />
 
-          {/* extension requests — surfaced inline */}
+          {/* extension requests - surfaced inline */}
           {extensions.length > 0 && (
             <Card className="border-amber-200 p-5">
               <div className="mb-3 flex items-center justify-between">
@@ -451,7 +451,7 @@ export function CohortReview() {
             </Card>
           )}
 
-          {/* submissions — organized by the mentee's schedule (slot by slot) */}
+          {/* submissions - organized by the mentee's schedule (slot by slot) */}
           <Card className="p-5">
             <div className="mb-3 flex items-center justify-between">
               <SectionLabel>Their day · review by schedule</SectionLabel>
@@ -459,7 +459,7 @@ export function CohortReview() {
             </div>
 
             {pending.length === 0 && reviewedHere.length === 0 ? (
-              <p className="py-4 text-center text-sm text-ink-faint">Nothing waiting — move on.</p>
+              <p className="py-4 text-center text-sm text-ink-faint">Nothing waiting - move on.</p>
             ) : (
               <div className="space-y-4">
                 {slotGroups.map((group, gi) => {
@@ -473,7 +473,7 @@ export function CohortReview() {
                         : null;
                   return (
                     <div key={group.id}>
-                      {/* slot header — the "track" for this part of the day */}
+                      {/* slot header - the "track" for this part of the day */}
                       <div className="mb-1.5 flex items-center gap-2">
                         <SlotIcon className="h-3.5 w-3.5 text-ink-faint" />
                         <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-ink-mute">
@@ -525,7 +525,7 @@ export function CohortReview() {
                               <Badge tone={s.tone}>{s.label}</Badge>
                               <button
                                 onClick={() => unreview(m.id, t.id)}
-                                title="Un-approve — send back to submitted"
+                                title="Un-approve - send back to submitted"
                                 className="rounded-r inline-flex items-center gap-1 px-1.5 py-1 text-[11px] text-ink-faint transition-colors hover:text-[#FF3B30]"
                               >
                                 <Undo2 className="h-3.5 w-3.5" /> Undo
@@ -542,9 +542,9 @@ export function CohortReview() {
           </Card>
         </div>
 
-        {/* side rail — attendance + quick actions */}
+        {/* side rail - attendance + quick actions */}
         <div className="space-y-5">
-          {/* ATTENDANCE — the standup record */}
+          {/* ATTENDANCE - the standup record */}
           <Card className="p-5">
             <SectionLabel>Attendance</SectionLabel>
             <div className="grid grid-cols-3 gap-1.5">
@@ -613,7 +613,7 @@ export function CohortReview() {
               </button>
             </div>
             {m.blockers.filter((b) => !b.resolved).length === 0 ? (
-              <p className="text-sm text-ink-faint">None — clear runway.</p>
+              <p className="text-sm text-ink-faint">None - clear runway.</p>
             ) : (
               <div className="space-y-1.5">
                 {m.blockers
@@ -755,9 +755,9 @@ export function CohortReview() {
             </div>
             <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 px-5 py-4">
               {[
-                ['→ / L', 'Next mentee'],
-                ['← / H', 'Previous mentee'],
-                ['S', 'Skip — come back later'],
+                ['Right / L', 'Next mentee'],
+                ['Left / H', 'Previous mentee'],
+                ['S', 'Skip - come back later'],
                 ['J / ↓', 'Next submission'],
                 ['K / ↑', 'Previous submission'],
                 ['V / O', 'Open submitted file'],

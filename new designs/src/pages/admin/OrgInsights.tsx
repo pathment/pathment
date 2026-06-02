@@ -36,7 +36,7 @@ function avg(nums: number[]) {
 export function OrgInsights() {
   const { mentees } = useStore();
 
-  // cohort comparison — worst first (red → amber → green, then by drop-off)
+  // cohort comparison - worst first (red → amber → green, then by drop-off)
   const cohorts = useMemo(
     () =>
       [...PROGRAMS].sort((a, b) => {
@@ -60,7 +60,7 @@ export function OrgInsights() {
     [],
   );
 
-  // the fairness story at org scale — live cohort avg absolute vs relative
+  // the fairness story at org scale - live cohort avg absolute vs relative
   const avgAbsolute = useMemo(
     () => avg(mentees.map((m) => m.absoluteProgress)),
     [mentees],
@@ -112,7 +112,7 @@ export function OrgInsights() {
             <span className="font-mono font-semibold text-brand-700 tnum">
               {fairnessGap >= 0 ? `${fairnessGap} pts above` : `${Math.abs(fairnessGap)} pts below`}
             </span>{' '}
-            absolute — friction is real and being logged, not papered over.
+            absolute - friction is real and being logged, not papered over.
           </p>
         </div>
       </Card>
@@ -227,7 +227,7 @@ export function OrgInsights() {
 
       {/* relative-vs-absolute distribution */}
       <section className="mt-10">
-        <SectionLabel>Absolute vs relative — the fairness lens</SectionLabel>
+        <SectionLabel>Absolute vs relative - the fairness lens</SectionLabel>
         <div className="grid gap-6 lg:grid-cols-3">
           {/* aggregate callout */}
           <Card className="p-5 lg:col-span-1">
@@ -253,14 +253,14 @@ export function OrgInsights() {
               <span className="font-mono font-semibold text-brand-700 tnum">
                 {Math.abs(fairnessGap)} pts
               </span>{' '}
-              {fairnessGap >= 0 ? 'higher' : 'lower'} on relative progress — the friction layer is
+              {fairnessGap >= 0 ? 'higher' : 'lower'} on relative progress - the friction layer is
               doing visible work.
             </p>
           </Card>
 
           {/* per-mentee mini-viz */}
           <Card className="p-5 lg:col-span-2">
-            <div className="eyebrow mb-3">By mentee — widest gap first</div>
+            <div className="eyebrow mb-3">By mentee - widest gap first</div>
             <div className="space-y-3.5">
               {distribution.map((m) => (
                 <div key={m.id} className="flex items-center gap-3">

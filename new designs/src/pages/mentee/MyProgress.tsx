@@ -60,19 +60,19 @@ export function MyProgress() {
   // Encouraging closing read based on momentum + risk.
   const encouragement =
     me.risk === 'high'
-      ? "It's been a tough stretch — reaching out to your mentor now is the best next step. You're not behind on effort."
+      ? "It's been a tough stretch - reaching out to your mentor now is the best next step. You're not behind on effort."
       : me.momentum === 'up'
-        ? "You're on track and building real momentum. Keep going — your mentor can see the effort you're putting in."
+        ? "You're on track and building real momentum. Keep going - your mentor can see the effort you're putting in."
         : "You're holding steady. Measured fairly against your circumstances, you're doing well.";
 
   return (
     <Page>
-      <PageHeader title="My progress" subtitle="Where you are — measured fairly" />
+      <PageHeader title="My progress" subtitle="Where you are - measured fairly" />
 
-      {/* Self-facing AI read — full width so it reads cleanly */}
+      {/* Self-facing AI read - full width so it reads cleanly */}
       <div className="mb-6">
         <AISummary
-          summary="You're keeping steady momentum even through a busy week. A couple of submissions are with your mentor, and the blocker you flagged early shows good instincts. Measured against your real circumstances, you're ahead of plan — be proud of that."
+          summary="You're keeping steady momentum even through a busy week. A couple of submissions are with your mentor, and the blocker you flagged early shows good instincts. Measured against your real circumstances, you're ahead of plan - be proud of that."
           signals={me.aiSignals}
           defaultOpen={false}
         />
@@ -85,7 +85,7 @@ export function MyProgress() {
         <p className="mt-4 text-xs leading-relaxed text-ink-mute">
           <span className="font-medium text-ink-soft">Absolute</span> is your raw output against
           the plan. <span className="font-medium text-brand-700">Relative</span> accounts for the
-          circumstances you&apos;ve logged. Both matter &mdash; relative is how your mentor
+          circumstances you&apos;ve logged. Both matter - relative is how your mentor
           understands the real you.
         </p>
       </Card>
@@ -128,7 +128,7 @@ export function MyProgress() {
           <SectionLabel>What&apos;s slowing you down</SectionLabel>
           <Card>
             <p className="mb-4 text-xs leading-relaxed text-ink-mute">
-              Your mentor can see all of these &mdash; logging them means your progress is judged
+              Your mentor can see all of these - logging them means your progress is judged
               with the full picture in mind.
             </p>
             <div className="space-y-3">
@@ -201,7 +201,7 @@ export function MyProgress() {
             })}
           </div>
           <p className="mt-4 text-xs leading-relaxed text-ink-mute">
-            A gentle read of how you tend to work &mdash; not a grade. It helps your mentor
+            A gentle read of how you tend to work - not a grade. It helps your mentor
             support you in the way that suits you best.
           </p>
         </Card>

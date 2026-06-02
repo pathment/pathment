@@ -59,7 +59,7 @@ export function ScheduleDrawer({
       onClose={onClose}
       width="max-w-lg"
       title={`Schedule with ${mentee.name}`}
-      subtitle="Book a time — they'll get a notification"
+      subtitle="Book a time - they'll get a notification"
       footer={
         !done ? (
           <div className="flex items-center justify-between">

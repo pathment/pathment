@@ -14,7 +14,7 @@ import {
 import type { Task, Track } from '@/lib/types';
 
 /* ----------------------------------------------------------------
-   TracksPanel (brief §5) — create a track in seconds, fast in.
+   TracksPanel (brief §5) - create a track in seconds, fast in.
    A tight, scannable list of a mentee's tracks. Inline create + rename,
    archive, "from template", and a minimal per-track task list with an
    inline "+ task" row. Keyboard-first: Enter commits, Escape cancels.
@@ -46,7 +46,7 @@ export function TracksPanel({ menteeId }: { menteeId: number }) {
 
       <div className="space-y-2">
         {tracks.length === 0 && !creating && (
-          <p className="text-sm text-ink-faint">No tracks yet — add one below.</p>
+          <p className="text-sm text-ink-faint">No tracks yet - add one below.</p>
         )}
 
         {tracks.map((track) => (
@@ -70,7 +70,7 @@ export function TracksPanel({ menteeId }: { menteeId: number }) {
         ))}
       </div>
 
-      {/* Inline "+ Track" — the "seconds" path, no modal */}
+      {/* Inline "+ Track" - the "seconds" path, no modal */}
       <div className="mt-2">
         {creating ? (
           <input
@@ -134,7 +134,7 @@ export function TracksPanel({ menteeId }: { menteeId: number }) {
 }
 
 /* ----------------------------------------------------------------
-   A single track row — name + task count + caret to expand, with an
+   A single track row - name + task count + caret to expand, with an
    inline rename input and an archive control. Expanding reveals a
    compact task list and a tiny "+ task" inline row.
 ----------------------------------------------------------------- */

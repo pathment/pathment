@@ -13,7 +13,7 @@ import { Modal, Field, TextInput, SelectInput } from '@/components/overlays';
 import { Avatar, Badge, Button, Card, SectionLabel, cx } from '@/lib/ui';
 
 /* ----------------------------------------------------------------
-   taxonomy — technology + level
+   taxonomy - technology + level
 ----------------------------------------------------------------- */
 const TECHS = ['Frontend', 'Backend', 'Data', 'Mobile', 'DevOps', 'Design'] as const;
 type Tech = (typeof TECHS)[number];

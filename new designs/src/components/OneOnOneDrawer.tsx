@@ -151,7 +151,7 @@ export function OneOnOneDrawer({
       onClose={close}
       width="max-w-xl"
       title={`1:1 with ${mentee.name}`}
-      subtitle="Capture the understanding — not just that you met"
+      subtitle="Capture the understanding - not just that you met"
       footer={
         !saved ? (
           <div className="flex items-center justify-between">

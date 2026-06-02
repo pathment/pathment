@@ -33,7 +33,7 @@ interface Cmd {
   keywords?: string;
 }
 
-/* Global ⌘K / Ctrl-K command palette — the universal "fewer clicks" entry.
+/* Global ⌘K / Ctrl-K command palette - the universal "fewer clicks" entry.
    Jump anywhere, assign a task, log a 1:1, open any mentee, all from the keyboard. */
 export function CommandPalette({
   onAssign,

@@ -33,7 +33,7 @@ export const FEATURE_META: Record<
   },
   stall: {
     label: 'Stall / early warning',
-    desc: 'Flags mentees who have not progressed a task in too long — before the deadline blows up.',
+    desc: 'Flags mentees who have not progressed a task in too long - before the deadline blows up.',
   },
   coaching: {
     label: 'Coaching suggestions',
@@ -52,22 +52,22 @@ export const DELAY_CATEGORY_META: Record<
   external: {
     label: 'External constraint',
     tone: 'emerald',
-    desc: 'Real-world friction outside their control — counts in their favour.',
+    desc: 'Real-world friction outside their control - counts in their favour.',
   },
   scope: {
     label: 'Scope / difficulty',
     tone: 'amber',
-    desc: 'The work was harder or larger than planned — adjust the plan.',
+    desc: 'The work was harder or larger than planned - adjust the plan.',
   },
   avoidance: {
     label: 'Avoidance',
     tone: 'rose',
-    desc: 'No clear obstacle — effort is missing. Worth a direct check-in.',
+    desc: 'No clear obstacle - effort is missing. Worth a direct check-in.',
   },
 };
 
 /* Build the default approval checklist from a task's criteria. The first ~60%
-   are treated as hard gates (required), the rest as soft/advisory — mirroring
+   are treated as hard gates (required), the rest as soft/advisory - mirroring
    the brief's "block approval until required checks are ticked" rule (§6.2). */
 export function buildChecklist(criteria: string[] = []) {
   const hardCount = Math.ceil(criteria.length * 0.6);
@@ -79,7 +79,7 @@ export function buildChecklist(criteria: string[] = []) {
 }
 
 /* ----------------------------------------------------------------
-   Effort — a quick "expected effort" scale for assigned tasks (§5)
+   Effort - a quick "expected effort" scale for assigned tasks (§5)
 ----------------------------------------------------------------- */
 export const EFFORT_META: Record<Effort, { label: string; hint: string }> = {
   xs: { label: 'XS', hint: '~30 min' },
@@ -89,7 +89,7 @@ export const EFFORT_META: Record<Effort, { label: string; hint: string }> = {
 };
 
 /* ----------------------------------------------------------------
-   Sensible per-task-type presets — so assigning is seconds, not setup (§5).
+   Sensible per-task-type presets - so assigning is seconds, not setup (§5).
    Choosing a type auto-fills the approval checklist + effort; the mentor
    only edits the deltas.
 ----------------------------------------------------------------- */
@@ -145,10 +145,10 @@ export const TYPE_DEFAULT_SLOT: Record<TaskType, ScheduleSlot> = {
    is only a fallback for the four default-schedule ids. Use slotLabel() for any
    slot id, which falls back here and then to the raw id. */
 export const SLOT_META: Record<string, { label: string; blurb: string }> = {
-  morning: { label: 'Morning', blurb: 'Start the day — reading, mindset' },
-  lunch: { label: 'Lunch', blurb: 'Midday — talks, discussion' },
-  dinner: { label: 'Dinner', blurb: 'Evening — quizzes, review' },
-  anytime: { label: 'Anytime', blurb: 'Core work — projects, assignments' },
+  morning: { label: 'Morning', blurb: 'Start the day - reading, mindset' },
+  lunch: { label: 'Lunch', blurb: 'Midday - talks, discussion' },
+  dinner: { label: 'Dinner', blurb: 'Evening - quizzes, review' },
+  anytime: { label: 'Anytime', blurb: 'Core work - projects, assignments' },
 };
 
 export const SLOT_ORDER: ScheduleSlot[] = ['morning', 'lunch', 'dinner', 'anytime'];
@@ -164,13 +164,13 @@ export function slotLabel(id: string, schedule?: SlotConfigLike[]): string {
 type SlotConfigLike = { id: string; label: string };
 
 /* ----------------------------------------------------------------
-   Day cadence — weekdays run the structured day (talks, reading,
+   Day cadence - weekdays run the structured day (talks, reading,
    journaling, core work); weekends are the long grind + family time.
 ----------------------------------------------------------------- */
 export const SLOT_DAYS_META: Record<SlotDays, { label: string; short: string }> = {
   everyday: { label: 'Every day', short: 'Daily' },
-  weekdays: { label: 'Weekdays · Mon–Fri', short: 'Mon–Fri' },
-  weekends: { label: 'Weekend · Sat–Sun', short: 'Sat–Sun' },
+  weekdays: { label: 'Weekdays · Mon-Fri', short: 'Mon-Fri' },
+  weekends: { label: 'Weekend · Sat-Sun', short: 'Sat-Sun' },
 };
 
 export const SLOT_DAYS_ORDER: SlotDays[] = ['everyday', 'weekdays', 'weekends'];

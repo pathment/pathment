@@ -53,7 +53,7 @@ export function ReviewDrawer({
   const requiredIds = checklist.filter((c) => c.required).map((c) => c.id);
   const allRequiredTicked = requiredIds.every((id) => checked.has(id));
 
-  // The matching delay (if late OR an extension was requested) — the reason
+  // The matching delay (if late OR an extension was requested) - the reason
   // behind the request, with the fairness lens (§6.4/§7.1)
   const delay = useMemo(() => {
     if (!mentee || !task || (!task.late && !task.extensionRequested)) return undefined;
@@ -115,7 +115,7 @@ export function ReviewDrawer({
             {done === 'rejected' && 'Rejected.'}
           </p>
           <p className="mt-1 text-xs text-ink-mute">
-            Recorded against {mentee.name.split(' ')[0]}&apos;s work history — who, when, which
+            Recorded against {mentee.name.split(' ')[0]}&apos;s work history - who, when, which
             checks, and your note.
           </p>
           <Button className="mt-4" onClick={close}>
@@ -142,7 +142,7 @@ export function ReviewDrawer({
             </div>
           )}
 
-          {/* AI delay / extension lens — when late or an extension was asked */}
+          {/* AI delay / extension lens - when late or an extension was asked */}
           {(task.late || task.extensionRequested) && delay && (
             <div className="ai-panel p-4 pl-5">
               <div className="flex items-center justify-between">
@@ -161,7 +161,7 @@ export function ReviewDrawer({
                 <p className="mt-1.5 text-xs leading-relaxed text-ink-mute">{delay.aiRationale}</p>
               )}
               <p className="mt-2 text-[11px] text-ink-faint">
-                The lens informs you — it doesn&apos;t decide. You still hold the call.
+                The lens informs you - it doesn&apos;t decide. You still hold the call.
               </p>
             </div>
           )}
@@ -228,7 +228,7 @@ export function ReviewDrawer({
               </button>
             </div>
 
-            {/* one-click template chips — no dropdown, just tap to insert */}
+            {/* one-click template chips - no dropdown, just tap to insert */}
             {!manageTpl && visibleTemplates.length > 0 && (
               <div className="mb-2 flex flex-wrap gap-1.5">
                 {visibleTemplates.map((t) => (

@@ -15,7 +15,7 @@ import { Modal, Field, SelectInput, Segmented } from '@/components/overlays';
 import { useStore } from '@/store/AppStore';
 
 /* ----------------------------------------------------------------
-   Rewards & incentives — the gamification economy. XP earned across
+   Rewards & incentives - the gamification economy. XP earned across
    roadmaps and streaks can be spent here, milestones unlock perks,
    referrals compound reach, and top mentees get surfaced to partners.
 ----------------------------------------------------------------- */
@@ -101,13 +101,13 @@ export function Rewards() {
   // talent: nominations keyed by mentee id
   const [nominated, setNominated] = useState<Record<number, boolean>>({});
 
-  // Milestone unlockers — first few mentees stand in as the people who hit them.
+  // Milestone unlockers - first few mentees stand in as the people who hit them.
   const milestoneOwners = useMemo(
     () => MILESTONES.map((m, i) => ({ milestone: m, owner: mentees[i % Math.max(mentees.length, 1)] })),
     [mentees],
   );
 
-  // Talent ranking — a simple local blend of progress and reliability.
+  // Talent ranking - a simple local blend of progress and reliability.
   const ranked = useMemo(
     () =>
       [...mentees]
@@ -142,7 +142,7 @@ export function Rewards() {
     <Page>
       <PageHeader
         title="Rewards"
-        subtitle="The incentive economy — spend earned XP, unlock milestones, grow the network, and surface talent"
+        subtitle="The incentive economy - spend earned XP, unlock milestones, grow the network, and surface talent"
       />
 
       <div className="mb-6">

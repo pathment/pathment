@@ -6,7 +6,7 @@ import { Field, TextInput, TextArea, SelectInput } from '@/components/overlays';
 import { useStore } from '@/store/AppStore';
 
 /* ----------------------------------------------------------------
-   Org announcements — the single channel that replaces scattered
+   Org announcements - the single channel that replaces scattered
    WhatsApp threads. One source of truth, in-app, searchable, pinned.
 ----------------------------------------------------------------- */
 

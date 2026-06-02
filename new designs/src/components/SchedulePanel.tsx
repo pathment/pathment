@@ -30,7 +30,7 @@ import type {
   Recurrence,
 } from '@/lib/types';
 
-/* slots no longer have fixed names — pick an icon by position so a day reads
+/* slots no longer have fixed names - pick an icon by position so a day reads
    sunrise → midday → evening → flexible, then cycles. */
 const SLOT_ICONS = [Sunrise, Sun, Moon, Clock];
 const iconFor = (i: number) => SLOT_ICONS[i % SLOT_ICONS.length];
@@ -60,7 +60,7 @@ export function SchedulePanel({ mentee }: { mentee: Mentee }) {
   const manageSlot = schedule.find((s) => s.id === manageSlotId) ?? null;
 
   // group slots by cadence (everyday / weekdays / weekends) so the structured
-  // Mon–Fri day and the weekend grind read as distinct blocks
+  // Mon-Fri day and the weekend grind read as distinct blocks
   const dayBuckets = SLOT_DAYS_ORDER.map((d) => ({
     d,
     slots: schedule.filter((s) => (s.days ?? 'everyday') === d),
@@ -165,7 +165,7 @@ export function SchedulePanel({ mentee }: { mentee: Mentee }) {
                   )}
                   {activeRm && activeProg && (
                     <div className="mt-2 flex items-center gap-2 rounded-r border border-hairline bg-neutral-50/60 px-2 py-1.5">
-                      {/* fast step control — move them up/down the roadmap */}
+                      {/* fast step control - move them up/down the roadmap */}
                       <div className="rounded-r inline-flex items-center border border-hairline bg-white">
                         <button
                           onClick={() => nudgeRoadmapStep(mentee.id, cfg.id, -1)}
@@ -198,21 +198,21 @@ export function SchedulePanel({ mentee }: { mentee: Mentee }) {
                       <Play className="h-3.5 w-3.5" /> Start
                     </Button>
                   )}
-                  {/* manage the roadmap's tasks for this mentee — jump steps,
+                  {/* manage the roadmap's tasks for this mentee - jump steps,
                       switch roadmap, reassign the active task. Always available. */}
                   {cfg.kind === 'roadmap' && (
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => setManageSlotId(cfg.id)}
-                      title="Manage tasks in this slot — jump steps, switch roadmap, reassign the task"
+                      title="Manage tasks in this slot - jump steps, switch roadmap, reassign the task"
                     >
                       <SlidersHorizontal className="h-3.5 w-3.5" /> Tasks
                     </Button>
                   )}
                   <button
                     onClick={() => toggleSlotBookable(mentee.id, cfg.id)}
-                    title={cfg.bookable ? 'Mentee can book a 1:1 here — click to disable' : 'Allow 1:1 booking in this slot'}
+                    title={cfg.bookable ? 'Mentee can book a 1:1 here - click to disable' : 'Allow 1:1 booking in this slot'}
                     className={cx(
                       'rounded-r grid h-8 w-8 place-items-center transition-colors',
                       cfg.bookable
@@ -222,7 +222,7 @@ export function SchedulePanel({ mentee }: { mentee: Mentee }) {
                   >
                     <CalendarClock className="h-3.5 w-3.5" />
                   </button>
-                  {/* explicit assign/change — so it's obvious you set the task per slot per mentee */}
+                  {/* explicit assign/change - so it's obvious you set the task per slot per mentee */}
                   <Button
                     variant="outline"
                     size="sm"
@@ -365,7 +365,7 @@ function SlotEditor({
         />
 
         {kind === 'roadmap' ? (
-          <Field label="Roadmap chain" hint="Pick roadmaps in order — finishing one prompts the next.">
+          <Field label="Roadmap chain" hint="Pick roadmaps in order - finishing one prompts the next.">
             <div className="space-y-1.5">
               {/* chosen order */}
               {chain.length > 0 && (
@@ -486,7 +486,7 @@ function AddSlotModal({
         <Field label="Name">
           <TextInput value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. Standup, Deep work, Pairing" autoFocus />
         </Field>
-        <Field label="Time" hint="Optional — e.g. 9:00 AM or Flexible.">
+        <Field label="Time" hint="Optional - e.g. 9:00 AM or Flexible.">
           <TextInput value={time} onChange={(e) => setTime(e.target.value)} placeholder="9:00 AM" />
         </Field>
         <Field label="Runs on" hint="Weekdays carry the structured day; weekends are the grind + family time.">
