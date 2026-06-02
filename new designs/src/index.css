@@ -70,11 +70,13 @@
   }
 
   /* The core surface: white, hairline, near-square. Shadows are the "AI-ish"
-     tell, so we use almost none — the hairline does the work. */
+     tell, so we use almost none, the hairline does the work. A sensible default
+     padding so a bare <Card> reads well; pass p-0 / p-4 / px-* to override. */
   .card {
     background: #fff;
     border: 1px solid #e4e4e7;
     border-radius: var(--r);
+    padding: 1.25rem;
   }
 
   .card-hover {
