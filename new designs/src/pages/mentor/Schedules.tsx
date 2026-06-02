@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Download,
   Users,
@@ -7,6 +7,8 @@ import {
   Check,
   Plus,
   X,
+  Pencil,
+  Trash2,
 } from 'lucide-react';
 import { Page, PageHeader } from '@/components/Page';
 import { Card, Badge, Button, Avatar, SectionLabel, cx } from '@/lib/ui';
@@ -25,6 +27,8 @@ export function Schedules() {
     inheritOrgTemplate,
     assignTemplateToMentees,
     createScheduleTemplate,
+    updateScheduleTemplate,
+    deleteScheduleTemplate,
     mentees,
     availabilitySlots,
     addAvailabilitySlot,
@@ -36,6 +40,7 @@ export function Schedules() {
   const myTemplates = scheduleTemplates.filter((t) => t.source === 'mentor');
   const [assignFor, setAssignFor] = useState<ScheduleTemplate | null>(null);
   const [creating, setCreating] = useState(false);
+  const [editingTpl, setEditingTpl] = useState<ScheduleTemplate | null>(null);
 
   // new-availability-slot form
   const [aDay, setADay] = useState('Tue');
@@ -140,7 +145,7 @@ export function Schedules() {
         ) : (
           <div className="grid gap-4 lg:grid-cols-2">
             {myTemplates.map((t) => (
-              <TemplateCard key={t.id} tpl={t} onAssign={() => setAssignFor(t)} />
+              <TemplateCard key={t.id} tpl={t} onAssign={() => setAssignFor(t)} onEdit={() => setEditingTpl(t)} />
             ))}
           </div>
         )}
@@ -179,32 +184,39 @@ export function Schedules() {
         }}
       />
 
-      {/* CREATE DRAWER — freeform time blocks (pure structure) */}
-      <CreateScheduleDrawer
-        open={creating}
-        onClose={() => setCreating(false)}
-        onCreate={(name, description, blocks) => {
-          createScheduleTemplate(name, description, blocks);
+      {/* CREATE / EDIT DRAWER — freeform time blocks (pure structure) */}
+      <ScheduleEditorDrawer
+        open={creating || !!editingTpl}
+        template={editingTpl}
+        onClose={() => {
           setCreating(false);
+          setEditingTpl(null);
         }}
+        onSubmit={(name, description, blocks) => {
+          if (editingTpl) updateScheduleTemplate(editingTpl.id, { name, description, blocks });
+          else createScheduleTemplate(name, description, blocks);
+          setCreating(false);
+          setEditingTpl(null);
+        }}
+        onDelete={
+          editingTpl
+            ? () => {
+                deleteScheduleTemplate(editingTpl.id);
+                setEditingTpl(null);
+              }
+            : undefined
+        }
       />
     </Page>
   );
 }
 
-/* Build a custom schedule = a list of named time blocks. PURE STRUCTURE: no
-   tasks or roadmaps here. Those get dropped into the slots per mentee, after
-   the schedule is assigned. */
-function CreateScheduleDrawer({
-  open,
-  onClose,
-  onCreate,
-}: {
-  open: boolean;
-  onClose: () => void;
-  onCreate: (name: string, description: string, blocks: TimeBlock[]) => void;
-}) {
-  const seed = (): TimeBlock[] => [
+/* Create OR edit a custom schedule = a list of named time blocks. PURE
+   STRUCTURE: no tasks or roadmaps here. Those get dropped into the slots per
+   mentee, after the schedule is assigned. Editing a template does not change
+   schedules already assigned to mentees (those are independent copies). */
+function defaultBlocks(): TimeBlock[] {
+  return [
     { id: 1, label: 'Journaling', time: '7:00 AM', days: 'weekdays' },
     { id: 2, label: 'Morning reading', time: '7:30 AM', days: 'weekdays' },
     { id: 3, label: 'Breakfast + Mindset talk', time: '8:30 AM', days: 'weekdays' },
@@ -214,19 +226,40 @@ function CreateScheduleDrawer({
     { id: 7, label: 'Weekend grind', time: '9:00 AM', days: 'weekends' },
     { id: 8, label: 'Family time', time: 'Evening', days: 'weekends' },
   ];
+}
+
+function ScheduleEditorDrawer({
+  open,
+  template,
+  onClose,
+  onSubmit,
+  onDelete,
+}: {
+  open: boolean;
+  template: ScheduleTemplate | null;
+  onClose: () => void;
+  onSubmit: (name: string, description: string, blocks: TimeBlock[]) => void;
+  onDelete?: () => void;
+}) {
+  const editing = !!template;
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [blocks, setBlocks] = useState<TimeBlock[]>(seed());
+  const [blocks, setBlocks] = useState<TimeBlock[]>(defaultBlocks());
 
-  const reset = () => {
-    setName('');
-    setDescription('');
-    setBlocks(seed());
-  };
-  const close = () => {
-    reset();
-    onClose();
-  };
+  // seed fields each time the drawer opens (new = methodology default, edit =
+  // the template's current values)
+  useEffect(() => {
+    if (!open) return;
+    if (template) {
+      setName(template.name);
+      setDescription(template.description ?? '');
+      setBlocks(template.blocks.map((b) => ({ ...b })));
+    } else {
+      setName('');
+      setDescription('');
+      setBlocks(defaultBlocks());
+    }
+  }, [open, template]);
 
   const setBlock = (id: number, patch: Partial<TimeBlock>) =>
     setBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, ...patch } : b)));
@@ -242,24 +275,34 @@ function CreateScheduleDrawer({
   return (
     <Drawer
       open={open}
-      onClose={close}
+      onClose={onClose}
       width="max-w-lg"
-      title="New schedule"
-      subtitle="Define the day's time blocks. Structure only — you fill each slot per mentee after assigning."
+      title={editing ? 'Edit schedule' : 'New schedule'}
+      subtitle={
+        editing
+          ? 'Change the time blocks. Mentees already on this schedule keep their current slots.'
+          : "Define the day's time blocks. Structure only — you fill each slot per mentee after assigning."
+      }
       footer={
         <div className="flex items-center justify-between">
-          <span className="font-mono text-[11px] text-ink-faint tnum">{blocks.length} slots</span>
+          {onDelete ? (
+            <Button variant="ghost" onClick={onDelete} className="text-[#FF3B30] hover:bg-rose-50">
+              <Trash2 className="h-4 w-4" /> Delete
+            </Button>
+          ) : (
+            <span className="font-mono text-[11px] text-ink-faint tnum">{blocks.length} slots</span>
+          )}
           <Button
             disabled={!valid}
             onClick={() =>
-              onCreate(
+              onSubmit(
                 name.trim(),
                 description.trim(),
                 blocks.map((b) => ({ ...b, label: b.label.trim(), time: b.time.trim() || 'Flexible' })),
               )
             }
           >
-            <Check className="h-4 w-4" /> Create schedule
+            <Check className="h-4 w-4" /> {editing ? 'Save changes' : 'Create schedule'}
           </Button>
         </div>
       }
@@ -336,11 +379,13 @@ function TemplateCard({
   org = false,
   onInherit,
   onAssign,
+  onEdit,
 }: {
   tpl: ScheduleTemplate;
   org?: boolean;
   onInherit?: () => void;
   onAssign?: () => void;
+  onEdit?: () => void;
 }) {
   return (
     <Card className="flex flex-col p-0">
@@ -380,6 +425,11 @@ function TemplateCard({
       <div className="flex items-center justify-between gap-2 border-t border-hairline bg-neutral-50/60 px-5 py-3">
         <span className="text-[11px] text-ink-faint">Structure only — fill slots per mentee after assigning</span>
         <div className="flex items-center gap-2">
+          {onEdit && (
+            <Button variant="outline" size="sm" onClick={onEdit}>
+              <Pencil className="h-3.5 w-3.5" /> Edit
+            </Button>
+          )}
           {org && onInherit && (
             <Button variant="outline" size="sm" onClick={onInherit}>
               <Download className="h-3.5 w-3.5" /> Inherit

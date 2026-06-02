@@ -186,6 +186,8 @@ interface Store {
   // named schedule templates — create, inherit org ones, assign to mentees
   scheduleTemplates: ScheduleTemplate[];
   createScheduleTemplate: (name: string, description: string, blocks: TimeBlock[]) => number;
+  updateScheduleTemplate: (id: number, patch: { name?: string; description?: string; blocks?: TimeBlock[] }) => void;
+  deleteScheduleTemplate: (id: number) => void;
   inheritOrgTemplate: (orgTemplateId: number) => number; // clone an org template to a mentor one
   assignTemplateToMentees: (templateId: number, menteeIds: number[]) => void;
   // 1:1 availability — mark which slots a mentee can book a call in
@@ -905,6 +907,34 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       ]);
       toast(`Schedule "${name}" created`);
       return id;
+    },
+    [toast],
+  );
+  // edit an existing schedule template (its name / description / time blocks).
+  // Already-assigned mentee schedules are independent copies and are unaffected.
+  const updateScheduleTemplate = useCallback<Store['updateScheduleTemplate']>(
+    (id, patch) => {
+      setScheduleTemplates((prev) =>
+        prev.map((t) =>
+          t.id === id
+            ? {
+                ...t,
+                name: patch.name ?? t.name,
+                description: patch.description ?? t.description,
+                blocks: patch.blocks ?? t.blocks,
+                schedule: patch.blocks ? buildScheduleFromBlocks(patch.blocks) : t.schedule,
+              }
+            : t,
+        ),
+      );
+      toast('Schedule updated');
+    },
+    [toast],
+  );
+  const deleteScheduleTemplate = useCallback<Store['deleteScheduleTemplate']>(
+    (id) => {
+      setScheduleTemplates((prev) => prev.filter((t) => t.id !== id));
+      toast('Schedule deleted');
     },
     [toast],
   );
@@ -1647,6 +1677,8 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       switchSlotRoadmap,
       scheduleTemplates,
       createScheduleTemplate,
+      updateScheduleTemplate,
+      deleteScheduleTemplate,
       inheritOrgTemplate,
       assignTemplateToMentees,
       toggleSlotBookable,
@@ -1721,7 +1753,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       createRoadmap, importRoadmap, assignRoadmap, bulkAssignRoadmap,
       getSchedule, setSlot, addSlot, removeSlot, applyScheduleToAll, startSlotRoadmap,
       setRoadmapStep, nudgeRoadmapStep, switchSlotRoadmap,
-      scheduleTemplates, createScheduleTemplate, inheritOrgTemplate, assignTemplateToMentees, toggleSlotBookable, bookableSlots,
+      scheduleTemplates, createScheduleTemplate, updateScheduleTemplate, deleteScheduleTemplate, inheritOrgTemplate, assignTemplateToMentees, toggleSlotBookable, bookableSlots,
       getDailyLogs, saveDailyLog,
       availabilitySlots, addAvailabilitySlot, removeAvailabilitySlot, bookAvailabilitySlot,
       releaseNotes, publishReleaseNote,
