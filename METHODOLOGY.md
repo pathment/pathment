@@ -1,17 +1,23 @@
-# The Pathment Methodology
+# The Dev Weekend Methodology
 
-This is how we mentor, and why. It starts with the values, because the values
-explain every other decision. After the values comes the mentorship model: the
-shape of a day, the talks and the meals they ride on, how we measure people
-fairly, how we read the human behind the work, and how a mentor actually shows
-up week to week.
+This is how we mentor at Dev Weekend, and why. It starts with the values,
+because the values explain every other decision. After the values comes the
+mentorship model: the shape of a day, the talks and the meals they ride on, how
+we measure people fairly, how we read the human behind the work, and how a
+mentor actually shows up week to week.
 
-Read it once to understand the why. Come back to it when a decision is unclear,
-the answer is almost always in the values.
+Pathment is the platform we are building to put this methodology into practice.
+The methodology is ours, it lives here in this document and in how we work.
+Where this document mentions a feature, a schedule slot, a progress read, an
+attributed note, that is Pathment implementing one of these ideas so it is easy
+to run at scale. The method comes first. The tool serves the method.
+
+Read this once to understand the why. Come back to it when a decision is
+unclear, the answer is almost always in the values.
 
 ## Part 1: Values
 
-Everything below is downstream of these. When a feature, a schedule, or a
+Everything below is downstream of these. When a practice, a schedule, or a
 conversation does not serve one of these, we change it.
 
 ### 1. Purpose
@@ -19,10 +25,10 @@ conversation does not serve one of these, we change it.
 Have a reason. Keep reminding yourself why you are doing this. A mentee who
 knows why they are building, and a mentor who knows why they are guiding, both
 push through the dull middle of a hard week. We make the purpose visible on
-purpose: the morning talk sets intention, the daily log asks what you actually
-did, and the relative progress lens reminds you that effort against your real
-life counts. When motivation dips, we go back to the why before we go back to
-the plan.
+purpose: the morning talk sets intention, the daily reflection asks what you
+actually did, and the relative progress lens reminds you that effort against
+your real life counts. When motivation dips, we go back to the why before we go
+back to the plan.
 
 ### 2. Adaptability
 
@@ -84,9 +90,9 @@ real depth happens without the interruptions of a structured weekday. Family
 time is not a reward you earn after the grind, it is part of the method.
 Sustainable people make better engineers, and balance is a feature, not a bug.
 
-The schedule is pure structure. A mentor assigns it, then fills each slot per
-mentee with a roadmap or a recurring task. Two mentees on the same schedule can
-be doing completely different work in the same slot.
+In Pathment, the schedule is pure structure. A mentor assigns it, then fills
+each slot per mentee with a roadmap or a recurring task. Two mentees on the same
+schedule can be doing completely different work in the same slot.
 
 ## Part 3: The three talks, and why they ride on meals
 
@@ -144,7 +150,8 @@ Every mentee has two progress reads:
 A mentee fighting power outages on a shared machine, who still submits, can be
 behind on absolute and excelling on relative. Both numbers are true. Showing
 both, side by side, is the only fair way to read a person. Judge effort by
-relative, judge readiness by absolute, and never confuse the two.
+relative, judge readiness by absolute, and never confuse the two. Pathment shows
+both reads side by side so this stays front of mind.
 
 ### Daily logs and notes
 
@@ -159,8 +166,9 @@ to help, and about helping them see themselves.
 
 ## Part 5: The human level
 
-This is where Pathment is different. We score people at the human level, not
-just the task level, because you cannot mentor a number.
+This is where Dev Weekend is different from a normal course. We read people at
+the human level, not just the task level, because you cannot mentor a number.
+Pathment is built to make that read practical.
 
 ### Understanding the issue, not just the symptom
 
@@ -222,8 +230,8 @@ program. The clan is the unit of belonging.
 
 A new mentee should feel oriented within their first day, not lost. Welcome them
 into the clan, walk them through the shape of the day and the why behind it, and
-make the first week concrete. The mentor onboarding and the mentor spec exist so
-a mentor knows exactly how to set someone up: profile, schedule, first roadmaps,
+make the first week concrete. Mentor onboarding and the mentor spec exist so a
+mentor knows exactly how to set someone up: profile, schedule, first roadmaps,
 and 1 to 1 availability. Communication inside the clan lives in one place,
 announcements and a community feed, so we move off scattered chats entirely. One
 channel, attributed, searchable, calm.
@@ -272,7 +280,7 @@ become mentors.
 
 ## Part 8: Putting it together
 
-A good week of Pathment looks like this. Mentees move through a structured day
+A good week at Dev Weekend looks like this. Mentees move through a structured day
 anchored on their meals, set their intention each morning, build through
 roadmap-driven core work, and close with perspective at night, with the weekend
 reserved for deep work and for family. A mentor runs that structure but shapes
@@ -283,4 +291,4 @@ ahead of the people who need them.
 None of this works as a checklist. It works because of the values. Purpose,
 adaptability, honesty with the craft, never missing the human level, and
 relentless attention to detail. Start there, and the rest of this document is
-just the details of how we live it.
+just the details of how we live it. Pathment exists to make living it easier.
