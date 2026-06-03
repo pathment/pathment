@@ -6,11 +6,16 @@ Pathment is ready it will do all of this automatically.
 
 ## The file
 
-`Dev Weekend - Mentee Tracker.xlsx` has four tabs:
+`Dev Weekend - Mentee Tracker.xlsx` has five tabs:
 
 - **Guide** how to use it, what each column means, and an at-a-glance summary
   that updates from the tracker (mentees, on track, watch, at risk, averages).
-- **Mentee Tracker** one row per mentee. The single view of where everyone is:
+- **Weekly Tracker** the main weekly log. Every week is a dated blue bar with all
+  mentees copied in under it as ready rows, so you just fill the week. Track
+  present, the two progress reads, on-time, momentum, sentiment, risk, blockers,
+  whether you had a 1:1, and a focus note. Weeks are laid out ahead, copy the
+  last block to add more.
+- **Mentee Tracker** one row per mentee. The current snapshot of where everyone is:
   roadmap and step, absolute and relative progress, on-time rate, momentum,
   sentiment, risk (colour-coded), blockers, last and next 1:1, the working-style
   read, and mentor notes.

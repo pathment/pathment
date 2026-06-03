@@ -14,7 +14,30 @@ and leave the headers and dropdowns alone, it will import.
   Log and the 1-on-1 Log refer to a mentee by name from a dropdown, and Pathment
   matches that name back to the email.
 - The Guide tab is notes for humans. Pathment ignores it on import.
+- On the Weekly Tracker, the blue week bars are visual dividers. Skip any row
+  where Mentee is empty. Every real row carries its own "Week of" date, so the
+  data does not depend on the bar.
 - To hand it over, export each data tab to CSV (UTF-8), or just share the file.
+
+## Weekly Tracker maps to weekly check-ins
+
+Key: Email (or Mentee) plus Week of.
+
+| Column | Pathment field | Notes / allowed values |
+| --- | --- | --- |
+| Week of | week | the Monday of that week, a date |
+| Mentee | mentee | name, matched to email |
+| Email | email | the key, may be blank if Mentee is set |
+| Present | attendance | Yes, No, Excused |
+| Absolute % | absolute progress | 0 to 100 |
+| Relative % | relative progress | 0 to 100 |
+| On-time % | on-time rate | 0 to 100 |
+| Momentum | momentum | Up, Flat, Down |
+| Sentiment | sentiment | Positive, Neutral, Low |
+| Risk | risk | On track, Watch, At risk |
+| Open blockers | open blockers | a count |
+| 1:1 this week | had 1:1 | Yes, No |
+| Note / focus for next week | note | free text |
 
 ## Mentee Tracker maps to mentees
 
