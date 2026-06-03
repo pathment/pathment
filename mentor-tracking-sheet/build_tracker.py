@@ -37,17 +37,18 @@ MENTEES = [
     ["Fatima Noor","fatima.n@email.com","Phoenix Clan","Intermediate","Karachi, PK","6/12","Not started","-",64,71,79,"Up","Positive","On track",1,"3h ago",0,"-","-",80,85,75,72,"Solid and improving three weeks running. One async/await blocker, working at it."],
     ["Tomas Berg","tomas.b@email.com","Phoenix Clan","Intermediate","Oslo, NO","6/12","Not started","-",53,49,62,"Down","Neutral","Watch",1,"2d ago",0,"-","-",60,70,64,68,"Drifting, two late tasks this week. Still responsive. A short check-in now prevents a bigger slide."],
 ]
-# week-1 example extras keyed by name: present, 1:1 this week, focus note
+# week-1 marking example, keyed by name:
+# present, tasks discussed, tasks done, done %, points (/10), risk, feedback
 WEEK1 = {
-    "Aisha Khan": ("Yes", "Yes", "Pairing on auth Thursday. Keep the momentum."),
-    "Diego Morales": ("Yes", "No", "Protect deadlines, shift due times to AM PKT."),
-    "Priya Nair": ("Excused", "Yes", "Warm check-in done. Re-engage gently, small wins first."),
-    "Liam Walsh": ("Yes", "No", "Add a stretch track so he is challenged."),
-    "Fatima Noor": ("Yes", "No", "Unblock async/await, then keep the climb going."),
-    "Tomas Berg": ("Yes", "Yes", "Short check-in this week before it slides further."),
+    "Aisha Khan": ("Yes", "Finish CRUD API, start auth (JWT)", "CRUD API done, auth started", 80, 8, "On track", "Strong week. Pair on auth Thursday."),
+    "Diego Morales": ("Yes", "Component composition, responsive dashboard", "Dashboard in (late), composition reading done", 60, 6, "Watch", "Good effort against real constraints. Protect deadlines."),
+    "Priya Nair": ("Excused", "API integration, REST best-practices reading", "Little progress, re-engaging", 20, 3, "At risk", "Warm check-in done. Small wins first, light load next week."),
+    "Liam Walsh": ("Yes", "Auth middleware, rate-limiting stretch", "Auth middleware done early", 100, 9, "On track", "Way ahead. Add a real stretch so he is challenged."),
+    "Fatima Noor": ("Yes", "Async/await refactor, event loop reading", "Refactor in progress, reading done", 75, 8, "On track", "Climbing nicely. Unblock async/await and keep going."),
+    "Tomas Berg": ("Yes", "Validation library, regex quiz", "Library in (late), quiz pending", 55, 5, "Watch", "Slipping a little. Short check-in this week."),
 }
 
-WEEKS = 12  # how many weekly blocks to lay down
+WEEKS = 12
 START = date(2026, 6, 1)
 START = START - timedelta(days=START.weekday())  # snap to Monday
 
@@ -84,22 +85,23 @@ rows = [
     ("", ""),
     ("How to use", ""),
     ("1.", "Open in Google Sheets (File, Import, Upload) or Excel. Share with your co-mentors."),
-    ("2.", "Weekly Tracker is the main view. Every week has a blue bar with its date, and all mentees are already listed under it. Fill in their row for the week."),
-    ("3.", "Mentee Tracker is the current snapshot, one row per mentee."),
+    ("2.", "Weekly Tracker is what you fill each week. Every week has a dated bar with all mentees under it. For each mentee write the tasks you discussed, mark how much they did, and give points out of 10."),
+    ("3.", "Mentee Tracker is the current snapshot, one row per mentee, with their points to date."),
     ("4.", "Daily Log is day-by-day habits and tasks. 1-on-1 Log is for sessions, with who logged it."),
     ("5.", "Keep it honest. The sheet is to help people, not to grade them."),
     ("", ""),
     ("Each new week", ""),
-    ("", "Each blue bar is a new week, dated. Under it the same mentees are copied in as ready placeholders, so you just fill the week. Weeks are laid out ahead of time, copy the last block to add more."),
+    ("", "Each blue bar is a new week, dated. Under it the same mentees are copied in as ready rows, so you just fill the week. Weeks are laid out ahead, copy the last block to add more."),
     ("", ""),
     ("Built to import into Pathment later", ""),
     ("", "Keep the header rows and the dropdown values as they are, one mentee per row, and Pathment will import this sheet straight in when it is ready. Email is the key that links a mentee across tabs. See import-format.md."),
     ("", ""),
     ("What the columns mean", ""),
-    ("Absolute %", "Raw output against the plan. Honest and unforgiving."),
-    ("Relative %", "Progress given the circumstances the mentee has logged. The fair read of effort."),
+    ("Tasks discussed", "What you agreed the mentee would do this week."),
+    ("Tasks done", "What they actually got through."),
+    ("Done %", "How much of the discussed tasks they completed, 0 to 100."),
+    ("Points (/10)", "Your mark for the week against what was discussed. Effort and outcome together."),
     ("Risk", "On track, Watch, or At risk. Colour-coded so the people who need you stand out."),
-    ("Consistency / Communication / Resilience / Independence", "The working-style read, 0 to 100. A gentle read, not a grade."),
 ]
 r = 4
 for a, b in rows:
@@ -119,7 +121,7 @@ for i, (label, formula) in enumerate([
     ("Watch", "=COUNTIF('Mentee Tracker'!N2:N200,\"Watch\")"),
     ("At risk", "=COUNTIF('Mentee Tracker'!N2:N200,\"At risk\")"),
     ("Average on-time %", "=IFERROR(ROUND(AVERAGE('Mentee Tracker'!K2:K200),0),0)"),
-    ("Average absolute %", "=IFERROR(ROUND(AVERAGE('Mentee Tracker'!I2:I200),0),0)"),
+    ("Average points (latest week)", "=IFERROR(ROUND(AVERAGEIF('Weekly Tracker'!H2:H1000,\">0\"),1),0)"),
 ]):
     g[f"A{sr + 1 + i}"] = label
     g[f"A{sr + 1 + i}"].font = BASE_FONT
@@ -128,14 +130,15 @@ for i, (label, formula) in enumerate([
 g.column_dimensions["A"].width = 30
 g.column_dimensions["B"].width = 96
 
-# ---------------- Weekly Tracker ----------------
+# ---------------- Weekly Tracker (the mentor's weekly marking sheet) ----------------
 w = wb.create_sheet("Weekly Tracker")
 w.sheet_view.showGridLines = False
-wheaders = ["Week of", "Mentee", "Email", "Present", "Absolute %", "Relative %", "On-time %",
-            "Momentum", "Sentiment", "Risk", "Open blockers", "1:1 this week", "Note / focus for next week"]
+wheaders = ["Week of", "Mentee", "Email", "Present", "Tasks discussed", "Tasks done",
+            "Done %", "Points (/10)", "Risk", "Feedback / focus for next week"]
 style_header(w, wheaders)
 ncol = len(wheaders)
-risk_cells = []
+wrap_cols = {5, 6, 10}
+center_cols = {4, 7, 8, 9}
 row = 2
 for wk in range(WEEKS):
     d0 = START + timedelta(weeks=wk)
@@ -150,10 +153,10 @@ for wk in range(WEEKS):
     for m in MENTEES:
         name, email = m[0], m[1]
         if wk == 0:
-            present, oneone, focus = WEEK1[name]
-            vals = [d0, name, email, present, m[8], m[9], m[10], m[11], m[12], m[13], m[14], oneone, focus]
+            present, disc, done, pct, pts, risk, fb = WEEK1[name]
+            vals = [d0, name, email, present, disc, done, pct, pts, risk, fb]
         else:
-            vals = [d0, name, email, "", "", "", "", "", "", "", "", "", ""]
+            vals = [d0, name, email, "", "", "", "", "", "", ""]
         for c, v in enumerate(vals, start=1):
             cell = w.cell(row=row, column=c, value=v)
             cell.font = BASE_FONT
@@ -161,26 +164,22 @@ for wk in range(WEEKS):
             if c == 1:
                 cell.number_format = "mmm d, yyyy"
                 cell.alignment = TOP
-            elif c == ncol:
+            elif c in wrap_cols:
                 cell.alignment = WRAP
-            elif c in (2, 3):
-                cell.alignment = TOP
-            else:
+            elif c in center_cols:
                 cell.alignment = CENTER
-        risk_cells.append(f"J{row}")
+            else:
+                cell.alignment = TOP
         row += 1
 last = row - 1
-wwidths = [13, 16, 22, 9, 10, 10, 9, 11, 11, 11, 9, 12, 46]
-for i, wd in enumerate(wwidths, start=1):
+for i, wd in enumerate([13, 16, 22, 9, 38, 38, 8, 11, 11, 40], start=1):
     w.column_dimensions[get_column_letter(i)].width = wd
 w.row_dimensions[1].height = 28
 w.freeze_panes = "B2"
 dv(w, "D", ["Yes", "No", "Excused"], last)
-dv(w, "H", ["Up", "Flat", "Down"], last)
-dv(w, "I", ["Positive", "Neutral", "Low"], last)
-dv(w, "J", ["On track", "Watch", "At risk"], last)
-dv(w, "L", ["Yes", "No"], last)
-rng = f"J2:J{last}"
+dv(w, "H", [str(n) for n in range(0, 11)], last)
+dv(w, "I", ["On track", "Watch", "At risk"], last)
+rng = f"I2:I{last}"
 for val in ("At risk", "Watch", "On track"):
     w.conditional_formatting.add(rng, CellIsRule(operator="equal", formula=[f'"{val}"'], fill=RISK_FILLP[val], font=Font(name=FONT, size=10, color=RISK_FONT[val])))
 
@@ -190,22 +189,27 @@ t.sheet_view.showGridLines = False
 headers = ["Mentee", "Email", "Clan", "Level", "Location", "Week", "Current roadmap", "Current step",
            "Absolute %", "Relative %", "On-time %", "Momentum", "Sentiment", "Risk",
            "Open blockers", "Last active", "Nudges (wk)", "Last 1:1", "Next 1:1",
-           "Consistency", "Communication", "Resilience", "Independence", "Mentor notes / next steps"]
+           "Consistency", "Communication", "Resilience", "Independence", "Mentor notes / next steps",
+           "Points to date"]
 style_header(t, headers)
 for m in MENTEES:
     t.append(m)
 for _ in range(12):
-    t.append([""] * len(headers))
+    t.append([""] * (len(headers) - 1))
 ncols = len(headers)
 nrows = 1 + len(MENTEES) + 12
-center = set(range(9, 24))
+center = set(range(9, 24)) | {25}
 for rr in range(2, nrows + 1):
+    # points-to-date sums this mentee's weekly points by email
+    t.cell(row=rr, column=25).value = (
+        f"=IF(B{rr}=\"\",\"\",SUMIF('Weekly Tracker'!$C:$C,B{rr},'Weekly Tracker'!$H:$H))"
+    )
     for c in range(1, ncols + 1):
         cell = t.cell(row=rr, column=c)
-        cell.font = BASE_FONT
+        cell.font = BOLD if c == 25 else BASE_FONT
         cell.border = BORDER
-        cell.alignment = WRAP if c == ncols else (CENTER if c in center else TOP)
-widths = [16,22,14,13,15,7,18,22,10,10,10,11,11,11,8,11,9,10,12,11,13,10,12,52]
+        cell.alignment = WRAP if c == 24 else (CENTER if c in center else TOP)
+widths = [16,22,14,13,15,7,18,22,10,10,10,11,11,11,8,11,9,10,12,11,13,10,12,52,13]
 for i, wd in enumerate(widths, start=1):
     t.column_dimensions[get_column_letter(i)].width = wd
 t.row_dimensions[1].height = 28

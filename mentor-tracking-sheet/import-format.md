@@ -29,15 +29,12 @@ Key: Email (or Mentee) plus Week of.
 | Mentee | mentee | name, matched to email |
 | Email | email | the key, may be blank if Mentee is set |
 | Present | attendance | Yes, No, Excused |
-| Absolute % | absolute progress | 0 to 100 |
-| Relative % | relative progress | 0 to 100 |
-| On-time % | on-time rate | 0 to 100 |
-| Momentum | momentum | Up, Flat, Down |
-| Sentiment | sentiment | Positive, Neutral, Low |
+| Tasks discussed | planned tasks | free text, what was agreed for the week |
+| Tasks done | completed tasks | free text, what they got through |
+| Done % | completion | 0 to 100 |
+| Points (/10) | weekly score | 0 to 10, the mentor's mark for the week |
 | Risk | risk | On track, Watch, At risk |
-| Open blockers | open blockers | a count |
-| 1:1 this week | had 1:1 | Yes, No |
-| Note / focus for next week | note | free text |
+| Feedback / focus for next week | note | free text |
 
 ## Mentee Tracker maps to mentees
 
@@ -69,6 +66,7 @@ Key: Email.
 | Resilience | personality.resilience | 0 to 100 |
 | Independence | personality.independence | 0 to 100 |
 | Mentor notes / next steps | notes | free text |
+| Points to date | total weekly points | computed by the sheet, sum of this mentee's weekly points |
 
 ## Daily Log maps to daily logs
 
