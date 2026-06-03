@@ -32,7 +32,15 @@ used. Clear the example rows and add your own.
 
 Risk, Momentum, Sentiment, and session Type use dropdowns so everyone stays
 consistent. The risk column turns green, amber, or red so the people who need
-you stand out.
+you stand out. On the Daily Log and 1-on-1 Log, you pick the mentee from a
+dropdown so names always match.
+
+## Importing into Pathment later
+
+The sheet is built so Pathment can import it when it is ready, with no extra work
+from you. Email is the key that links a mentee across tabs, and the headers and
+dropdown values are the format Pathment reads. Just keep them as they are and
+fill the sheet normally. The full mapping is in `import-format.md`.
 
 `build_tracker.py` is the script that generates the file, kept so the sheet can
 be regenerated if the columns change.
