@@ -65,6 +65,24 @@ their morning reflection. Mentoring is not a queue you clear, it is a set of
 people you stay ahead of. Being on your feet, watching, anticipating, and acting
 early is the job.
 
+### 6. Excellence
+
+Hold a high bar, in everything. A talk, a code review, a one to one, the build,
+the experience itself, all of it is held to top quality. We do not ship
+mediocre, and we do not let good enough become the finish line. The standard is
+high on purpose, because people rise to the bar you set for them. Quality is not
+a final polish at the end, it is how we do every step along the way. Always be
+at the top.
+
+### 7. Everyone belongs
+
+The bar is high, and it is for everyone. We meet people where they are, whatever
+their background, level, location, or circumstance, and we build a path for them
+to reach the standard, not a wall that keeps them out. Relative progress exists
+for exactly this reason: we judge people fairly against their own lives, not
+against someone else's starting line. Excellence and inclusion are not in
+tension. We hold the standard high, and we help every single person get there.
+
 ## Part 2: The shape of a day
 
 We give every mentee a structured day, then let mentors shape it per person.
@@ -289,6 +307,7 @@ answers early and teaches the approach, holds real hours, and stays one step
 ahead of the people who need them.
 
 None of this works as a checklist. It works because of the values. Purpose,
-adaptability, honesty with the craft, never missing the human level, and
-relentless attention to detail. Start there, and the rest of this document is
-just the details of how we live it. Pathment exists to make living it easier.
+adaptability, honesty with the craft, never missing the human level, relentless
+attention to detail, excellence in everything, and a place where everyone
+belongs. Start there, and the rest of this document is just the details of how
+we live it. Pathment exists to make living it easier.
