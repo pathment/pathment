@@ -10,12 +10,13 @@ Pathment is ready it will do all of this automatically.
 
 - **Guide** how to use it, what each column means, and an at-a-glance summary
   that updates from the tracker (mentees, on track, watch, at risk, averages).
-- **Weekly Tracker** what the mentor fills each week. Every week is a dated blue
-  bar with all mentees copied in under it as ready rows. For each mentee you
-  write the tasks you discussed, mark how much they did (Done %), give points out
-  of 10, set their risk, and leave a focus note for next week. Weeks are laid out
-  ahead, copy the last block to add more. The points add up per mentee on the
-  Mentee Tracker.
+- **Weekly Tracker** what the mentor fills each week, in line with the schedule.
+  Every week is a dated blue bar with all mentees copied in under it as ready
+  rows. For each mentee you mark how many of the five weekday days they did
+  journaling, reading, and each talk, what core work was assigned and how much
+  got done, the weekend grind hours, then give points out of 10, set risk, and
+  leave a focus note. Weeks are laid out ahead, copy the last block to add more.
+  The points add up per mentee on the Mentee Tracker.
 - **Mentee Tracker** one row per mentee. The current snapshot of where everyone is:
   roadmap and step, absolute and relative progress, on-time rate, momentum,
   sentiment, risk (colour-coded), blockers, last and next 1:1, the working-style

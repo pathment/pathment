@@ -28,13 +28,24 @@ Key: Email (or Mentee) plus Week of.
 | Week of | week | the Monday of that week, a date |
 | Mentee | mentee | name, matched to email |
 | Email | email | the key, may be blank if Mentee is set |
-| Present | attendance | Yes, No, Excused |
-| Tasks discussed | planned tasks | free text, what was agreed for the week |
-| Tasks done | completed tasks | free text, what they got through |
-| Done % | completion | 0 to 100 |
-| Points (/10) | weekly score | 0 to 10, the mentor's mark for the week |
+| Journaling /5 | journaling adherence | days done out of the 5 weekdays |
+| Reading /5 | morning reading adherence | days done out of 5 |
+| Mindset talk /5 | mindset talk adherence | days done out of 5 |
+| Eng. talk /5 | engineering talk adherence | days done out of 5 |
+| Dean talk /5 | dean talk adherence | days done out of 5 |
+| Core work assigned | assigned task | free text, what was set this week |
+| Core work completed | completed task | free text, what they finished |
+| Core % | core completion | 0 to 100 |
+| Grind h /10 | weekend grind hours | hours done out of the 10-hour target |
+| Family time | family time | Yes, No |
+| Points /10 | weekly score | 0 to 10, the mentor's mark for the week |
 | Risk | risk | On track, Watch, At risk |
 | Feedback / focus for next week | note | free text |
+
+The habit and talk columns line up with the schedule: the target is the five
+weekday days, so a 4 means four of the five days. Core work carries the actual
+assigned and completed tasks and the percent done. The grind is hours out of
+ten. That is what was assigned, what was completed, and how much.
 
 ## Mentee Tracker maps to mentees
 
