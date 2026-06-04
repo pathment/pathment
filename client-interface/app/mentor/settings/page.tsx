@@ -1,9 +1,10 @@
 'use client';
 
-import { Loader2, Save, User, Mail, Phone, Briefcase, Users, Bell, Shield, CheckCircle2 } from 'lucide-react';
+import { Loader2, Save, User, Mail, Phone, Briefcase, Users, Bell, Shield, CheckCircle2, KeyRound } from 'lucide-react';
 import { useMentorSettings } from '@/lib/hooks/mentor';
 import { PageHeader, TabBar } from '@/components/admin/ui';
 import SecurityTab from '@/components/shared/SecurityTab';
+import AIConnectionsTab from '@/components/settings/AIConnectionsTab';
 import type { Tab } from '@/components/admin/ui';
 
 export default function MentorSettings() {
@@ -39,6 +40,7 @@ export default function MentorSettings() {
     { id: 'mentor', label: 'Mentor Info', icon: Briefcase },
     { id: 'availability', label: 'Availability', icon: Users },
     { id: 'notifications', label: 'Notifications', icon: Bell },
+    { id: 'ai', label: 'AI Connections', icon: KeyRound },
     { id: 'security', label: 'Security', icon: Shield },
   ];
 
@@ -349,6 +351,10 @@ export default function MentorSettings() {
           )}
 
           {/* Security Tab */}
+          {activeTab === 'ai' && (
+            <AIConnectionsTab />
+          )}
+
           {activeTab === 'security' && (
             <SecurityTab userRole="mentor" showAuditLogs={false} />
           )}

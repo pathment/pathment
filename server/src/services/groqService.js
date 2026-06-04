@@ -4,28 +4,55 @@ const { ValidationError } = require('../utils/errors/errorTypes');
 
 class GroqService {
   constructor() {
+    // OpenAI clients are cached by `${baseURL}|${apiKey}` so we don't rebuild
+    // one per call. The active key is resolved per request (configured AI
+    // connection first, env fallback second) — see `_resolve`.
+    this._clients = new Map();
     if (!config.ai.apiKey) {
-      console.warn('Groq API key not configured. AI features will be disabled.');
-      this.enabled = false;
-      return;
+      console.log('ℹ AI: no env key set — relying on configured AI connections (Settings → AI Connections).');
     }
+  }
 
-    this.client = new OpenAI({
-      apiKey: config.ai.apiKey,
-      baseURL: config.ai.baseURL
-    });
-    this.model = config.ai.model;
-    this.provider = config.ai.provider;
-    this.enabled = true;
-    console.log(`✓ Groq AI Service enabled using ${this.provider} (${this.model})`);
+  _clientFor(apiKey, baseURL) {
+    const cacheKey = `${baseURL}|${apiKey}`;
+    if (!this._clients.has(cacheKey)) {
+      this._clients.set(cacheKey, new OpenAI({ apiKey, baseURL }));
+    }
+    return this._clients.get(cacheKey);
+  }
+
+  /**
+   * Resolve the AI client + model to use. Prefers a configured AI connection
+   * (personal routing → org routing → any org key) and falls back to the env
+   * config. Returns { enabled, client, model }.
+   */
+  async _resolve(feature = null, userId = null) {
+    let cfg = null;
+    try {
+      // Lazy require avoids any load-order cycle (db ↔ services).
+      const aiConnectionService = require('./aiConnectionService');
+      cfg = await aiConnectionService.resolveActiveConfig(feature, userId);
+    } catch (e) {
+      console.error('[AI] connection resolve failed, falling back to env:', e.message);
+    }
+    if (!cfg && config.ai.apiKey) {
+      cfg = { apiKey: config.ai.apiKey, baseURL: config.ai.baseURL, model: config.ai.model, provider: config.ai.provider };
+    }
+    if (!cfg) return { enabled: false };
+    return {
+      enabled: true,
+      client: this._clientFor(cfg.apiKey, cfg.baseURL),
+      model: cfg.model || config.ai.model
+    };
   }
 
   /**
    * Generate roadmap using Groq AI
    */
   async generateRoadmap(params) {
-    if (!this.enabled) {
-      throw new ValidationError('Groq AI roadmap generation is not available. Please configure Groq API key.');
+    const ai = await this._resolve();
+    if (!ai.enabled) {
+      throw new ValidationError('AI is not configured. Add a provider key in Settings → AI Connections.');
     }
 
     const {
@@ -53,8 +80,8 @@ class GroqService {
     });
 
     try {
-      const response = await this.client.chat.completions.create({
-        model: this.model,
+      const response = await ai.client.chat.completions.create({
+        model: ai.model,
         messages: [
           {
             role: 'system',
@@ -308,7 +335,8 @@ CRITICAL RULES:
    * Generate adaptive recommendations
    */
   async generateAdaptiveRecommendations(params) {
-    if (!this.enabled) {
+    const ai = await this._resolve();
+    if (!ai.enabled) {
       return { recommendations: [], confidence: 0 };
     }
 
@@ -356,8 +384,8 @@ Output as JSON:
 }`;
 
     try {
-      const response = await this.client.chat.completions.create({
-        model: this.model,
+      const response = await ai.client.chat.completions.create({
+        model: ai.model,
         messages: [
           {
             role: 'system',
@@ -384,7 +412,8 @@ Output as JSON:
    * Generate mentor-mentee matching score
    */
   async generateMatchingScore(mentorProfile, menteeProfile, programRequirements) {
-    if (!this.enabled) {
+    const ai = await this._resolve();
+    if (!ai.enabled) {
       // Fallback to simple rule-based matching
       return this.calculateBasicMatchScore(mentorProfile, menteeProfile);
     }
@@ -424,8 +453,8 @@ Output as JSON:
 }`;
 
     try {
-      const response = await this.client.chat.completions.create({
-        model: this.model,
+      const response = await ai.client.chat.completions.create({
+        model: ai.model,
         messages: [
           {
             role: 'system',
@@ -454,7 +483,8 @@ Output as JSON:
    * Falls back to calculateBasicMatchScore per mentor when AI is unavailable.
    */
   async batchGenerateMatchingScores(mentors, menteeProfile, programRequirements) {
-    if (!this.enabled || mentors.length === 0) {
+    const ai = await this._resolve();
+    if (!ai.enabled || mentors.length === 0) {
       return mentors.map(m => ({
         mentorId: m.id,
         ...this.calculateBasicMatchScore(m, menteeProfile)
@@ -513,8 +543,8 @@ Output as JSON:
 }`;
 
     try {
-      const response = await this.client.chat.completions.create({
-        model: this.model,
+      const response = await ai.client.chat.completions.create({
+        model: ai.model,
         messages: [
           { role: 'system', content: 'You are an expert in mentor-mentee matching. Always respond with valid JSON only.' },
           { role: 'user', content: prompt }

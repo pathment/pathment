@@ -30,6 +30,7 @@ const trackRoutes = require('./tracks');
 const linearRoadmapRoutes = require('./linearRoadmaps');
 const mentorSpecRoutes = require('./mentorSpec');
 const intakeRoutes = require('./intake');
+const aiConnectionRoutes = require('./aiConnections');
 
 /**
  * API Routes
@@ -124,6 +125,9 @@ router.use('/mentor-spec', mentorSpecRoutes);
 
 // Registration intake — cohorts + applications (admin)
 router.use('/intake', intakeRoutes);
+
+// AI connections — admin BYO provider keys + feature routing
+router.use('/ai-connections', aiConnectionRoutes);
 
 
 

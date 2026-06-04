@@ -9,16 +9,19 @@ import {
   Users,
   Loader2,
   Save,
+  KeyRound,
 } from 'lucide-react';
 import { useAdminSettings } from '@/lib/hooks/admin';
 import { PageHeader, TabBar } from '@/components/admin/ui';
 import SecurityTab from '@/components/shared/SecurityTab';
+import AIConnectionsTab from '@/components/settings/AIConnectionsTab';
 
 const TABS = [
   { id: 'profile', label: 'Profile', icon: User },
   { id: 'system', label: 'System', icon: Settings2 },
   { id: 'users', label: 'User Management', icon: Users },
   { id: 'notifications', label: 'Notifications', icon: Bell },
+  { id: 'ai', label: 'AI Connections', icon: KeyRound },
   { id: 'security', label: 'Security', icon: Shield },
 ];
 
@@ -426,6 +429,10 @@ export default function AdminSettings() {
           )}
 
           {/* Security Tab */}
+          {activeTab === 'ai' && (
+            <AIConnectionsTab />
+          )}
+
           {activeTab === 'security' && (
             <SecurityTab userRole="admin" showAuditLogs={true} />
           )}
