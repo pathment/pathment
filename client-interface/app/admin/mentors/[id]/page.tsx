@@ -10,6 +10,7 @@ import {
 import { useMentorProfile } from '@/lib/hooks/admin';
 import type { MentorSkill, MentorActiveMatch } from '@/lib/hooks/admin';
 import { StatsCard, PageHeader } from '@/components/admin/ui';
+import { MentorFeedbackAdminPanel } from '@/components/admin/MentorFeedbackAdminPanel';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -300,6 +301,9 @@ export default function AdminMentorProfilePage() {
               </div>
             )}
           </div>
+
+          {/* Anonymous mentee feedback (admin moderation view) */}
+          {mentor?.id && <MentorFeedbackAdminPanel mentorId={mentor.id} />}
         </div>
       </div>
     </>

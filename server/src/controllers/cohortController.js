@@ -13,6 +13,16 @@ const getCohort = catchAsync(async (req, res) => {
 });
 
 /**
+ * POST /api/mentor/cohort/report-summary  { period?: 'week' | 'month' }
+ * AI-drafted narrative summary of the mentor's cohort (uses their AI connection).
+ */
+const getCohortReportSummary = catchAsync(async (req, res) => {
+  const period = req.body?.period === 'month' ? 'month' : 'week';
+  const result = await cohortService.generateReportSummary(req.user.id, period);
+  res.status(200).json(successResponse('Report summary generated', result));
+});
+
+/**
  * GET /api/mentor/mentee/:id
  * Rich profile bundle for one mentee (fairness read + blockers + delays +
  * grouped tasks + derived summary/signals).
@@ -105,4 +115,4 @@ const removeCollaborator = catchAsync(async (req, res) => {
   res.status(200).json(successResponse('Collaborator removed', result));
 });
 
-module.exports = { getCohort, getMenteeProfile, getApprovals, bulkApprove, nudge, getMyProgress, updatePersonality, addInsight, logMeetingNote, addCollaborator, removeCollaborator };
+module.exports = { getCohort, getCohortReportSummary, getMenteeProfile, getApprovals, bulkApprove, nudge, getMyProgress, updatePersonality, addInsight, logMeetingNote, addCollaborator, removeCollaborator };

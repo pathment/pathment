@@ -247,28 +247,30 @@ export default function MenteeDetail() {
         </div>
       </div>
 
-      {/* ── Completion request banner ────────────────────────────────── */}
+      {/* ── Ready-for-sign-off banner ────────────────────────────────── */}
       {enrollment?.status === 'pending_completion' && (
         <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center gap-4">
           <div className="flex items-start gap-3 flex-1">
             <AlertCircle className="w-6 h-6 text-amber-600 shrink-0 mt-0.5" />
             <div>
               <p className="text-amber-900 font-medium text-sm">
-                {mentee?.firstName} {mentee?.lastName} has requested level completion
+                {enrollment.completionRequestedByRole === 'system'
+                  ? `${mentee?.firstName} ${mentee?.lastName} has finished every task — ready for your sign-off`
+                  : `${mentee?.firstName} ${mentee?.lastName} has requested completion`}
               </p>
               <p className="text-amber-700 text-xs mt-1">
-                Requested on {enrollment.completionRequestedAt ? new Date(enrollment.completionRequestedAt).toLocaleDateString() : 'recently'}
+                Review their work, then confirm completion or send it back with a note.
               </p>
             </div>
           </div>
           <div className="flex gap-3 shrink-0">
             <button onClick={() => setShowRejectModal(true)} disabled={completionLoading}
               className="px-4 py-2 bg-white border border-red-300 text-red-700 hover:bg-red-50 rounded-xl text-sm flex items-center gap-2 transition-colors disabled:opacity-50">
-              <ThumbsDown className="w-4 h-4" />Reject
+              <ThumbsDown className="w-4 h-4" />Send back
             </button>
             <button onClick={handleApproveCompletion} disabled={completionLoading}
               className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl text-sm flex items-center gap-2 transition-colors disabled:opacity-50">
-              {completionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ThumbsUp className="w-4 h-4" />}Approve completion
+              {completionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ThumbsUp className="w-4 h-4" />}Confirm completion
             </button>
           </div>
         </div>

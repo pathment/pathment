@@ -453,6 +453,55 @@ class CohortService {
 
     return { cohort, totals };
   }
+
+  /**
+   * Generate a short, sendable written summary of the mentor's cohort using
+   * their configured AI connection (feature: 'summary'). We compute the metrics
+   * from authoritative cohort data here, hand the model a compact factual brief,
+   * and ask for a few tight paragraphs in the mentor's voice. Returns the text;
+   * throws ValidationError (no data) or bubbles the AI error (no key configured).
+   */
+  async generateReportSummary(mentorId, period = 'week') {
+    const { cohort } = await this.getCohort(mentorId);
+    if (!cohort.length) throw new ValidationError('No cohort data to summarise yet.');
+
+    const size = cohort.length;
+    const round = (n) => Math.round(n);
+    const avg = (sel) => (size ? cohort.reduce((s, m) => s + sel(m), 0) / size : 0);
+    const avgProgress = round(avg((m) => m.absoluteProgress));
+    const avgOnTime = round(avg((m) => m.onTimeRate));
+    const rated = cohort.filter((m) => m.avgRating > 0);
+    const avgRating = rated.length ? Number((rated.reduce((s, m) => s + m.avgRating, 0) / rated.length).toFixed(1)) : null;
+    const onTrack = cohort.filter((m) => m.risk === 'low');
+    const watch = cohort.filter((m) => m.risk === 'watch');
+    const high = cohort.filter((m) => m.risk === 'high');
+    const pending = cohort.reduce((n, m) => n + m.pendingApprovals, 0);
+    const openBlockers = cohort.reduce((n, m) => n + m.openBlockers, 0);
+    const top = [...cohort].sort((a, b) => (b.absoluteProgress + b.onTimeRate) - (a.absoluteProgress + a.onTimeRate)).slice(0, 3);
+
+    const brief = [
+      `Period: this ${period}`,
+      `Cohort size: ${size} mentees`,
+      `Average progress: ${avgProgress}%`,
+      `On-time delivery: ${avgOnTime}%`,
+      avgRating ? `Average work quality: ${avgRating}/5` : 'Average work quality: no ratings yet',
+      `On track: ${onTrack.length}; to watch: ${watch.length}; at risk: ${high.length}`,
+      `Pending reviews: ${pending}; open blockers: ${openBlockers}`,
+      `Top performers: ${top.map((m) => `${m.name} (${round(m.absoluteProgress)}% done, ${round(m.onTimeRate)}% on time)`).join('; ') || 'none'}`,
+      `Needs attention: ${[...high, ...watch].map((m) => `${m.name} — ${m.riskReason || m.risk}`).join('; ') || 'none'}`,
+    ].join('\n');
+
+    const system =
+      'You are an experienced mentor writing a concise weekly cohort update for your program lead. ' +
+      'Write in the first person, warm but professional, 2-3 short paragraphs, no headings, no bullet ' +
+      'lists, no markdown. Name specific mentees where relevant. Be honest about risks and concrete ' +
+      'about what you will do next. Do not invent facts beyond the brief.';
+    const prompt = `Here is the data for my cohort update. Write the update.\n\n${brief}`;
+
+    const groqService = require('./groqService');
+    const summary = await groqService.generateText({ system, prompt, feature: 'summary', userId: mentorId, temperature: 0.6, maxTokens: 600 });
+    return { summary, period };
+  }
 }
 
 function capitalize(s) {

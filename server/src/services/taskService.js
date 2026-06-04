@@ -566,20 +566,34 @@ class TaskService {
       ? Math.round((tasksCompleted / tasksTotal) * 100)
       : 0;
 
-    // If every task in the program (roadmap + custom) is completed, mark the enrollment done
+    // Completion is the MENTOR's call. When every program task (roadmap + custom)
+    // is done we don't silently complete — we flag the enrollment as ready for
+    // sign-off ('pending_completion', marked system-requested) so the mentor is
+    // prompted to confirm. If work reopens, only the system-flagged ones revert.
     const allProgramTasksDone = tasksTotal > 0 && tasksCompleted >= tasksTotal;
-
-    // If there are now uncompleted tasks and the enrollment was previously auto-marked
-    // as program_completed (e.g. a custom task was just assigned), revert to active.
     const currentEnrollment = await models.Enrollment.findByPk(enrollmentId);
-    const revertStatus =
-      !allProgramTasksDone && currentEnrollment?.status === 'program_completed'
-        ? { status: 'active', completedAt: null }
-        : {};
+    const current = currentEnrollment?.status;
 
-    const statusUpdate = allProgramTasksDone
-      ? { status: 'program_completed', completedAt: new Date() }
-      : revertStatus;
+    let statusUpdate = {};
+    if (allProgramTasksDone) {
+      if (current === 'active' || current === 'matched') {
+        statusUpdate = {
+          status: 'pending_completion',
+          completionRequestedAt: new Date(),
+          completionRequestedBy: null,
+          completionRequestedByRole: 'system',
+          completionRejectionReason: null
+        };
+      }
+    } else if (current === 'pending_completion' && currentEnrollment?.completionRequestedByRole === 'system') {
+      // Auto-flagged as ready, but new work appeared — send it back to active.
+      statusUpdate = {
+        status: 'active',
+        completionRequestedAt: null,
+        completionRequestedBy: null,
+        completionRequestedByRole: null
+      };
+    }
 
     await models.Enrollment.update(
       {
@@ -593,6 +607,14 @@ class TaskService {
       { where: { id: enrollmentId } }
     );
 
+    // Just flagged ready for sign-off → prompt the mentor(s) to confirm completion.
+    // Fire-and-forget so task stats never fail on a notification hiccup.
+    if (statusUpdate.status === 'pending_completion') {
+      this._notifyMentorsReadyForSignoff(enrollment).catch((err) =>
+        console.error('[Completion] sign-off prompt failed:', err.message)
+      );
+    }
+
     // Auto-advance week / level when the current week's tasks are all done
     if (!allProgramTasksDone) {
       await this._checkAndAdvanceProgress(enrollment, assignedTasks);
@@ -605,6 +627,61 @@ class TaskService {
       avgTaskRating,
       overallProgressPercentage
     };
+  }
+
+  /**
+   * Notify the mentee's mentor(s) that an enrollment has all tasks done and is
+   * ready for their completion sign-off. Resolves mentors via active 1:1 match
+   * OR the mentee's active clan (lead/co/core mentors) — same union the
+   * completion authorization uses. Mentee gets program + program name context.
+   */
+  async _notifyMentorsReadyForSignoff(enrollment) {
+    const program = await models.Program.findByPk(enrollment.programId, { attributes: ['id', 'name'] });
+    const programName = program?.name || 'the program';
+    const mentee = await models.User.findByPk(enrollment.menteeId, { attributes: ['firstName', 'lastName'] });
+    const menteeName = mentee ? `${mentee.firstName} ${mentee.lastName}`.trim() : 'Your mentee';
+
+    const mentorIds = new Set();
+    const matches = await models.MentorMenteeMatch.findAll({
+      where: { enrollmentId: enrollment.id, status: 'active' },
+      attributes: ['mentorId']
+    });
+    matches.forEach((m) => mentorIds.add(m.mentorId));
+
+    const menteeClans = await models.ClanMembership.findAll({
+      where: { userId: enrollment.menteeId, status: 'active', role: 'mentee' },
+      include: [{ model: models.Clan, as: 'clan', attributes: ['programId'] }]
+    });
+    const clanIds = menteeClans
+      .filter((m) => !m.clan || m.clan.programId === enrollment.programId)
+      .map((m) => m.clanId);
+    if (clanIds.length) {
+      const mentors = await models.ClanMembership.findAll({
+        where: { clanId: { [Op.in]: clanIds }, status: 'active', role: { [Op.in]: ['lead_mentor', 'co_mentor', 'core_team'] } },
+        attributes: ['userId']
+      });
+      mentors.forEach((m) => mentorIds.add(m.userId));
+    }
+
+    if (!mentorIds.size) return;
+
+    await notificationOrchestrator.dispatch({
+      eventKey: NOTIFICATION_EVENTS.COMPLETION_READY_FOR_SIGNOFF,
+      recipients: [...mentorIds].map((userId) => ({ userId })),
+      payload: {
+        title: 'Ready to complete',
+        message: `${menteeName} has finished all tasks in "${programName}". Review and confirm program completion.`,
+        actionUrl: `/mentor/mentees/${enrollment.menteeId}`,
+        actionLabel: 'Review & confirm',
+        relatedEntityType: 'enrollment',
+        relatedEntityId: enrollment.id,
+        emailSubject: 'Pathment: a mentee is ready to complete their program'
+      },
+      dedupe: {
+        relatedEntityType: 'completion_signoff',
+        relatedEntityId: enrollment.id
+      }
+    });
   }
 
   /**

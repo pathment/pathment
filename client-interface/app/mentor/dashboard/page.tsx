@@ -12,6 +12,7 @@ import { StatsCard } from '@/components/admin/ui';
 import { DualProgress } from '@/components/mentor/DualProgress';
 import { AssignTaskDrawer } from '@/components/mentor/AssignTaskDrawer';
 import { AnnouncementsCard } from '@/components/shared/AnnouncementsCard';
+import { MentorFeedbackCard } from '@/components/mentor/MentorFeedbackCard';
 
 type Filter = 'all' | 'attention' | 'review' | 'risk' | 'going_well';
 
@@ -177,6 +178,9 @@ export default function MentorCockpit() {
 
       {/* Latest announcements */}
       <AnnouncementsCard href="/mentor/announcements" />
+
+      {/* Your anonymous mentee feedback (gated until enough responses) */}
+      <MentorFeedbackCard />
 
       {/* Filter tabs */}
       <div className="flex flex-wrap items-center gap-0 border-b border-slate-200">

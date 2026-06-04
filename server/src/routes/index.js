@@ -31,6 +31,7 @@ const linearRoadmapRoutes = require('./linearRoadmaps');
 const mentorSpecRoutes = require('./mentorSpec');
 const intakeRoutes = require('./intake');
 const aiConnectionRoutes = require('./aiConnections');
+const programReviewRoutes = require('./programReviews');
 
 /**
  * API Routes
@@ -128,6 +129,9 @@ router.use('/intake', intakeRoutes);
 
 // AI connections — admin BYO provider keys + feature routing
 router.use('/ai-connections', aiConnectionRoutes);
+
+// Program reviews — anonymous mentee→mentor feedback at completion
+router.use('/program-reviews', programReviewRoutes);
 
 
 

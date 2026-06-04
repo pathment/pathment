@@ -320,6 +320,38 @@ class EnrollmentService {
       completedAt: new Date()
     });
 
+    // Congratulate the mentee, then invite anonymous structured feedback on the mentor.
+    const program = await models.Program.findByPk(enrollment.programId, { attributes: ['name'] });
+    const programName = program?.name || 'your program';
+    await notificationOrchestrator.dispatch({
+      eventKey: NOTIFICATION_EVENTS.PROGRAM_COMPLETED,
+      recipients: [{ userId: enrollment.menteeId }],
+      payload: {
+        title: 'Program completed 🎉',
+        message: `Congratulations — you've completed "${programName}"!`,
+        actionUrl: `/mentee/programs`,
+        actionLabel: 'View programs',
+        relatedEntityType: 'enrollment',
+        relatedEntityId: enrollment.id,
+        emailSubject: 'Pathment: you completed your program 🎉'
+      },
+      dedupe: { relatedEntityType: 'program_completed', relatedEntityId: enrollment.id }
+    }).catch((e) => console.error('[Completion] mentee congrats failed:', e.message));
+
+    await notificationOrchestrator.dispatch({
+      eventKey: NOTIFICATION_EVENTS.MENTOR_FEEDBACK_REQUESTED,
+      recipients: [{ userId: enrollment.menteeId }],
+      payload: {
+        title: 'How was your mentorship?',
+        message: 'Share anonymous feedback on your mentor — it takes a minute and helps the next mentee.',
+        actionUrl: `/mentee/dashboard?review=${enrollment.id}`,
+        actionLabel: 'Leave feedback',
+        relatedEntityType: 'enrollment',
+        relatedEntityId: enrollment.id
+      },
+      dedupe: { relatedEntityType: 'mentor_feedback_request', relatedEntityId: enrollment.id }
+    }).catch((e) => console.error('[Completion] feedback request failed:', e.message));
+
     return {
       enrollment: await this.getEnrollmentById(enrollmentId),
       hasNextLevel: false,

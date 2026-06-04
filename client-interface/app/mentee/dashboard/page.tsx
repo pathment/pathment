@@ -1,6 +1,8 @@
 'use client';
 
 import Link from 'next/link';
+import { Suspense, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   BookOpen,
   CheckCircle2,
@@ -8,39 +10,46 @@ import {
   ListTodo,
   Loader2,
   TrendingUp,
-  Send,
-  Star,
+  MessageSquareHeart,
   ArrowRight,
   Flag,
 } from 'lucide-react';
 import { useAuth } from '@/lib/context/AuthContext';
 import { useMenteeDashboard, useMyActivity, useMenteeTasks } from '@/lib/hooks/mentee';
 import { ProgressBar, StatusBadge } from '@/components/admin/ui';
-import { RateMentorModal } from '@/components/mentee/dashboard';
+import { MentorFeedbackDrawer } from '@/components/mentee/MentorFeedbackDrawer';
 import { ActivityCard } from '@/components/shared/ActivityCard';
 import { RecurringRitualsCard } from '@/components/mentee/RecurringRitualsCard';
 import { AnnouncementsCard } from '@/components/shared/AnnouncementsCard';
 
-export default function MenteeDashboard() {
+function MenteeDashboardInner() {
   const { user } = useAuth();
+  const searchParams = useSearchParams();
   const {
     enrollments,
     loading,
-    completionLoading,
     currentProgramEnrollments,
     pendingEnrollments,
     approvedEnrollments,
     pendingCompletionEnrollments,
     levelCompletedEnrollments,
     completedEnrollments,
-    WORKING_STATUSES,
-    handleRequestCompletion,
-    handleSubmitRating,
-    ratingTarget,
-    openRatingModal,
-    closeRatingModal,
-    ratedEnrollmentIds,
+    feedbackTarget,
+    openFeedback,
+    closeFeedback,
+    reviewedEnrollmentIds,
+    markReviewed,
   } = useMenteeDashboard();
+
+  // Deep link from the "Leave feedback" notification: ?review=<enrollmentId>
+  useEffect(() => {
+    const reviewId = searchParams.get('review');
+    if (!reviewId || loading) return;
+    const target = enrollments.find((e) => e.id === reviewId);
+    if (target && target.status === 'program_completed') {
+      openFeedback(reviewId, target.program?.name || 'your program');
+    }
+  }, [searchParams, enrollments, loading, openFeedback]);
 
   const {
     summary: actSummary,
@@ -181,16 +190,17 @@ export default function MenteeDashboard() {
                   <Clock className="w-5 h-5 text-orange-600" />
                 </div>
                 <div className="flex-1">
-                  <h3 className="text-orange-900 mb-1">Completion Request{pendingCompletionEnrollments.length > 1 ? 's' : ''} Pending</h3>
+                  <h3 className="text-orange-900 mb-1">Ready to complete 🎯</h3>
                   <div className="space-y-2">
                     {pendingCompletionEnrollments.map((e) => (
                       <div key={e.id}>
                         <p className="text-orange-700 text-sm">
-                          <strong>{e.program?.name}</strong> — awaiting your mentor&apos;s approval.
+                          You&apos;ve finished everything in <strong>{e.program?.name}</strong> — your mentor
+                          will review and confirm completion. Nothing more to do here.
                         </p>
                         {e.completionRejectionReason && (
                           <div className="mt-1 p-2 bg-orange-100 rounded-lg text-orange-800 text-xs">
-                            <strong>Last rejection reason:</strong> {e.completionRejectionReason}
+                            <strong>Mentor note:</strong> {e.completionRejectionReason}
                           </div>
                         )}
                       </div>
@@ -321,27 +331,15 @@ export default function MenteeDashboard() {
                       );
                     })()}
 
-                    <div className="flex items-center gap-2">
-                      <Link
-                        href="/mentee/tasks"
-                        className="flex-1 text-center px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm transition-colors"
-                      >
-                        View Tasks
-                      </Link>
-                      {WORKING_STATUSES.includes(enrollment.status) && (
-                        <button
-                          onClick={() => handleRequestCompletion(enrollment.id)}
-                          disabled={completionLoading === enrollment.id}
-                          className="flex-1 px-3 py-2 bg-green-50 hover:bg-green-100 border border-green-300 text-green-700 rounded-xl text-sm transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50"
-                          title="Ask your mentor to review and close this level"
-                        >
-                          {completionLoading === enrollment.id
-                            ? <Loader2 className="w-4 h-4 animate-spin" />
-                            : <Send className="w-4 h-4" />}
-                          Request Completion
-                        </button>
-                      )}
-                    </div>
+                    <Link
+                      href="/mentee/tasks"
+                      className="block w-full text-center px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm transition-colors"
+                    >
+                      View Tasks
+                    </Link>
+                    <p className="mt-3 text-xs text-slate-500 text-center">
+                      Finish every task and your mentor will confirm completion — no request needed.
+                    </p>
                   </div>
                 ))}
               </div>
@@ -354,7 +352,7 @@ export default function MenteeDashboard() {
               <h2 className="text-slate-900 mb-4">Completed Programs 🎓</h2>
               <div className="grid gap-4 lg:grid-cols-2">
                 {completedEnrollments.map((e) => {
-                  const alreadyRated = ratedEnrollmentIds.has(e.id);
+                  const reviewed = reviewedEnrollmentIds.has(e.id);
                   return (
                     <div
                       key={e.id}
@@ -370,18 +368,18 @@ export default function MenteeDashboard() {
                         </p>
                       </div>
 
-                      {alreadyRated ? (
-                        <div className="flex items-center gap-1.5 text-amber-500 text-sm font-medium shrink-0">
-                          <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
-                          Rated
+                      {reviewed ? (
+                        <div className="flex items-center gap-1.5 text-emerald-600 text-sm font-medium shrink-0">
+                          <CheckCircle2 className="w-4 h-4" />
+                          Feedback sent
                         </div>
                       ) : (
                         <button
-                          onClick={() => openRatingModal(e.id, e.program?.name || 'this program')}
+                          onClick={() => openFeedback(e.id, e.program?.name || 'this program')}
                           className="shrink-0 flex items-center gap-1.5 px-3 py-2 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 rounded-xl text-sm transition-colors"
                         >
-                          <Star className="w-4 h-4" />
-                          Rate Mentor
+                          <MessageSquareHeart className="w-4 h-4" />
+                          Leave feedback
                         </button>
                       )}
                     </div>
@@ -432,15 +430,22 @@ export default function MenteeDashboard() {
         </>
       )}
 
-      {/* Rate Mentor Modal */}
-      {ratingTarget && (
-        <RateMentorModal
-          mentorName={ratingTarget.mentorName}
-          programName={ratingTarget.programName}
-          onSubmit={(rating) => handleSubmitRating(ratingTarget.enrollmentId, rating)}
-          onClose={closeRatingModal}
-        />
-      )}
+      {/* Anonymous mentor feedback drawer */}
+      <MentorFeedbackDrawer
+        open={Boolean(feedbackTarget)}
+        enrollmentId={feedbackTarget?.enrollmentId ?? null}
+        programName={feedbackTarget?.programName ?? ''}
+        onClose={closeFeedback}
+        onSubmitted={markReviewed}
+      />
     </div>
+  );
+}
+
+export default function MenteeDashboard() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-indigo-600" /></div>}>
+      <MenteeDashboardInner />
+    </Suspense>
   );
 }

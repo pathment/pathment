@@ -19,6 +19,10 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.UUID,
       field: 'enrollment_id'
     },
+    mentorId: {
+      type: DataTypes.UUID,
+      field: 'mentor_id'
+    },
     rating: {
       type: DataTypes.DECIMAL(3, 2),
       allowNull: false,
@@ -40,6 +44,11 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.DECIMAL(3, 2),
       field: 'difficulty_rating'
     },
+    dimensions: {
+      type: DataTypes.JSONB,
+      allowNull: false,
+      defaultValue: {}
+    },
     wouldRecommend: {
       type: DataTypes.BOOLEAN,
       field: 'would_recommend'
@@ -50,7 +59,8 @@ module.exports = (sequelize, DataTypes) => {
     indexes: [
       { unique: true, fields: ['program_id', 'reviewer_id'] },
       { fields: ['program_id'] },
-      { fields: ['reviewer_id'] }
+      { fields: ['reviewer_id'] },
+      { fields: ['mentor_id'] }
     ]
   });
 
@@ -58,6 +68,7 @@ module.exports = (sequelize, DataTypes) => {
     ProgramReview.belongsTo(models.Program, { foreignKey: 'program_id', as: 'program' });
     ProgramReview.belongsTo(models.User, { foreignKey: 'reviewer_id', as: 'reviewer' });
     ProgramReview.belongsTo(models.Enrollment, { foreignKey: 'enrollment_id', as: 'enrollment' });
+    ProgramReview.belongsTo(models.User, { foreignKey: 'mentor_id', as: 'mentor' });
   };
 
   return ProgramReview;

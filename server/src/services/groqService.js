@@ -598,6 +598,28 @@ Output as JSON:
       concerns: mentorProfile.currentMentees >= mentorProfile.maxMentees ? ['Mentor at capacity'] : []
     };
   }
+
+  /**
+   * Generic plain-text completion. Resolves the AI connection for `feature`
+   * (routed per the mentor/admin's BYO key) and returns the model's text.
+   * Throws a friendly error when no AI connection is configured.
+   */
+  async generateText({ system, prompt, feature = 'summary', userId = null, temperature = 0.6, maxTokens = 700 }) {
+    const ai = await this._resolve(feature, userId);
+    if (!ai.enabled) {
+      throw new ValidationError('AI is not configured. Add a provider key in Settings → AI Connections.');
+    }
+    const response = await ai.client.chat.completions.create({
+      model: ai.model,
+      messages: [
+        ...(system ? [{ role: 'system', content: system }] : []),
+        { role: 'user', content: prompt }
+      ],
+      temperature,
+      max_tokens: maxTokens
+    });
+    return (response.choices?.[0]?.message?.content || '').trim();
+  }
 }
 
 module.exports = new GroqService();

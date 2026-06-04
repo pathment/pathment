@@ -18,7 +18,10 @@ EXTENSION_HANDLED: 'extension_handled',
   COMMUNITY_MENTION: 'community_mention',
   COMMUNITY_REPLY: 'community_reply',
   COMMUNITY_KUDOS: 'community_kudos',
-  COMMUNITY_ANSWER_ACCEPTED: 'community_answer_accepted'
+  COMMUNITY_ANSWER_ACCEPTED: 'community_answer_accepted',
+  COMPLETION_READY_FOR_SIGNOFF: 'completion_ready_for_signoff',
+  PROGRAM_COMPLETED: 'program_completed',
+  MENTOR_FEEDBACK_REQUESTED: 'mentor_feedback_requested'
 };
 
 const NOTIFICATION_MATRIX = {
@@ -120,6 +123,21 @@ const NOTIFICATION_MATRIX = {
   [NOTIFICATION_EVENTS.COMMUNITY_ANSWER_ACCEPTED]: {
     type: 'system',
     preferenceKey: 'community_answer_accepted',
+    channels: { inApp: true, email: false, chat: false }
+  },
+  [NOTIFICATION_EVENTS.COMPLETION_READY_FOR_SIGNOFF]: {
+    type: 'milestone',
+    preferenceKey: 'completion_ready_for_signoff',
+    channels: { inApp: true, email: true, chat: false }
+  },
+  [NOTIFICATION_EVENTS.PROGRAM_COMPLETED]: {
+    type: 'milestone',
+    preferenceKey: 'program_completed',
+    channels: { inApp: true, email: true, chat: false }
+  },
+  [NOTIFICATION_EVENTS.MENTOR_FEEDBACK_REQUESTED]: {
+    type: 'feedback',
+    preferenceKey: 'mentor_feedback_requested',
     channels: { inApp: true, email: false, chat: false }
   }
 };
