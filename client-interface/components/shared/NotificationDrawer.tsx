@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { usePathname, useRouter } from 'next/navigation';
-import { Bell, X, Check, Trash2, Clock } from 'lucide-react';
+import { Bell, X, Check, Trash2, Clock, ListTodo, MessageSquare, Award, Trophy, Zap, ChevronRight } from 'lucide-react';
 import { io } from 'socket.io-client';
 import { messagingApi } from '@/lib/services/messaging-api';
 
@@ -53,6 +53,18 @@ const toNotificationMessageText = (value: unknown): string => {
 const isNonMessageNotification = (notification: { type?: string }): boolean => {
   return notification.type !== 'message';
 };
+
+// Per-type icon + tint so notifications are scannable at a glance.
+const TYPE_ICON: Record<string, { Icon: typeof Bell; cls: string }> = {
+  task: { Icon: ListTodo, cls: 'bg-indigo-50 text-indigo-600' },
+  feedback: { Icon: MessageSquare, cls: 'bg-violet-50 text-violet-600' },
+  badge: { Icon: Award, cls: 'bg-amber-50 text-amber-600' },
+  milestone: { Icon: Trophy, cls: 'bg-emerald-50 text-emerald-600' },
+  message: { Icon: MessageSquare, cls: 'bg-sky-50 text-sky-600' },
+  system: { Icon: Bell, cls: 'bg-slate-100 text-slate-500' },
+  challenge: { Icon: Zap, cls: 'bg-orange-50 text-orange-600' },
+};
+const typeMeta = (t?: string) => TYPE_ICON[t || 'system'] || TYPE_ICON.system;
 
 const getRoleNotificationsPath = (pathname: string): string => {
   const role = pathname.split('/')[1];
@@ -365,13 +377,25 @@ export default function NotificationDrawer({
                       }}
                     >
                       <div className="flex items-start gap-3">
+                        {(() => { const { Icon, cls } = typeMeta(notification.type); return (
+                          <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${cls}`}>
+                            <Icon className="w-4 h-4" />
+                          </div>
+                        ); })()}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <p className="text-sm font-medium text-slate-900 truncate">{notification.title}</p>
-                            {notification.status === 'unread' && <span className="w-2 h-2 rounded-full bg-indigo-600" />}
+                            {notification.status === 'unread' && <span className="w-2 h-2 rounded-full bg-indigo-600 shrink-0" />}
                           </div>
                           <p className="mt-1 text-xs text-slate-600 line-clamp-2">{toNotificationMessageText(notification.message)}</p>
-                          <p className="mt-2 text-xs text-slate-400">{formatTime(notification.createdAt)}</p>
+                          <div className="mt-2 flex items-center gap-2">
+                            <p className="text-xs text-slate-400">{formatTime(notification.createdAt)}</p>
+                            {notification.actionUrl && notification.actionLabel && (
+                              <span className="inline-flex items-center gap-0.5 text-xs font-medium text-indigo-600">
+                                · {notification.actionLabel} <ChevronRight className="w-3 h-3" />
+                              </span>
+                            )}
+                          </div>
                         </div>
                         <div className="shrink-0 flex items-center gap-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
                           {notification.status === 'unread' && (

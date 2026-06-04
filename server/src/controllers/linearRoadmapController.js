@@ -48,6 +48,12 @@ const assign = catchAsync(async (req, res) => {
   res.status(200).json(successResponse('Roadmap assigned', { progress }));
 });
 
+// Mentee IDs that already have this roadmap (so the UI can disable re-assigning).
+const assignees = catchAsync(async (req, res) => {
+  const menteeIds = await linearRoadmapService.getAssignees(req.params.id);
+  res.status(200).json(successResponse('Roadmap assignees retrieved', { menteeIds }));
+});
+
 // ── Admin org-roadmap authoring ──────────────────────────────────────────────
 const listOrg = catchAsync(async (req, res) => {
   const roadmaps = await linearRoadmapService.listOrgRoadmaps();
@@ -85,6 +91,6 @@ const myRoadmaps = catchAsync(async (req, res) => {
 });
 
 module.exports = {
-  list, getOne, create, updateMeta, addStep, removeStep, importOrg, assign,
+  list, getOne, create, updateMeta, addStep, removeStep, importOrg, assign, assignees,
   listOrg, createOrg, updateOrg, addOrgStep, removeOrgStep, deleteOrg, myRoadmaps
 };

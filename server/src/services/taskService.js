@@ -90,17 +90,25 @@ class TaskService {
 
     const fullTask = await this.getAssignedTaskById(assignedTask.id);
 
+    const mentorUser = await models.User.findByPk(mentorId, { attributes: ['firstName', 'lastName'] });
+    const mentorName = mentorUser ? `${mentorUser.firstName} ${mentorUser.lastName}`.trim() : 'Your mentor';
+    const mentorFirst = mentorUser?.firstName || 'Your mentor';
+    const taskTitle = fullTask.roadmapTask?.title || 'a new task';
+    const dueStr = fullTask.dueDate
+      ? new Date(fullTask.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+      : null;
+
     await notificationOrchestrator.dispatch({
       eventKey: NOTIFICATION_EVENTS.TASK_ASSIGNED,
       recipients: [{ userId: fullTask.menteeId }],
       payload: {
-        title: 'New task assigned',
-        message: `Mentor assigned "${fullTask.roadmapTask?.title || 'Task'}" to you.`,
+        title: `${mentorFirst} assigned you a task`,
+        message: `“${taskTitle}” is now on your list${dueStr ? ` · due ${dueStr}` : ''}. Open it to get started.`,
         actionUrl: `/mentee/tasks/${fullTask.id}`,
-        actionLabel: 'Open Task',
+        actionLabel: 'Open task',
         relatedEntityType: 'assigned_task',
         relatedEntityId: fullTask.id,
-        emailSubject: 'Pathment: New task assigned'
+        emailSubject: `New task from ${mentorName}: ${taskTitle}`
       },
       dedupe: {
         relatedEntityType: 'task_assigned',

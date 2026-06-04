@@ -109,17 +109,22 @@ class SubmissionService {
     // Return complete submission with files
     const fullSubmission = await this.getSubmissionById(submission.id);
 
+    const submitter = await models.User.findByPk(task.menteeId, { attributes: ['firstName', 'lastName'] });
+    const submitterName = submitter ? `${submitter.firstName} ${submitter.lastName}`.trim() : 'A mentee';
+    const submittedTitle = fullSubmission.assignedTask?.roadmapTask?.title || 'a task';
+    const isResubmission = newVersion > 1;
+
     await notificationOrchestrator.dispatch({
       eventKey: NOTIFICATION_EVENTS.TASK_SUBMITTED,
       recipients: [{ userId: task.mentorId }],
       payload: {
-        title: 'Task submitted for review',
-        message: `A mentee submitted "${fullSubmission.assignedTask?.roadmapTask?.title || 'a task'}" for review.`,
+        title: `${submitterName} submitted work to review`,
+        message: `${submitterName} ${isResubmission ? 'resubmitted' : 'submitted'} “${submittedTitle}”${isResubmission ? ` (v${newVersion})` : ''}. Review it when you can.`,
         actionUrl: `/mentor/tasks/${task.id}/feedback`,
-        actionLabel: 'Review Submission',
+        actionLabel: 'Review submission',
         relatedEntityType: 'task_submission',
         relatedEntityId: submission.id,
-        emailSubject: 'Pathment: Task submitted for review'
+        emailSubject: `${submitterName} submitted “${submittedTitle}” for review`
       },
       dedupe: {
         relatedEntityType: 'task_submitted',
@@ -430,19 +435,23 @@ class SubmissionService {
 
     const reviewedSubmission = await this.getSubmissionById(submissionId);
 
+    const reviewedTitle = reviewedSubmission.assignedTask?.roadmapTask?.title || 'your task';
+    const ratingNum = Number(rating);
+    const ratingStr = Number.isFinite(ratingNum) && ratingNum > 0 ? `${ratingNum % 1 === 0 ? ratingNum : ratingNum.toFixed(1)}★` : null;
+
     await notificationOrchestrator.dispatch({
       eventKey: NOTIFICATION_EVENTS.SUBMISSION_REVIEWED,
       recipients: [{ userId: task.menteeId }],
       payload: {
-        title: isApproved ? 'Submission approved' : 'Submission needs revision',
+        title: isApproved ? `“${reviewedTitle}” approved 🎉` : `Changes requested on “${reviewedTitle}”`,
         message: isApproved
-          ? `Great work! Your submission for "${reviewedSubmission.assignedTask?.roadmapTask?.title || 'task'}" was approved.`
-          : `Your submission for "${reviewedSubmission.assignedTask?.roadmapTask?.title || 'task'}" needs revision.`,
+          ? `Your mentor approved “${reviewedTitle}”${ratingStr ? ` · ${ratingStr}` : ''}. Nice work — keep the momentum going.`
+          : `Your mentor asked for another pass on “${reviewedTitle}”. Read their notes and resubmit when ready.`,
         actionUrl: `/mentee/tasks/${task.id}`,
-        actionLabel: 'View Feedback',
+        actionLabel: isApproved ? 'See review' : 'View notes & resubmit',
         relatedEntityType: 'task_submission',
         relatedEntityId: submission.id,
-        emailSubject: 'Pathment: Submission review update'
+        emailSubject: isApproved ? `Approved: “${reviewedTitle}”` : `Revision requested: “${reviewedTitle}”`
       },
       dedupe: {
         relatedEntityType: 'submission_reviewed',
@@ -451,17 +460,19 @@ class SubmissionService {
     });
 
     if (feedbackText && String(feedbackText).trim()) {
+      const reviewer = await models.User.findByPk(mentorId, { attributes: ['firstName', 'lastName'] });
+      const reviewerName = reviewer ? `${reviewer.firstName} ${reviewer.lastName}`.trim() : 'Your mentor';
       await notificationOrchestrator.dispatch({
         eventKey: NOTIFICATION_EVENTS.FEEDBACK_SENT,
         recipients: [{ userId: task.menteeId }],
         payload: {
-          title: 'New mentor feedback',
-          message: `Your mentor left new feedback on "${reviewedSubmission.assignedTask?.roadmapTask?.title || 'task'}".`,
+          title: `${reviewerName} left you feedback`,
+          message: `New feedback on “${reviewedTitle}”. Take a look when you get a moment.`,
           actionUrl: `/mentee/tasks/${task.id}`,
-          actionLabel: 'Read Feedback',
+          actionLabel: 'Read feedback',
           relatedEntityType: 'task_feedback',
           relatedEntityId: submission.id,
-          emailSubject: 'Pathment: New mentor feedback'
+          emailSubject: `${reviewerName} left feedback on “${reviewedTitle}”`
         },
         dedupe: {
           relatedEntityType: 'feedback_sent',

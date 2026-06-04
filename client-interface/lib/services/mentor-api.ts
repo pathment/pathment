@@ -64,6 +64,8 @@ export const mentorApi = {
     apiClient.post(`/mentor/roadmaps/${id}/steps`, step),
   removeRoadmapStep: (id: string, stepId: string) => apiClient.delete(`/mentor/roadmaps/${id}/steps/${stepId}`),
   importRoadmap: (orgRoadmapId: string) => apiClient.post('/mentor/roadmaps/import', { orgRoadmapId }),
+  // Mentee IDs that already have this roadmap (to disable re-assigning).
+  getRoadmapAssignees: (id: string) => apiClient.get(`/mentor/roadmaps/${id}/assignees`),
   assignRoadmap: (id: string, payload: { menteeId?: string; menteeIds?: string[]; startStep?: number }) =>
     apiClient.post(`/mentor/roadmaps/${id}/assign`, payload),
 

@@ -47,6 +47,9 @@ export function AssignTaskDrawer({
   const [roadmapId, setRoadmapId] = useState('');
   const [startStep, setStartStep] = useState(0);
   const selectedRoadmap = localRoadmaps.find((r) => r.id === roadmapId) || null;
+  // Mentees who already have the selected roadmap — can't be assigned it again.
+  const [assignedIds, setAssignedIds] = useState<Set<string>>(new Set());
+  const [assigneesLoading, setAssigneesLoading] = useState(false);
 
   const [title, setTitle] = useState('');
   const [type, setType] = useState<string>('assignment');
@@ -80,6 +83,18 @@ export function AssignTaskDrawer({
     return () => { active = false; };
   }, [mode, mentee?.id]);
 
+  // When a roadmap is picked, load who already has it so we can disable them.
+  useEffect(() => {
+    if (source !== 'roadmap' || !roadmapId) { setAssignedIds(new Set()); return; }
+    let active = true;
+    setAssigneesLoading(true);
+    mentorApi.getRoadmapAssignees(roadmapId)
+      .then((res: any) => { if (active) setAssignedIds(new Set<string>(res?.data?.menteeIds ?? res?.menteeIds ?? [])); })
+      .catch(() => { if (active) setAssignedIds(new Set()); })
+      .finally(() => { if (active) setAssigneesLoading(false); });
+    return () => { active = false; };
+  }, [source, roadmapId]);
+
   // Focus first field on open.
   useEffect(() => { titleRef.current?.focus(); }, []);
 
@@ -109,8 +124,14 @@ export function AssignTaskDrawer({
   const dueISO = () => { const d = new Date(); d.setDate(d.getDate() + dueDays); return d.toISOString(); };
   const cleanCriteria = criteria.map((c) => c.trim()).filter(Boolean);
 
-  const targetCount = mode === 'bulk' ? selected.size : 1;
-  const targetIds = mode === 'bulk' ? [...selected] : (mentee ? [mentee.id] : []);
+  const rawTargetIds = mode === 'bulk' ? [...selected] : (mentee ? [mentee.id] : []);
+  // In roadmap mode, mentees who already have it are filtered out of the action.
+  const blockSet = source === 'roadmap' ? assignedIds : new Set<string>();
+  const targetIds = rawTargetIds.filter((id) => !blockSet.has(id));
+  const targetCount = targetIds.length;
+  const blockedCount = rawTargetIds.length - targetCount;
+  // Single-mode roadmap where the one mentee already has this roadmap.
+  const singleAlreadyAssigned = source === 'roadmap' && mode === 'single' && !!roadmapId && !!mentee && assignedIds.has(mentee.id);
   const canSubmit = targetCount > 0 && (source === 'custom' ? !!title.trim() : !!roadmapId);
 
   const submit = async () => {
@@ -328,7 +349,16 @@ export function AssignTaskDrawer({
                     )}
                   </div>
 
-                  {selectedRoadmap && selectedRoadmap.steps.length > 0 && (
+                  {roadmapId && assigneesLoading && (
+                    <p className="flex items-center gap-1.5 text-xs text-slate-400"><Loader2 className="w-3.5 h-3.5 animate-spin" />Checking who already has this roadmap…</p>
+                  )}
+
+                  {singleAlreadyAssigned ? (
+                    <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3 text-sm text-amber-800">
+                      <Check className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
+                      <span>{mentee?.name ?? 'This mentee'} already has this roadmap. Pick a different roadmap to assign something new.</span>
+                    </div>
+                  ) : selectedRoadmap && selectedRoadmap.steps.length > 0 && (
                     <div>
                       <label htmlFor="assign-roadmap-start" className="block text-sm font-medium text-slate-700 mb-1">Start at step</label>
                       <select id="assign-roadmap-start" value={startStep} onChange={(e) => setStartStep(Number(e.target.value))} className={field}>
@@ -343,7 +373,10 @@ export function AssignTaskDrawer({
               {mode === 'bulk' && (
                 <div className="border-t border-slate-200 pt-4">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium text-slate-700">Assign to <span className="text-slate-400 font-normal">({selected.size})</span></span>
+                    <span className="text-sm font-medium text-slate-700">
+                      Assign to <span className="text-slate-400 font-normal">({targetCount})</span>
+                      {blockedCount > 0 && <span className="ml-1 text-xs text-amber-600">· {blockedCount} already assigned</span>}
+                    </span>
                     <div className="flex gap-3 text-xs">
                       <button type="button" onClick={() => setSelected(new Set(cohort.map((m) => m.id)))} className="text-indigo-600 hover:text-indigo-700">Select all</button>
                       <button type="button" onClick={() => setSelected(new Set())} className="text-slate-500 hover:text-slate-700">Clear</button>
@@ -355,13 +388,18 @@ export function AssignTaskDrawer({
                   </div>
                   <div className="max-h-52 overflow-y-auto rounded-lg border border-slate-200 divide-y divide-slate-100">
                     {filteredCohort.length === 0 && <p className="text-xs text-slate-400 px-3 py-3">No mentees match.</p>}
-                    {filteredCohort.map((m) => (
-                      <label key={m.id} className="flex items-center gap-3 px-3 py-2 hover:bg-slate-50 cursor-pointer">
-                        <input type="checkbox" checked={selected.has(m.id)} onChange={() => toggleMentee(m.id)} className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
-                        <span className="min-w-0 flex-1 truncate text-sm text-slate-700">{m.name}</span>
-                        {m.level && <span className="text-xs text-slate-400">{m.level}</span>}
-                      </label>
-                    ))}
+                    {filteredCohort.map((m) => {
+                      const blocked = blockSet.has(m.id);
+                      return (
+                        <label key={m.id} className={`flex items-center gap-3 px-3 py-2 ${blocked ? 'opacity-60 cursor-not-allowed' : 'hover:bg-slate-50 cursor-pointer'}`}>
+                          <input type="checkbox" disabled={blocked} checked={!blocked && selected.has(m.id)} onChange={() => toggleMentee(m.id)} className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 disabled:cursor-not-allowed" />
+                          <span className="min-w-0 flex-1 truncate text-sm text-slate-700">{m.name}</span>
+                          {blocked
+                            ? <span className="text-[11px] font-medium text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-md shrink-0">Assigned</span>
+                            : m.level && <span className="text-xs text-slate-400">{m.level}</span>}
+                        </label>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -372,7 +410,7 @@ export function AssignTaskDrawer({
               <button onClick={submit} disabled={!canSubmit || saving} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm inline-flex items-center gap-2 disabled:opacity-50">
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                 {source === 'roadmap'
-                  ? (mode === 'bulk' ? `Assign roadmap to ${selected.size}` : 'Assign roadmap')
+                  ? (mode === 'bulk' ? `Assign roadmap to ${targetCount}` : 'Assign roadmap')
                   : (mode === 'bulk' ? `Assign to ${selected.size}` : 'Assign task')}
               </button>
             </div>

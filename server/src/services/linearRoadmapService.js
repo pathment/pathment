@@ -286,22 +286,32 @@ class LinearRoadmapService {
     });
 
     // Notify the mentee (roadmap-assigned tasks notify just like custom ones).
+    const mentorUser = await models.User.findByPk(mentorId, { attributes: ['firstName', 'lastName'] });
+    const mentorFirst = mentorUser?.firstName || 'Your mentor';
+    const stepTitle = step.title || 'a new step';
+    const dueStr = due.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     notificationOrchestrator.dispatch({
       eventKey: NOTIFICATION_EVENTS.TASK_ASSIGNED,
       recipients: [{ userId: menteeId }],
       payload: {
-        title: 'New task assigned',
-        message: `A new task "${step.title || 'Task'}" was added to your roadmap.`,
+        title: `${mentorFirst} added a roadmap step`,
+        message: `“${stepTitle}” is your next step · due ${dueStr}. Open it to get started.`,
         actionUrl: `/mentee/tasks/${assigned.id}`,
-        actionLabel: 'Open Task',
+        actionLabel: 'Open task',
         relatedEntityType: 'assigned_task',
         relatedEntityId: assigned.id,
-        emailSubject: 'Pathment: New task assigned'
+        emailSubject: `New roadmap step: ${stepTitle}`
       },
       dedupe: { relatedEntityType: 'task_assigned', relatedEntityId: assigned.id }
     }).catch((e) => console.error('[Roadmap] assign notification failed:', e.message));
 
     return assigned;
+  }
+
+  /** Mentee IDs that already have this roadmap assigned (a RoadmapProgress row). */
+  async getAssignees(roadmapId) {
+    const rows = await models.RoadmapProgress.findAll({ where: { roadmapId }, attributes: ['menteeId'] });
+    return [...new Set(rows.map((r) => r.menteeId))];
   }
 
   /** Assign a roadmap to a mentee starting at a given step, and assign that step. */
