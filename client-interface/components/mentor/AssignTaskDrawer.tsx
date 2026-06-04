@@ -2,10 +2,14 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { toast } from 'sonner';
-import { X, Loader2, Check, Plus, Trash2, Search } from 'lucide-react';
+import { X, Loader2, Check, Plus, Trash2, Search, Route, FileText } from 'lucide-react';
 import { taskApi } from '@/lib/services/task-api';
 import { tracksApi, type Track } from '@/lib/services/tracks-api';
+import { mentorApi } from '@/lib/services/mentor-api';
+import { useMentorRoadmaps } from '@/lib/hooks/mentor';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
+
+type AssignSource = 'custom' | 'roadmap';
 
 const TYPES = ['assignment', 'project', 'quiz', 'reading', 'video', 'discussion'] as const;
 const TYPE_LABEL: Record<string, string> = {
@@ -36,6 +40,14 @@ export function AssignTaskDrawer({
   onClose: () => void;
   onAssigned?: () => void;
 }) {
+  const [source, setSource] = useState<AssignSource>('custom');
+
+  // roadmap mode
+  const { local: localRoadmaps, loading: roadmapsLoading } = useMentorRoadmaps();
+  const [roadmapId, setRoadmapId] = useState('');
+  const [startStep, setStartStep] = useState(0);
+  const selectedRoadmap = localRoadmaps.find((r) => r.id === roadmapId) || null;
+
   const [title, setTitle] = useState('');
   const [type, setType] = useState<string>('assignment');
   const [description, setDescription] = useState('');
@@ -98,12 +110,31 @@ export function AssignTaskDrawer({
   const cleanCriteria = criteria.map((c) => c.trim()).filter(Boolean);
 
   const targetCount = mode === 'bulk' ? selected.size : 1;
-  const canSubmit = !!title.trim() && targetCount > 0;
+  const targetIds = mode === 'bulk' ? [...selected] : (mentee ? [mentee.id] : []);
+  const canSubmit = targetCount > 0 && (source === 'custom' ? !!title.trim() : !!roadmapId);
 
   const submit = async () => {
     if (!canSubmit || saving) return;
     try {
       setSaving(true);
+
+      // ── Assign from a roadmap ────────────────────────────────────────────
+      if (source === 'roadmap') {
+        const res: any = await mentorApi.assignRoadmap(roadmapId, { menteeIds: targetIds, startStep });
+        const assigned = res?.data?.assigned ?? targetIds.length;
+        const failed = res?.data?.failed ?? 0;
+        if (assigned === 0) {
+          toast.error(res?.data?.results?.find((r: any) => !r.ok)?.error || 'Could not assign the roadmap');
+          setSaving(false);
+          return;
+        }
+        if (failed) toast.error(`${failed} mentee${failed > 1 ? 's' : ''} couldn't be assigned`);
+        setDone(assigned);
+        onAssigned?.();
+        return;
+      }
+
+      // ── Assign a custom task ─────────────────────────────────────────────
       const base = {
         title: title.trim(),
         description: description.trim() || title.trim(),
@@ -131,7 +162,7 @@ export function AssignTaskDrawer({
       }
       onAssigned?.();
     } catch (error: any) {
-      toast.error(extractApiErrorMessage(error, 'Could not assign the task'));
+      toast.error(extractApiErrorMessage(error, 'Could not assign'));
     } finally {
       setSaving(false);
     }
@@ -176,7 +207,20 @@ export function AssignTaskDrawer({
           </div>
         ) : (
           <>
+            {/* Source tabs — custom task vs assign from a roadmap */}
+            <div className="px-6 pt-4">
+              <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-xl">
+                {([['custom', 'Custom task', FileText], ['roadmap', 'From roadmap', Route]] as const).map(([key, label, Icon]) => (
+                  <button key={key} type="button" onClick={() => setSource(key)} aria-pressed={source === key}
+                    className={`inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${source === key ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
+                    <Icon className="w-4 h-4" />{label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+              {source === 'custom' && (<>
               <div>
                 <label htmlFor="assign-task-title-input" className="block text-sm font-medium text-slate-700 mb-1">Title <span className="text-red-500">*</span></label>
                 <input id="assign-task-title-input" ref={titleRef} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Build a responsive navbar" className={field} />
@@ -257,6 +301,44 @@ export function AssignTaskDrawer({
                   ))}
                 </div>
               </div>
+              </>)}
+
+              {source === 'roadmap' && (
+                <div className="space-y-4">
+                  <div>
+                    <span className="block text-sm font-medium text-slate-700 mb-1.5">Pick a roadmap</span>
+                    {roadmapsLoading ? (
+                      <div className="flex items-center gap-2 text-sm text-slate-400 py-2"><Loader2 className="w-4 h-4 animate-spin" />Loading your roadmaps…</div>
+                    ) : localRoadmaps.length === 0 ? (
+                      <p className="text-sm text-slate-500 rounded-lg border border-dashed border-slate-200 p-3">No roadmaps yet — create or import one on the Roadmaps page, then assign it here.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {localRoadmaps.map((r) => (
+                          <button key={r.id} type="button" onClick={() => { setRoadmapId(r.id); setStartStep(0); }}
+                            className={`w-full text-left rounded-xl border p-3 transition-colors ${roadmapId === r.id ? 'border-indigo-400 bg-indigo-50' : 'border-slate-200 hover:border-slate-300'}`}>
+                            <div className="flex items-center gap-2">
+                              <Route className="w-4 h-4 text-indigo-500 shrink-0" />
+                              <span className="text-sm font-medium text-slate-900 truncate">{r.name}</span>
+                              <span className="ml-auto text-xs text-slate-400 shrink-0">{r.steps.length} step{r.steps.length === 1 ? '' : 's'}</span>
+                            </div>
+                            {r.description && <p className="text-xs text-slate-500 mt-1 line-clamp-1">{r.description}</p>}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {selectedRoadmap && selectedRoadmap.steps.length > 0 && (
+                    <div>
+                      <label htmlFor="assign-roadmap-start" className="block text-sm font-medium text-slate-700 mb-1">Start at step</label>
+                      <select id="assign-roadmap-start" value={startStep} onChange={(e) => setStartStep(Number(e.target.value))} className={field}>
+                        {selectedRoadmap.steps.map((s, i) => <option key={s.id} value={i}>{i + 1}. {s.title}</option>)}
+                      </select>
+                      <p className="text-xs text-slate-400 mt-1">Skip ahead if they already know the earlier steps.</p>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {mode === 'bulk' && (
                 <div className="border-t border-slate-200 pt-4">
@@ -289,7 +371,9 @@ export function AssignTaskDrawer({
               <button onClick={onClose} className="px-4 py-2 border border-slate-200 text-slate-700 rounded-xl text-sm hover:bg-slate-50">Cancel</button>
               <button onClick={submit} disabled={!canSubmit || saving} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm inline-flex items-center gap-2 disabled:opacity-50">
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                {mode === 'bulk' ? `Assign to ${selected.size}` : 'Assign task'}
+                {source === 'roadmap'
+                  ? (mode === 'bulk' ? `Assign roadmap to ${selected.size}` : 'Assign roadmap')
+                  : (mode === 'bulk' ? `Assign to ${selected.size}` : 'Assign task')}
               </button>
             </div>
           </>

@@ -1,6 +1,8 @@
 const { Op } = require('sequelize');
 const { models, sequelize } = require('../db');
 const { NotFoundError, ValidationError, ForbiddenError } = require('../utils/errors/errorTypes');
+const notificationOrchestrator = require('./notificationOrchestrator');
+const { NOTIFICATION_EVENTS } = require('../config/notificationMatrix');
 
 /**
  * linearRoadmapService — the new design's linear roadmap flow for mentors:
@@ -272,7 +274,7 @@ class LinearRoadmapService {
     const due = new Date();
     const offset = Number.isFinite(Number(step.dueOffsetDays)) && step.dueOffsetDays != null ? Number(step.dueOffsetDays) : 7;
     due.setDate(due.getDate() + offset);
-    return models.AssignedTask.create({
+    const assigned = await models.AssignedTask.create({
       roadmapTaskId: step.id,
       menteeId,
       mentorId,
@@ -282,6 +284,24 @@ class LinearRoadmapService {
       dueDate: due,
       isCustomTask: false
     });
+
+    // Notify the mentee (roadmap-assigned tasks notify just like custom ones).
+    notificationOrchestrator.dispatch({
+      eventKey: NOTIFICATION_EVENTS.TASK_ASSIGNED,
+      recipients: [{ userId: menteeId }],
+      payload: {
+        title: 'New task assigned',
+        message: `A new task "${step.title || 'Task'}" was added to your roadmap.`,
+        actionUrl: `/mentee/tasks/${assigned.id}`,
+        actionLabel: 'Open Task',
+        relatedEntityType: 'assigned_task',
+        relatedEntityId: assigned.id,
+        emailSubject: 'Pathment: New task assigned'
+      },
+      dedupe: { relatedEntityType: 'task_assigned', relatedEntityId: assigned.id }
+    }).catch((e) => console.error('[Roadmap] assign notification failed:', e.message));
+
+    return assigned;
   }
 
   /** Assign a roadmap to a mentee starting at a given step, and assign that step. */

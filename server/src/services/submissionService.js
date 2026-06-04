@@ -95,13 +95,15 @@ class SubmissionService {
       });
     }
 
-    // Update task status
+    // Update task status (persist time-spent the mentee reported, if any)
+    const reportedHours = Number(submissionData.timeSpentHours);
     await task.update({
       status: 'submitted',
       submittedAt: new Date(),
       currentSubmissionVersion: newVersion,
       startedAt: task.startedAt || new Date(),
-      isLate: task.dueDate && new Date() > new Date(task.dueDate)
+      isLate: task.dueDate && new Date() > new Date(task.dueDate),
+      ...(Number.isFinite(reportedHours) && reportedHours > 0 ? { timeSpentHours: reportedHours } : {})
     });
 
     // Return complete submission with files

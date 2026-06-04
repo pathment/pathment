@@ -65,7 +65,7 @@ class NotificationOrchestrator {
       // In-app channel
       if (channels.inApp) {
         if (!shouldSkipByDedupe) {
-          await models.Notification.create({
+          const created = await models.Notification.create({
             userId: recipient.userId,
             type: matrix.type,
             title: payload.title,
@@ -77,6 +77,26 @@ class NotificationOrchestrator {
             status: 'unread'
           });
           delivered += 1;
+
+          // Push it live so the recipient's bell updates without a refresh
+          // (the client NotificationDrawer listens for 'notification:new').
+          try {
+            const { emitToUser } = require('../socket');
+            emitToUser(recipient.userId, 'notification:new', {
+              id: created.id,
+              type: created.type,
+              title: created.title,
+              message: created.message,
+              status: created.status,
+              actionUrl: created.actionUrl,
+              actionLabel: created.actionLabel,
+              relatedEntityType: created.relatedEntityType,
+              relatedEntityId: created.relatedEntityId,
+              createdAt: created.createdAt
+            });
+          } catch (e) {
+            console.error('[Notifications] socket emit failed:', e.message);
+          }
         }
       }
 

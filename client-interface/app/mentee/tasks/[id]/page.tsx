@@ -1,7 +1,6 @@
 'use client';
 
-import { use, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { use, useEffect, useState } from 'react';
 import {
   CheckCircle2,
   Calendar,
@@ -23,6 +22,7 @@ import { useTaskDetail } from '@/lib/hooks/mentee';
 import { PageHeader, StatusBadge } from '@/components/admin/ui';
 import { useActivityTracker } from '@/lib/hooks/shared/useActivityTracker';
 import { FrictionPanel } from '@/components/mentee/FrictionPanel';
+import { SubmitTaskDrawer } from '@/components/mentee/SubmitTaskDrawer';
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -30,9 +30,9 @@ interface PageProps {
 
 export default function TaskDetailsPage({ params }: PageProps) {
   const resolvedParams = use(params);
-  const router = useRouter();
-  const { task, loading, error } = useTaskDetail(resolvedParams.id);
+  const { task, loading, error, refetch } = useTaskDetail(resolvedParams.id);
   const { trackEvent } = useActivityTracker();
+  const [submitOpen, setSubmitOpen] = useState(false);
 
   useEffect(() => {
     if (task?.id) {
@@ -342,17 +342,24 @@ export default function TaskDetailsPage({ params }: PageProps) {
         <FrictionPanel taskId={task.id} />
       )}
 
-      {/* Action: go to submit page if task still needs work */}
+      {/* Action: open the in-context submission drawer if the task needs work */}
       {canSubmit && (
         <div className="flex justify-end">
           <button
-            onClick={() => router.push(`/mentee/tasks/${task.id}/submit`)}
+            onClick={() => setSubmitOpen(true)}
             className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium transition-colors"
           >
             {task.status === 'revision_needed' ? 'Re-submit Work' : 'Submit Work'}
           </button>
         </div>
       )}
+
+      <SubmitTaskDrawer
+        open={submitOpen}
+        task={{ id: task.id, title: taskTitle, status: task.status, deliverable: taskDeliverable, acceptanceCriteria }}
+        onClose={() => setSubmitOpen(false)}
+        onSubmitted={refetch}
+      />
     </div>
   );
 }

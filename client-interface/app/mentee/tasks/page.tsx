@@ -1,12 +1,15 @@
 'use client';
 
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Clock, CheckCircle2, AlertCircle, FileText, Loader2, Star, Calendar, XCircle, BookOpen, Sparkles, GraduationCap, ClipboardList, Layers } from 'lucide-react';
 import { useMenteeTasks } from '@/lib/hooks/mentee';
 import { StatsCard, SearchAndFilterBar, StatusBadge } from '@/components/admin/ui';
+import { SubmitTaskDrawer, type SubmitTaskTarget } from '@/components/mentee/SubmitTaskDrawer';
 
 export default function MenteeTasks() {
   const router = useRouter();
+  const [submitTarget, setSubmitTarget] = useState<SubmitTaskTarget | null>(null);
   const {
     filteredTasks,
     stats,
@@ -19,6 +22,7 @@ export default function MenteeTasks() {
     setFilterStatus,
     setSearchTerm,
     handleStartTask,
+    fetchTasks,
   } = useMenteeTasks();
 
   const getTaskSourceBadge = (isCustomTask: boolean) => {
@@ -256,7 +260,13 @@ export default function MenteeTasks() {
                       
                       {(task.status === 'in_progress' || task.status === 'revision_needed') && (
                         <button
-                          onClick={() => router.push(`/mentee/tasks/${task.id}/submit`)}
+                          onClick={() => setSubmitTarget({
+                            id: task.id,
+                            title: task.roadmapTask?.title || 'Task',
+                            status: task.status,
+                            deliverable: task.roadmapTask?.deliverable,
+                            acceptanceCriteria: task.roadmapTask?.acceptanceCriteria || [],
+                          })}
                           className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm transition-colors"
                         >
                           Submit Work
@@ -312,6 +322,13 @@ export default function MenteeTasks() {
           </div>
         )}
       </div>
+
+      <SubmitTaskDrawer
+        open={!!submitTarget}
+        task={submitTarget}
+        onClose={() => setSubmitTarget(null)}
+        onSubmitted={fetchTasks}
+      />
     </div>
   );
 }
