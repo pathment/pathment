@@ -5,8 +5,36 @@ const {
   ForbiddenError,
   ValidationError
 } = require('../utils/errors/errorTypes');
+const schedulingService = require('./schedulingService');
 
 class MessagingService {
+  /**
+   * Who a user is allowed to message. Returns `null` for privileged users
+   * (admin/mentor) meaning "unrestricted". For a mentee-only user, returns the
+   * set of allowed recipient ids = their mentor(s) (matches + clan leads/co) +
+   * co-members of every clan they belong to.
+   */
+  async getAllowedRecipientIds(userId) {
+    const user = await models.User.findByPk(userId, { attributes: ['id', 'role', 'capabilities'] });
+    if (!user) return [];
+    const caps = Array.isArray(user.capabilities) && user.capabilities.length ? user.capabilities : [user.role];
+    if (caps.includes('admin') || caps.includes('mentor')) return null; // unrestricted
+
+    const allowed = new Set();
+    const mentorIds = await schedulingService.getMenteeMentorIds(userId); // matches + clan lead/co mentors
+    mentorIds.forEach((id) => allowed.add(id));
+
+    const myClans = await models.ClanMembership.findAll({ where: { userId, status: 'active' }, attributes: ['clanId'] });
+    const clanIds = myClans.map((c) => c.clanId);
+    if (clanIds.length) {
+      const members = await models.ClanMembership.findAll({
+        where: { clanId: { [Op.in]: clanIds }, status: 'active' }, attributes: ['userId']
+      });
+      members.forEach((m) => allowed.add(m.userId));
+    }
+    allowed.delete(userId);
+    return [...allowed];
+  }
   async findDirectConversationsByKey(directKey, transaction = null) {
     return models.Conversation.findAll({
       where: {
@@ -48,6 +76,12 @@ class MessagingService {
 
     if (!participant || participant.status !== 'active') {
       throw new NotFoundError('Participant not found');
+    }
+
+    // A mentee may only start conversations with their mentor(s) + clan members.
+    const allowed = await this.getAllowedRecipientIds(userId);
+    if (allowed !== null && !allowed.includes(participantId)) {
+      throw new ForbiddenError('You can only message your mentor or members of your clan');
     }
 
     const directKey = [userId, participantId].sort().join(':');
@@ -290,6 +324,13 @@ class MessagingService {
       const recipientIds = participantIds.filter((id) => id !== senderId);
       if (recipientIds.length === 0) {
         throw new ValidationError('Conversation has no recipient');
+      }
+
+      // Defense in depth: a mentee can't message into a conversation with someone
+      // outside their allowed set (e.g. after a clan/match was removed).
+      const allowed = await this.getAllowedRecipientIds(senderId);
+      if (allowed !== null && recipientIds.some((id) => !allowed.includes(id))) {
+        throw new ForbiddenError('You can only message your mentor or members of your clan');
       }
 
       const recipientId = recipientIds[0];
@@ -561,6 +602,13 @@ class MessagingService {
 
     if (roleFilter && ['admin', 'mentor', 'mentee'].includes(roleFilter)) {
       where.role = roleFilter;
+    }
+
+    // Restrict a mentee's recipient picker to their mentor(s) + clan members.
+    const allowed = await this.getAllowedRecipientIds(currentUserId);
+    if (allowed !== null) {
+      if (!allowed.length) return [];
+      where.id = { [Op.ne]: currentUserId, [Op.in]: allowed };
     }
 
     if (query.trim()) {
