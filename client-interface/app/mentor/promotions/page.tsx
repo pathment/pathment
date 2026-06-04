@@ -2,8 +2,9 @@
 
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { TrendingUp, Plus, X, Loader2, ArrowRight, Crown, Check } from 'lucide-react';
+import { TrendingUp, Plus, Loader2, ArrowRight, Crown, Check } from 'lucide-react';
 import { useMentorPromotions, useMentorCohort, type PromotionCandidate, type PromotionStage } from '@/lib/hooks/mentor';
+import { Drawer } from '@/components/shared/Drawer';
 import { useAuth } from '@/lib/context/AuthContext';
 import { mentorApi } from '@/lib/services/mentor-api';
 
@@ -55,34 +56,35 @@ function InterviewModal({ candidate, onClose, onSaved }: { candidate: PromotionC
   const field = 'w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500';
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-slate-900 text-lg font-semibold">Interview · {candidate.name}</h3>
-          <button onClick={onClose} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg"><X className="w-5 h-5" /></button>
-        </div>
-        <div className="space-y-3">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Motivation</label>
-            <textarea value={motivation} onChange={(e) => setMotivation(e.target.value)} rows={2} className={`${field} resize-none`} />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Strengths</label>
-            <textarea value={strengths} onChange={(e) => setStrengths(e.target.value)} rows={2} className={`${field} resize-none`} />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Availability</label>
-            <input value={availability} onChange={(e) => setAvailability(e.target.value)} placeholder="e.g. 5h / week" className={field} />
-          </div>
-        </div>
-        <div className="flex justify-end gap-2 mt-5">
+    <Drawer
+      open
+      onClose={onClose}
+      title={`Interview · ${candidate.name}`}
+      subtitle="Capture the promotion interview and decide."
+      footer={
+        <>
           <button onClick={() => save(false)} disabled={saving} className="px-4 py-2 border border-slate-200 text-slate-700 rounded-xl text-sm hover:bg-slate-50 disabled:opacity-50">Save</button>
           <button onClick={() => save(true)} disabled={saving} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl text-sm inline-flex items-center gap-2 disabled:opacity-50">
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}Approve
           </button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Motivation</label>
+          <textarea value={motivation} onChange={(e) => setMotivation(e.target.value)} rows={2} className={`${field} resize-none`} autoFocus />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Strengths</label>
+          <textarea value={strengths} onChange={(e) => setStrengths(e.target.value)} rows={2} className={`${field} resize-none`} />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Availability</label>
+          <input value={availability} onChange={(e) => setAvailability(e.target.value)} placeholder="e.g. 5h / week" className={field} />
         </div>
       </div>
-    </div>
+    </Drawer>
   );
 }
 
@@ -195,32 +197,35 @@ export default function MentorPromotions() {
         </div>
       )}
 
-      {/* Nominate modal */}
-      {nominating && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-slate-900 text-lg font-semibold">Nominate a mentee</h3>
-              <button onClick={() => setNominating(false)} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg"><X className="w-5 h-5" /></button>
-            </div>
-            {eligible.length === 0 ? (
-              <p className="text-sm text-slate-500">Everyone in your cohort is already nominated.</p>
-            ) : (
-              <select value={pickMentee} onChange={(e) => setPickMentee(e.target.value)}
-                className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                <option value="">Select a mentee</option>
-                {eligible.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-              </select>
-            )}
-            <div className="flex justify-end gap-2 mt-5">
-              <button onClick={() => setNominating(false)} className="px-4 py-2 border border-slate-200 text-slate-700 rounded-xl text-sm hover:bg-slate-50">Cancel</button>
-              <button onClick={nominate} disabled={busy === 'nominate' || !pickMentee} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm inline-flex items-center gap-2 disabled:opacity-50">
-                {busy === 'nominate' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}Nominate
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Nominate drawer */}
+      <Drawer
+        open={nominating}
+        onClose={() => setNominating(false)}
+        title="Nominate a mentee"
+        subtitle="Put a mentee forward for promotion review."
+        width="sm"
+        footer={
+          <>
+            <button onClick={() => setNominating(false)} className="px-4 py-2 border border-slate-200 text-slate-700 rounded-xl text-sm hover:bg-slate-50">Cancel</button>
+            <button onClick={nominate} disabled={busy === 'nominate' || !pickMentee} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm inline-flex items-center gap-2 disabled:opacity-50">
+              {busy === 'nominate' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}Nominate
+            </button>
+          </>
+        }
+      >
+        {eligible.length === 0 ? (
+          <p className="text-sm text-slate-500">Everyone in your cohort is already nominated.</p>
+        ) : (
+          <>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Mentee</label>
+            <select value={pickMentee} onChange={(e) => setPickMentee(e.target.value)}
+              className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+              <option value="">Select a mentee</option>
+              {eligible.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+            </select>
+          </>
+        )}
+      </Drawer>
 
       {interviewing && <InterviewModal candidate={interviewing} onClose={() => setInterviewing(null)} onSaved={refetch} />}
     </div>

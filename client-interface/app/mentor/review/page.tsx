@@ -17,6 +17,7 @@ import { frictionApi } from '@/lib/services/friction-api';
 import { DualProgress } from '@/components/mentor/DualProgress';
 import { ReviewDrawer } from '@/components/mentor/ReviewDrawer';
 import { AssignTaskDrawer } from '@/components/mentor/AssignTaskDrawer';
+import { Drawer } from '@/components/shared/Drawer';
 
 type Attendance = 'present' | 'absent' | 'excused';
 
@@ -369,24 +370,8 @@ export default function CohortReview() {
           <div className="bg-white rounded-2xl border border-slate-200 p-5">
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-semibold text-slate-900 flex items-center gap-2"><Flag className="w-4 h-4 text-red-500" />Open blockers</h3>
-              <button onClick={() => setShowAddBlocker((s) => !s)} title="Log a blocker" className="p-1 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-slate-100"><Plus className="w-4 h-4" /></button>
+              <button onClick={() => setShowAddBlocker(true)} title="Log a blocker" className="p-1 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-slate-100"><Plus className="w-4 h-4" /></button>
             </div>
-            {showAddBlocker && (
-              <div className="mb-3 space-y-2 rounded-xl border border-slate-200 p-3 bg-slate-50">
-                <input value={bTitle} onChange={(e) => setBTitle(e.target.value)} placeholder="What's blocking them?" className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-                <div className="flex gap-2">
-                  <select value={bCat} onChange={(e) => setBCat(e.target.value)} className="flex-1 border border-slate-300 rounded-lg px-2 py-1.5 text-sm capitalize focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                    {['technical', 'knowledge', 'access', 'personal'].map((c) => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                  <select value={bSev} onChange={(e) => setBSev(e.target.value)} className="flex-1 border border-slate-300 rounded-lg px-2 py-1.5 text-sm capitalize focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                    {['low', 'medium', 'high'].map((s) => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </div>
-                <button onClick={addBlocker} disabled={busy === 'add-blocker' || !bTitle.trim()} className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium disabled:opacity-50">
-                  {busy === 'add-blocker' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}Log blocker
-                </button>
-              </div>
-            )}
             {blockers.length === 0 ? (
               <p className="text-sm text-slate-500">None open.</p>
             ) : (
@@ -420,6 +405,41 @@ export default function CohortReview() {
           </div>
         </div>
       </div>
+
+      {/* Log a blocker for the current mentee */}
+      <Drawer
+        open={showAddBlocker}
+        onClose={() => setShowAddBlocker(false)}
+        title="Log a blocker"
+        subtitle={mentee ? `Capture what's slowing ${mentee.name.split(' ')[0]} down.` : undefined}
+        footer={
+          <>
+            <button onClick={() => setShowAddBlocker(false)} className="px-4 py-2 border border-slate-200 text-slate-700 rounded-xl text-sm hover:bg-slate-50">Cancel</button>
+            <button onClick={addBlocker} disabled={busy === 'add-blocker' || !bTitle.trim()} className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium inline-flex items-center gap-2 disabled:opacity-50">
+              {busy === 'add-blocker' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}Log blocker
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">What&apos;s blocking them?</label>
+            <textarea value={bTitle} onChange={(e) => setBTitle(e.target.value)} rows={2} placeholder="e.g. Stuck on async patterns" className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500" autoFocus />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Category</label>
+            <select value={bCat} onChange={(e) => setBCat(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm capitalize focus:outline-none focus:ring-2 focus:ring-indigo-500">
+              {['technical', 'knowledge', 'access', 'personal'].map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Severity</label>
+            <select value={bSev} onChange={(e) => setBSev(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm capitalize focus:outline-none focus:ring-2 focus:ring-indigo-500">
+              {['low', 'medium', 'high'].map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+        </div>
+      </Drawer>
 
       {reviewing && <ReviewDrawer item={reviewing} onClose={() => setReviewing(null)} onReviewed={refresh} />}
 

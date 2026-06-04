@@ -8,6 +8,7 @@ import {
 import { useMentorSchedule, useScheduleTemplates, useMentorCohort, useMentorRoadmaps, type ScheduleTemplate } from '@/lib/hooks/mentor';
 import { meetingsApi } from '@/lib/services/meetings-api';
 import { scheduleApi, type ScheduleSlot } from '@/lib/services/schedule-api';
+import { Drawer } from '@/components/shared/Drawer';
 
 const DURATIONS = [15, 30, 45, 60];
 const SLOT_DAYS = ['everyday', 'weekdays', 'weekends'];
@@ -122,18 +123,24 @@ function AssignModal({ template, cohort, onClose }: { template: ScheduleTemplate
     catch { toast.error('Could not assign'); } finally { setSaving(false); }
   };
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl">
-        <div className="flex items-center justify-between mb-3"><h3 className="font-semibold text-slate-900">Assign "{template.name}"</h3><button onClick={onClose} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg"><X className="w-5 h-5" /></button></div>
-        <p className="text-xs text-slate-500 mb-3">Seeds each mentee's day with these blocks as empty slots — fill them in the "Fill schedules" tab.</p>
-        <div className="space-y-1 max-h-72 overflow-y-auto">
-          {cohort.length === 0 ? <p className="text-sm text-slate-500">No mentees.</p> : cohort.map((m) => (
-            <label key={m.id} className="flex items-center gap-2.5 p-2 rounded-lg hover:bg-slate-50 cursor-pointer"><input type="checkbox" checked={sel.has(m.id)} onChange={() => toggle(m.id)} className="rounded border-slate-300 text-indigo-600" /><span className="text-sm text-slate-700">{m.name}</span></label>
-          ))}
-        </div>
-        <div className="flex justify-end gap-2 mt-4"><button onClick={onClose} className="px-4 py-2 border border-slate-200 text-slate-700 rounded-xl text-sm">Cancel</button><button onClick={assign} disabled={saving} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm inline-flex items-center gap-2 disabled:opacity-50">{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}Assign{sel.size ? ` (${sel.size})` : ''}</button></div>
+    <Drawer
+      open
+      onClose={onClose}
+      title={`Assign "${template.name}"`}
+      subtitle="Seeds each mentee's day with these blocks as empty slots — fill them in the Fill schedules tab."
+      footer={
+        <>
+          <button onClick={onClose} className="px-4 py-2 border border-slate-200 text-slate-700 rounded-xl text-sm hover:bg-slate-50">Cancel</button>
+          <button onClick={assign} disabled={saving} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm inline-flex items-center gap-2 disabled:opacity-50">{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}Assign{sel.size ? ` (${sel.size})` : ''}</button>
+        </>
+      }
+    >
+      <div className="space-y-1">
+        {cohort.length === 0 ? <p className="text-sm text-slate-500">No mentees.</p> : cohort.map((m) => (
+          <label key={m.id} className="flex items-center gap-2.5 p-2 rounded-lg hover:bg-slate-50 cursor-pointer"><input type="checkbox" checked={sel.has(m.id)} onChange={() => toggle(m.id)} className="rounded border-slate-300 text-indigo-600" /><span className="text-sm text-slate-700">{m.name}</span></label>
+        ))}
       </div>
-    </div>
+    </Drawer>
   );
 }
 

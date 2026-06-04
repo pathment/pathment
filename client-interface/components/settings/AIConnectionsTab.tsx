@@ -1,9 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { KeyRound, Plus, Trash2, X, Loader2, Zap, CheckCircle2, AlertTriangle, Circle } from 'lucide-react';
+import { KeyRound, Plus, Trash2, Loader2, Zap, CheckCircle2, AlertTriangle, Circle } from 'lucide-react';
 import { useAIConnections } from '@/lib/hooks/admin';
 import type { AIProvider, AIFeature, AIKeyStatus } from '@/lib/services/ai-connections-api';
+import { Drawer } from '@/components/shared/Drawer';
 
 const PROVIDER_META: Record<AIProvider, { label: string; hint: string; keyPrefix: string; models: string[] }> = {
   groq: { label: 'Groq', hint: 'Fastest — great for summaries & nudges.', keyPrefix: 'gsk_', models: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b'] },
@@ -132,13 +133,21 @@ function AddKeyModal({ onClose, onAdd }: { onClose: () => void; onAdd: (d: { pro
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div role="dialog" aria-modal="true" className="relative w-full max-w-md bg-white rounded-2xl shadow-xl p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-slate-900">Add AI connection</h3>
-          <button onClick={onClose} aria-label="Close" className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg"><X className="w-5 h-5" /></button>
-        </div>
+    <Drawer
+      open
+      onClose={onClose}
+      title="Add AI connection"
+      subtitle="Bring your own provider key — stored encrypted, shown masked."
+      footer={
+        <>
+          <button onClick={onClose} className="px-4 py-2 border border-slate-200 text-slate-700 rounded-xl text-sm hover:bg-slate-50">Cancel</button>
+          <button onClick={submit} disabled={saving || !label.trim() || !key.trim()} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm inline-flex items-center gap-2 disabled:opacity-50">
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Add key
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1">Provider</label>
           <select value={provider} onChange={(e) => { setProvider(e.target.value as AIProvider); setModel(''); }} className={field}>
@@ -148,7 +157,7 @@ function AddKeyModal({ onClose, onAdd }: { onClose: () => void; onAdd: (d: { pro
         </div>
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1">Label</label>
-          <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. Primary Groq key" className={field} />
+          <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. Primary Groq key" className={field} autoFocus />
         </div>
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1">API key</label>
@@ -167,13 +176,7 @@ function AddKeyModal({ onClose, onAdd }: { onClose: () => void; onAdd: (d: { pro
             {meta.models.map((m) => <option key={m} value={m}>{m}</option>)}
           </select>
         </div>
-        <div className="flex justify-end gap-2 pt-1">
-          <button onClick={onClose} className="px-4 py-2 border border-slate-200 text-slate-700 rounded-xl text-sm hover:bg-slate-50">Cancel</button>
-          <button onClick={submit} disabled={saving || !label.trim() || !key.trim()} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm inline-flex items-center gap-2 disabled:opacity-50">
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Add key
-          </button>
-        </div>
       </div>
-    </div>
+    </Drawer>
   );
 }

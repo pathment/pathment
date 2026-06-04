@@ -2,9 +2,10 @@
 
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { Gift as GiftIcon, Loader2, X, Sparkles } from 'lucide-react';
+import { Gift as GiftIcon, Loader2, Sparkles } from 'lucide-react';
 import { useRewards, useMentorCohort, type Gift } from '@/lib/hooks/mentor';
 import { rewardsApi } from '@/lib/services/rewards-api';
+import { Drawer } from '@/components/shared/Drawer';
 
 function RedeemModal({ gift, onClose, onDone }: { gift: Gift; onClose: () => void; onDone: () => void }) {
   const { cohort } = useMentorCohort();
@@ -23,27 +24,27 @@ function RedeemModal({ gift, onClose, onDone }: { gift: Gift; onClose: () => voi
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-slate-900 text-lg font-semibold">Redeem · {gift.name}</h3>
-          <button onClick={onClose} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg"><X className="w-5 h-5" /></button>
-        </div>
-        <p className="text-sm text-slate-500 mb-3">{gift.costXp.toLocaleString()} XP{gift.stock !== null ? ` · ${gift.stock} left` : ''}</p>
-        <label className="block text-sm font-medium text-slate-700 mb-1">For which mentee?</label>
-        <select value={menteeId} onChange={(e) => setMenteeId(e.target.value)}
-          className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
-          <option value="">Select a mentee</option>
-          {cohort.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-        </select>
-        <div className="flex justify-end gap-2 mt-5">
+    <Drawer
+      open
+      onClose={onClose}
+      title={`Redeem · ${gift.name}`}
+      subtitle={`${gift.costXp.toLocaleString()} XP${gift.stock !== null ? ` · ${gift.stock} left` : ''}`}
+      footer={
+        <>
           <button onClick={onClose} className="px-4 py-2 border border-slate-200 text-slate-700 rounded-xl text-sm hover:bg-slate-50">Cancel</button>
           <button onClick={redeem} disabled={saving} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm inline-flex items-center gap-2 disabled:opacity-50">
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}Redeem
           </button>
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    >
+      <label className="block text-sm font-medium text-slate-700 mb-1">For which mentee?</label>
+      <select value={menteeId} onChange={(e) => setMenteeId(e.target.value)}
+        className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        <option value="">Select a mentee</option>
+        {cohort.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+      </select>
+    </Drawer>
   );
 }
 

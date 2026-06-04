@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { CalendarClock, Clock, Loader2, X, User, Check } from 'lucide-react';
 import { useMenteeMeetings, type OpenSlot } from '@/lib/hooks/mentee';
 import { meetingsApi } from '@/lib/services/meetings-api';
+import { Drawer } from '@/components/shared/Drawer';
 
 const STATUS_CLASS: Record<string, string> = {
   scheduled: 'bg-blue-100 text-blue-700',
@@ -152,28 +153,27 @@ export default function MenteeMeetings() {
         </>
       )}
 
-      {/* Booking confirm modal */}
-      {booking && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl">
-            <h3 className="text-slate-900 text-lg font-semibold mb-1">Book this 1:1?</h3>
-            <p className="text-sm text-slate-500 mb-4 flex items-center gap-1.5">
-              <Clock className="w-4 h-4" />{booking.day} · {booking.time} · {booking.durationMins} min
-            </p>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Anything to discuss? <span className="text-slate-400 font-normal">(optional)</span></label>
-            <textarea value={agenda} onChange={(e) => setAgenda(e.target.value)} rows={3}
-              placeholder="e.g. I'm stuck on the JWT refresh flow"
-              className="w-full border border-slate-300 rounded-xl p-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-4" />
-            <div className="flex justify-end gap-2">
-              <button onClick={() => setBooking(null)} className="px-4 py-2 border border-slate-200 text-slate-700 rounded-xl text-sm hover:bg-slate-50">Cancel</button>
-              <button onClick={confirmBook} disabled={saving}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm inline-flex items-center gap-2 disabled:opacity-50">
-                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}Confirm booking
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Booking confirm drawer */}
+      <Drawer
+        open={!!booking}
+        onClose={() => setBooking(null)}
+        title="Book this 1:1?"
+        subtitle={booking ? `${booking.day} · ${booking.time} · ${booking.durationMins} min` : undefined}
+        width="sm"
+        footer={
+          <>
+            <button onClick={() => setBooking(null)} className="px-4 py-2 border border-slate-200 text-slate-700 rounded-xl text-sm hover:bg-slate-50">Cancel</button>
+            <button onClick={confirmBook} disabled={saving} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm inline-flex items-center gap-2 disabled:opacity-50">
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}Confirm booking
+            </button>
+          </>
+        }
+      >
+        <label className="block text-sm font-medium text-slate-700 mb-1">Anything to discuss? <span className="text-slate-400 font-normal">(optional)</span></label>
+        <textarea value={agenda} onChange={(e) => setAgenda(e.target.value)} rows={3}
+          placeholder="e.g. I'm stuck on the JWT refresh flow"
+          className="w-full border border-slate-300 rounded-xl p-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500" autoFocus />
+      </Drawer>
     </div>
   );
 }

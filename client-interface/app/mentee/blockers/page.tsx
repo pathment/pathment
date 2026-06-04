@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Flag, CheckCircle2, Plus, Loader2, X, Link2 } from 'lucide-react';
+import { Flag, CheckCircle2, Plus, Loader2, Link2 } from 'lucide-react';
 import { useAuth } from '@/lib/context/AuthContext';
 import { frictionApi } from '@/lib/services/friction-api';
 import { taskApi } from '@/lib/services/task-api';
+import { Drawer } from '@/components/shared/Drawer';
 
 interface Blocker {
   id: string;
@@ -154,16 +155,24 @@ function AddBlockerModal({ tasks, onClose, onAdded }: { tasks: TaskOpt[]; onClos
   const seg = (active: boolean) => `px-3 py-1.5 rounded-lg border text-sm font-medium capitalize ${active ? 'border-indigo-400 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-600 hover:border-slate-300'}`;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div role="dialog" aria-modal="true" className="relative w-full max-w-md bg-white rounded-2xl shadow-xl p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-slate-900">Log a blocker</h3>
-          <button onClick={onClose} aria-label="Close" className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg"><X className="w-5 h-5" /></button>
-        </div>
+    <Drawer
+      open
+      onClose={onClose}
+      title="Log a blocker"
+      subtitle="What's slowing you down — your mentor can see this and help."
+      footer={
+        <>
+          <button onClick={onClose} className="px-4 py-2 border border-slate-200 text-slate-700 rounded-xl text-sm hover:bg-slate-50">Cancel</button>
+          <button onClick={submit} disabled={saving} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm inline-flex items-center gap-2 disabled:opacity-50">
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}Log blocker
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1">What&apos;s blocking you?</label>
-          <textarea value={title} onChange={(e) => setTitle(e.target.value)} rows={2} placeholder="e.g. Stuck on the JWT refresh flow" className={`${field} resize-none`} />
+          <textarea value={title} onChange={(e) => setTitle(e.target.value)} rows={2} placeholder="e.g. Stuck on the JWT refresh flow" className={`${field} resize-none`} autoFocus />
         </div>
         {tasks.length > 0 && (
           <div>
@@ -186,13 +195,7 @@ function AddBlockerModal({ tasks, onClose, onAdded }: { tasks: TaskOpt[]; onClos
             {SEVERITIES.map((s) => <button key={s} type="button" onClick={() => setSeverity(s)} className={seg(severity === s)}>{s}</button>)}
           </div>
         </div>
-        <div className="flex justify-end gap-2 pt-1">
-          <button onClick={onClose} className="px-4 py-2 border border-slate-200 text-slate-700 rounded-xl text-sm hover:bg-slate-50">Cancel</button>
-          <button onClick={submit} disabled={saving} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm inline-flex items-center gap-2 disabled:opacity-50">
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}Log blocker
-          </button>
-        </div>
       </div>
-    </div>
+    </Drawer>
   );
 }
