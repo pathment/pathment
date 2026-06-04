@@ -3,7 +3,7 @@ import { apiClient } from './api-client';
 /** 1:1 scheduling: availability (mentor) + meetings (both) + booking (mentee). */
 export const meetingsApi = {
   // Mentor availability
-  publishSlot: (data: { day: string; time: string; durationMins?: number }) =>
+  publishSlot: (data: { date: string; time: string; durationMins?: number }) =>
     apiClient.post('/meetings/availability', data),
   listMyAvailability: () => apiClient.get('/meetings/availability/mine'),
   deleteSlot: (id: string) => apiClient.delete(`/meetings/availability/${id}`),

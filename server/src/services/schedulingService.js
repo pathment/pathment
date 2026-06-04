@@ -9,10 +9,25 @@ const { NOTIFICATION_EVENTS } = require('../config/notificationMatrix');
  */
 class SchedulingService {
   // ── Availability (mentor) ─────────────────────────────────────────────────
-  async publishSlot(mentorId, { day, time, durationMins }) {
-    if (!day || !time) throw new ValidationError('day and time are required');
+  /** 'YYYY-MM-DD' → 'Thu, Jun 5' (display label derived from the date). */
+  _dayLabel(date) {
+    if (!date) return null;
+    const d = new Date(`${date}T00:00:00`);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  }
+
+  async publishSlot(mentorId, { day, date, time, durationMins }) {
+    if (!time) throw new ValidationError('A time is required');
+    if (!date && !day) throw new ValidationError('A date is required');
+    const dayLabel = this._dayLabel(date) || day;
+
+    // Block duplicates: one slot per mentor per date+time (works for null dates too).
+    const existing = await models.AvailabilitySlot.findOne({ where: { mentorId, date: date || null, time } });
+    if (existing) throw new ValidationError('You already published a slot at this date and time');
+
     return models.AvailabilitySlot.create({
-      mentorId, day, time, durationMins: durationMins || 30
+      mentorId, day: dayLabel, date: date || null, time, durationMins: durationMins || 30
     });
   }
 

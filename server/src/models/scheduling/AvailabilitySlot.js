@@ -14,10 +14,15 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       field: 'mentor_id'
     },
-    // Human-friendly day label or date, e.g. 'Mon' or 'Thu, May 29'.
+    // Human-friendly day label, e.g. 'Mon' or 'Thu, May 29' (derived from date).
     day: {
       type: DataTypes.STRING(40),
       allowNull: false
+    },
+    // The concrete calendar date this slot is for ('YYYY-MM-DD').
+    date: {
+      type: DataTypes.DATEONLY,
+      allowNull: true
     },
     time: {
       type: DataTypes.STRING(20),
@@ -45,7 +50,8 @@ module.exports = (sequelize, DataTypes) => {
     timestamps: true,
     indexes: [
       { fields: ['mentor_id'] },
-      { fields: ['taken'] }
+      { fields: ['taken'] },
+      { unique: true, fields: ['mentor_id', 'date', 'time'], name: 'uq_slot_mentor_date_time' }
     ]
   });
 

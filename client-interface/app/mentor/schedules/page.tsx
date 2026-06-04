@@ -9,7 +9,6 @@ import { useMentorSchedule, useScheduleTemplates, useMentorCohort, useMentorRoad
 import { meetingsApi } from '@/lib/services/meetings-api';
 import { scheduleApi, type ScheduleSlot } from '@/lib/services/schedule-api';
 
-const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const DURATIONS = [15, 30, 45, 60];
 const SLOT_DAYS = ['everyday', 'weekdays', 'weekends'];
 const TASK_TYPES = ['reading', 'discussion', 'video', 'quiz', 'assignment', 'project'];
@@ -236,16 +235,17 @@ function FillTab() {
 // ───────────────────────── Availability tab (existing 1:1) ─────────────────────────
 function AvailabilityTab() {
   const { availability, meetings, loading, error, refetch } = useMentorSchedule();
-  const [day, setDay] = useState('Mon');
+  const [date, setDate] = useState('');
   const [time, setTime] = useState('2:00 PM');
   const [duration, setDuration] = useState(30);
   const [adding, setAdding] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const publish = async () => {
+    if (!date) { toast.error('Pick a date'); return; }
     if (!time.trim()) { toast.error('Enter a time'); return; }
-    try { setAdding(true); await meetingsApi.publishSlot({ day, time: time.trim(), durationMins: duration }); toast.success('Slot published'); refetch(); }
-    catch { toast.error('Could not publish'); } finally { setAdding(false); }
+    try { setAdding(true); await meetingsApi.publishSlot({ date, time: time.trim(), durationMins: duration }); toast.success('Slot published'); setDate(''); refetch(); }
+    catch (e: any) { toast.error(e?.response?.data?.message || 'Could not publish'); } finally { setAdding(false); }
   };
   const removeSlot = async (id: string) => {
     try { setBusyId(id); await meetingsApi.deleteSlot(id); refetch(); } catch (e: any) { toast.error(e?.response?.data?.message || 'Could not remove'); } finally { setBusyId(null); }
@@ -263,7 +263,7 @@ function AvailabilityTab() {
       <section className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
         <h3 className="text-slate-900 font-medium flex items-center gap-2"><CalendarClock className="w-4 h-4 text-indigo-500" />My 1:1 availability</h3>
         <div className="flex flex-wrap items-end gap-3">
-          <div><label className="block text-xs text-slate-500 mb-1">Day</label><select value={day} onChange={(e) => setDay(e.target.value)} className={field}>{DAYS.map((d) => <option key={d}>{d}</option>)}</select></div>
+          <div><label className="block text-xs text-slate-500 mb-1">Date</label><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={field} /></div>
           <div><label className="block text-xs text-slate-500 mb-1">Time</label><input value={time} onChange={(e) => setTime(e.target.value)} className={`${field} w-28`} /></div>
           <div><label className="block text-xs text-slate-500 mb-1">Duration</label><select value={duration} onChange={(e) => setDuration(Number(e.target.value))} className={field}>{DURATIONS.map((d) => <option key={d} value={d}>{d} min</option>)}</select></div>
           <button onClick={publish} disabled={adding} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium disabled:opacity-50">{adding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}Publish slot</button>
