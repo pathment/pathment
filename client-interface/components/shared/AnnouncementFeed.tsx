@@ -85,11 +85,11 @@ export function AnnouncementFeed({
             <p className="text-sm text-slate-700 mt-2 whitespace-pre-wrap">{a.body}</p>
             <div className="flex items-center gap-2 mt-3">
               <button onClick={() => act(a.id, () => announcementsApi.react(a.id, 'acknowledged'))} disabled={busy === a.id}
-                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border ${a.myReactions.includes('acknowledged') ? 'border-brand-300 bg-brand-50 dark:bg-brand-500/10 text-brand-700' : 'border-slate-200 text-slate-600 hover:border-slate-300'}`}>
+                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border ${a.myReactions.includes('acknowledged') ? 'border-brand-300 bg-brand-50 text-brand-700' : 'border-slate-200 text-slate-600 hover:border-slate-300'}`}>
                 <CheckCircle2 className="w-3.5 h-3.5" />Acknowledged {a.reactions.acknowledged > 0 && a.reactions.acknowledged}
               </button>
               <button onClick={() => act(a.id, () => announcementsApi.react(a.id, 'helpful'))} disabled={busy === a.id}
-                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border ${a.myReactions.includes('helpful') ? 'border-brand-300 bg-brand-50 dark:bg-brand-500/10 text-brand-700' : 'border-slate-200 text-slate-600 hover:border-slate-300'}`}>
+                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border ${a.myReactions.includes('helpful') ? 'border-brand-300 bg-brand-50 text-brand-700' : 'border-slate-200 text-slate-600 hover:border-slate-300'}`}>
                 <ThumbsUp className="w-3.5 h-3.5" />Helpful {a.reactions.helpful > 0 && a.reactions.helpful}
               </button>
             </div>

@@ -152,7 +152,7 @@ function AddBlockerModal({ tasks, onClose, onAdded }: { tasks: TaskOpt[]; onClos
     } catch { toast.error('Could not log blocker'); } finally { setSaving(false); }
   };
 
-  const seg = (active: boolean) => `px-3 py-1.5 rounded-lg border text-sm font-medium capitalize ${active ? 'border-brand-400 bg-brand-50 dark:bg-brand-500/10 text-brand-700' : 'border-slate-200 text-slate-600 hover:border-slate-300'}`;
+  const seg = (active: boolean) => `px-3 py-1.5 rounded-lg border text-sm font-medium capitalize ${active ? 'border-brand-400 bg-brand-50 text-brand-700' : 'border-slate-200 text-slate-600 hover:border-slate-300'}`;
 
   return (
     <Drawer

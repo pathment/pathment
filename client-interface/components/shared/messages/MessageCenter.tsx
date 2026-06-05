@@ -326,7 +326,7 @@ export default function MessageCenter({ role }: MessageCenterProps) {
                     onClick={() => setSelectedConversationId(conversation.id)}
                     className={`w-full text-left p-4 transition-colors ${
                       selectedConversationId === conversation.id
-                        ? 'bg-brand-50'
+                        ? 'bg-brand-50 dark:bg-brand-500/15'
                         : 'hover:bg-slate-50'
                     }`}
                   >

@@ -209,7 +209,7 @@ export default function SkillsOnboardingPage() {
             <h3 className="font-semibold text-slate-900 mb-4">Selected Skills ({selectedSkills.length})</h3>
             <div className="space-y-3">
               {selectedSkills.map((userSkill) => (
-                <div key={userSkill.skillId} className="flex items-center gap-4 p-3 bg-brand-50 rounded-xl">
+                <div key={userSkill.skillId} className="flex items-center gap-4 p-3 bg-brand-50 dark:bg-brand-500/10 rounded-xl">
                   <span className="flex-1 font-medium text-brand-900">{getSkillName(userSkill.skillId)}</span>
                   
                   <div className="flex items-center gap-2">

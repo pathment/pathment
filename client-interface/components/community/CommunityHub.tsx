@@ -69,7 +69,7 @@ const TYPE_META: Record<PostType, { label: string; icon: typeof Trophy; cls: str
 const REACTIONS: { key: ReactionType; icon: typeof Heart; label: string; on: string }[] = [
   { key: 'cheers',     icon: Heart,     label: 'Cheers',     on: 'border-pink-300 bg-pink-50 text-pink-700' },
   { key: 'celebrate',  icon: PartyPopper, label: 'Celebrate', on: 'border-amber-300 bg-amber-50 text-amber-700' },
-  { key: 'helpful',    icon: ThumbsUp,  label: 'Helpful',    on: 'border-brand-300 bg-brand-50 dark:bg-brand-500/10 text-brand-700' },
+  { key: 'helpful',    icon: ThumbsUp,  label: 'Helpful',    on: 'border-brand-300 bg-brand-50 text-brand-700' },
   { key: 'insightful', icon: Lightbulb, label: 'Insightful', on: 'border-violet-300 bg-violet-50 text-violet-700' },
 ];
 
@@ -336,7 +336,7 @@ function Composer({ hub }: { hub: ReturnType<typeof useCommunityHub> }) {
           const m = TYPE_META[t];
           return (
             <button key={t} onClick={() => setType(t)}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors ${type === t ? 'border-brand-400 bg-brand-50 dark:bg-brand-500/10 text-brand-700' : 'border-slate-200 text-slate-600 hover:border-slate-300'}`}>
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors ${type === t ? 'border-brand-400 bg-brand-50 text-brand-700' : 'border-slate-200 text-slate-600 hover:border-slate-300'}`}>
               <m.icon className="w-4 h-4" />{m.label}
             </button>
           );
@@ -375,7 +375,7 @@ function Composer({ hub }: { hub: ReturnType<typeof useCommunityHub> }) {
 
       <div className="flex items-center gap-2 flex-wrap">
         {hub.people.length > 0 && <MentionPicker people={hub.people} value={mentions} onChange={setMentions} />}
-        <button type="button" onClick={() => setShowAttach((s) => !s)} className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-sm ${showAttach || files.length ? 'border-brand-300 bg-brand-50 dark:bg-brand-500/10 text-brand-700' : 'border-slate-200 text-slate-600 hover:border-slate-300'}`}>
+        <button type="button" onClick={() => setShowAttach((s) => !s)} className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-sm ${showAttach || files.length ? 'border-brand-300 bg-brand-50 text-brand-700' : 'border-slate-200 text-slate-600 hover:border-slate-300'}`}>
           <Paperclip className="w-4 h-4" />Attach{files.length ? ` (${files.length})` : ''}
         </button>
         <button onClick={submit} disabled={posting} className="ml-auto inline-flex items-center gap-1.5 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm font-medium disabled:opacity-50">
@@ -447,12 +447,12 @@ export default function CommunityHub() {
           <div className="flex items-center gap-1.5 flex-wrap">
             {FILTER_TYPES.map((t) => (
               <button key={t ?? 'all'} onClick={() => hub.setTypeFilter(t)}
-                className={`px-3 py-1 rounded-full text-xs font-medium border ${hub.typeFilter === t ? 'border-brand-400 bg-brand-50 dark:bg-brand-500/10 text-brand-700' : 'border-slate-200 text-slate-600 hover:border-slate-300'}`}>
+                className={`px-3 py-1 rounded-full text-xs font-medium border ${hub.typeFilter === t ? 'border-brand-400 bg-brand-50 text-brand-700' : 'border-slate-200 text-slate-600 hover:border-slate-300'}`}>
                 {t ? TYPE_META[t].label : 'All'}
               </button>
             ))}
             {hub.tagFilter && (
-              <button onClick={() => hub.setTagFilter(null)} className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium border border-brand-300 bg-brand-50 dark:bg-brand-500/10 text-brand-700">
+              <button onClick={() => hub.setTagFilter(null)} className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium border border-brand-300 bg-brand-50 text-brand-700">
                 <Hash className="w-3 h-3" />{hub.tagFilter} ✕
               </button>
             )}
@@ -523,7 +523,7 @@ export default function CommunityHub() {
             ) : (
               <div className="space-y-1">
                 {hub.leaderboard.map((r) => (
-                  <div key={r.userId} className={`flex items-center gap-2.5 px-1.5 py-1.5 rounded-lg ${r.mine ? 'bg-brand-50' : ''}`}>
+                  <div key={r.userId} className={`flex items-center gap-2.5 px-1.5 py-1.5 rounded-lg ${r.mine ? 'bg-brand-50 dark:bg-brand-500/15' : ''}`}>
                     <span className={`w-5 text-center text-xs font-semibold tabular-nums shrink-0 ${r.rank <= 3 ? 'text-amber-500' : 'text-slate-400'}`}>{r.rank}</span>
                     <div className="w-7 h-7 rounded-full bg-brand-100 flex items-center justify-center shrink-0"><span className="text-brand-700 text-[11px] font-medium">{r.avatar}</span></div>
                     <div className="min-w-0 flex-1">

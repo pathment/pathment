@@ -73,7 +73,7 @@ export function OneOnOneDrawer({
               {SENTIMENTS.map((s) => (
                 <button key={s.key} onClick={() => setSentiment(s.key)}
                   className={`flex-1 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
-                    sentiment === s.key ? 'border-brand-400 bg-brand-50 dark:bg-brand-500/10 text-brand-700' : 'border-slate-200 text-slate-600 hover:border-slate-300'
+                    sentiment === s.key ? 'border-brand-400 bg-brand-50 text-brand-700' : 'border-slate-200 text-slate-600 hover:border-slate-300'
                   }`}>
                   {s.label}
                 </button>

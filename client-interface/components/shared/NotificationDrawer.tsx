@@ -364,7 +364,7 @@ export default function NotificationDrawer({
                       key={notification.id}
                       className={`group px-4 py-3 cursor-pointer transition-colors ${
                         notification.status === 'unread'
-                          ? 'bg-brand-50 hover:bg-brand-100'
+                          ? 'bg-brand-50 dark:bg-brand-500/10 hover:bg-brand-100 dark:hover:bg-brand-500/20'
                           : 'bg-card hover:bg-slate-50'
                       }`}
                       onClick={() => handleNotificationClick(notification)}

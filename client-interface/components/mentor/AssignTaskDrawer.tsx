@@ -192,7 +192,7 @@ export function AssignTaskDrawer({
   const field = 'w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500';
   const pill = (active: boolean) =>
     `px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors ${
-      active ? 'border-brand-400 bg-brand-50 dark:bg-brand-500/10 text-brand-700' : 'border-slate-200 text-slate-600 hover:border-slate-300'
+      active ? 'border-brand-400 bg-brand-50 text-brand-700' : 'border-slate-200 text-slate-600 hover:border-slate-300'
     }`;
 
   return (

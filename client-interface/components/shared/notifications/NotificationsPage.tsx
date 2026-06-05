@@ -140,7 +140,7 @@ export default function NotificationsPage({ role }: NotificationsPageProps) {
                 <div
                   key={notification.id}
                   className={`px-4 py-3 transition-colors ${
-                    notification.status === 'unread' ? 'bg-brand-50' : 'bg-card'
+                    notification.status === 'unread' ? 'bg-brand-50 dark:bg-brand-500/10' : 'bg-card'
                   }`}
                 >
                   <div className="flex items-start justify-between gap-3">

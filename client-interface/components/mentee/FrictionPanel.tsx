@@ -74,7 +74,7 @@ export function FrictionPanel({ taskId }: { taskId: string }) {
     <button
       onClick={() => toggle(p)}
       className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors ${
-        open === p ? 'border-brand-400 bg-brand-50 dark:bg-brand-500/10 text-brand-700' : 'border-slate-200 text-slate-700 hover:border-brand-300'
+        open === p ? 'border-brand-400 bg-brand-50 text-brand-700' : 'border-slate-200 text-slate-700 hover:border-brand-300'
       }`}
     >
       <Icon className="w-4 h-4" />{label}
