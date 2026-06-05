@@ -282,17 +282,17 @@ export default function ProgramListPage() {
                       <button className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
                         <MoreVertical className="w-5 h-5 text-slate-500" />
                       </button>
-                      <div className="absolute right-0 top-full mt-2 w-48 bg-card border border-slate-200 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
+                      <div className="absolute right-0 top-full mt-2 w-48 bg-card border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl dark:shadow-[0_8px_30px_rgba(0,0,0,0.55)] opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
                         <Link
                           href={`/admin/programs/${program.id}`}
-                          className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 text-slate-700 rounded-t-xl text-sm"
+                          className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-t-xl text-sm"
                         >
                           <Eye className="w-4 h-4" />
                           View Details
                         </Link>
                         <Link
                           href="/admin/roadmaps"
-                          className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 text-slate-700 text-sm"
+                          className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-sm"
                         >
                           <Edit className="w-4 h-4" />
                           Roadmaps
@@ -302,7 +302,7 @@ export default function ProgramListPage() {
                             setDeleteProgramId(program.id);
                             setDeleteProgramName(program.name);
                           }}
-                          className="flex items-center gap-3 px-4 py-3 hover:bg-red-50 text-red-600 w-full rounded-b-xl text-sm"
+                          className="flex items-center gap-3 px-4 py-3 hover:bg-red-50 dark:hover:bg-red-500/10 text-red-600 w-full rounded-b-xl text-sm"
                         >
                           <Trash2 className="w-4 h-4" />
                           Delete Program

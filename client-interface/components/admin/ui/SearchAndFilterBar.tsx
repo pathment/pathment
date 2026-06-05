@@ -1,5 +1,6 @@
 import React from 'react';
 import { Search, X } from 'lucide-react';
+import { SelectMenu } from '@/components/shared/SelectMenu';
 
 export interface FilterConfig {
   value: string;
@@ -58,18 +59,17 @@ export function SearchAndFilterBar({
           )}
         </div>
 
-        {/* Dynamic filter selects */}
+        {/* Dynamic filter dropdowns — consistent, always anchored to the trigger. */}
         {filters.map((filter, i) => (
-          <select
+          <SelectMenu
             key={i}
             value={filter.value}
-            onChange={(e) => filter.onChange(e.target.value)}
-            className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent text-slate-700 appearance-none bg-card"
-          >
-            {filter.options.map((opt) => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
+            onChange={filter.onChange}
+            options={filter.options}
+            placeholder={filter.placeholder}
+            ariaLabel={filter.placeholder || 'Filter'}
+            className="w-full"
+          />
         ))}
       </div>
 

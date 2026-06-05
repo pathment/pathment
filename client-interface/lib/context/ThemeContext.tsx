@@ -40,17 +40,18 @@ function applyToRoot(theme: Theme, accent: AccentKey) {
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [mode, setModeState] = useState<ThemeMode>('system');
+  const [mode, setModeState] = useState<ThemeMode>('light');
   const [theme, setThemeStateResolved] = useState<Theme>(themeConfig.defaultTheme);
   const [accent, setAccentState] = useState<AccentKey>(DEFAULT_ACCENT);
   const [mounted, setMounted] = useState(false);
-  const modeRef = useRef<ThemeMode>('system');
+  const modeRef = useRef<ThemeMode>('light');
   const accentRef = useRef<AccentKey>(DEFAULT_ACCENT);
 
   // Mount: read cached prefs, apply synchronously (no flash — provider gates
   // children on `mounted`), wire the OS listener, then reconcile with server.
   useEffect(() => {
-    let initialMode: ThemeMode = 'system';
+    // Default to light ("white") unless the user has explicitly chosen otherwise.
+    let initialMode: ThemeMode = 'light';
     let initialAccent: AccentKey = DEFAULT_ACCENT;
     try {
       const saved = localStorage.getItem(themeConfig.storageKey);

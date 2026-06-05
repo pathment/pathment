@@ -18,6 +18,7 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import { useProgramDetail } from '@/lib/hooks/admin';
+import { MenuPanel } from '@/components/shared/MenuPanel';
 
 type ProgramStatus = 'draft' | 'published' | 'archived' | 'completed';
 
@@ -84,8 +85,8 @@ function StatusSelector({
       </button>
 
       {open && transitions.length > 0 && (
-        <div className="absolute left-0 top-full mt-1.5 w-64 bg-card border border-slate-200 rounded-xl shadow-lg z-50 overflow-hidden">
-          <div className="px-3 py-2 border-b border-slate-100">
+        <MenuPanel align="start" width="w-64">
+          <div className="px-3 py-2 border-b border-slate-100 dark:border-slate-700">
             <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Change Status</p>
           </div>
           {transitions.map((t) => {
@@ -104,7 +105,7 @@ function StatusSelector({
               </button>
             );
           })}
-        </div>
+        </MenuPanel>
       )}
     </div>
   );
@@ -210,8 +211,8 @@ export default function ProgramDetails() {
               </button>
 
               {shareOpen && (
-                <div className="absolute right-0 mt-2 w-64 bg-card border border-slate-200 rounded-xl shadow-lg z-50 overflow-hidden">
-                  <div className="px-4 py-3 border-b border-slate-100">
+                <MenuPanel align="end" width="w-64">
+                  <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-700">
                     <p className="text-sm font-medium text-slate-700">Share Program</p>
                     <p className="text-xs text-slate-500 mt-0.5">Copy a link to share this program</p>
                   </div>
@@ -232,7 +233,7 @@ export default function ProgramDetails() {
                       </div>
                     </button>
                   </div>
-                </div>
+                </MenuPanel>
               )}
             </div>
           </div>

@@ -11,6 +11,7 @@ import {
 import { useCommunityHub, type CommunityPost, type CommunityComment, type CommunityPerson } from '@/lib/hooks/community/useCommunityHub';
 import { communityApi, type PostType, type ReactionType } from '@/lib/services/community-api';
 import FileUploader from '@/components/shared/FileUploader';
+import { MenuPanel } from '@/components/shared/MenuPanel';
 
 /* ── Mention picker ─────────────────────────────────────────────────────── */
 function MentionPicker({ people, value, onChange }: { people: CommunityPerson[]; value: string[]; onChange: (ids: string[]) => void }) {
@@ -29,17 +30,17 @@ function MentionPicker({ people, value, onChange }: { people: CommunityPerson[];
         {open && (
           <>
             <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-            <div className="absolute left-0 mt-1 w-60 bg-card border border-slate-200 rounded-xl shadow-lg z-20 p-2">
-              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search people…" className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm mb-2 focus:outline-none focus:ring-2 focus:ring-brand-500" />
+            <MenuPanel align="start" width="w-60" className="p-2">
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search people…" className="w-full border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-sm mb-2 focus:outline-none focus:ring-2 focus:ring-brand-500" />
               <div className="max-h-44 overflow-y-auto space-y-0.5">
                 {filtered.length === 0 && <p className="text-xs text-slate-400 px-1 py-2">No one to mention.</p>}
                 {filtered.map((p) => (
-                  <button key={p.id} type="button" onClick={() => toggle(p.id)} className={`w-full text-left px-2 py-1.5 rounded-lg text-sm flex items-center justify-between ${value.includes(p.id) ? 'bg-brand-50 text-brand-700' : 'hover:bg-slate-50 text-slate-700'}`}>
+                  <button key={p.id} type="button" onClick={() => toggle(p.id)} className={`w-full text-left px-2 py-1.5 rounded-lg text-sm flex items-center justify-between ${value.includes(p.id) ? 'bg-brand-50 text-brand-700' : 'hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200'}`}>
                     {p.name}{value.includes(p.id) && <Check className="w-3.5 h-3.5" />}
                   </button>
                 ))}
               </div>
-            </div>
+            </MenuPanel>
           </>
         )}
       </div>
@@ -201,21 +202,21 @@ function PostCard({ post, canModerate, hub }: { post: CommunityPost; canModerate
           {menu && (
             <>
               <div className="fixed inset-0 z-10" onClick={() => setMenu(false)} />
-              <div className="absolute right-0 mt-1 w-40 bg-card border border-slate-200 rounded-xl shadow-lg py-1 z-20 text-sm">
+              <MenuPanel align="end" width="w-40" className="py-1 text-sm">
                 {canModerate && (
-                  <button onClick={() => { hub.pin(post.id, !post.pinned); setMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-slate-700 hover:bg-slate-50">
+                  <button onClick={() => { hub.pin(post.id, !post.pinned); setMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800">
                     <Pin className="w-3.5 h-3.5" />{post.pinned ? 'Unpin' : 'Pin'}
                   </button>
                 )}
                 {(post.mine || canModerate) && (
-                  <button onClick={() => { hub.deletePost(post.id); setMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-red-600 hover:bg-red-50">
+                  <button onClick={() => { hub.deletePost(post.id); setMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10">
                     <Trash2 className="w-3.5 h-3.5" />Delete
                   </button>
                 )}
-                <button onClick={() => { hub.report('post', post.id); setMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-slate-700 hover:bg-slate-50">
+                <button onClick={() => { hub.report('post', post.id); setMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800">
                   <Flag className="w-3.5 h-3.5" />Report
                 </button>
-              </div>
+              </MenuPanel>
             </>
           )}
         </div>
