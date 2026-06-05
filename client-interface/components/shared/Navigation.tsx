@@ -44,7 +44,7 @@ export default function Navigation({ role }: NavigationProps) {
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
   const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
-  const { links, pinned, isEditing, toggleEdit, togglePin, moveUp, moveDown, reset } = useNavPreferences(role);
+  const { links, pinned, isEditing, toggleEdit, togglePin, moveUp, moveDown, reset, recordUsage } = useNavPreferences(role);
 
   // ── Collapsible group state ───────────────────────────────────────────────
   // Initialise with any group that contains the current path already open
@@ -149,7 +149,7 @@ export default function Navigation({ role }: NavigationProps) {
       <Link
         key={link.path}
         href={link.path}
-        onClick={onNavigate}
+        onClick={() => { recordUsage(link.path); onNavigate?.(); }}
         className={`relative flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-150 group ${
           isActive
             ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-200'
@@ -204,7 +204,7 @@ export default function Navigation({ role }: NavigationProps) {
                 <Link
                   key={child.path}
                   href={child.path}
-                  onClick={onNavigate}
+                  onClick={() => { recordUsage(child.path); onNavigate?.(); }}
                   className={`flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all duration-150 group ${
                     isActive
                       ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-200'
