@@ -5,7 +5,7 @@ import { Loader2, Mail, Save } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { preferencesApi } from '@/lib/services/preferences-api';
-import { EMAIL_PREFERENCE_CATEGORIES, EMAIL_CATEGORY_GROUPS } from '@/lib/config/notificationCategories';
+import { categoriesForRole, groupsForRole, type AppRole } from '@/lib/config/notificationCategories';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 
 function Toggle({ checked, disabled, onChange }: { checked: boolean; disabled?: boolean; onChange: (v: boolean) => void }) {
@@ -23,10 +23,13 @@ function Toggle({ checked, disabled, onChange }: { checked: boolean; disabled?: 
  * mail (password reset, account/invite) always sends and isn't shown here.
  * Shared across admin / mentor / mentee.
  */
-export function NotificationPreferencesTab() {
+export function NotificationPreferencesTab({ role }: { role: AppRole }) {
   const [prefs, setPrefs] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  const categories = categoriesForRole(role);
+  const groups = groupsForRole(role);
 
   useEffect(() => {
     preferencesApi.getEmailNotifications()
@@ -43,9 +46,9 @@ export function NotificationPreferencesTab() {
   const save = async () => {
     setSaving(true);
     try {
-      // Persist explicit booleans for every category + the master switch.
+      // Persist explicit booleans for this role's categories + the master switch.
       const payload: Record<string, boolean> = { enabled: masterOn };
-      for (const c of EMAIL_PREFERENCE_CATEGORIES) payload[c.key] = isOn(c.key);
+      for (const c of categories) payload[c.key] = isOn(c.key);
       await preferencesApi.updateNotifications(payload);
       toast.success('Notification preferences saved');
     } catch (e) {
@@ -78,11 +81,11 @@ export function NotificationPreferencesTab() {
 
       {/* Per-category, grouped */}
       <div className={`space-y-6 ${masterOn ? '' : 'opacity-50 pointer-events-none'}`}>
-        {EMAIL_CATEGORY_GROUPS.map((group) => (
+        {groups.map((group) => (
           <div key={group}>
             <p className="text-xs font-medium uppercase tracking-wide text-slate-400 mb-2">{group}</p>
             <div className="space-y-2">
-              {EMAIL_PREFERENCE_CATEGORIES.filter((c) => c.group === group).map((c) => (
+              {categories.filter((c) => c.group === group).map((c) => (
                 <div key={c.key} className="flex items-center justify-between p-4 border border-slate-200 rounded-xl">
                   <div className="text-sm text-slate-800">{c.label}</div>
                   <Toggle checked={isOn(c.key)} disabled={!masterOn} onChange={(v) => set(c.key, v)} />

@@ -16,7 +16,7 @@ export const TOUR_EVENT = 'pathment:start-tour';
 // own data-tour. Steps whose target isn't on screen are skipped safely.
 const COMMON_TAIL = (role: UserRole): TourStep[] => [
   { target: '[data-tour="notifications"]', title: 'Notifications', body: 'Real-time updates — new tasks, messages, blockers and reviews — show up here the moment they happen.' },
-  { target: `a[href="/${role}/settings"]`, title: 'Settings & themes', body: 'Edit your profile and skills, and pick your color vibe + light/dark mode in the Appearance tab.' },
+  { target: `a[href="/${role}/settings"]`, title: 'Settings & preferences', body: 'Edit your profile, pick your color vibe + light/dark, and in Notifications choose exactly which emails you receive. Mentors and admins can also connect their own AI key here.' },
   { target: null, title: "You're all set 🎉", body: 'That’s the quick tour. You can replay it anytime from the “?” button at the top of the sidebar.' },
 ];
 
@@ -24,7 +24,7 @@ export const WALKTHROUGHS: Record<UserRole, TourStep[]> = {
   mentor: [
     { target: null, title: 'Welcome to Pathment 👋', body: 'A quick 60-second tour of your mentor workspace. You can skip anytime — and replay it later.' },
     { target: 'a[href="/mentor/dashboard"]', title: 'Cockpit', body: 'Your home base. See who needs attention today, your cohort’s health, and jump straight in.' },
-    { target: '[data-tour="group:mentees"]', title: 'My Mentees', body: 'Everyone you mentor lives in this section — your mentee directory, work approvals, cohort review, at-risk, and promotions.' },
+    { target: '[data-tour="group:mentees"]', title: 'My Mentees', body: 'Everyone you mentor lives in this section — your mentee directory, your Clan Team (add co-mentors to your clan), work approvals, cohort review, at-risk, and promotions.' },
     { target: '[data-tour="group:teaching"]', title: 'Teaching', body: 'Build and run the curriculum: roadmaps, your programs, schedules, reports, and progress scores.' },
     ...COMMON_TAIL('mentor'),
   ],
@@ -39,8 +39,9 @@ export const WALKTHROUGHS: Record<UserRole, TourStep[]> = {
   admin: [
     { target: null, title: 'Welcome to Pathment 👋', body: 'A quick tour of your admin console. You can skip anytime — and replay it later.' },
     { target: 'a[href="/admin/dashboard"]', title: 'Dashboard', body: 'Org-wide health at a glance — programs, clans, and who’s at risk.' },
-    { target: '[data-tour="group:admissions"]', title: 'Admissions', body: 'Run intake end-to-end: cohorts & applications, assessments you build, and registration invites — all in one section.' },
+    { target: '[data-tour="group:admissions"]', title: 'Admissions', body: 'Run intake end-to-end: cohorts & applications, the assessments you build, shareable public apply links, and registration invites — all in one section.' },
     { target: '[data-tour="group:people"]', title: 'People & Clans', body: 'Enrollments, clans (the mentor-led groups), the mentor/mentee directories, and clan change requests.' },
+    { target: 'a[href="/admin/access"]', title: 'Roles & Access', body: 'Decide who can do what: grant scoped roles (program admin, intake manager, moderator, lead/co-mentor…), invite teammates with a role pre-assigned, or build your own custom roles.' },
     { target: '[data-tour="group:analytics"]', title: 'Analytics', body: 'Insights with the fairness lens (absolute vs. credited progress) and platform activity.' },
     ...COMMON_TAIL('admin'),
   ],

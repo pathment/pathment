@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Check, CheckCheck, Loader2, MessageSquare, RefreshCw, Send, SmilePlus } from 'lucide-react';
+import { Check, CheckCheck, Loader2, MessageSquare, RefreshCw, Send } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { messagingApi } from '@/lib/services/messaging-api';
@@ -469,61 +469,69 @@ export default function MessageCenter({ role }: MessageCenterProps) {
                               : `${message.sender?.firstName || ''} ${message.sender?.lastName || ''}`.trim() || 'User'}
                           </p>
                           <p className="text-sm whitespace-pre-wrap">{message.messageText}</p>
-                          <div className={`flex items-center gap-1 mt-2 ${mine ? 'justify-end' : ''}`}>
-                            <span className="text-[11px] opacity-70">
-                              {new Date(message.createdAt).toLocaleString()}
+                          <div className={`flex items-center gap-1.5 mt-2 ${mine ? 'justify-end' : ''}`}>
+                            <span className={`text-[11px] ${mine ? 'text-white/70' : 'text-slate-400'}`}>
+                              {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </span>
-                            {mine &&
-                              (read ? (
-                                <CheckCheck className="w-3.5 h-3.5 text-sky-300" aria-label="Read" />
-                              ) : message.deliveredAt ? (
-                                <CheckCheck className="w-3.5 h-3.5 opacity-70" aria-label="Delivered" />
-                              ) : (
-                                <Check className="w-3.5 h-3.5 opacity-70" aria-label="Sent" />
-                              ))}
+                            {mine && (
+                              <span className="inline-flex" title={read ? 'Seen' : message.deliveredAt ? 'Delivered' : 'Sent'}>
+                                {read ? (
+                                  // Seen → double blue tick
+                                  <CheckCheck className="w-4 h-4 text-sky-300" aria-label="Seen" />
+                                ) : message.deliveredAt ? (
+                                  // Delivered (recipient online) → double tick
+                                  <CheckCheck className="w-4 h-4 text-white/60" aria-label="Delivered" />
+                                ) : (
+                                  // Sent, recipient offline → single tick
+                                  <Check className="w-4 h-4 text-white/60" aria-label="Sent" />
+                                )}
+                              </span>
+                            )}
                           </div>
                         </div>
 
-                        {/* Hover reaction picker */}
+                        {/* Hover reaction picker — floating pill that pops above the bubble */}
                         <div
-                          className={`absolute -top-4 ${
-                            mine ? 'right-1' : 'left-1'
-                          } flex items-center gap-0.5 rounded-full border border-slate-200 bg-card px-1 py-0.5 shadow-sm opacity-0 group-hover/msg:opacity-100 focus-within:opacity-100 transition-opacity`}
+                          className={`absolute -top-11 ${mine ? 'right-0' : 'left-0'} z-10 origin-bottom flex items-center gap-0.5 rounded-full border border-slate-200 bg-card px-1.5 py-1 shadow-lg opacity-0 scale-90 translate-y-1.5 pointer-events-none transition-all duration-150 ease-out group-hover/msg:opacity-100 group-hover/msg:scale-100 group-hover/msg:translate-y-0 group-hover/msg:pointer-events-auto focus-within:opacity-100 focus-within:scale-100 focus-within:translate-y-0 focus-within:pointer-events-auto`}
                         >
-                          {QUICK_REACTIONS.map((emoji) => (
-                            <button
-                              key={emoji}
-                              type="button"
-                              onClick={() => reactToMessage(message.id, emoji)}
-                              className="w-6 h-6 rounded-full hover:bg-slate-100 text-sm leading-none flex items-center justify-center"
-                              aria-label={`React ${emoji}`}
-                            >
-                              {emoji}
-                            </button>
-                          ))}
-                          <SmilePlus className="w-3.5 h-3.5 text-slate-400 mx-0.5" />
+                          {QUICK_REACTIONS.map((emoji) => {
+                            const active = grouped.some((g) => g.emoji === emoji && g.mine);
+                            return (
+                              <button
+                                key={emoji}
+                                type="button"
+                                onClick={() => reactToMessage(message.id, emoji)}
+                                className={`w-8 h-8 rounded-full text-lg leading-none flex items-center justify-center transition-transform duration-100 hover:scale-125 hover:bg-slate-100 ${active ? 'bg-brand-50 dark:bg-brand-500/15' : ''}`}
+                                aria-label={`React ${emoji}`}
+                              >
+                                {emoji}
+                              </button>
+                            );
+                          })}
                         </div>
-                      </div>
 
-                      {grouped.length > 0 && (
-                        <div className={`flex flex-wrap gap-1 mt-1 ${mine ? 'justify-end' : ''}`}>
-                          {grouped.map((entry) => (
-                            <button
-                              key={entry.emoji}
-                              type="button"
-                              onClick={() => reactToMessage(message.id, entry.emoji)}
-                              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors ${
-                                entry.mine
-                                  ? 'border-brand-300 bg-brand-50 dark:bg-brand-500/15 text-brand-700'
-                                  : 'border-slate-200 bg-card text-slate-600 hover:bg-slate-100'
-                              }`}
-                            >
-                              <span>{entry.emoji}</span>
-                              <span>{entry.count}</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
+                        {/* Reaction chips — sit on the bubble's bottom edge (WhatsApp-style) */}
+                        {grouped.length > 0 && (
+                          <div className={`flex flex-wrap gap-1 -mt-2 ${mine ? 'justify-end pr-1' : 'pl-1'} relative z-[1]`}>
+                            {grouped.map((entry) => (
+                              <button
+                                key={entry.emoji}
+                                type="button"
+                                onClick={() => reactToMessage(message.id, entry.emoji)}
+                                title={entry.mine ? 'You reacted — tap to remove' : 'Tap to react'}
+                                className={`inline-flex items-center gap-1 rounded-full border bg-card px-2 py-0.5 text-xs shadow-sm transition-all hover:-translate-y-0.5 ${
+                                  entry.mine
+                                    ? 'border-brand-300 ring-1 ring-brand-200 bg-brand-50 dark:bg-brand-500/15'
+                                    : 'border-slate-200 hover:bg-slate-50'
+                                }`}
+                              >
+                                <span className="leading-none text-sm">{entry.emoji}</span>
+                                {entry.count > 1 && <span className="font-medium text-slate-500">{entry.count}</span>}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   );
                 })}

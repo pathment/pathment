@@ -322,7 +322,7 @@ export default function MenteeSettings() {
           )}
 
           {/* Notifications Tab */}
-          {activeTab === 'notifications' && <NotificationPreferencesTab />}
+          {activeTab === 'notifications' && <NotificationPreferencesTab role="mentee" />}
 
           {/* Security Tab */}
           {activeTab === 'security' && (

@@ -113,7 +113,7 @@ export default function AdminSettings() {
           )}
 
           {activeTab === 'appearance' && <AppearanceTab />}
-          {activeTab === 'notifications' && <NotificationPreferencesTab />}
+          {activeTab === 'notifications' && <NotificationPreferencesTab role="admin" />}
           {activeTab === 'ai' && <AIConnectionsTab />}
           {activeTab === 'security' && <SecurityTab userRole="admin" showAuditLogs={true} />}
         </div>

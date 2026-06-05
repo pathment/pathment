@@ -325,7 +325,7 @@ export default function MentorSettings() {
           )}
 
           {/* Notifications Tab */}
-          {activeTab === 'notifications' && <NotificationPreferencesTab />}
+          {activeTab === 'notifications' && <NotificationPreferencesTab role="mentor" />}
 
           {/* Security Tab */}
           {activeTab === 'ai' && (
