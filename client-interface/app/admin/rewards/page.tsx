@@ -130,8 +130,8 @@ function GiftDrawer({ gift, onClose, onSaved }: { gift: Gift | null; onClose: ()
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div role="dialog" aria-modal="true" aria-label={gift ? 'Edit gift' : 'New gift'} className="relative w-full max-w-md h-full bg-card shadow-xl flex flex-col">
+      <div className="absolute inset-0 bg-black/40 dark:bg-black/70" onClick={onClose} />
+      <div role="dialog" aria-modal="true" aria-label={gift ? 'Edit gift' : 'New gift'} className="relative w-full max-w-md h-full bg-card border-l border-slate-200 dark:border-slate-700 shadow-2xl dark:shadow-[-8px_0_30px_rgba(0,0,0,0.6)] flex flex-col">
         <div className="px-6 py-5 border-b border-slate-200 flex items-center justify-between">
           <h2 className="font-semibold text-slate-900">{gift ? 'Edit gift' : 'New gift'}</h2>
           <button onClick={onClose} aria-label="Close" className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg"><X className="w-5 h-5" /></button>

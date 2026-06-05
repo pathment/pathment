@@ -39,7 +39,7 @@ export function MenuPanel({ align = 'start', width = 'w-56', className = '', chi
     <div
       ref={ref}
       role="menu"
-      className={`absolute z-50 ${width} ${side === 'end' ? 'right-0' : 'left-0'} ${up ? 'bottom-full mb-1.5' : 'top-full mt-1.5'} bg-card border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg dark:shadow-[0_8px_30px_rgba(0,0,0,0.55)] overflow-hidden ${className}`}
+      className={`absolute z-50 ${width} ${side === 'end' ? 'right-0' : 'left-0'} ${up ? 'bottom-full mb-1.5' : 'top-full mt-1.5'} glass rounded-xl shadow-lg dark:shadow-[0_8px_30px_rgba(0,0,0,0.55)] overflow-hidden ${className}`}
     >
       {children}
     </div>

@@ -86,8 +86,8 @@ function ApplicationDrawer({
   const entries = Object.entries(responses).filter(([k]) => !['email', 'role'].includes(k.toLowerCase()));
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/30" onClick={onClose}>
-      <div role="dialog" aria-modal="true" className="relative w-full max-w-lg h-full bg-card shadow-xl flex flex-col" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/30 dark:bg-black/70" onClick={onClose}>
+      <div role="dialog" aria-modal="true" className="relative w-full max-w-lg h-full bg-card border-l border-slate-200 dark:border-slate-700 shadow-2xl dark:shadow-[-8px_0_30px_rgba(0,0,0,0.6)] flex flex-col" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between px-6 py-4 border-b border-slate-200">
           <div>
             <h2 className="text-slate-900 font-medium">{fullName(app)}</h2>

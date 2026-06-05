@@ -377,7 +377,7 @@ export default function Navigation({ role }: NavigationProps) {
       </div>
 
       {/* ── Mobile Header ── */}
-      <div className="lg:hidden fixed top-0 left-0 right-0 bg-card border-b border-slate-100 z-60">
+      <div className="lg:hidden fixed top-0 left-0 right-0 glass border-b border-slate-100 dark:border-slate-700 z-60">
         <div className="flex items-center justify-between px-4 py-3.5">
           <div className="flex items-center gap-3">
             <div className="flex items-center justify-center w-9 h-9 bg-brand-600 rounded-xl shadow-sm shadow-brand-200">

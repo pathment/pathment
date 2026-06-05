@@ -90,7 +90,7 @@ export function SelectMenu({ value, onChange, options, placeholder = 'Select…'
           role="listbox"
           tabIndex={-1}
           onKeyDown={onMenuKey}
-          className={`absolute left-0 right-0 z-50 ${flipUp ? 'bottom-full mb-1' : 'top-full mt-1'} max-h-72 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-card shadow-xl dark:shadow-[0_8px_30px_rgba(0,0,0,0.6)] py-1 outline-none`}
+          className={`absolute left-0 right-0 z-50 ${flipUp ? 'bottom-full mb-1' : 'top-full mt-1'} max-h-72 overflow-y-auto rounded-xl glass shadow-xl dark:shadow-[0_8px_30px_rgba(0,0,0,0.6)] py-1 outline-none`}
         >
           {options.map((o, i) => {
             const isSel = o.value === value;

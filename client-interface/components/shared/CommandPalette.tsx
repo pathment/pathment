@@ -119,7 +119,7 @@ export function CommandPalette({ role }: { role: UserRole }) {
       aria-label="Search pages"
     >
       <div
-        className="w-full max-w-xl rounded-2xl bg-card border border-slate-200 shadow-2xl overflow-hidden"
+        className="w-full max-w-xl rounded-2xl glass shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
         onKeyDown={onListKey}
       >

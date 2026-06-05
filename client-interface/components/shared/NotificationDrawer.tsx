@@ -317,13 +317,13 @@ export default function NotificationDrawer({
       {isMounted && isOpen && createPortal(
         <>
           <div
-            className="fixed inset-0 z-70 bg-black/30 lg:left-64"
+            className="fixed inset-0 z-70 bg-black/30 dark:bg-black/60 lg:left-64"
             onClick={() => setIsOpen(false)}
             aria-hidden="true"
           />
 
           <aside
-            className="fixed right-0 top-0 z-80 h-dvh w-full max-w-md bg-card shadow-2xl border-l border-slate-200 flex flex-col"
+            className="fixed right-0 top-0 z-80 h-dvh w-full max-w-md bg-card shadow-2xl border-l border-slate-200 dark:border-slate-700 flex flex-col"
             role="dialog"
             aria-labelledby="notif-title"
             aria-modal="true"

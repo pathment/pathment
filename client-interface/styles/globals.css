@@ -250,9 +250,54 @@ html[data-accent='graphite'] {
   }
 }
 
+@layer base {
+  /*
+   * Native <select> dropdowns: the option list inherits the control's dark
+   * `bg-card` but not a light text colour, so in dark mode options render
+   * dark-on-dark (invisible). Force both from theme tokens so every native
+   * select's popup is readable in light AND dark.
+   */
+  select option,
+  select optgroup {
+    background-color: var(--card);
+    color: var(--card-foreground);
+  }
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;
+  }
+
+  /*
+   * Frosted-glass surface for floating / elevated chrome — popovers, dropdown
+   * menus, the ⌘K palette, drawers. Token-driven (uses --card / --border) so it
+   * follows light/dark + the active accent automatically and stays CONSISTENT
+   * everywhere it's applied. Kept fairly opaque so text/inputs stay readable —
+   * this is an intentionally light first pass we can dial up later.
+   */
+  .glass {
+    background-color: color-mix(in srgb, var(--card) 82%, transparent);
+    -webkit-backdrop-filter: blur(14px) saturate(180%);
+    backdrop-filter: blur(14px) saturate(180%);
+    border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  }
+  .dark .glass {
+    background-color: color-mix(in srgb, var(--card) 70%, transparent);
+    border-color: rgba(255, 255, 255, 0.10);
+  }
+  /* Gracefully fall back to a solid surface where backdrop-blur isn't supported. */
+  @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+    .glass { background-color: var(--card); }
+  }
+
+  /* Subtle interactive lift for clickable glass surfaces. */
+  .glass-hover {
+    transition: transform 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .glass-hover:hover {
+    background-color: color-mix(in srgb, var(--card) 92%, transparent);
+    transform: translateY(-1px);
   }
 }
 
