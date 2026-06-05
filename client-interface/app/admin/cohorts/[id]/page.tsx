@@ -1,18 +1,19 @@
 'use client';
 
-import { use, useRef, useState } from 'react';
+import { use, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import {
   ArrowLeft, Upload, Loader2, X, CheckCircle2, XCircle, FileSpreadsheet,
-  Mail, Phone, Check,
+  Mail, Phone, Check, Link2, Copy, Power, ClipboardCheck,
 } from 'lucide-react';
 import {
   useCohortApplications,
   type Application,
   type ApplicationStatus,
 } from '@/lib/hooks/admin';
-import { cohortApi } from '@/lib/services/intake-api';
+import { cohortApi, applicationApi } from '@/lib/services/intake-api';
+import { assessmentApi, type Assessment } from '@/lib/services/assessment-api';
 
 const STATUS_TABS: { key: ApplicationStatus | 'all'; label: string }[] = [
   { key: 'all', label: 'All' },
@@ -64,6 +65,14 @@ function ApplicationDrawer({
   const [notes, setNotes] = useState(app.reviewerNotes ?? '');
   const [busy, setBusy] = useState(false);
   const decided = app.status === 'accepted' || app.status === 'rejected';
+
+  // Load the assessment submission (if any) for this application.
+  const [detail, setDetail] = useState<any>(null);
+  useEffect(() => {
+    let active = true;
+    applicationApi.get(app.id).then((res: any) => { if (active) setDetail(res?.data || null); }).catch(() => {});
+    return () => { active = false; };
+  }, [app.id]);
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -142,6 +151,11 @@ function ApplicationDrawer({
               </dl>
             )}
           </div>
+
+          {/* Assessment submission */}
+          {detail?.submission && detail?.assessment && (
+            <AssessmentSubmissionView assessment={detail.assessment} submission={detail.submission} />
+          )}
         </div>
 
         {!decided && (
@@ -154,6 +168,189 @@ function ApplicationDrawer({
             </button>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+/** Public self-serve intake link + attached assessment configuration. */
+function IntakePanel({ cohortId, cohort, onChange }: { cohortId: string; cohort: any; onChange: () => void }) {
+  const [assessments, setAssessments] = useState<Assessment[]>([]);
+  const [assessmentId, setAssessmentId] = useState<string>(cohort?.assessmentId || '');
+  const [required, setRequired] = useState<boolean>(Boolean(cohort?.assessmentRequired));
+  const [closesAt, setClosesAt] = useState<string>(cohort?.applyClosesAt ? String(cohort.applyClosesAt).slice(0, 10) : '');
+  const [maxApps, setMaxApps] = useState<string>(cohort?.maxApplications != null ? String(cohort.maxApplications) : '');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => { assessmentApi.list().then(setAssessments).catch(() => {}); }, []);
+  useEffect(() => {
+    setAssessmentId(cohort?.assessmentId || '');
+    setRequired(Boolean(cohort?.assessmentRequired));
+    setClosesAt(cohort?.applyClosesAt ? String(cohort.applyClosesAt).slice(0, 10) : '');
+    setMaxApps(cohort?.maxApplications != null ? String(cohort.maxApplications) : '');
+  }, [cohort?.assessmentId, cohort?.assessmentRequired, cohort?.applyClosesAt, cohort?.maxApplications]);
+
+  const enabled = Boolean(cohort?.publicEnabled && cohort?.publicSlug);
+  const applyUrl = cohort?.publicSlug && typeof window !== 'undefined' ? `${window.location.origin}/apply/${cohort.publicSlug}` : '';
+  const isOpen = cohort?.status === 'open';
+
+  const toggleLink = async () => {
+    setBusy(true);
+    try {
+      if (enabled) { await cohortApi.disablePublicLink(cohortId); toast.success('Public link disabled'); }
+      else { await cohortApi.enablePublicLink(cohortId); toast.success('Public link enabled'); }
+      onChange();
+    } catch { toast.error('Could not update the link'); }
+    finally { setBusy(false); }
+  };
+
+  const saveSettings = async () => {
+    setBusy(true);
+    try {
+      await cohortApi.update(cohortId, {
+        assessmentId: assessmentId || null,
+        assessmentRequired: required,
+        applyClosesAt: closesAt ? new Date(closesAt).toISOString() : null,
+        maxApplications: maxApps === '' ? null : Number(maxApps),
+      });
+      toast.success('Intake settings saved');
+      onChange();
+    } catch { toast.error('Could not save settings'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-card p-5 space-y-5">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Link2 className="w-4 h-4 text-brand-600" />
+          <h2 className="font-medium text-slate-900">Public application link</h2>
+        </div>
+        <button
+          onClick={toggleLink}
+          disabled={busy}
+          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium ${enabled ? 'border border-slate-200 text-slate-700 hover:bg-slate-100' : 'bg-brand-600 text-white hover:bg-brand-700'}`}
+        >
+          <Power className="w-4 h-4" /> {enabled ? 'Disable' : 'Enable link'}
+        </button>
+      </div>
+
+      {enabled ? (
+        <div className="flex items-center gap-2">
+          <code className="flex-1 truncate rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-700">{applyUrl}</code>
+          <button onClick={() => { navigator.clipboard?.writeText(applyUrl); toast.success('Link copied'); }} className="p-2 rounded-lg border border-slate-200 hover:bg-slate-100" aria-label="Copy link"><Copy className="w-4 h-4" /></button>
+        </div>
+      ) : (
+        <p className="text-sm text-slate-500">Enable to mint a shareable link anyone can apply through.</p>
+      )}
+
+      {enabled && !isOpen && (
+        <p className="text-xs rounded-lg bg-amber-50 text-amber-800 px-3 py-2">
+          The link only accepts applications while the cohort status is <strong>Open</strong> (currently {cohort?.status}).
+        </p>
+      )}
+
+      <div className="grid sm:grid-cols-2 gap-4 pt-1">
+        <div>
+          <label className="block text-xs font-medium text-slate-500 mb-1">Apply closes</label>
+          <input type="date" value={closesAt} onChange={(e) => setClosesAt(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500 [color-scheme:light] dark:[color-scheme:dark]" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-500 mb-1">Max applications</label>
+          <input type="number" min={0} value={maxApps} onChange={(e) => setMaxApps(e.target.value)} placeholder="Unlimited" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500" />
+        </div>
+      </div>
+
+      <div className="border-t border-slate-100 pt-4">
+        <div className="flex items-center gap-2 mb-2">
+          <ClipboardCheck className="w-4 h-4 text-brand-600" />
+          <h3 className="text-sm font-medium text-slate-900">Assessment</h3>
+        </div>
+        <div className="grid sm:grid-cols-2 gap-4 items-end">
+          <div>
+            <label className="block text-xs font-medium text-slate-500 mb-1">Attached assessment</label>
+            <select value={assessmentId} onChange={(e) => setAssessmentId(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500">
+              <option value="">None</option>
+              {assessments.map((a) => <option key={a.id} value={a.id}>{a.title}{a.status !== 'published' ? ` (${a.status})` : ''}</option>)}
+            </select>
+          </div>
+          <label className="inline-flex items-center gap-2 text-sm text-slate-600 pb-2">
+            <input type="checkbox" checked={required} onChange={(e) => setRequired(e.target.checked)} disabled={!assessmentId} className="accent-brand-600" />
+            Required before review
+          </label>
+        </div>
+        {assessments.length === 0 && (
+          <p className="mt-2 text-xs text-slate-400">No assessments yet — <Link href="/admin/assessments" className="text-brand-600">create one</Link> first.</p>
+        )}
+      </div>
+
+      <div className="flex justify-end">
+        <button onClick={saveSettings} disabled={busy} className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50">
+          {busy && <Loader2 className="w-4 h-4 animate-spin" />} Save intake settings
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Read-only view of an applicant's assessment answers + manual grading. */
+function AssessmentSubmissionView({ assessment, submission }: { assessment: any; submission: any }) {
+  const [total, setTotal] = useState(submission.totalScore != null ? String(submission.totalScore) : '');
+  const [busy, setBusy] = useState(false);
+  const questions = (assessment.questions || []).slice().sort((a: any, b: any) => a.position - b.position);
+  const answers = submission.answers || {};
+
+  const renderAnswer = (q: any) => {
+    const a = answers[q.id] || {};
+    if (q.type === 'mcq' || q.type === 'multi_select') {
+      const picked = (a.optionIds || []).map((oid: string) => (q.options || []).find((o: any) => o.id === oid)?.label).filter(Boolean);
+      const correct = (q.correctOptionIds || []);
+      const isRight = correct.length && a.optionIds && correct.length === a.optionIds.length && correct.every((c: string) => a.optionIds.includes(c));
+      return (
+        <span className={isRight ? 'text-emerald-700' : 'text-slate-700'}>
+          {picked.length ? picked.join(', ') : '—'}{correct.length ? (isRight ? ' ✓' : ' ✗') : ''}
+        </span>
+      );
+    }
+    if (q.type === 'file_upload') return a.fileUrl ? <a href={a.fileUrl} target="_blank" rel="noreferrer" className="text-brand-600 underline">{a.fileName || 'View file'}</a> : <span className="text-slate-400">—</span>;
+    if (q.type === 'external_link') return a.link ? <a href={a.link} target="_blank" rel="noreferrer" className="text-brand-600 underline break-all">{a.link}</a> : <span className="text-slate-400">—</span>;
+    return <span className="text-slate-700 whitespace-pre-wrap">{a.text || '—'}</span>;
+  };
+
+  const saveGrade = async () => {
+    setBusy(true);
+    try {
+      await applicationApi.gradeSubmission(submission.id, { totalScore: total === '' ? undefined : Number(total) });
+      toast.success('Score saved');
+    } catch { toast.error('Could not save score'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="rounded-xl border border-slate-200 p-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-medium text-slate-700">Assessment submission</p>
+        <span className="text-xs text-slate-500">
+          Auto {submission.autoScore ?? 0}/{submission.maxScore ?? 0}
+          {submission.totalScore != null ? ` · Final ${submission.totalScore}` : ''}
+        </span>
+      </div>
+      <div className="mt-3 space-y-3">
+        {questions.map((q: any, i: number) => (
+          <div key={q.id} className="text-sm">
+            <p className="text-slate-500">{i + 1}. {q.prompt}</p>
+            <div className="mt-0.5">{renderAnswer(q)}</div>
+          </div>
+        ))}
+      </div>
+      <div className="mt-4 flex items-end gap-2">
+        <div>
+          <label className="block text-xs text-slate-500 mb-1">Final score (override)</label>
+          <input type="number" value={total} onChange={(e) => setTotal(e.target.value)} className="w-28 px-3 py-1.5 border border-slate-200 rounded-lg text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500" />
+        </div>
+        <button onClick={saveGrade} disabled={busy} className="px-3 py-1.5 rounded-lg bg-brand-600 text-white text-sm font-medium disabled:opacity-50 inline-flex items-center gap-1.5">
+          {busy && <Loader2 className="w-4 h-4 animate-spin" />} Save score
+        </button>
       </div>
     </div>
   );
@@ -218,6 +415,9 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
           </div>
         </div>
       </div>
+
+      {/* Public intake link + assessment */}
+      {cohort && <IntakePanel cohortId={id} cohort={cohort} onChange={refetch} />}
 
       {/* Filter tabs */}
       <div className="flex flex-wrap items-center gap-0 border-b border-slate-200">

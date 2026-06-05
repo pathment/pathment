@@ -16,12 +16,20 @@ export const cohortApi = {
   }) => apiClient.post('/intake/cohorts', data),
   update: (id: string, data: Record<string, unknown>) =>
     apiClient.patch(`/intake/cohorts/${id}`, data),
+  /** Turn the public self-serve intake link on (mints a slug) — returns { cohort, applyUrl }. */
+  enablePublicLink: (id: string) => apiClient.post(`/intake/cohorts/${id}/public-link`, {}),
+  disablePublicLink: (id: string) => apiClient.delete(`/intake/cohorts/${id}/public-link`),
 };
 
 /** Applications — intake records inside a cohort. Admin-only. */
 export const applicationApi = {
   list: (cohortId: string, status?: string) =>
     apiClient.get(`/intake/cohorts/${cohortId}/applications`, { params: { status } }),
+  /** Full detail incl. attached assessment + the applicant's submission. */
+  get: (id: string) => apiClient.get(`/intake/applications/${id}`),
+  /** Set/override the manual + total score for an assessment submission. */
+  gradeSubmission: (submissionId: string, data: { manualScore?: number; totalScore?: number }) =>
+    apiClient.post(`/intake/assessment-submissions/${submissionId}/grade`, data),
   /** Bulk import header→value rows parsed client-side from a CSV. */
   import: (cohortId: string, rows: Record<string, string>[]) =>
     apiClient.post(`/intake/cohorts/${cohortId}/applications/import`, { rows }),

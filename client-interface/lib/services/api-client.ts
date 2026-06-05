@@ -14,6 +14,7 @@ class ApiClient {
     '/auth/verify-email',
     '/auth/resend-verification',
     '/auth/validate-invite',
+    '/public/',
   ];
 
   constructor() {

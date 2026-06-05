@@ -38,7 +38,7 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       defaultValue: 'import',
       validate: {
-        isIn: [['google_form', 'manual', 'import', 'api']]
+        isIn: [['google_form', 'manual', 'import', 'api', 'public_link']]
       }
     },
     // Review pipeline stage.
@@ -82,6 +82,20 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.JSONB,
       allowNull: false,
       defaultValue: {}
+    },
+    // Magic-link token (SHA256) so a not-yet-registered applicant can return to
+    // track status / take the assessment without an account.
+    accessTokenHash: {
+      type: DataTypes.STRING(255),
+      field: 'access_token_hash'
+    },
+    accessTokenExpiresAt: {
+      type: DataTypes.DATE,
+      field: 'access_token_expires_at'
+    },
+    assessmentSubmittedAt: {
+      type: DataTypes.DATE,
+      field: 'assessment_submitted_at'
     }
   }, {
     tableName: 'applications',
@@ -101,6 +115,7 @@ module.exports = (sequelize, DataTypes) => {
     Application.belongsTo(models.User, { foreignKey: 'reviewed_by', as: 'reviewer' });
     Application.belongsTo(models.User, { foreignKey: 'user_id', as: 'user' });
     Application.belongsTo(models.RegistrationInvite, { foreignKey: 'invite_id', as: 'invite' });
+    Application.hasMany(models.AssessmentSubmission, { foreignKey: 'application_id', as: 'assessmentSubmissions' });
   };
 
   return Application;

@@ -106,6 +106,35 @@ class ApplicationService {
     return report;
   }
 
+  /** Full application detail for admin review, including any assessment submission. */
+  async getApplication(applicationId) {
+    const app = await models.Application.findByPk(applicationId, {
+      include: [
+        { model: models.Cohort, as: 'cohort', include: [{ model: models.Program, as: 'program', attributes: ['id', 'name'] }] },
+        { model: models.User, as: 'reviewer', attributes: ['id', 'firstName', 'lastName'] }
+      ]
+    });
+    if (!app) throw new NotFoundError('Application not found');
+
+    let assessment = null;
+    let submission = null;
+    const cohort = app.cohort;
+    if (cohort?.assessmentId) {
+      assessment = await models.Assessment.findByPk(cohort.assessmentId, {
+        include: [{ model: models.AssessmentQuestion, as: 'questions' }]
+      });
+      submission = await models.AssessmentSubmission.findOne({
+        where: { assessmentId: cohort.assessmentId, applicationId: app.id }
+      });
+    }
+
+    return {
+      application: app,
+      assessment: assessment ? assessment.toJSON() : null,
+      submission: submission ? submission.toJSON() : null
+    };
+  }
+
   async createApplication(cohortId, data) {
     const cohort = await models.Cohort.findByPk(cohortId);
     if (!cohort) throw new NotFoundError('Cohort not found');

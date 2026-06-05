@@ -2,6 +2,7 @@ const { catchAsync } = require('../middlewares/errorHandler');
 const { successResponse } = require('../utils/responses');
 const cohortIntakeService = require('../services/cohortIntakeService');
 const applicationService = require('../services/applicationService');
+const assessmentService = require('../services/assessmentService');
 
 // ─── Cohorts ─────────────────────────────────────────────────────────────────
 
@@ -26,11 +27,35 @@ const updateCohort = catchAsync(async (req, res) => {
   res.status(200).json(successResponse('Cohort updated', { cohort }));
 });
 
+const enablePublicLink = catchAsync(async (req, res) => {
+  const result = await cohortIntakeService.enablePublicLink(req.params.id);
+  res.status(200).json(successResponse('Public intake link enabled', { cohort: result.cohort, applyUrl: result.applyUrl }));
+});
+
+const disablePublicLink = catchAsync(async (req, res) => {
+  const cohort = await cohortIntakeService.disablePublicLink(req.params.id);
+  res.status(200).json(successResponse('Public intake link disabled', { cohort }));
+});
+
 // ─── Applications ──────────────────────────────────────────────────────────────
 
 const listApplications = catchAsync(async (req, res) => {
   const applications = await applicationService.listApplications(req.params.id, { status: req.query.status });
   res.status(200).json(successResponse('Applications retrieved', { applications }));
+});
+
+const getApplication = catchAsync(async (req, res) => {
+  const detail = await applicationService.getApplication(req.params.id);
+  res.status(200).json(successResponse('Application retrieved', detail));
+});
+
+const gradeAssessmentSubmission = catchAsync(async (req, res) => {
+  const submission = await assessmentService.gradeSubmission(
+    req.params.submissionId,
+    { manualScore: req.body?.manualScore, totalScore: req.body?.totalScore },
+    req.user.id
+  );
+  res.status(200).json(successResponse('Submission graded', { submission }));
 });
 
 const importApplications = catchAsync(async (req, res) => {
@@ -64,7 +89,11 @@ module.exports = {
   getCohort,
   createCohort,
   updateCohort,
+  enablePublicLink,
+  disablePublicLink,
   listApplications,
+  getApplication,
+  gradeAssessmentSubmission,
   importApplications,
   createApplication,
   updateApplication,

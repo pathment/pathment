@@ -38,6 +38,52 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.DATEONLY,
       field: 'end_date'
     },
+    // ── Public self-serve intake link ──────────────────────────────────────
+    // Shareable slug (`/apply/<slug>`). Only resolves while the cohort is open,
+    // public_enabled, and within the optional window/cap below.
+    publicSlug: {
+      type: DataTypes.STRING(64),
+      field: 'public_slug',
+      unique: true
+    },
+    publicEnabled: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+      field: 'public_enabled'
+    },
+    applyOpensAt: {
+      type: DataTypes.DATE,
+      field: 'apply_opens_at'
+    },
+    applyClosesAt: {
+      type: DataTypes.DATE,
+      field: 'apply_closes_at'
+    },
+    // Hard cap on how many applications the link will accept (null = unlimited).
+    maxApplications: {
+      type: DataTypes.INTEGER,
+      field: 'max_applications'
+    },
+    // Extra application form fields the admin configures: [{ key, label, type,
+    // required, options? }]. The default name/email/phone are always collected.
+    intakeFormSchema: {
+      type: DataTypes.JSONB,
+      allowNull: false,
+      defaultValue: [],
+      field: 'intake_form_schema'
+    },
+    // Optional assessment an applicant must/may complete before review.
+    assessmentId: {
+      type: DataTypes.UUID,
+      field: 'assessment_id'
+    },
+    assessmentRequired: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+      field: 'assessment_required'
+    },
     createdBy: {
       type: DataTypes.UUID,
       field: 'created_by'
@@ -54,6 +100,7 @@ module.exports = (sequelize, DataTypes) => {
   Cohort.associate = (models) => {
     Cohort.belongsTo(models.Program, { foreignKey: 'program_id', as: 'program' });
     Cohort.belongsTo(models.User, { foreignKey: 'created_by', as: 'creator' });
+    Cohort.belongsTo(models.Assessment, { foreignKey: 'assessment_id', as: 'assessment' });
     Cohort.hasMany(models.Application, { foreignKey: 'cohort_id', as: 'applications' });
   };
 

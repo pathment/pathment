@@ -30,6 +30,8 @@ const trackRoutes = require('./tracks');
 const linearRoadmapRoutes = require('./linearRoadmaps');
 const mentorSpecRoutes = require('./mentorSpec');
 const intakeRoutes = require('./intake');
+const assessmentRoutes = require('./assessments');
+const publicRoutes = require('./public');
 const aiConnectionRoutes = require('./aiConnections');
 const programReviewRoutes = require('./programReviews');
 
@@ -126,6 +128,12 @@ router.use('/mentor-spec', mentorSpecRoutes);
 
 // Registration intake — cohorts + applications (admin)
 router.use('/intake', intakeRoutes);
+
+// Assessment authoring (admin)
+router.use('/assessments', assessmentRoutes);
+
+// Public, unauthenticated intake — program catalog + apply + applicant status
+router.use('/public', publicRoutes);
 
 // AI connections — admin BYO provider keys + feature routing
 router.use('/ai-connections', aiConnectionRoutes);
