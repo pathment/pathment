@@ -1,6 +1,6 @@
 'use client';
 
-import { Loader2, Save, User, Briefcase, Users, Bell, Shield, KeyRound, Sparkles, Palette } from 'lucide-react';
+import { Loader2, Save, User, Users, Bell, Shield, KeyRound, Sparkles, Palette } from 'lucide-react';
 import { useMentorSettings } from '@/lib/hooks/mentor';
 import { PageHeader, TabBar } from '@/components/admin/ui';
 import SecurityTab from '@/components/shared/SecurityTab';
@@ -41,7 +41,6 @@ export default function MentorSettings() {
 
   const tabs: Tab[] = [
     { id: 'profile', label: 'Profile', icon: User },
-    { id: 'mentor', label: 'Mentor Info', icon: Briefcase },
     { id: 'skills', label: 'Skills', icon: Sparkles },
     { id: 'appearance', label: 'Appearance', icon: Palette },
     { id: 'availability', label: 'Availability', icon: Users },
@@ -149,11 +148,14 @@ export default function MentorSettings() {
           {/* Appearance Tab */}
           {activeTab === 'appearance' && <AppearanceTab />}
 
-          {/* Mentor Info Tab */}
-          {activeTab === 'mentor' && (
-            <div className="space-y-6">
-              <h2 className="text-slate-900">Mentor Profile</h2>
-              
+          {/* Professional details — folded into the Profile tab (no separate tab) */}
+          {activeTab === 'profile' && (
+            <div className="space-y-6 pt-8 mt-8 border-t border-slate-100 dark:border-slate-700">
+              <div>
+                <h2 className="text-slate-900">Professional details</h2>
+                <p className="text-slate-500 text-sm mt-1">Shown on your mentor profile to mentees and admins.</p>
+              </div>
+
               <div className="grid md:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-slate-700 mb-2 text-sm font-medium">Title</label>

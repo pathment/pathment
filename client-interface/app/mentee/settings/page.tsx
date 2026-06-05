@@ -2,7 +2,6 @@
 
 import {
   User,
-  GraduationCap,
   Target,
   Bell,
   Shield,
@@ -50,7 +49,6 @@ export default function MenteeSettings() {
 
   const tabs: Tab[] = [
     { id: 'profile', label: 'Profile', icon: User },
-    { id: 'mentee', label: 'Learning Info', icon: GraduationCap },
     { id: 'skills', label: 'Skills', icon: Sparkles },
     { id: 'appearance', label: 'Appearance', icon: Palette },
     { id: 'preferences', label: 'Preferences', icon: Target },
@@ -157,11 +155,14 @@ export default function MenteeSettings() {
           {/* Appearance Tab */}
           {activeTab === 'appearance' && <AppearanceTab />}
 
-          {/* Mentee Info Tab */}
-          {activeTab === 'mentee' && (
-            <div className="space-y-6">
-              <h2 className="text-slate-900">Learning Profile</h2>
-              
+          {/* Learning profile — folded into the Profile tab (no separate tab) */}
+          {activeTab === 'profile' && (
+            <div className="space-y-6 pt-8 mt-8 border-t border-slate-100 dark:border-slate-700">
+              <div>
+                <h2 className="text-slate-900">Learning profile</h2>
+                <p className="text-slate-500 text-sm mt-1">Helps your mentor tailor support to your goals.</p>
+              </div>
+
               <div>
                 <label className="block text-slate-700 mb-2 text-sm font-medium">Learning Goals</label>
                 <textarea
