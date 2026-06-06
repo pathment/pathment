@@ -83,10 +83,10 @@ export const publicApi = {
   uploadFile: (token: string, file: File) => {
     const fd = new FormData();
     fd.append('file', file);
+    // No explicit Content-Type — the interceptor + browser set multipart with
+    // the required boundary.
     return apiClient
-      .post<any>(`/public/applications/${encodeURIComponent(token)}/upload`, fd, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
+      .post<any>(`/public/applications/${encodeURIComponent(token)}/upload`, fd)
       .then((r) => r.data as { url: string; fileName: string; fileSizeBytes: number });
   },
 };

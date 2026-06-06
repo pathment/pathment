@@ -113,7 +113,9 @@ function GiftDrawer({ gift, onClose, onSaved }: { gift: Gift | null; onClose: ()
       setUploading(true);
       const res: any = await rewardsApi.uploadGiftImage(file);
       setImageUrl(res?.data?.url ?? null);
-    } catch { toast.error('Could not upload image'); } finally { setUploading(false); }
+    } catch (e: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+      toast.error(e?.response?.data?.message || e?.message || 'Could not upload image');
+    } finally { setUploading(false); }
   };
 
   const submit = async () => {

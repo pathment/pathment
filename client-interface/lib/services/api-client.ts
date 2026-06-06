@@ -33,6 +33,14 @@ class ApiClient {
         if (token) {
           config.headers.Authorization = `Bearer ${token}`;
         }
+        // For multipart uploads, DROP the default 'application/json' content-type
+        // so axios sets 'multipart/form-data; boundary=…' itself. Forcing JSON
+        // strips the boundary, the server parses zero files, and every upload
+        // fails with "No image uploaded" / "Could not upload image".
+        if (typeof FormData !== 'undefined' && config.data instanceof FormData && config.headers) {
+          delete config.headers['Content-Type'];
+          delete config.headers['content-type'];
+        }
         return config;
       },
       (error) => Promise.reject(error)

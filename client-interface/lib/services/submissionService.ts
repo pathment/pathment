@@ -42,11 +42,10 @@ export const submissionService = {
       });
     }
 
-    const response = await axiosInstance.post(`/submissions/${taskId}`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
+    // Don't pin Content-Type — the browser must add the multipart boundary
+    // itself. Setting 'multipart/form-data' here strips the boundary and the
+    // server parses zero files.
+    const response = await axiosInstance.post(`/submissions/${taskId}`, formData);
 
     return response.data;
   },
