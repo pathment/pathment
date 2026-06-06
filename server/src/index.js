@@ -81,6 +81,9 @@ app.get('/', (req, res) => {
 // API routes
 app.use('/api', routes);
 
+// Provider webhooks (Resend delivery/bounce/complaint) — public, provider-signed.
+app.use('/webhooks', require('./routes/webhooks'));
+
 // 404 handler - must be after all routes
 app.use(notFound);
 
@@ -115,9 +118,10 @@ async function start() {
     //   console.log('✓ Database models synchronized');
     // }
 
-    // Start invite email queue worker (Upstash Redis / Bull)
-    require('./workers/inviteEmailWorker');
-    console.log('✓ Invite email queue worker started');
+    // Start the DB-backed email queue worker (retries, DLQ, suppression).
+    // Replaces the Redis/Bull invite worker — all mail now flows through one
+    // Postgres-backed queue, keeping us inside the Upstash command budget.
+    require('./workers/emailWorker').start();
 
     // Start HTTP + Socket.IO server
     initSocket(server);

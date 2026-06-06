@@ -27,6 +27,7 @@ import {
   BarChart2,
   ShieldAlert,
   Flag,
+  Mail,
   type LucideIcon
 } from 'lucide-react';
 import { UserRole } from '@/lib/types';
@@ -102,6 +103,7 @@ export const navigationConfig: Record<string, NavLink[]> = {
       children: [
         { path: '/admin/insights', icon: TrendingUp, label: 'Insights', permission: 'analytics.view' },
         { path: '/admin/activity', icon: BarChart2, label: 'Activity', permission: 'analytics.view' },
+        { path: '/admin/emails', icon: Mail, label: 'Email Queue', permission: 'system.settings' },
       ],
     },
     { path: '/admin/access', icon: ShieldCheck, label: 'Roles & Access', permission: 'access.manage' },

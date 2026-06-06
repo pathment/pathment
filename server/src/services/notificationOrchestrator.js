@@ -116,18 +116,29 @@ class NotificationOrchestrator {
         }).should_create;
 
         if (notificationEmailEnabled && !isEventEmailDisabled && !shouldSkipByDedupe && allowedByPrefs && user.email) {
-          await emailService.sendEmail({
-            to: user.email,
-            subject: payload.emailSubject || payload.title,
-            text: payload.emailText || payload.message,
-            html: payload.emailHtml || null,
-            emailType: eventKey,
-            recipientId: recipient.userId,
-            metadata: {
-              relatedEntityType: payload.relatedEntityType || null,
-              relatedEntityId: payload.relatedEntityId || null
-            }
-          });
+          // ENQUEUE, don't send inline. The DB worker owns delivery + retries,
+          // so a slow/failing Resend call never blocks the request or aborts the
+          // recipient loop. Wrapped defensively for the same reason.
+          const idemKey = payload.relatedEntityId
+            ? `${eventKey}:${recipient.userId}:${payload.relatedEntityType || 'e'}:${payload.relatedEntityId}`
+            : null;
+          try {
+            await emailService.enqueue({
+              to: user.email,
+              subject: payload.emailSubject || payload.title,
+              text: payload.emailText || payload.message,
+              html: payload.emailHtml || null,
+              emailType: eventKey,
+              recipientId: recipient.userId,
+              idempotencyKey: idemKey,
+              metadata: {
+                relatedEntityType: payload.relatedEntityType || null,
+                relatedEntityId: payload.relatedEntityId || null
+              }
+            });
+          } catch (e) {
+            console.error('[notify] enqueue failed for', user.email, e?.message);
+          }
         }
       }
     }
@@ -268,8 +279,11 @@ class NotificationOrchestrator {
       `If you weren't expecting this, you can ignore this email.\n\n` +
       `- The Pathment team`;
 
-    return emailService.sendEmail({
+    return emailService.enqueue({
       to: email,
+      emailType: 'registration_invite',
+      priority: 3,
+      idempotencyKey: `invite:${email.toLowerCase()}:${inviteUrl.split('invite=')[1] || inviteUrl}`,
       subject: `Set up your Pathment account`,
       text,
       html: `

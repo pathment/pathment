@@ -7,7 +7,6 @@ const { generateRandomToken, hashToken } = require('../utils/jwt');
 const notificationOrchestrator = require('./notificationOrchestrator');
 const { NOTIFICATION_EVENTS } = require('../config/notificationMatrix');
 const { createAuditLog } = require('../utils/auditContext');
-const inviteEmailQueue = require('../queues/inviteEmailQueue');
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -134,8 +133,8 @@ class AdminService {
       inviteUrl
     });
 
-    if (!emailDelivery?.sent) {
-      console.warn('registration invite email not sent:', emailDelivery?.reason || 'unknown_reason');
+    if (!emailDelivery?.queued && !emailDelivery?.sent && !emailDelivery?.deduped) {
+      console.warn('registration invite email not enqueued:', emailDelivery?.reason || 'unknown_reason');
     }
 
     // Give the clan's mentors a heads-up that a new mentee is being onboarded into
@@ -796,15 +795,13 @@ class AdminService {
       });
     }
 
-    // Enqueue each invite email as a separate Bull job (Upstash Redis-backed).
-    // Bull retries failed jobs automatically; the queue is processed by inviteEmailWorker.
+    // Enqueue each invite onto the DB-backed email queue (idempotent per token).
+    // The email worker delivers + retries; no Redis involved.
     if (createdRecords.length > 0) {
-      const jobs = createdRecords.map(r => ({
-        data: { email: r.email, role: r.role, rawToken: r.rawToken, clientBaseUrl },
-      }));
-      inviteEmailQueue.addBulk(jobs).catch(err =>
-        console.error('[bulk-invite:queue-error]', err.message)
-      );
+      Promise.allSettled(createdRecords.map((r) => {
+        const inviteUrl = `${clientBaseUrl}/register?invite=${encodeURIComponent(r.rawToken)}`;
+        return notificationOrchestrator.sendRegistrationInviteEmail({ email: r.email, role: r.role, inviteUrl });
+      })).catch((err) => console.error('[bulk-invite:enqueue-error]', err.message));
     }
 
     return {

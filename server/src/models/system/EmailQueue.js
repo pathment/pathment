@@ -60,6 +60,35 @@ module.exports = (sequelize, DataTypes) => {
       defaultValue: 0,
       field: 'attempt_count'
     },
+    maxAttempts: {
+      type: DataTypes.INTEGER,
+      defaultValue: 5,
+      field: 'max_attempts'
+    },
+    // When this row is next eligible to send (drives retry backoff).
+    nextAttemptAt: {
+      type: DataTypes.DATE,
+      field: 'next_attempt_at'
+    },
+    lastAttemptAt: {
+      type: DataTypes.DATE,
+      field: 'last_attempt_at'
+    },
+    // Stable dedupe key - prevents double-enqueue and double-send on retry.
+    idempotencyKey: {
+      type: DataTypes.STRING(255),
+      field: 'idempotency_key'
+    },
+    // Resend message id, for correlating delivery/bounce webhooks.
+    providerMessageId: {
+      type: DataTypes.STRING(255),
+      field: 'provider_message_id'
+    },
+    // Why the last attempt failed: 'transient' (retry) | 'permanent' (DLQ now).
+    errorCategory: {
+      type: DataTypes.STRING(20),
+      field: 'error_category'
+    },
     lastError: {
       type: DataTypes.TEXT,
       field: 'last_error'
@@ -75,7 +104,9 @@ module.exports = (sequelize, DataTypes) => {
       { fields: ['recipient_id'] },
       { fields: ['email_type'] },
       { fields: ['scheduled_at'] },
-      { fields: ['priority'] }
+      { fields: ['priority'] },
+      { fields: ['status', 'next_attempt_at'] },
+      { unique: true, fields: ['idempotency_key'] }
     ]
   });
 

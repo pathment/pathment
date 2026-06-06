@@ -145,6 +145,9 @@ router.use('/ai-connections', aiConnectionRoutes);
 // Program reviews - anonymous mentee→mentor feedback at completion
 router.use('/program-reviews', programReviewRoutes);
 
+// Email queue admin: DLQ inspection, retry, suppression list
+router.use('/admin/emails', require('./emailAdmin'));
+
 
 
 // TODO: Add more route modules here
