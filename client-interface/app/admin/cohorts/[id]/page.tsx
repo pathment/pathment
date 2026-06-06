@@ -16,6 +16,7 @@ import { cohortApi, applicationApi } from '@/lib/services/intake-api';
 import { assessmentApi, type Assessment } from '@/lib/services/assessment-api';
 import { IntakeFormBuilder } from '@/components/admin/IntakeFormBuilder';
 import { AssessmentDrawer } from '@/components/admin/AssessmentDrawer';
+import { Drawer } from '@/components/shared/Drawer';
 import type { IntakeFormField } from '@/lib/config/intakeFields';
 
 const STATUS_TABS: { key: ApplicationStatus | 'all'; label: string }[] = [
@@ -329,12 +330,11 @@ function IntakePanel({ cohortId, cohort, onChange }: { cohortId: string; cohort:
             <FormInput className="w-4 h-4 text-brand-600" />
             <h3 className="text-sm font-medium text-slate-900">Application form</h3>
           </div>
-          <button onClick={() => setShowPreview((v) => !v)} className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800">
-            <Eye className="w-3.5 h-3.5" /> {showPreview ? 'Hide preview' : 'Preview'}
+          <button onClick={() => setShowPreview(true)} className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800">
+            <Eye className="w-3.5 h-3.5" /> Preview
           </button>
         </div>
         <IntakeFormBuilder value={formFields} onChange={setFormFields} />
-        {showPreview && <ApplyFormPreview fields={formFields} assessment={assessmentId ? assessments.find((a) => a.id === assessmentId) : undefined} required={required} />}
       </div>
 
       {/* Assessment */}
@@ -377,6 +377,20 @@ function IntakePanel({ cohortId, cohort, onChange }: { cohortId: string; cohort:
         onSaved={onAssessmentSaved}
         onDeleted={onAssessmentDeleted}
       />
+
+      <Drawer
+        open={showPreview}
+        onClose={() => setShowPreview(false)}
+        width="md"
+        title="Application preview"
+        subtitle="Exactly what an applicant sees on the apply page."
+      >
+        <ApplyFormPreview
+          fields={formFields}
+          assessment={assessmentId ? assessments.find((a) => a.id === assessmentId) : undefined}
+          required={required}
+        />
+      </Drawer>
     </div>
   );
 }
