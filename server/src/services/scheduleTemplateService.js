@@ -196,6 +196,24 @@ class ScheduleTemplateService {
     }
     return { ...slot, chainStarted };
   }
+
+  /**
+   * Apply one slot's config (kind + roadmapChain/recurring) to EVERY mentee this
+   * mentor assigned the schedule to, for the matching slot id. The "40 students"
+   * shortcut: configure a block once, push it to all, then tweak individuals.
+   * Returns { applied } (how many mentee schedules had the slot).
+   */
+  async applySlotToAll(mentorId, slotId, patch) {
+    const schedules = await models.MenteeSchedule.findAll({ where: { assignedBy: mentorId } });
+    let applied = 0;
+    for (const ms of schedules) {
+      const sched = Array.isArray(ms.schedule) ? ms.schedule : [];
+      if (!sched.some((s) => s.id === slotId)) continue;
+      await this.updateSlot(ms.menteeId, slotId, patch, mentorId); // reuse single-slot logic (incl. chain start)
+      applied += 1;
+    }
+    return { applied };
+  }
 }
 
 module.exports = new ScheduleTemplateService();

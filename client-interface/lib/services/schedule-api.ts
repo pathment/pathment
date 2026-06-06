@@ -33,4 +33,8 @@ export const scheduleApi = {
   updateSlot: (menteeId: string, slotId: string, patch: {
     kind?: string; roadmapChain?: string[]; recurring?: { title: string; type: string; recurrence: string } | null; bookable?: boolean;
   }) => apiClient.patch(`/schedules/mentee/${menteeId}/slot/${slotId}`, patch),
+  // Push one slot's config to ALL the mentor's mentees who have that slot.
+  applySlotToAll: (slotId: string, patch: {
+    kind?: string; roadmapChain?: string[]; recurring?: { title: string; type: string; recurrence: string } | null;
+  }) => apiClient.post<{ data: { applied: number } }>(`/schedules/slot/${slotId}/apply-all`, patch),
 };

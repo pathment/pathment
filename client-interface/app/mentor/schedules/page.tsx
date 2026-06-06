@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import {
-  CalendarClock, Plus, Trash2, Loader2, Check, X, Clock, User, LayoutGrid, Users, Route, Repeat, Download,
+  CalendarClock, Plus, Trash2, Loader2, Check, X, Clock, User, LayoutGrid, Users, Route, Repeat, Download, Search, Pencil,
 } from 'lucide-react';
 import { useMentorSchedule, useScheduleTemplates, useMentorCohort, useMentorRoadmaps, type ScheduleTemplate } from '@/lib/hooks/mentor';
 import { meetingsApi } from '@/lib/services/meetings-api';
@@ -19,71 +19,47 @@ const field = 'border border-slate-300 rounded-lg px-3 py-2 text-sm bg-card focu
 // ───────────────────────── Templates tab ─────────────────────────
 interface DraftBlock { label: string; time: string; days: string; bookable: boolean }
 
+// A sensible starting day-shape so "New schedule" is never blank (the mentor
+// tweaks/removes from here instead of building from scratch).
+const DEFAULT_BLOCKS: DraftBlock[] = [
+  { label: 'Morning check-in', time: '09:00', days: 'weekdays', bookable: false },
+  { label: 'Core work', time: '10:00', days: 'weekdays', bookable: false },
+  { label: 'Mentor office hours', time: '16:00', days: 'weekdays', bookable: true },
+  { label: 'Evening reflection', time: '18:00', days: 'weekdays', bookable: false },
+  { label: 'Weekend catch-up', time: '11:00', days: 'weekends', bookable: false },
+];
+
 function TemplatesTab() {
   const { local, org, loading, refetch } = useScheduleTemplates();
   const { cohort } = useMentorCohort();
-  const [creating, setCreating] = useState(false);
-  const [name, setName] = useState('');
-  const [desc, setDesc] = useState('');
-  const [blocks, setBlocks] = useState<DraftBlock[]>([{ label: '', time: '', days: 'weekdays', bookable: false }]);
+  const [editing, setEditing] = useState<ScheduleTemplate | 'new' | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [assignFor, setAssignFor] = useState<ScheduleTemplate | null>(null);
-
-  const setBlock = (i: number, p: Partial<DraftBlock>) => setBlocks((prev) => prev.map((b, idx) => idx === i ? { ...b, ...p } : b));
-  const addBlock = () => setBlocks((prev) => [...prev, { label: '', time: '', days: 'weekdays', bookable: false }]);
-  const removeBlock = (i: number) => setBlocks((prev) => prev.filter((_, idx) => idx !== i));
-
-  const create = async () => {
-    const clean = blocks.filter((b) => b.label.trim());
-    if (!name.trim() || clean.length === 0) { toast.error('Name and at least one block'); return; }
-    try {
-      setBusy('create');
-      await scheduleApi.createTemplate({ name: name.trim(), description: desc.trim() || undefined, blocks: clean });
-      toast.success('Template created'); setName(''); setDesc(''); setBlocks([{ label: '', time: '', days: 'weekdays', bookable: false }]); setCreating(false); refetch();
-    } catch { toast.error('Could not create'); } finally { setBusy(null); }
-  };
 
   return (
     <div className="space-y-6">
       <div className="flex justify-end">
-        <button onClick={() => setCreating((c) => !c)} className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"><Plus className="w-4 h-4" />New template</button>
+        <button onClick={() => setEditing('new')} className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"><Plus className="w-4 h-4" />New schedule</button>
       </div>
-
-      {creating && (
-        <div className="bg-card rounded-2xl border border-slate-200 p-5 space-y-3">
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Template name (e.g. Org Standard Day)" className={`${field} w-full`} />
-          <input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Description (optional)" className={`${field} w-full`} />
-          <div className="space-y-2">
-            <div className="flex items-center justify-between"><span className="text-sm font-medium text-slate-700">Blocks (the day's structure)</span><button onClick={addBlock} className="text-brand-600 text-sm inline-flex items-center gap-1"><Plus className="w-4 h-4" />Add block</button></div>
-            {blocks.map((b, i) => (
-              <div key={i} className="flex flex-wrap items-center gap-2 p-2 rounded-lg border border-slate-200">
-                <input value={b.label} onChange={(e) => setBlock(i, { label: e.target.value })} placeholder="Label (e.g. Core work)" className={`${field} flex-1 min-w-36`} />
-                <input value={b.time} onChange={(e) => setBlock(i, { time: e.target.value })} placeholder="Time" className={`${field} w-28`} />
-                <select value={b.days} onChange={(e) => setBlock(i, { days: e.target.value })} className={`${field} capitalize`}>{SLOT_DAYS.map((d) => <option key={d} value={d}>{d}</option>)}</select>
-                <label className="text-xs text-slate-500 inline-flex items-center gap-1"><input type="checkbox" checked={b.bookable} onChange={(e) => setBlock(i, { bookable: e.target.checked })} className="rounded border-slate-300 text-brand-600" />bookable</label>
-                {blocks.length > 1 && <button onClick={() => removeBlock(i)} className="text-slate-400 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>}
-              </div>
-            ))}
-          </div>
-          <div className="flex justify-end"><button onClick={create} disabled={busy === 'create'} className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm inline-flex items-center gap-2 disabled:opacity-50">{busy === 'create' ? <Loader2 className="w-4 h-4 animate-spin" /> : null}Create</button></div>
-        </div>
-      )}
 
       {loading ? <div className="flex justify-center py-12"><Loader2 className="w-7 h-7 animate-spin text-brand-600" /></div> : (
         <>
           <section>
-            <h3 className="text-slate-900 font-medium mb-3">My templates</h3>
-            {local.length === 0 ? <p className="text-sm text-slate-500">No templates yet.</p> : (
+            <h3 className="text-slate-900 font-medium mb-3">My schedules</h3>
+            {local.length === 0 ? <p className="text-sm text-slate-500">No schedules yet - create one to assign to your mentees.</p> : (
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {local.map((t) => (
                   <div key={t.id} className="bg-card rounded-2xl border border-slate-200 p-4">
                     <div className="flex items-start justify-between gap-2">
                       <h4 className="font-medium text-slate-900">{t.name}</h4>
-                      <button onClick={async () => { setBusy(t.id); try { await scheduleApi.deleteTemplate(t.id); refetch(); } finally { setBusy(null); } }} className="text-slate-400 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button onClick={() => setEditing(t)} aria-label="Edit schedule" className="p-1.5 text-slate-400 hover:text-brand-600"><Pencil className="w-4 h-4" /></button>
+                        <button onClick={async () => { if (!confirm(`Delete "${t.name}"?`)) return; setBusy(t.id); try { await scheduleApi.deleteTemplate(t.id); refetch(); } finally { setBusy(null); } }} aria-label="Delete schedule" className="p-1.5 text-slate-400 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
+                      </div>
                     </div>
                     <p className="text-xs text-slate-500 mt-0.5">{t.blocks.length} block{t.blocks.length === 1 ? '' : 's'}</p>
-                    <ol className="mt-2 space-y-0.5">{t.blocks.slice(0, 5).map((b) => <li key={b.id} className="text-xs text-slate-500 truncate">{b.time} · {b.label}</li>)}</ol>
-                    <button onClick={() => setAssignFor(t)} className="mt-3 w-full px-3 py-1.5 rounded-lg bg-brand-50 text-brand-700 text-sm font-medium hover:bg-brand-100 inline-flex items-center justify-center gap-1.5"><Users className="w-4 h-4" />Assign</button>
+                    <ol className="mt-2 space-y-0.5">{t.blocks.slice(0, 5).map((b) => <li key={b.id} className="text-xs text-slate-500 truncate">{b.time || 'Flexible'} · {b.label}</li>)}</ol>
+                    <button onClick={() => setAssignFor(t)} className="mt-3 w-full px-3 py-1.5 rounded-lg bg-brand-50 dark:bg-brand-500/15 text-brand-700 text-sm font-medium hover:bg-brand-100 inline-flex items-center justify-center gap-1.5"><Users className="w-4 h-4" />Assign</button>
                   </div>
                 ))}
               </div>
@@ -98,8 +74,8 @@ function TemplatesTab() {
                   <div key={t.id} className="bg-card rounded-2xl border border-slate-200 p-4">
                     <h4 className="font-medium text-slate-900">{t.name}</h4>
                     <p className="text-xs text-slate-500 mt-0.5">{t.blocks.length} blocks</p>
-                    <button onClick={async () => { setBusy(t.id); try { await scheduleApi.importTemplate(t.id); toast.success('Imported'); refetch(); } catch { toast.error('Failed'); } finally { setBusy(null); } }} disabled={busy === t.id}
-                      className="mt-3 w-full px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 text-sm font-medium hover:border-brand-300 inline-flex items-center justify-center gap-1.5">{busy === t.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}Import</button>
+                    <button onClick={async () => { setBusy(t.id); try { await scheduleApi.importTemplate(t.id); toast.success('Imported - now an editable copy under My schedules'); refetch(); } catch { toast.error('Failed'); } finally { setBusy(null); } }} disabled={busy === t.id}
+                      className="mt-3 w-full px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 text-sm font-medium hover:border-brand-300 inline-flex items-center justify-center gap-1.5">{busy === t.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}Import &amp; edit</button>
                   </div>
                 ))}
               </div>
@@ -109,17 +85,99 @@ function TemplatesTab() {
       )}
 
       {assignFor && <AssignModal template={assignFor} cohort={cohort} onClose={() => setAssignFor(null)} />}
+      {editing && <ScheduleDrawer template={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); refetch(); }} />}
     </div>
   );
 }
 
+/** Create OR edit a schedule template (rich time-block editor in a side drawer). */
+function ScheduleDrawer({ template, onClose, onSaved }: { template: ScheduleTemplate | null; onClose: () => void; onSaved: () => void }) {
+  const [name, setName] = useState(template?.name || '');
+  const [desc, setDesc] = useState(template?.description || '');
+  const [blocks, setBlocks] = useState<DraftBlock[]>(
+    template?.blocks?.length
+      ? template.blocks.map((b) => ({ label: b.label, time: b.time, days: b.days, bookable: !!b.bookable }))
+      : DEFAULT_BLOCKS.map((b) => ({ ...b })) // new schedule starts from a ready day-shape
+  );
+  const [saving, setSaving] = useState(false);
+
+  const setBlock = (i: number, p: Partial<DraftBlock>) => setBlocks((prev) => prev.map((b, idx) => idx === i ? { ...b, ...p } : b));
+  const addBlock = () => setBlocks((prev) => [...prev, { label: '', time: '', days: 'weekdays', bookable: false }]);
+  const removeBlock = (i: number) => setBlocks((prev) => prev.filter((_, idx) => idx !== i));
+
+  const save = async () => {
+    const clean = blocks.map((b) => ({ ...b, label: b.label.trim() })).filter((b) => b.label);
+    if (!name.trim()) { toast.error('Schedule name is required'); return; }
+    if (clean.length === 0) { toast.error('Add at least one time block'); return; }
+    try {
+      setSaving(true);
+      const payload = { name: name.trim(), description: desc.trim() || undefined, blocks: clean };
+      if (template) await scheduleApi.updateTemplate(template.id, payload);
+      else await scheduleApi.createTemplate(payload);
+      toast.success(template ? 'Schedule updated' : 'Schedule created');
+      onSaved();
+    } catch { toast.error('Could not save the schedule'); } finally { setSaving(false); }
+  };
+
+  return (
+    <Drawer open onClose={onClose} width="lg"
+      title={template ? 'Edit schedule' : 'New schedule'}
+      subtitle="Define the day's time blocks. Structure only - you fill each slot per mentee after assigning."
+      footer={
+        <>
+          <button onClick={onClose} className="px-4 py-2 border border-slate-200 text-slate-700 rounded-xl text-sm hover:bg-slate-50">Cancel</button>
+          <button onClick={save} disabled={saving} className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-sm inline-flex items-center gap-2 disabled:opacity-50">
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}{template ? 'Save changes' : 'Create schedule'}
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Schedule name <span className="text-red-500">*</span></label>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Bootcamp Day, Interview Prep" className={`${field} w-full`} />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Description <span className="text-slate-400 font-normal">(optional)</span></label>
+          <textarea value={desc} onChange={(e) => setDesc(e.target.value)} rows={2} placeholder="What this day-shape is for." className={`${field} w-full resize-none`} />
+        </div>
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-sm font-medium text-slate-700">Time blocks <span className="text-red-500">*</span></label>
+            <button type="button" onClick={addBlock} className="text-brand-600 hover:text-brand-700 text-sm inline-flex items-center gap-1"><Plus className="w-4 h-4" />Add block</button>
+          </div>
+          <div className="space-y-2">
+            {blocks.map((b, i) => (
+              <div key={i} className="flex flex-wrap items-center gap-2 p-2 rounded-lg border border-slate-200">
+                <input value={b.label} onChange={(e) => setBlock(i, { label: e.target.value })}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); addBlock(); } }}
+                  autoFocus={i === blocks.length - 1 && blocks.length > 1}
+                  placeholder="Label (e.g. Core work)" className={`${field} flex-1 min-w-36`} />
+                <input value={b.time} onChange={(e) => setBlock(i, { time: e.target.value })} placeholder="Time / Flexible" className={`${field} w-32`} />
+                <select value={b.days} onChange={(e) => setBlock(i, { days: e.target.value })} className={`${field} capitalize`}>{SLOT_DAYS.map((d) => <option key={d} value={d}>{d}</option>)}</select>
+                <label className="text-xs text-slate-500 inline-flex items-center gap-1" title="Mentees can book a 1:1 in this block"><input type="checkbox" checked={b.bookable} onChange={(e) => setBlock(i, { bookable: e.target.checked })} className="rounded border-slate-300 text-brand-600" />bookable</label>
+                {blocks.length > 1 && <button onClick={() => removeBlock(i)} aria-label="Remove block" className="text-slate-400 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>}
+              </div>
+            ))}
+            <button type="button" onClick={addBlock} className="w-full rounded-lg border border-dashed border-slate-300 dark:border-slate-700 py-2 text-xs font-medium text-slate-500 hover:border-brand-300 hover:text-brand-700 inline-flex items-center justify-center gap-1"><Plus className="w-3.5 h-3.5" /> Add block</button>
+          </div>
+        </div>
+      </div>
+    </Drawer>
+  );
+}
+
 function AssignModal({ template, cohort, onClose }: { template: ScheduleTemplate; cohort: any[]; onClose: () => void }) {
-  const [sel, setSel] = useState<Set<string>>(new Set());
+  // Default: assign to EVERYONE (one click). Uncheck / search to narrow.
+  const [sel, setSel] = useState<Set<string>>(() => new Set(cohort.map((m: any) => m.id)));
+  const [q, setQ] = useState('');
   const [saving, setSaving] = useState(false);
   const toggle = (id: string) => setSel((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const filtered = cohort.filter((m: any) => m.name.toLowerCase().includes(q.trim().toLowerCase()));
+  const allSelected = cohort.length > 0 && sel.size === cohort.length;
   const assign = async () => {
     if (!sel.size) { toast.error('Pick at least one mentee'); return; }
-    try { setSaving(true); await scheduleApi.assign(template.id, [...sel]); toast.success(`Assigned to ${sel.size}`); onClose(); }
+    try { setSaving(true); await scheduleApi.assign(template.id, [...sel]); toast.success(`Assigned to ${sel.size} mentee${sel.size === 1 ? '' : 's'}`); onClose(); }
     catch { toast.error('Could not assign'); } finally { setSaving(false); }
   };
   return (
@@ -127,7 +185,7 @@ function AssignModal({ template, cohort, onClose }: { template: ScheduleTemplate
       open
       onClose={onClose}
       title={`Assign "${template.name}"`}
-      subtitle="Seeds each mentee's day with these blocks as empty slots - fill them in the Fill schedules tab."
+      subtitle="Everyone is selected by default - search or uncheck to pick specific mentees. Then fill the slots (and use Apply to all)."
       footer={
         <>
           <button onClick={onClose} className="px-4 py-2 border border-slate-200 text-slate-700 rounded-xl text-sm hover:bg-slate-50">Cancel</button>
@@ -135,11 +193,22 @@ function AssignModal({ template, cohort, onClose }: { template: ScheduleTemplate
         </>
       }
     >
-      <div className="space-y-1">
-        {cohort.length === 0 ? <p className="text-sm text-slate-500">No mentees.</p> : cohort.map((m) => (
-          <label key={m.id} className="flex items-center gap-2.5 p-2 rounded-lg hover:bg-slate-50 cursor-pointer"><input type="checkbox" checked={sel.has(m.id)} onChange={() => toggle(m.id)} className="rounded border-slate-300 text-brand-600" /><span className="text-sm text-slate-700">{m.name}</span></label>
-        ))}
-      </div>
+      {cohort.length === 0 ? <p className="text-sm text-slate-500">No mentees.</p> : (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search mentees…" className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500" />
+            </div>
+            <button onClick={() => setSel(allSelected ? new Set() : new Set(cohort.map((m: any) => m.id)))} className="text-xs font-medium text-brand-600 hover:text-brand-700 shrink-0">{allSelected ? 'Clear' : 'Select all'}</button>
+          </div>
+          <div className="space-y-1 max-h-80 overflow-y-auto">
+            {filtered.map((m: any) => (
+              <label key={m.id} className="flex items-center gap-2.5 p-2 rounded-lg hover:bg-slate-50 cursor-pointer"><input type="checkbox" checked={sel.has(m.id)} onChange={() => toggle(m.id)} className="rounded border-slate-300 text-brand-600" /><span className="text-sm text-slate-700">{m.name}</span></label>
+            ))}
+          </div>
+        </div>
+      )}
     </Drawer>
   );
 }
@@ -149,9 +218,22 @@ function FillTab() {
   const { cohort } = useMentorCohort();
   const { local } = useMentorRoadmaps();
   const [menteeId, setMenteeId] = useState('');
+  const [q, setQ] = useState('');
   const [slots, setSlots] = useState<ScheduleSlot[]>([]);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+
+  const selectedMentee = cohort.find((m: any) => m.id === menteeId);
+  const filteredCohort = cohort.filter((m: any) => m.name.toLowerCase().includes(q.trim().toLowerCase()));
+
+  // Push one slot's config to every mentee who has that slot (the 40-student shortcut).
+  const applyAll = async (slot: ScheduleSlot) => {
+    try {
+      setBusy(slot.id + ':all');
+      const r: any = await scheduleApi.applySlotToAll(slot.id, { kind: slot.kind, roadmapChain: slot.roadmapChain, recurring: slot.recurring });
+      toast.success(`Applied "${slot.label}" to ${r?.data?.applied ?? 0} mentee${(r?.data?.applied ?? 0) === 1 ? '' : 's'}`);
+    } catch { toast.error('Could not apply to all'); } finally { setBusy(null); }
+  };
 
   const load = async (id: string) => {
     if (!id) { setSlots([]); return; }
@@ -179,15 +261,31 @@ function FillTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <label className="text-sm text-slate-600">Mentee</label>
-        <select value={menteeId} onChange={(e) => setMenteeId(e.target.value)} className={field}>
-          <option value="">Select a mentee</option>
-          {cohort.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-        </select>
-      </div>
+      {/* Searchable mentee picker (works for a 40-mentee cohort). */}
+      {!menteeId ? (
+        <div>
+          <div className="relative">
+            <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+            <input value={q} onChange={(e) => setQ(e.target.value)} autoFocus placeholder="Search a mentee to fill…"
+              className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500" />
+          </div>
+          <div className="mt-2 max-h-72 overflow-y-auto rounded-lg border border-slate-200 divide-y divide-slate-100">
+            {filteredCohort.length === 0 ? (
+              <p className="py-6 text-center text-sm text-slate-400">{cohort.length === 0 ? 'No mentees.' : 'No matches.'}</p>
+            ) : filteredCohort.map((m: any) => (
+              <button key={m.id} onClick={() => { setMenteeId(m.id); setQ(''); }} className="w-full text-left px-3 py-2 hover:bg-slate-50 text-sm text-slate-800">{m.name}</button>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-slate-400">Tip: configure one mentee, then use <span className="font-medium">Apply to all</span> on a slot to push it to everyone - then tweak individuals.</p>
+        </div>
+      ) : (
+        <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+          <span className="text-sm text-slate-700">Filling <span className="font-semibold">{selectedMentee?.name || 'mentee'}</span></span>
+          <button onClick={() => setMenteeId('')} className="text-xs font-medium text-brand-600 hover:text-brand-700">Change mentee</button>
+        </div>
+      )}
 
-      {!menteeId ? <p className="text-sm text-slate-500">Pick a mentee to fill their slots.</p>
+      {!menteeId ? null
         : loading ? <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-brand-600" /></div>
         : slots.length === 0 ? <p className="text-sm text-slate-500">No schedule assigned yet - assign a template first.</p>
         : (
@@ -228,7 +326,11 @@ function FillTab() {
                   </div>
                 )}
 
-                <div className="flex justify-end mt-3">
+                <div className="flex justify-end gap-2 mt-3">
+                  <button onClick={() => applyAll(s)} disabled={busy === s.id + ':all'} title="Push this slot's setup to every mentee"
+                    className="px-3 py-1.5 rounded-lg border border-brand-200 bg-brand-50 dark:bg-brand-500/15 text-brand-700 text-sm font-medium hover:bg-brand-100 inline-flex items-center gap-1.5 disabled:opacity-50">
+                    {busy === s.id + ':all' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Users className="w-4 h-4" />}Apply to all
+                  </button>
                   <button onClick={() => save(s)} disabled={busy === s.id} className="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm inline-flex items-center gap-1.5 disabled:opacity-50">{busy === s.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}Save slot</button>
                 </div>
               </div>

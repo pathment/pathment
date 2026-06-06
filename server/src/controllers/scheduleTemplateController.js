@@ -46,6 +46,11 @@ const updateSlot = catchAsync(async (req, res) => {
   res.status(200).json(successResponse('Slot updated', { slot }));
 });
 
+const applySlotToAll = catchAsync(async (req, res) => {
+  const result = await svc.applySlotToAll(req.user.id, req.params.slotId, req.body);
+  res.status(200).json(successResponse('Slot applied to all mentees', result));
+});
+
 // ── Admin org templates ──────────────────────────────────────────────────────
 const listOrg = catchAsync(async (req, res) => {
   const templates = await svc.listOrgTemplates();
@@ -68,6 +73,6 @@ const deleteOrg = catchAsync(async (req, res) => {
 
 module.exports = {
   listTemplates, createTemplate, updateTemplate, deleteTemplate, importTemplate,
-  assign, getMenteeSchedule, getMySchedule, updateSlot,
+  assign, getMenteeSchedule, getMySchedule, updateSlot, applySlotToAll,
   listOrg, createOrg, updateOrg, deleteOrg
 };

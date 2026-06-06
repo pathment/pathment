@@ -22,6 +22,8 @@ export interface CohortMentee {
   momentum: CohortMomentum;
   risk: CohortRisk;
   riskReason: string | null;
+  /** Concrete rule-based "why" chips, e.g. "No activity in 6 days". */
+  signals?: string[];
   avgRating: number;
   lastActive: string;
   sentiment: string;

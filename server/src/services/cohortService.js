@@ -221,6 +221,9 @@ class CohortService {
       openBlockers, highSeverityBlockers, momentum
     });
 
+    // Concrete, rule-based "why" chips for the at-risk / review cards (no AI).
+    const signals = this._buildSignals({ tasks, lastActiveDays, onTimeRate, openBlockers, highSeverityBlockers, momentum, pendingApprovals });
+
     return {
       id: mentee.id,
       name: `${mentee.firstName} ${mentee.lastName}`.trim(),
@@ -239,10 +242,27 @@ class CohortService {
       momentum,
       risk,
       riskReason,
+      signals,
       avgRating: enrollment ? Number(enrollment.avgTaskRating) || 0 : 0,
       lastActive: lastActivityDate ? humanizeDays(lastActiveDays) : 'never',
       sentiment: 'neutral'
     };
+  }
+
+  /** Concrete signal chips ("No activity in 6 days", "2 tasks untouched past due"…). */
+  _buildSignals({ tasks, lastActiveDays, onTimeRate, openBlockers, highSeverityBlockers, momentum, pendingApprovals }) {
+    const now = Date.now();
+    const untouched = tasks.filter((t) => ['assigned', 'not_started'].includes(t.status) && t.dueDate && new Date(t.dueDate).getTime() < now).length;
+    const lateCount = tasks.filter((t) => t.isLate).length;
+    const out = [];
+    if (Number.isFinite(lastActiveDays) && lastActiveDays >= 3) out.push(`No activity in ${lastActiveDays} days`);
+    if (untouched > 0) out.push(`${untouched} task${untouched > 1 ? 's' : ''} untouched past due date`);
+    if (highSeverityBlockers > 0) out.push(`${highSeverityBlockers} high-severity blocker${highSeverityBlockers > 1 ? 's' : ''}`);
+    else if (openBlockers > 0) out.push(`${openBlockers} open blocker${openBlockers > 1 ? 's' : ''}`);
+    if (lateCount > 0 && onTimeRate < 100) out.push(`Submits late but consistently (${onTimeRate}% on-time)`);
+    if (momentum === 'down') out.push('Momentum dropping');
+    if (pendingApprovals > 0) out.push(`${pendingApprovals} submission${pendingApprovals > 1 ? 's' : ''} awaiting your review`);
+    return out.slice(0, 4);
   }
 
   /**

@@ -66,6 +66,9 @@ function RiskCard({ m, onNudge, onOpen, nudging }: {
             <Clock className="w-3 h-3" /><span>{m.lastActive}</span>
           </div>
         </div>
+        <span className={`shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-[11px] font-semibold uppercase tracking-wide ${m.risk === 'high' ? 'border-red-200 bg-red-50 text-red-600' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
+          <span className={`w-1.5 h-1.5 rounded-sm ${m.risk === 'high' ? 'bg-red-500' : 'bg-amber-500'}`} />{m.risk === 'high' ? 'At risk' : 'Watch'}
+        </span>
       </div>
 
       <div className="my-4">
@@ -73,7 +76,18 @@ function RiskCard({ m, onNudge, onOpen, nudging }: {
       </div>
 
       {m.riskReason && (
-        <p className="text-xs leading-relaxed text-slate-500 border-t border-slate-100 pt-3">{m.riskReason}</p>
+        <p className="flex items-start gap-1.5 text-sm leading-relaxed text-slate-600 border-t border-slate-100 pt-3">
+          <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-brand-500 shrink-0" />{m.riskReason}
+        </p>
+      )}
+
+      {/* Concrete signal chips - the "why", computed from real stats (no AI). */}
+      {(m.signals?.length ?? 0) > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {m.signals!.map((s, i) => (
+            <span key={i} className="px-2 py-0.5 rounded-md border border-slate-200 bg-slate-50 text-[11px] text-slate-600 font-mono">{s}</span>
+          ))}
+        </div>
       )}
 
       <div className="mt-3 flex items-center gap-2">
