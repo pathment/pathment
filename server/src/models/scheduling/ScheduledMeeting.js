@@ -63,6 +63,17 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.UUID,
       allowNull: true,
       field: 'cancelled_by'
+    },
+    // True UTC instant the meeting starts (source of truth; day/time are display
+    // strings derived in `timezone`). Each viewer renders this in their own zone.
+    startsAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      field: 'starts_at'
+    },
+    timezone: {
+      type: DataTypes.STRING(50),
+      allowNull: true
     }
   }, {
     tableName: 'scheduled_meetings',

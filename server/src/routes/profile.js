@@ -57,6 +57,13 @@ router.get('/appearance', profileController.getAppearance);
 router.patch('/appearance', profileController.updateAppearance);
 
 /**
+ * @route   POST /api/profile/detect-timezone
+ * @desc    Backfill the user's timezone from their browser (only if unset)
+ * @access  Private
+ */
+router.post('/detect-timezone', profileController.detectTimezone);
+
+/**
  * @route   PATCH /api/profile/preferences
  * @desc    Merge a group of settings toggles (notifications, learning, etc.)
  * @access  Private

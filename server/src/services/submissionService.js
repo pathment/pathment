@@ -3,6 +3,7 @@ const { models } = require('../db');
 const { NotFoundError, ForbiddenError, ValidationError } = require('../utils/errors/errorTypes');
 const notificationOrchestrator = require('./notificationOrchestrator');
 const { NOTIFICATION_EVENTS } = require('../config/notificationMatrix');
+const { endOfDayInZone } = require('../utils/timezone');
 
 class SubmissionService {
   /**
@@ -233,17 +234,25 @@ class SubmissionService {
       reviewedAt: new Date()
     });
 
-   let finalDueDate = newDueDate;
+    let finalDueDate = newDueDate;
     if (approved) {
-      if (!newDueDate) {
-        // Auto-calculate 3 days from the TASK'S CURRENT DUE DATE 
+      // Target calendar date: the mentor-chosen date, or +3 days from current due.
+      let targetDate = newDueDate;
+      if (!targetDate) {
         const currentDueDate = new Date(submission.assignedTask.dueDate);
         currentDueDate.setDate(currentDueDate.getDate() + 3);
-        finalDueDate = currentDueDate.toISOString().split('T')[0];
+        targetDate = currentDueDate.toISOString().split('T')[0];
       }
-      await submission.assignedTask.update({
-        dueDate: finalDueDate
+      // Anchor the deadline to END OF DAY in the MENTEE's timezone, so "due
+      // June 10" is their whole June 10 - not UTC midnight (the prior evening
+      // in the Americas). Stored as a true UTC instant.
+      const menteeSettings = await models.UserSettings.findOne({
+        where: { userId: submission.assignedTask.menteeId }, attributes: ['timezone']
       });
+      const menteeTz = menteeSettings?.timezone || 'UTC';
+      const dueInstant = endOfDayInZone(String(targetDate).split('T')[0], menteeTz);
+      finalDueDate = dueInstant || targetDate;
+      await submission.assignedTask.update({ dueDate: finalDueDate });
     }
 
     //  ADD: Send notification to mentee
@@ -255,7 +264,7 @@ class SubmissionService {
       payload: {
         title: approved ? 'Extension approved' : 'Extension request rejected',
         message: approved
-          ? `Your extension request for "${updatedSubmission.assignedTask?.roadmapTask?.title || 'task'}" was approved. New due date: ${finalDueDate}`
+          ? `Your extension request for "${updatedSubmission.assignedTask?.roadmapTask?.title || 'task'}" was approved. New due date: ${finalDueDate instanceof Date ? finalDueDate.toISOString().split('T')[0] : finalDueDate}`
           : `Your extension request for "${updatedSubmission.assignedTask?.roadmapTask?.title || 'task'}" was rejected.`,
         actionUrl: `/mentee/tasks/${submission.assignedTask.id}`,
         actionLabel: 'View Task',

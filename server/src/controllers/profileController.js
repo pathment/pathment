@@ -309,6 +309,27 @@ await user.update({
   });
 
   /**
+   * Backfill the user's timezone from their browser, ONLY if they haven't set
+   * one (still 'UTC'/null). Never clobbers a deliberate choice. Called once on
+   * login so scheduling + deadlines can be anchored to the user's real zone.
+   * POST /api/profile/detect-timezone { timezone: 'Asia/Karachi' }
+   */
+  detectTimezone = catchAsync(async (req, res) => {
+    const tz = String(req.body?.timezone || '').trim();
+    // Light sanity check: must look like an IANA zone the runtime accepts.
+    let valid = false;
+    try { if (tz) { Intl.DateTimeFormat(undefined, { timeZone: tz }); valid = true; } } catch { valid = false; }
+    if (!valid) throw new ValidationError('A valid IANA timezone is required');
+    const [settings] = await models.UserSettings.findOrCreate({ where: { userId: req.user.id }, defaults: { userId: req.user.id } });
+    let updated = false;
+    if (!settings.timezone || settings.timezone === 'UTC') {
+      await settings.update({ timezone: tz });
+      updated = true;
+    }
+    res.json(successResponse('Timezone synced', { timezone: settings.timezone, updated }));
+  });
+
+  /**
    * Merge a group of preference toggles into user_settings.preferences.
    * PATCH /api/profile/preferences  { group: 'notifications'|'learning'|'system'|'userManagement', values: {...} }
    * Stored namespaced by group so different settings tabs don't clobber each other.

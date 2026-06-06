@@ -9,6 +9,8 @@ export interface AvailabilitySlot {
   durationMins: number;
   taken: boolean;
   bookedBy?: { id: string; firstName: string; lastName: string } | null;
+  startsAt?: string | null;
+  timezone?: string | null;
 }
 
 export interface Meeting {
@@ -21,6 +23,8 @@ export interface Meeting {
   status: 'scheduled' | 'done' | 'cancelled';
   mentor?: { id: string; firstName: string; lastName: string };
   mentee?: { id: string; firstName: string; lastName: string };
+  startsAt?: string | null;
+  timezone?: string | null;
 }
 
 export interface UseMentorScheduleReturn {

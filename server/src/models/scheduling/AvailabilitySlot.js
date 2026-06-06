@@ -43,6 +43,18 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.UUID,
       allowNull: true,
       field: 'taken_by'
+    },
+    // The true UTC instant this slot starts (source of truth for cross-timezone
+    // display). Derived from date + time interpreted in `timezone`.
+    startsAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      field: 'starts_at'
+    },
+    // IANA zone the slot was authored in, e.g. 'America/New_York'.
+    timezone: {
+      type: DataTypes.STRING(50),
+      allowNull: true
     }
   }, {
     tableName: 'availability_slots',

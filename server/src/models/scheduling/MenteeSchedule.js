@@ -13,7 +13,9 @@ module.exports = (sequelize, DataTypes) => {
     templateId: { type: DataTypes.UUID, allowNull: true, field: 'template_id' },
     schedule: { type: DataTypes.JSONB, allowNull: false, defaultValue: [] },
     assignedBy: { type: DataTypes.UUID, allowNull: true, field: 'assigned_by' },
-    assignedAt: { type: DataTypes.DATE, defaultValue: DataTypes.NOW, field: 'assigned_at' }
+    assignedAt: { type: DataTypes.DATE, defaultValue: DataTypes.NOW, field: 'assigned_at' },
+    // The zone the recurring wall-clock blocks are read in (the mentee's).
+    timezone: { type: DataTypes.STRING(50), allowNull: true }
   }, {
     tableName: 'mentee_schedules',
     underscored: true,

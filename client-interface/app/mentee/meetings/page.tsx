@@ -7,6 +7,7 @@ import { CalendarRange, MessageSquare, Clock, Loader2, X, Check, CalendarPlus, C
 import { useMenteeMeetings, type OpenSlot, type MenteeMeeting } from '@/lib/hooks/mentee';
 import { meetingsApi } from '@/lib/services/meetings-api';
 import { Drawer } from '@/components/shared/Drawer';
+import { formatMeeting } from '@/lib/utils/datetime';
 
 const initialsOf = (name: string) =>
   name.split(' ').filter(Boolean).map((w) => w[0]).slice(0, 2).join('').toUpperCase() || '?';
@@ -112,7 +113,7 @@ export default function MenteeMeetings() {
                                 {b.slots.map((s) => (
                                   <button key={s.id} onClick={() => { setBooking(s); setBookingMentor(b.mentor.name); setAgenda(''); }}
                                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-sm text-slate-700 hover:border-brand-400 hover:bg-brand-50 hover:text-brand-700 transition-colors">
-                                    <Clock className="w-3.5 h-3.5 text-slate-400" />{s.day} · {s.time}
+                                    <Clock className="w-3.5 h-3.5 text-slate-400" />{formatMeeting(s.startsAt, s.day, s.time)}
                                     <span className="text-slate-400">· {s.durationMins}m</span>
                                   </button>
                                 ))}
@@ -141,7 +142,7 @@ export default function MenteeMeetings() {
                     <div className="flex items-start gap-3">
                       <span className="w-9 h-9 rounded-xl bg-brand-50 flex items-center justify-center shrink-0"><CalendarRange className="w-4 h-4 text-brand-600" /></span>
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-semibold text-slate-900">{m.day} · {m.time}</p>
+                        <p className="text-sm font-semibold text-slate-900">{formatMeeting(m.startsAt, m.day, m.time)}</p>
                         <p className="text-xs text-slate-500">{m.durationMins} min with {m.mentor?.firstName}</p>
                       </div>
                       <button onClick={() => setCancelFor(m)} disabled={busyId === m.id}
@@ -175,7 +176,7 @@ export default function MenteeMeetings() {
                             {m.status === 'done' ? <Check className="w-4 h-4 text-emerald-600" /> : <CalendarX2 className="w-4 h-4 text-slate-400" />}
                           </span>
                           <div className="min-w-0">
-                            <p className="text-sm text-slate-700 truncate">{m.day} · {m.time}</p>
+                            <p className="text-sm text-slate-700 truncate">{formatMeeting(m.startsAt, m.day, m.time)}</p>
                             <p className="text-xs text-slate-400">with {m.mentor?.firstName}</p>
                           </div>
                         </div>
@@ -201,7 +202,7 @@ export default function MenteeMeetings() {
         open={!!booking}
         onClose={() => setBooking(null)}
         title="Confirm your 1:1"
-        subtitle={booking ? `${bookingMentor} · ${booking.day} · ${booking.time} (${booking.durationMins} min)` : undefined}
+        subtitle={booking ? `${bookingMentor} · ${formatMeeting(booking.startsAt, booking.day, booking.time)} (${booking.durationMins} min)` : undefined}
         width="sm"
         footer={
           <>
@@ -224,7 +225,7 @@ export default function MenteeMeetings() {
         open={!!cancelFor}
         onClose={() => setCancelFor(null)}
         title="Cancel this 1:1?"
-        subtitle={cancelFor ? `${cancelFor.day} · ${cancelFor.time} with ${cancelFor.mentor?.firstName ?? 'your mentor'}` : undefined}
+        subtitle={cancelFor ? `${formatMeeting(cancelFor.startsAt, cancelFor.day, cancelFor.time)} with ${cancelFor.mentor?.firstName ?? 'your mentor'}` : undefined}
         width="sm"
         footer={
           <>

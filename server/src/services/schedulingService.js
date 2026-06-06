@@ -3,6 +3,7 @@ const { models, sequelize } = require('../db');
 const { NotFoundError, ValidationError } = require('../utils/errors/errorTypes');
 const notificationOrchestrator = require('./notificationOrchestrator');
 const { NOTIFICATION_EVENTS } = require('../config/notificationMatrix');
+const { zonedWallClockToUtc } = require('../utils/timezone');
 
 /**
  * schedulingService - 1:1 availability + meeting booking.
@@ -17,7 +18,13 @@ class SchedulingService {
     return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
   }
 
-  async publishSlot(mentorId, { day, date, time, durationMins }) {
+  /** A user's saved IANA timezone (falls back to UTC). */
+  async _userTimeZone(userId) {
+    const s = await models.UserSettings.findOne({ where: { userId }, attributes: ['timezone'] });
+    return s?.timezone || 'UTC';
+  }
+
+  async publishSlot(mentorId, { day, date, time, durationMins, timezone }) {
     if (!time) throw new ValidationError('A time is required');
     if (!date && !day) throw new ValidationError('A date is required');
     const dayLabel = this._dayLabel(date) || day;
@@ -26,8 +33,15 @@ class SchedulingService {
     const existing = await models.AvailabilitySlot.findOne({ where: { mentorId, date: date || null, time } });
     if (existing) throw new ValidationError('You already published a slot at this date and time');
 
+    // Anchor the wall-clock to the mentor's zone → a real UTC instant, so a
+    // mentee in any timezone sees the correct local time. Recurring (no date)
+    // slots can't be a single instant; they just carry the zone label.
+    const tz = timezone || await this._userTimeZone(mentorId);
+    const startsAt = date ? zonedWallClockToUtc(date, time, tz) : null;
+
     return models.AvailabilitySlot.create({
-      mentorId, day: dayLabel, date: date || null, time, durationMins: durationMins || 30
+      mentorId, day: dayLabel, date: date || null, time, durationMins: durationMins || 30,
+      startsAt, timezone: tz
     });
   }
 
@@ -116,6 +130,8 @@ class SchedulingService {
         day: slot.day,
         time: slot.time,
         durationMins: slot.durationMins,
+        startsAt: slot.startsAt,
+        timezone: slot.timezone,
         agenda: agenda || null,
         status: 'scheduled'
       }, { transaction });

@@ -6,6 +6,9 @@ export interface OpenSlot {
   day: string;
   time: string;
   durationMins: number;
+  /** True UTC instant (preferred for display); legacy slots may lack it. */
+  startsAt?: string | null;
+  timezone?: string | null;
 }
 
 export interface BookableMentor {
@@ -19,6 +22,8 @@ export interface MenteeMeeting {
   day: string;
   time: string;
   durationMins: number;
+  startsAt?: string | null;
+  timezone?: string | null;
   agenda: string | null;
   status: 'scheduled' | 'done' | 'cancelled';
   mentor?: { id: string; firstName: string; lastName: string };

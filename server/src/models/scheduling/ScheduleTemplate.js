@@ -19,7 +19,9 @@ module.exports = (sequelize, DataTypes) => {
     },
     ownerMentorId: { type: DataTypes.UUID, allowNull: true, field: 'owner_mentor_id' },
     blocks: { type: DataTypes.JSONB, allowNull: false, defaultValue: [] },
-    createdBy: { type: DataTypes.UUID, allowNull: true, field: 'created_by' }
+    createdBy: { type: DataTypes.UUID, allowNull: true, field: 'created_by' },
+    // Recurring blocks are wall-clock-in-a-zone; this is the zone they're read in.
+    timezone: { type: DataTypes.STRING(50), allowNull: true }
   }, {
     tableName: 'schedule_templates',
     underscored: true,

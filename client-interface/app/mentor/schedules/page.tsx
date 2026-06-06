@@ -9,6 +9,7 @@ import { useMentorSchedule, useScheduleTemplates, useMentorCohort, useMentorRoad
 import { meetingsApi } from '@/lib/services/meetings-api';
 import { scheduleApi, type ScheduleSlot } from '@/lib/services/schedule-api';
 import { Drawer } from '@/components/shared/Drawer';
+import { getBrowserTimeZone, formatMeeting } from '@/lib/utils/datetime';
 
 const DURATIONS = [15, 30, 45, 60];
 const SLOT_DAYS = ['everyday', 'weekdays', 'weekends'];
@@ -356,7 +357,7 @@ function AvailabilityTab() {
   const publish = async () => {
     if (!date) { toast.error('Pick a date'); return; }
     if (!time.trim()) { toast.error('Enter a time'); return; }
-    try { setAdding(true); await meetingsApi.publishSlot({ date, time: time.trim(), durationMins: duration }); toast.success('Slot published'); setDate(''); refetch(); }
+    try { setAdding(true); await meetingsApi.publishSlot({ date, time: time.trim(), durationMins: duration, timezone: getBrowserTimeZone() }); toast.success('Slot published'); setDate(''); refetch(); }
     catch (e: any) { toast.error(e?.response?.data?.message || 'Could not publish'); } finally { setAdding(false); }
   };
   const removeSlot = async (id: string) => {
@@ -393,7 +394,7 @@ function AvailabilityTab() {
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {availability.map((s) => (
               <div key={s.id} className="flex items-center justify-between gap-2 p-3 rounded-xl border border-slate-200 bg-slate-50">
-                <div><p className="text-sm font-medium text-slate-900">{s.day} · {s.time}</p><p className="text-xs text-slate-500">{s.durationMins} min</p></div>
+                <div><p className="text-sm font-medium text-slate-900">{formatMeeting(s.startsAt, s.day, s.time)}</p><p className="text-xs text-slate-500">{s.durationMins} min</p></div>
                 {s.taken ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-xs"><User className="w-3 h-3" />{s.bookedBy ? s.bookedBy.firstName : 'Booked'}</span>
                   : <button onClick={() => removeSlot(s.id)} disabled={busyId === s.id} className="text-slate-400 hover:text-red-500">{busyId === s.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}</button>}
               </div>
@@ -410,7 +411,7 @@ function AvailabilityTab() {
               {upcoming.map((m) => (
                 <div key={m.id} className="flex items-center gap-3 p-3 rounded-xl border border-slate-200">
                   <div className="w-9 h-9 bg-brand-100 rounded-full flex items-center justify-center shrink-0"><span className="text-brand-700 text-xs font-medium">{m.mentee?.firstName?.[0]}{m.mentee?.lastName?.[0]}</span></div>
-                  <div className="min-w-0 flex-1"><p className="text-sm font-medium text-slate-900">{m.mentee?.firstName} {m.mentee?.lastName}</p><div className="flex items-center gap-2 text-xs text-slate-500"><Clock className="w-3 h-3" />{m.day} · {m.time} · {m.durationMins}m</div>{m.agenda && <p className="text-xs text-slate-500 mt-0.5 truncate">{m.agenda}</p>}</div>
+                  <div className="min-w-0 flex-1"><p className="text-sm font-medium text-slate-900">{m.mentee?.firstName} {m.mentee?.lastName}</p><div className="flex items-center gap-2 text-xs text-slate-500"><Clock className="w-3 h-3" />{formatMeeting(m.startsAt, m.day, m.time)} · {m.durationMins}m</div>{m.agenda && <p className="text-xs text-slate-500 mt-0.5 truncate">{m.agenda}</p>}</div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <button onClick={() => markDone(m.id)} disabled={busyId === m.id} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-medium hover:bg-emerald-100 disabled:opacity-50"><Check className="w-3.5 h-3.5" />Done</button>
                     <button onClick={() => { setCancelReason(''); setCancelFor({ id: m.id, who: `${m.mentee?.firstName ?? ''} ${m.mentee?.lastName ?? ''}`.trim() || 'your mentee' }); }} disabled={busyId === m.id} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 text-slate-600 text-xs font-medium hover:border-red-300 hover:text-red-600 disabled:opacity-50"><X className="w-3.5 h-3.5" />Cancel</button>
