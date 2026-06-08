@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import {
   ChevronLeft, ChevronRight, SkipForward, Check, Loader2,
   TrendingUp, TrendingDown, Minus, Flag, Clock, ClipboardCheck, Keyboard, CheckCircle2, ArrowUpRight, Send, Plus, ListTodo, CalendarClock,
-  Trash2, X, History, RotateCcw, CalendarDays,
+  Trash2, X, History, RotateCcw, CalendarDays, AlertTriangle,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useMentorCohort, useMentorApprovals, type CohortMentee, type CohortMomentum, type CohortRisk, type ApprovalItem } from '@/lib/hooks/mentor';
@@ -91,16 +91,24 @@ export default function CohortReview() {
 
   // Load the session: a specific one via ?session=<id>, else today's (mentor tz).
   const sessionParam = searchParams.get('session');
-  useEffect(() => {
-    (async () => {
-      try {
-        const r: any = sessionParam // eslint-disable-line @typescript-eslint/no-explicit-any
-          ? await mentorApi.getReviewSession(sessionParam)
-          : await mentorApi.getTodayReviewSession();
-        setSession(r?.data?.session ?? null);
-      } catch { /* leave null */ }
-    })();
+  const [sessionError, setSessionError] = useState(false);
+  const [sessionLoading, setSessionLoading] = useState(true);
+  const loadSession = useCallback(async () => {
+    setSessionLoading(true);
+    try {
+      const r: any = sessionParam // eslint-disable-line @typescript-eslint/no-explicit-any
+        ? await mentorApi.getReviewSession(sessionParam)
+        : await mentorApi.getTodayReviewSession();
+      setSession(r?.data?.session ?? null);
+      setSessionError(!(r?.data?.session));
+    } catch {
+      setSession(null);
+      setSessionError(true);
+    } finally {
+      setSessionLoading(false);
+    }
   }, [sessionParam]);
+  useEffect(() => { loadSession(); }, [loadSession]);
 
   // Derive attendance / seen / deferred from the session's entries.
   const attendance = useMemo(() => {
@@ -443,6 +451,14 @@ export default function CohortReview() {
         </div>
       )}
 
+      {sessionError && !sessionLoading && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 flex items-center gap-3 text-sm">
+          <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+          <span className="text-amber-800">Couldn&apos;t load the review session, so attendance, deferrals and notes won&apos;t be saved. This usually means the cohort-review tables aren&apos;t set up on the server yet.</span>
+          <button onClick={loadSession} className="ml-auto shrink-0 px-3 py-1.5 rounded-lg border border-amber-300 text-amber-800 text-xs font-medium hover:bg-amber-100">Retry</button>
+        </div>
+      )}
+
       {/* Up next: let the next mentee know it's nearly their turn so they're ready. */}
       {cohort[idx + 1] && (
         <div className="rounded-xl border border-slate-200 bg-slate-50 dark:bg-slate-800/40 px-4 py-2.5 flex items-center gap-3 text-sm">
@@ -654,7 +670,8 @@ export default function CohortReview() {
                 </button>
               ))}
             </div>
-            {!editable && <p className="text-[11px] text-slate-400 mt-2">This review is finished — reopen it to make changes.</p>}
+            {session?.status === 'finished' && <p className="text-[11px] text-slate-400 mt-2">This review is finished — reopen it to make changes.</p>}
+            {!session && !sessionLoading && <p className="text-[11px] text-amber-600 mt-2">Couldn&apos;t load today&apos;s review session — marks won&apos;t save until it loads.</p>}
           </div>
 
           {/* Quick note */}
