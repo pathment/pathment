@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const cohortController = require('../controllers/cohortController');
+const cohortReviewController = require('../controllers/cohortReviewController');
 const linearRoadmapController = require('../controllers/linearRoadmapController');
 const promotionController = require('../controllers/promotionController');
 const { authenticate, authorize } = require('../middlewares/auth');
@@ -30,6 +31,18 @@ router.post('/mentee/:id/insights', mentorOnly, cohortController.addInsight);
 router.post('/mentee/:id/notes', mentorOnly, cohortController.logMeetingNote);
 router.post('/mentee/:id/attendance', mentorOnly, cohortController.setAttendance);
 router.get('/review/attendance', authenticate, authorize(['mentor', 'admin']), cohortController.getReviewAttendance);
+
+// Dated, saved, editable cohort-review sessions (full history). `today` and the
+// bare collection are declared before `:id` so they aren't captured as an id.
+router.get('/review/sessions/today', mentorOnly, cohortReviewController.today);
+router.get('/review/sessions', mentorOnly, cohortReviewController.list);
+router.post('/review/sessions', mentorOnly, cohortReviewController.create);
+router.get('/review/sessions/:id', mentorOnly, cohortReviewController.get);
+router.patch('/review/sessions/:id', mentorOnly, cohortReviewController.update);
+router.put('/review/sessions/:id/entries/:menteeId', mentorOnly, cohortReviewController.setEntry);
+router.post('/review/sessions/:id/finish', mentorOnly, cohortReviewController.finish);
+router.post('/review/sessions/:id/reopen', mentorOnly, cohortReviewController.reopen);
+router.delete('/review/sessions/:id', mentorOnly, cohortReviewController.remove);
 router.post('/mentee/:id/collaborators', mentorOnly, cohortController.addCollaborator);
 router.delete('/mentee/:id/collaborators/:collaboratorId', mentorOnly, cohortController.removeCollaborator);
 

@@ -1,12 +1,12 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import {
   ChevronLeft, ChevronRight, SkipForward, Check, Loader2,
   TrendingUp, TrendingDown, Minus, Flag, Clock, ClipboardCheck, Keyboard, CheckCircle2, ArrowUpRight, Send, Plus, ListTodo, CalendarClock,
-  Trash2, X,
+  Trash2, X, History, RotateCcw, CalendarDays,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useMentorCohort, useMentorApprovals, type CohortMentee, type CohortMomentum, type CohortRisk, type ApprovalItem } from '@/lib/hooks/mentor';
@@ -24,6 +24,10 @@ import { AssignTaskDrawer } from '@/components/mentor/AssignTaskDrawer';
 import { Drawer } from '@/components/shared/Drawer';
 
 type Attendance = 'present' | 'absent' | 'excused';
+type EntryStatus = 'pending' | 'reviewed' | 'deferred';
+interface ReviewEntry { id?: string; menteeId: string; attendance: Attendance | null; status: EntryStatus; note?: string | null; mentee?: { id: string; name: string } | null }
+interface ReviewSession { id: string; sessionDate: string; title: string | null; status: 'in_progress' | 'finished'; note: string | null; finishedAt?: string | null; entries: ReviewEntry[] }
+interface ReviewSessionSummary extends Omit<ReviewSession, 'entries'> { counts: { total: number; present: number; absent: number; excused: number; reviewed: number; deferred: number } }
 
 const RISK_PILL: Record<CohortRisk, { label: string; cls: string; dot: string }> = {
   high: { label: 'At risk', cls: 'bg-red-50 text-red-700 border-red-200', dot: 'bg-red-500' },
@@ -50,6 +54,7 @@ const TASK_STATUS_ORDER = ['revision_needed', 'submitted', 'in_progress', 'assig
 
 export default function CohortReview() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user } = useAuth();
   const { cohort, loading } = useMentorCohort();
   const { queue, refetch: refetchQueue } = useMentorApprovals();
@@ -58,9 +63,11 @@ export default function CohortReview() {
   const [tasks, setTasks] = useState<any[]>([]); // eslint-disable-line @typescript-eslint/no-explicit-any
   const [tasksLoading, setTasksLoading] = useState(false);
   const [profile, setProfile] = useState<any>(null); // eslint-disable-line @typescript-eslint/no-explicit-any -- full mentee profile (aiSummary/signals)
-  const [attendance, setAttendance] = useState<Record<string, Attendance>>({});
-  const [deferred, setDeferred] = useState<Set<string>>(new Set());
-  const [seen, setSeen] = useState<Set<string>>(new Set());
+  // The dated, saved cohort-review session (today by default, or ?session=<id>).
+  // attendance / seen / deferred are derived from its entries — nothing ephemeral.
+  const [session, setSession] = useState<ReviewSession | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [sessions, setSessions] = useState<ReviewSessionSummary[]>([]);
   const [focus, setFocus] = useState(0);
   const [blockers, setBlockers] = useState<any[]>([]); // eslint-disable-line @typescript-eslint/no-explicit-any
   const [note, setNote] = useState('');
@@ -80,19 +87,54 @@ export default function CohortReview() {
     [queue, mentee?.id]
   );
 
-  // Restore today's attendance once so marks survive a refresh mid-session.
+  // Load the session: a specific one via ?session=<id>, else today's (mentor tz).
+  const sessionParam = searchParams.get('session');
   useEffect(() => {
-    mentorApi.getReviewAttendance()
-      .then((r: any) => setAttendance(r?.data?.attendance ?? {})) // eslint-disable-line @typescript-eslint/no-explicit-any
-      .catch(() => {});
-  }, []);
+    (async () => {
+      try {
+        const r: any = sessionParam // eslint-disable-line @typescript-eslint/no-explicit-any
+          ? await mentorApi.getReviewSession(sessionParam)
+          : await mentorApi.getTodayReviewSession();
+        setSession(r?.data?.session ?? null);
+      } catch { /* leave null */ }
+    })();
+  }, [sessionParam]);
+
+  // Derive attendance / seen / deferred from the session's entries.
+  const attendance = useMemo(() => {
+    const m: Record<string, Attendance> = {};
+    (session?.entries || []).forEach((e) => { if (e.attendance) m[e.menteeId] = e.attendance; });
+    return m;
+  }, [session]);
+  const seen = useMemo(() => new Set((session?.entries || []).filter((e) => e.status === 'reviewed').map((e) => e.menteeId)), [session]);
+  const deferred = useMemo(() => new Set((session?.entries || []).filter((e) => e.status === 'deferred').map((e) => e.menteeId)), [session]);
+  const entriesByMentee = useMemo(() => {
+    const m: Record<string, ReviewEntry> = {};
+    (session?.entries || []).forEach((e) => { m[e.menteeId] = e; });
+    return m;
+  }, [session]);
+  const editable = session?.status === 'in_progress';
+
+  // Optimistically patch one mentee's entry, then persist.
+  const patchEntry = useCallback(async (mId: string, patch: { attendance?: Attendance | null; status?: EntryStatus; note?: string }) => {
+    if (!session) return;
+    const sid = session.id;
+    setSession((s) => {
+      if (!s) return s;
+      const entries = s.entries.some((e) => e.menteeId === mId)
+        ? s.entries.map((e) => (e.menteeId === mId ? { ...e, ...patch } : e))
+        : [...s.entries, { menteeId: mId, attendance: null, status: 'pending', ...patch } as ReviewEntry];
+      return { ...s, entries };
+    });
+    try { await mentorApi.setReviewEntry(sid, mId, patch); }
+    catch { toast.error('Could not save the review'); }
+  }, [session]);
 
   // Load open blockers + assigned tasks + the full profile (state/summary) for
   // the current mentee; reset state.
   useEffect(() => {
     if (!mentee) return;
     setFocus(0); setNote(''); setNoteSent(false); setBlockers([]); setTasks([]); setProfile(null);
-    setSeen((s) => new Set(s).add(mentee.id));
     frictionApi.listBlockers(mentee.id, 'open').then((r: any) => setBlockers(r?.data?.blockers ?? [])).catch(() => {}); // eslint-disable-line @typescript-eslint/no-explicit-any
     mentorApi.getMenteeProfile(mentee.id).then((r: any) => setProfile(r?.data?.profile ?? r?.data ?? null)).catch(() => setProfile(null)); // eslint-disable-line @typescript-eslint/no-explicit-any
     if (user?.id) {
@@ -103,6 +145,15 @@ export default function CohortReview() {
         .finally(() => setTasksLoading(false));
     }
   }, [mentee?.id, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Landing on a mentee marks them "reviewed" (seen) — but only if still pending,
+  // so a deferred mentee stays deferred and we never loop. Finished sessions stay put.
+  useEffect(() => {
+    if (!editable || !menteeId) return;
+    const e = entriesByMentee[menteeId];
+    if (e && e.status === 'pending') patchEntry(menteeId, { status: 'reviewed' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [menteeId, session?.id, editable]);
 
   // The mentee's assigned work, grouped by status (their "day"). 'submitted'
   // tasks live in the "To review" queue below, so exclude them here.
@@ -151,9 +202,9 @@ export default function CohortReview() {
   }, [cohort.length]);
 
   const skip = useCallback(() => {
-    if (mentee) setDeferred((d) => new Set(d).add(mentee.id));
+    if (mentee && editable) patchEntry(mentee.id, { status: 'deferred' });
     go(1);
-  }, [mentee, go]);
+  }, [mentee, go, editable, patchEntry]);
 
   // Refresh the queue + the CURRENT mentee's tasks. Keyed on the live mentee so
   // actions never refetch a stale/previous mentee (the old bug).
@@ -229,10 +280,36 @@ export default function CohortReview() {
   }, [refresh]);
 
   const mark = useCallback((status: Attendance) => {
-    if (!mentee) return;
-    setAttendance((a) => ({ ...a, [mentee.id]: status })); // instant
-    mentorApi.setAttendance(mentee.id, status).catch(() => toast.error('Could not save attendance')); // persist
-  }, [mentee]);
+    if (!mentee || !editable) return;
+    // Toggle off if re-clicking the same mark; persisted on the session entry.
+    const current = entriesByMentee[mentee.id]?.attendance ?? null;
+    patchEntry(mentee.id, { attendance: current === status ? null : status });
+  }, [mentee, editable, entriesByMentee, patchEntry]);
+
+  const finishOrReopen = useCallback(async () => {
+    if (!session) return;
+    try {
+      if (session.status === 'in_progress') {
+        const r: any = await mentorApi.finishReviewSession(session.id); // eslint-disable-line @typescript-eslint/no-explicit-any
+        setSession(r?.data?.session ?? session);
+        const c = (r?.data?.session?.entries || session.entries);
+        const present = c.filter((e: ReviewEntry) => e.attendance === 'present').length;
+        const absent = c.filter((e: ReviewEntry) => e.attendance === 'absent').length;
+        const excused = c.filter((e: ReviewEntry) => e.attendance === 'excused').length;
+        toast.success(`Review saved — ${present} present, ${absent} absent, ${excused} excused`);
+      } else {
+        const r: any = await mentorApi.reopenReviewSession(session.id); // eslint-disable-line @typescript-eslint/no-explicit-any
+        setSession(r?.data?.session ?? session);
+        toast.success('Review reopened for editing');
+      }
+    } catch { toast.error('Could not update the review'); }
+  }, [session]);
+
+  const openHistory = useCallback(async () => {
+    setHistoryOpen(true);
+    try { const r: any = await mentorApi.listReviewSessions(); setSessions(r?.data?.sessions ?? []); } // eslint-disable-line @typescript-eslint/no-explicit-any
+    catch { setSessions([]); }
+  }, []);
 
   const sendNote = async () => {
     if (!mentee || !note.trim()) return;
@@ -297,17 +374,30 @@ export default function CohortReview() {
   );
 
   const risk = RISK_PILL[mentee!.risk];
-  const allSeen = seen.size >= cohort.length && deferred.size === 0;
+  const pendingCount = (session?.entries || []).filter((e) => e.status === 'pending').length;
+  const allSeen = (session?.entries?.length ?? 0) > 0 && pendingCount === 0;
+  const sessionDateLabel = session?.sessionDate
+    ? new Date(`${session.sessionDate}T00:00:00`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+    : '';
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-slate-900">Cohort review</h1>
-          <p className="text-slate-600 text-sm">{idx + 1} of {cohort.length} · review each mentee, then finish</p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-slate-900">Cohort review</h1>
+            {sessionDateLabel && (
+              <span className="inline-flex items-center gap-1 text-xs text-slate-500 bg-slate-100 rounded-full px-2 py-0.5"><CalendarDays className="w-3 h-3" />{sessionDateLabel}</span>
+            )}
+            {session?.status === 'finished' && (
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5"><CheckCircle2 className="w-3 h-3" />Finished</span>
+            )}
+          </div>
+          <p className="text-slate-600 text-sm">{idx + 1} of {cohort.length} · {session?.title || 'review each mentee, then finish'}</p>
         </div>
         <div className="flex items-center gap-2">
+          <button onClick={openHistory} className="px-3 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm hover:bg-slate-50 inline-flex items-center gap-1" title="Past reviews"><History className="w-4 h-4" />History</button>
           <button onClick={() => setAssigning(true)} className="px-3 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm hover:bg-slate-50 inline-flex items-center gap-1" title="Assign a task (t)"><Plus className="w-4 h-4" />Assign task</button>
           <button onClick={() => setShowHelp(true)} className="p-2 rounded-lg text-slate-400 hover:bg-slate-100" title="Shortcuts"><Keyboard className="w-4 h-4" /></button>
           <button onClick={() => go(-1)} disabled={idx === 0} className="px-3 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm hover:bg-slate-50 disabled:opacity-40 inline-flex items-center gap-1"><ChevronLeft className="w-4 h-4" />Prev</button>
@@ -527,12 +617,13 @@ export default function CohortReview() {
             <h3 className="font-semibold text-slate-900 mb-3">Attendance</h3>
             <div className="flex gap-2">
               {(['present', 'absent', 'excused'] as Attendance[]).map((s) => (
-                <button key={s} onClick={() => mark(s)}
-                  className={`flex-1 px-2 py-1.5 rounded-lg border text-xs font-medium capitalize transition-colors ${attendance[mentee!.id] === s ? 'border-brand-400 bg-brand-50 text-brand-700' : 'border-slate-200 text-slate-600 hover:border-slate-300'}`}>
+                <button key={s} onClick={() => mark(s)} disabled={!editable}
+                  className={`flex-1 px-2 py-1.5 rounded-lg border text-xs font-medium capitalize transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${attendance[mentee!.id] === s ? 'border-brand-400 bg-brand-50 text-brand-700' : 'border-slate-200 text-slate-600 hover:border-slate-300'}`}>
                   {s}
                 </button>
               ))}
             </div>
+            {!editable && <p className="text-[11px] text-slate-400 mt-2">This review is finished — reopen it to make changes.</p>}
           </div>
 
           {/* Quick note */}
@@ -573,21 +664,26 @@ export default function CohortReview() {
           {/* Progress / finish */}
           <div className="bg-[#0f172a] rounded-2xl p-5 text-white">
             <div className="text-sm space-y-1">
-              <div className="flex justify-between"><span className="text-slate-300">Seen</span><span>{seen.size}/{cohort.length}</span></div>
-              <div className="flex justify-between"><span className="text-slate-300">Attendance marked</span><span>{Object.keys(attendance).length}</span></div>
-              <div className="flex justify-between"><span className="text-slate-300">Deferred</span><span>{deferred.size}</span></div>
+              <div className="flex justify-between"><span className="text-slate-300">Reviewed</span><span>{seen.size}/{cohort.length}</span></div>
+              <div className="flex justify-between"><span className="text-slate-300">Present</span><span>{Object.values(attendance).filter((v) => v === 'present').length}</span></div>
+              <div className="flex justify-between"><span className="text-slate-300">Absent</span><span>{Object.values(attendance).filter((v) => v === 'absent').length}</span></div>
+              <div className="flex justify-between"><span className="text-slate-300">Excused</span><span>{Object.values(attendance).filter((v) => v === 'excused').length}</span></div>
+              <div className="flex justify-between"><span className="text-amber-300">Deferred</span><span className="text-amber-300">{deferred.size}</span></div>
             </div>
-            <button onClick={() => {
-                const vals = Object.values(attendance);
-                const present = vals.filter((v) => v === 'present').length;
-                const absent = vals.filter((v) => v === 'absent').length;
-                const excused = vals.filter((v) => v === 'excused').length;
-                toast.success(`Review complete - ${present} present, ${absent} absent, ${excused} excused`);
-                router.push('/mentor/dashboard');
-              }}
-              className={`mt-4 w-full px-3 py-2 rounded-xl text-sm font-medium ${allSeen ? 'bg-card text-slate-900 hover:bg-slate-100' : 'bg-card/10 text-white/70'}`}>
-              {allSeen ? 'Finish review' : 'Finish (some unseen)'}
+            {deferred.size > 0 && editable && (
+              <div className="mt-3 rounded-lg bg-amber-500/15 border border-amber-500/30 px-3 py-2 text-xs text-amber-200">
+                {deferred.size} deferred — jump to them from the dots above before finishing.
+              </div>
+            )}
+            <button onClick={finishOrReopen}
+              className={`mt-4 w-full px-3 py-2 rounded-xl text-sm font-medium inline-flex items-center justify-center gap-1.5 ${session?.status === 'finished' ? 'bg-card/10 text-white hover:bg-card/20' : allSeen ? 'bg-card text-slate-900 hover:bg-slate-100' : 'bg-card/10 text-white/80 hover:bg-card/20'}`}>
+              {session?.status === 'finished'
+                ? (<><RotateCcw className="w-4 h-4" />Reopen to edit</>)
+                : allSeen ? 'Finish review' : `Finish (${pendingCount} not reviewed)`}
             </button>
+            {session?.status === 'finished' && session?.finishedAt && (
+              <p className="mt-2 text-[11px] text-slate-400 text-center">Finished {new Date(session.finishedAt).toLocaleString()}</p>
+            )}
           </div>
         </div>
       </div>
@@ -679,6 +775,36 @@ export default function CohortReview() {
           onAssigned={refresh}
         />
       )}
+
+      {/* Cohort-review history: browse & open past dated sessions to view or edit. */}
+      <Drawer open={historyOpen} onClose={() => setHistoryOpen(false)} width="md" title="Cohort review history" subtitle="Open a past session to view or edit it">
+        <div className="space-y-2">
+          {sessions.length === 0 ? (
+            <p className="text-sm text-slate-400 text-center py-10">No saved reviews yet.</p>
+          ) : sessions.map((s) => {
+            const isCurrent = s.id === session?.id;
+            const dateLabel = new Date(`${s.sessionDate}T00:00:00`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+            return (
+              <button key={s.id} type="button"
+                onClick={() => { setHistoryOpen(false); router.push(`/mentor/review?session=${s.id}`); }}
+                className={`w-full text-left rounded-xl border px-3.5 py-3 transition-colors ${isCurrent ? 'border-brand-300 bg-brand-50 dark:bg-brand-500/10' : 'border-slate-200 dark:border-slate-700 hover:border-brand-300'}`}>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-medium text-slate-900 inline-flex items-center gap-1.5"><CalendarDays className="w-3.5 h-3.5 text-slate-400" />{dateLabel}</span>
+                  <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${s.status === 'finished' ? 'bg-emerald-100 text-emerald-700' : 'bg-sky-100 text-sky-700'}`}>{s.status === 'finished' ? 'Finished' : 'In progress'}</span>
+                </div>
+                {s.title && <p className="text-xs text-slate-500 mt-0.5">{s.title}</p>}
+                <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1.5 text-[11px] text-slate-500">
+                  <span>{s.counts.reviewed}/{s.counts.total} reviewed</span>
+                  <span className="text-emerald-600">{s.counts.present} present</span>
+                  <span className="text-red-500">{s.counts.absent} absent</span>
+                  <span>{s.counts.excused} excused</span>
+                  {s.counts.deferred > 0 && <span className="text-amber-600">{s.counts.deferred} deferred</span>}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </Drawer>
 
       {showHelp && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setShowHelp(false)}>

@@ -68,4 +68,20 @@ function endOfDayInZone(dateStr, timeZone) {
   return zonedWallClockToUtc(dateStr, '23:59', timeZone);
 }
 
-module.exports = { offsetMsAt, parseWallClock, zonedWallClockToUtc, endOfDayInZone };
+/**
+ * Today's calendar date (YYYY-MM-DD) *in the given timezone*. Use to decide
+ * "what day is it for this user" — e.g. which cohort-review session is "today"
+ * for a mentor — instead of the server's local day.
+ */
+function todayInZone(timeZone = 'UTC', at = new Date()) {
+  try {
+    // en-CA formats as YYYY-MM-DD.
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(at);
+  } catch {
+    return new Date(at).toISOString().split('T')[0];
+  }
+}
+
+module.exports = { offsetMsAt, parseWallClock, zonedWallClockToUtc, endOfDayInZone, todayInZone };

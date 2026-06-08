@@ -42,6 +42,19 @@ export const mentorApi = {
     apiClient.post(`/mentor/mentee/${menteeId}/attendance`, { status }),
   getReviewAttendance: () => apiClient.get<{ data: { attendance: Record<string, 'present' | 'absent' | 'excused'> } }>('/mentor/review/attendance'),
 
+  // Dated, saved, editable cohort-review sessions (full history).
+  getTodayReviewSession: () => apiClient.get('/mentor/review/sessions/today'),
+  listReviewSessions: () => apiClient.get('/mentor/review/sessions'),
+  createReviewSession: (data: { date?: string; title?: string }) => apiClient.post('/mentor/review/sessions', data),
+  getReviewSession: (id: string) => apiClient.get(`/mentor/review/sessions/${id}`),
+  updateReviewSession: (id: string, data: { title?: string; note?: string; sessionDate?: string }) =>
+    apiClient.patch(`/mentor/review/sessions/${id}`, data),
+  setReviewEntry: (id: string, menteeId: string, data: { attendance?: 'present' | 'absent' | 'excused' | null; status?: 'pending' | 'reviewed' | 'deferred'; note?: string }) =>
+    apiClient.put(`/mentor/review/sessions/${id}/entries/${menteeId}`, data),
+  finishReviewSession: (id: string) => apiClient.post(`/mentor/review/sessions/${id}/finish`, {}),
+  reopenReviewSession: (id: string) => apiClient.post(`/mentor/review/sessions/${id}/reopen`, {}),
+  deleteReviewSession: (id: string) => apiClient.delete(`/mentor/review/sessions/${id}`),
+
   // Approvals queue (pending reviews across the cohort) + bulk approve.
   getApprovals: () => apiClient.get('/mentor/approvals'),
   bulkApprove: (submissionIds: string[]) => apiClient.post('/mentor/approvals/bulk', { submissionIds }),
