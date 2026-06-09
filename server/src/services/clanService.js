@@ -1,5 +1,6 @@
 const { models, sequelize } = require('../db');
 const { NotFoundError, ValidationError, ConflictError } = require('../utils/errors/errorTypes');
+const { createAuditLog } = require('../utils/auditContext');
 
 /**
  * Clan service - clans are mentor-led groups inside a Program. A mentee is
@@ -206,6 +207,62 @@ class ClanService {
     membership.leftAt = new Date();
     await membership.save();
     return membership;
+  }
+
+  /**
+   * Reassign a mentee to a different clan (fix an accidental placement). Removes
+   * their current mentee membership(s) and places them in `toClanId`.
+   *   - Same program → keep the enrollment (and its tasks): just move the group.
+   *   - Different program → WIPE the old enrollment, its assigned tasks and
+   *     matches (a clean transfer — "remove all prev links"), then create a
+   *     fresh enrollment in the new clan's program.
+   */
+  async reassignMentee(menteeId, toClanId, actorId = null) {
+    const toClan = await models.Clan.findByPk(toClanId, { attributes: ['id', 'programId'] });
+    if (!toClan) throw new NotFoundError('Target clan not found');
+    const mentee = await models.User.findByPk(menteeId, { attributes: ['id'] });
+    if (!mentee) throw new NotFoundError('Mentee not found');
+
+    const oldMemberships = await models.ClanMembership.findAll({
+      where: { userId: menteeId, role: 'mentee', status: 'active' },
+      include: [{ model: models.Clan, as: 'clan', attributes: ['id', 'programId'] }]
+    });
+    if (oldMemberships.some((m) => m.clanId === toClanId)) {
+      throw new ValidationError('That mentee is already in this clan');
+    }
+
+    const wiped = [];
+    await sequelize.transaction(async (transaction) => {
+      for (const m of oldMemberships) {
+        m.status = 'removed';
+        m.leftAt = new Date();
+        await m.save({ transaction });
+
+        const crossProgram = m.clan && m.clan.programId !== toClan.programId;
+        if (!crossProgram) continue;
+
+        // Clean transfer: drop the old program's enrollment + everything on it.
+        const enrollment = m.enrollmentId
+          ? await models.Enrollment.findByPk(m.enrollmentId, { transaction })
+          : await models.Enrollment.findOne({ where: { menteeId, programId: m.clan.programId }, transaction });
+        if (enrollment) {
+          await models.MentorMenteeMatch.update({ status: 'cancelled' }, { where: { enrollmentId: enrollment.id, status: 'active' }, transaction });
+          await models.AssignedTask.destroy({ where: { enrollmentId: enrollment.id }, transaction });
+          await enrollment.destroy({ transaction });
+          wiped.push(enrollment.id);
+        }
+      }
+    });
+
+    // Place them in the new clan (creates/activates the enrollment in its program).
+    await this.addMember(toClanId, { userId: menteeId, role: 'mentee' });
+
+    await createAuditLog({
+      userId: actorId, action: 'MENTEE_REASSIGNED', entityType: 'ClanMembership', entityId: toClanId,
+      newValues: { menteeId, toClanId, fromClanIds: oldMemberships.map((m) => m.clanId), wipedEnrollments: wiped }
+    }).catch(() => {});
+
+    return { reassigned: true, toClanId, movedFrom: oldMemberships.map((m) => m.clanId), wipedEnrollments: wiped };
   }
 
   /**

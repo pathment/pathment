@@ -3,6 +3,7 @@ const { successResponse } = require('../utils/responses');
 const clanService = require('../services/clanService');
 const clanHealthService = require('../services/clanHealthService');
 const authzService = require('../services/authzService');
+const { ValidationError } = require('../utils/errors/errorTypes');
 
 /**
  * GET /api/clans/health  (admin)
@@ -142,6 +143,31 @@ const revokeClanRole = catchAsync(async (req, res) => {
 });
 
 /**
+ * POST /api/clans/reassign  (admin / people-admin / program-admin)
+ * Move a mentee to a different clan, cleaning up their previous placement.
+ * Same program → keeps the enrollment; different program → wipes it (clean
+ * transfer). A program_admin may only move within programs they administer.
+ */
+const reassignClan = catchAsync(async (req, res) => {
+  const { menteeId, toClanId } = req.body;
+  if (!menteeId || !toClanId) throw new ValidationError('menteeId and toClanId are required');
+
+  const assignments = req.loadAssignments ? await req.loadAssignments() : undefined;
+  // Target + every current clan the mentee is in must be within the admin's scope.
+  const toScope = await authzService.scopeOfClan(toClanId);
+  await authzService.assertProgramInScope(req.user, toScope && toScope.programId, { assignments });
+  const memberships = await clanService.getMembershipsForUser(menteeId);
+  for (const m of memberships) {
+    if (m.role === 'mentee' && m.status === 'active' && m.clan && m.clan.programId) {
+      await authzService.assertProgramInScope(req.user, m.clan.programId, { assignments });
+    }
+  }
+
+  const result = await clanService.reassignMentee(menteeId, toClanId, req.user.id);
+  res.status(200).json(successResponse('Mentee reassigned', result));
+});
+
+/**
  * POST /api/clans/:id/invite  (admin / lead mentor of the clan)
  * Invite a new person straight into this clan as a mentee.
  */
@@ -163,6 +189,7 @@ module.exports = {
   removeMember,
   availableMembers,
   candidates,
+  reassignClan,
   grantClanRole,
   revokeClanRole,
   inviteToClan

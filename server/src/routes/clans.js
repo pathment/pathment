@@ -32,6 +32,10 @@ router.patch('/:id', authenticate, requirePermission(PERMISSIONS.CLAN_MANAGE_MEM
 router.post('/:id/members', authenticate, requirePermission(PERMISSIONS.CLAN_MANAGE_MEMBERS, scope.clan('id')), clanController.addMember);
 router.delete('/:id/members/:userId', authenticate, requirePermission(PERMISSIONS.CLAN_MANAGE_MEMBERS, scope.clan('id')), clanController.removeMember);
 
+// Reassign a mentee to a different clan (cross-clan admin action). Program admins
+// may only move within programs they administer (enforced in the controller).
+router.post('/reassign', authenticate, requirePermissionMinScope(PERMISSIONS.CLAN_MANAGE_MEMBERS, 'program'), clanController.reassignClan);
+
 // Lead mentor: pull in unassigned mentees, or invite a new one straight into the clan.
 router.get('/:id/available', authenticate, requirePermission(PERMISSIONS.CLAN_MANAGE_MEMBERS, scope.clan('id')), clanController.availableMembers);
 router.post('/:id/invite', authenticate, requirePermission(PERMISSIONS.CLAN_MANAGE_MEMBERS, scope.clan('id')), clanController.inviteToClan);

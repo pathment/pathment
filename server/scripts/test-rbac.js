@@ -169,7 +169,7 @@ async function mkUser(role, n) {
   const program2 = await models.Program.create({ createdBy: lead.id, name: 'Test Program', description: 'p2', type: 'mentorship', status: 'published', totalDurationWeeks: 8 });
   const menteeD = await mkUser('mentee', 9);
   await models.Enrollment.create({ menteeId: menteeD.id, programId: program2.id, status: 'active', enrolledAt: new Date() });
-  await models.Clan.create({ name: 'Clan C', programId: program2.id, leadMentorId: lead.id, createdBy: lead.id, status: 'active' });
+  const clanC = await models.Clan.create({ name: 'Clan C', programId: program2.id, leadMentorId: lead.id, createdBy: lead.id, status: 'active' });
 
   const scopedEnr = await enrollmentService.getEnrollments({ programIds: [program.id] }, { page: 1, limit: 100 });
   ok('data-scope: enrollments filtered to program1 (excludes program2)',
@@ -178,6 +178,20 @@ async function mkUser(role, n) {
   ok('data-scope: unrestricted enrollments include program2', allEnr.enrollments.some((e) => e.menteeId === menteeD.id));
   const scopedClans = await clanService.listClans({ programIds: [program.id] });
   ok('data-scope: clans filtered to program1 (excludes Clan C)', scopedClans.every((c) => c.programId === program.id) && scopedClans.length > 0);
+
+  // ── Reassign mentee between clans ──────────────────────────────────────────
+  // Same-program move (clanA → clanB, both program1): keep the enrollment.
+  const enrBefore = await models.Enrollment.findOne({ where: { menteeId: menteeB.id, programId: program.id } });
+  await clanService.reassignMentee(menteeB.id, clanB.id, adminUser.id);
+  ok('reassign same-program: now in clan B', !!(await models.ClanMembership.findOne({ where: { userId: menteeB.id, clanId: clanB.id, status: 'active' } })));
+  ok('reassign same-program: removed from clan A', !(await models.ClanMembership.findOne({ where: { userId: menteeB.id, clanId: clan.id, status: 'active' } })));
+  const enrAfter = await models.Enrollment.findOne({ where: { menteeId: menteeB.id, programId: program.id } });
+  ok('reassign same-program: enrollment preserved', !!enrAfter && enrAfter.id === enrBefore.id);
+
+  // Cross-program move (→ Clan C in program2): wipe the old program's enrollment.
+  await clanService.reassignMentee(menteeB.id, clanC.id, adminUser.id);
+  ok('reassign cross-program: old program enrollment wiped', !(await models.Enrollment.findOne({ where: { menteeId: menteeB.id, programId: program.id } })));
+  ok('reassign cross-program: new program enrollment created', !!(await models.Enrollment.findOne({ where: { menteeId: menteeB.id, programId: program2.id } })));
 
   // ── Audit: the grant + revoke were recorded with an actor ──────────────────
   const auditCount = await models.AuditLog.count({ where: { action: ['ROLE_GRANTED', 'ROLE_REVOKED'] } });

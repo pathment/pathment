@@ -13,6 +13,7 @@ import {
   Loader2,
   ShieldOff,
   ShieldCheck,
+  ArrowRightLeft,
 } from 'lucide-react';
 import { DataTable, DataTableColumn } from '@/components/shared/DataTable';
 import { TablePagination } from '@/components/shared/TablePagination';
@@ -33,6 +34,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useMenteesList, MenteeListItem } from '@/lib/hooks/admin/useMenteesList';
+import { ReassignClanModal } from '@/components/admin/ReassignClanModal';
 import { menteeApi } from '@/lib/services/mentee-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { toast } from 'sonner';
@@ -162,6 +164,7 @@ export default function AdminMenteesListPage() {
   const [suspendLoading, setSuspendLoading] = useState<string | null>(null);
   const [suspendModalOpen, setSuspendModalOpen] = useState(false);
   const [suspendRow, setSuspendRow] = useState<MenteeListItem | null>(null);
+  const [movingMentee, setMovingMentee] = useState<MenteeListItem | null>(null);
 
   const handleDelete = async (id: string, name: string) => {
     if (!confirm(`Permanently delete ${name}? This removes all their enrollments and data and cannot be undone.`)) return;
@@ -248,6 +251,14 @@ export default function AdminMenteesListPage() {
             <ExternalLink className="w-3.5 h-3.5" />
             Enrollments
           </Link>
+          <button
+            onClick={() => setMovingMentee(row)}
+            title="Move to another clan"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+          >
+            <ArrowRightLeft className="w-3.5 h-3.5" />
+            Move clan
+          </button>
           <button
             onClick={() => handleOpenSuspendModal(row)}
             disabled={suspendLoading === row.id}
@@ -373,6 +384,15 @@ export default function AdminMenteesListPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {movingMentee && (
+        <ReassignClanModal
+          menteeId={movingMentee.id}
+          menteeName={`${movingMentee.firstName} ${movingMentee.lastName}`}
+          onClose={() => setMovingMentee(null)}
+          onDone={refetch}
+        />
+      )}
     </div>
   );
 }
