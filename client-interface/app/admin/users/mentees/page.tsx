@@ -389,6 +389,8 @@ export default function AdminMenteesListPage() {
         <ReassignClanModal
           menteeId={movingMentee.id}
           menteeName={`${movingMentee.firstName} ${movingMentee.lastName}`}
+          currentClanId={movingMentee.currentClan?.id ?? null}
+          currentProgramId={movingMentee.currentClan?.programId ?? null}
           onClose={() => setMovingMentee(null)}
           onDone={refetch}
         />

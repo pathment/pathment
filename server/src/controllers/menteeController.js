@@ -68,9 +68,30 @@ const getAllMentees = catchAsync(async (req, res) => {
     distinct: true,
   });
 
+  // Attach each mentee's current clan (+ its program) so the UI can offer an
+  // accurate "move clan" with a cross-program warning. One batched query.
+  const menteeIds = mentees.map((m) => m.id);
+  const memberships = menteeIds.length
+    ? await models.ClanMembership.findAll({
+        where: { userId: { [Op.in]: menteeIds }, role: 'mentee', status: 'active' },
+        include: [{ model: models.Clan, as: 'clan', attributes: ['id', 'name', 'programId'] }],
+      })
+    : [];
+  const clanByUser = new Map();
+  for (const m of memberships) {
+    if (m.clan && !clanByUser.has(m.userId)) {
+      clanByUser.set(m.userId, { id: m.clan.id, name: m.clan.name, programId: m.clan.programId });
+    }
+  }
+  const rows = mentees.map((m) => {
+    const json = m.toJSON();
+    json.currentClan = clanByUser.get(m.id) || null;
+    return json;
+  });
+
   res.status(200).json({
     status: 'success',
-    data: { mentees },
+    data: { mentees: rows },
     pagination: {
       page: pageNum,
       limit: limitNum,
