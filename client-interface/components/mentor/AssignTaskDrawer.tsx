@@ -2,12 +2,14 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { toast } from 'sonner';
-import { X, Loader2, Check, Plus, Trash2, Search, Route, FileText } from 'lucide-react';
+import { X, Loader2, Check, Plus, Trash2, Search, Route, FileText, Eye } from 'lucide-react';
 import { taskApi } from '@/lib/services/task-api';
 import { tracksApi, type Track } from '@/lib/services/tracks-api';
 import { mentorApi } from '@/lib/services/mentor-api';
 import { useMentorRoadmaps } from '@/lib/hooks/mentor';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
+import { RoadmapStepsDrawer } from '@/components/mentor/RoadmapStepsDrawer';
+import { StepCustomizeModal } from '@/components/mentor/StepCustomizeModal';
 
 type AssignSource = 'custom' | 'roadmap';
 
@@ -56,6 +58,10 @@ export function AssignTaskDrawer({
   const [assigneesLoading, setAssigneesLoading] = useState(false);
   // Multi-step batch assign: which steps to hand over now + per-mentee status.
   const [selectedSteps, setSelectedSteps] = useState<Set<number>>(new Set());
+  const [viewSteps, setViewSteps] = useState(false);
+  // Per-step, per-mentee customizations made at assign time, keyed by stepId.
+  const [stepOverrides, setStepOverrides] = useState<Record<string, any>>({}); // eslint-disable-line @typescript-eslint/no-explicit-any
+  const [customizeStep, setCustomizeStep] = useState<{ step: any; index: number } | null>(null); // eslint-disable-line @typescript-eslint/no-explicit-any
   const [stepStatus, setStepStatus] = useState<{ index: number; stepId: string; title: string; status: string | null }[]>([]);
   const [stepsLoading, setStepsLoading] = useState(false);
   const [activeCount, setActiveCount] = useState(0);
@@ -112,6 +118,7 @@ export function AssignTaskDrawer({
   // double-giving steps, and see how many are already active. Single mode only.
   useEffect(() => {
     setSelectedSteps(new Set());
+    setStepOverrides({});
     if (source !== 'roadmap' || !roadmapId) { setStepStatus([]); setActiveCount(0); return; }
     let active = true;
     if (mode === 'single' && mentee) {
@@ -184,7 +191,7 @@ export function AssignTaskDrawer({
 
       // ── Assign from a roadmap ────────────────────────────────────────────
       if (source === 'roadmap') {
-        const res: any = await mentorApi.assignRoadmap(roadmapId, { menteeIds: targetIds, stepIndexes: [...selectedSteps], dueDate: dueExact || undefined });
+        const res: any = await mentorApi.assignRoadmap(roadmapId, { menteeIds: targetIds, stepIndexes: [...selectedSteps], dueDate: dueExact || undefined, stepOverrides: Object.keys(stepOverrides).length ? stepOverrides : undefined });
         const assigned = res?.data?.assigned ?? targetIds.length;
         const failed = res?.data?.failed ?? 0;
         if (assigned === 0) {
@@ -412,9 +419,13 @@ export function AssignTaskDrawer({
                       <div>
                         <div className="flex items-center justify-between mb-1.5">
                           <span className="block text-sm font-medium text-slate-700">Steps to assign <span className="text-red-500">*</span></span>
-                          {mode === 'single' && activeCount > 0 && (
-                            <span className="text-xs text-amber-600">{mentee?.name?.split(' ')[0] ?? 'They'} has {activeCount} active task{activeCount === 1 ? '' : 's'}</span>
-                          )}
+                          <div className="flex items-center gap-3">
+                            {mode === 'single' && activeCount > 0 && (
+                              <span className="text-xs text-amber-600">{mentee?.name?.split(' ')[0] ?? 'They'} has {activeCount} active task{activeCount === 1 ? '' : 's'}</span>
+                            )}
+                            <button type="button" onClick={() => setViewSteps(true)}
+                              className="text-xs font-medium text-brand-600 hover:text-brand-700 inline-flex items-center gap-1 shrink-0"><Eye className="w-3.5 h-3.5" />View details</button>
+                          </div>
                         </div>
                         <div className="max-h-56 overflow-y-auto rounded-xl border border-slate-200 divide-y divide-slate-100 dark:divide-slate-700 dark:border-slate-700">
                           {stepsLoading ? (
@@ -428,8 +439,12 @@ export function AssignTaskDrawer({
                                 <input type="checkbox" disabled={isActive} checked={checked} onChange={() => toggleStep(s.index)}
                                   className="w-4 h-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500" />
                                 <span className="flex-1 truncate text-slate-700">{s.index + 1}. {s.title}</span>
+                                {!!stepOverrides[s.stepId] && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 shrink-0">customized</span>}
                                 {isActive && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-sky-100 text-sky-700 shrink-0">assigned</span>}
                                 {isDone && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 shrink-0">done</span>}
+                                <button type="button" title="View / customize step"
+                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); setCustomizeStep({ step: selectedRoadmap.steps[s.index], index: s.index }); }}
+                                  className="p-1 rounded-md text-slate-400 hover:text-brand-600 hover:bg-slate-100 shrink-0"><Eye className="w-3.5 h-3.5" /></button>
                               </label>
                             );
                           })}
@@ -504,6 +519,22 @@ export function AssignTaskDrawer({
           </>
         )}
       </div>
+      {viewSteps && selectedRoadmap && <RoadmapStepsDrawer roadmap={selectedRoadmap} onClose={() => setViewSteps(false)} />}
+      {customizeStep && (
+        <StepCustomizeModal
+          step={customizeStep.step}
+          index={customizeStep.index}
+          editable
+          menteeLabel={mode === 'single' ? (mentee?.name?.split(' ')[0]) : 'the selected mentees'}
+          initialOverride={stepOverrides[customizeStep.step.id] || null}
+          onClose={() => setCustomizeStep(null)}
+          onSave={(ov) => setStepOverrides((prev) => {
+            const next = { ...prev };
+            if (ov) next[customizeStep.step.id] = ov; else delete next[customizeStep.step.id];
+            return next;
+          })}
+        />
+      )}
     </div>
   );
 }

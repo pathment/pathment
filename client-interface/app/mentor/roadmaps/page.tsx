@@ -12,6 +12,7 @@ import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { Drawer } from '@/components/shared/Drawer';
 import { RoadmapEditorDrawer } from '@/components/mentor/RoadmapEditorDrawer';
 import { RoadmapStepsDrawer } from '@/components/mentor/RoadmapStepsDrawer';
+import { StepCustomizeModal } from '@/components/mentor/StepCustomizeModal';
 
 // Deadline quick-picks for assignment. `null` days = "Default" (use each step's
 // own timing). Shared shape with the custom-task drawer for consistency.
@@ -28,6 +29,10 @@ function AssignDrawer({ roadmap, onClose, onAssigned }: { roadmap: LinearRoadmap
   const [dueDate, setDueDate] = useState('');
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
+  const [viewSteps, setViewSteps] = useState(false);
+  const [customizing, setCustomizing] = useState(false);
+  // Per-step customizations (keyed by stepId) applied to the steps assigned now.
+  const [stepOverrides, setStepOverrides] = useState<Record<string, any>>({}); // eslint-disable-line @typescript-eslint/no-explicit-any
 
   const toggle = (id: string) => setSelected((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
@@ -46,7 +51,7 @@ function AssignDrawer({ roadmap, onClose, onAssigned }: { roadmap: LinearRoadmap
     try {
       setSaving(true);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const res: any = await mentorApi.assignRoadmap(roadmap.id, { menteeIds: [...selected], startStep, dueDate: dueDate || undefined });
+      const res: any = await mentorApi.assignRoadmap(roadmap.id, { menteeIds: [...selected], startStep, dueDate: dueDate || undefined, stepOverrides: Object.keys(stepOverrides).length ? stepOverrides : undefined });
       const assigned = res?.data?.assigned ?? selected.size;
       const failed = res?.data?.failed ?? 0;
       if (assigned === 0) {
@@ -78,12 +83,26 @@ function AssignDrawer({ roadmap, onClose, onAssigned }: { roadmap: LinearRoadmap
         </div>
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Start at step</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-sm font-medium text-slate-700">Start at step</label>
+              {roadmap.steps.length > 0 && (
+                <button type="button" onClick={() => setViewSteps(true)}
+                  className="text-xs font-medium text-brand-600 hover:text-brand-700 inline-flex items-center gap-1"><Eye className="w-3.5 h-3.5" />View step details</button>
+              )}
+            </div>
             <select value={startStep} onChange={(e) => setStartStep(Number(e.target.value))}
               className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500">
               {roadmap.steps.map((s, i) => <option key={s.id} value={i}>{i + 1}. {s.title}</option>)}
             </select>
-            <p className="text-xs text-slate-400 mt-1">Skip steps they already know.</p>
+            <div className="flex items-center justify-between mt-1">
+              <p className="text-xs text-slate-400">Skip steps they already know.</p>
+              {roadmap.steps[startStep] && (
+                <button type="button" onClick={() => setCustomizing(true)}
+                  className="text-xs font-medium text-brand-600 hover:text-brand-700 inline-flex items-center gap-1">
+                  <Pencil className="w-3 h-3" />{stepOverrides[roadmap.steps[startStep].id] ? 'Customized' : 'Customize this step'}
+                </button>
+              )}
+            </div>
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1.5">Deadline <span className="text-slate-400 font-normal">(optional)</span></label>
@@ -151,6 +170,23 @@ function AssignDrawer({ roadmap, onClose, onAssigned }: { roadmap: LinearRoadmap
           </button>
         </div>
       </div>
+      {viewSteps && <RoadmapStepsDrawer roadmap={roadmap} onClose={() => setViewSteps(false)} />}
+      {customizing && roadmap.steps[startStep] && (
+        <StepCustomizeModal
+          step={roadmap.steps[startStep]}
+          index={startStep}
+          editable
+          menteeLabel={selected.size === 1 ? 'this mentee' : 'the selected mentees'}
+          initialOverride={stepOverrides[roadmap.steps[startStep].id] || null}
+          onClose={() => setCustomizing(false)}
+          onSave={(ov) => setStepOverrides((prev) => {
+            const next = { ...prev };
+            const id = roadmap.steps[startStep].id;
+            if (ov) next[id] = ov; else delete next[id];
+            return next;
+          })}
+        />
+      )}
     </div>
   );
 }
@@ -249,11 +285,20 @@ function RoadmapCard({ r, action }: { r: LinearRoadmap; action: React.ReactNode 
         </div>
       )}
       {r.steps.length > 0 && (
-        <ol className="mt-3 space-y-1 border-t border-slate-100 pt-3">
+        <ol className="mt-3 space-y-0.5 border-t border-slate-100 pt-3">
           {r.steps.slice(0, 4).map((s, i) => (
-            <li key={s.id} className="text-xs text-slate-500 truncate">{i + 1}. {s.title}</li>
+            <li key={s.id}>
+              <button onClick={() => setViewing(true)} title="View step details"
+                className="w-full text-left text-xs text-slate-500 hover:text-brand-600 hover:underline truncate py-0.5">
+                {i + 1}. {s.title}
+              </button>
+            </li>
           ))}
-          {r.steps.length > 4 && <li className="text-xs text-slate-400">+{r.steps.length - 4} more</li>}
+          <li>
+            <button onClick={() => setViewing(true)} className="text-xs text-brand-600 hover:text-brand-700 hover:underline py-0.5">
+              {r.steps.length > 4 ? `+${r.steps.length - 4} more — view all step details` : 'View step details'}
+            </button>
+          </li>
         </ol>
       )}
     </div>

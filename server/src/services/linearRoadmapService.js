@@ -18,6 +18,27 @@ const { endOfDayInZone } = require('../utils/timezone');
 
 const ACTIVE_ENROLLMENT_STATUSES = ['active', 'matched', 'approved', 'pending_completion', 'level_completed'];
 
+// Per-mentee task override fields a mentor can set when assigning a step, so the
+// task is tailored for that mentee without touching the shared roadmap step.
+const OVERRIDE_FIELDS = ['titleOverride', 'descriptionOverride', 'deliverableOverride', 'acceptanceCriteriaOverride', 'resourcesOverride', 'mentorNote'];
+
+/** Normalize a raw override object → only known fields, '' / [] → null. Returns
+ *  null when nothing meaningful is set (so we never write an empty override). */
+function sanitizeOverride(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const out = {};
+  let any = false;
+  for (const f of OVERRIDE_FIELDS) {
+    if (f in raw) {
+      const v = raw[f];
+      const val = (v === '' || v == null || (Array.isArray(v) && !v.length)) ? null : v;
+      out[f] = val;
+      if (val != null) any = true;
+    }
+  }
+  return any ? out : null;
+}
+
 class LinearRoadmapService {
   /**
    * AI-draft a roadmap's steps from the brief the author already typed (name,
@@ -451,7 +472,8 @@ class LinearRoadmapService {
       || null;
   }
 
-  async _assignStep(step, menteeId, mentorId, enrollmentId, dueOverride = null) {
+  async _assignStep(step, menteeId, mentorId, enrollmentId, dueOverride = null, override = null) {
+    const ov = sanitizeOverride(override);
     const existing = await models.AssignedTask.findOne({ where: { roadmapTaskId: step.id, menteeId } });
     if (existing) {
       // A cancelled assignment shouldn't block reassigning the step — reactivate
@@ -466,6 +488,8 @@ class LinearRoadmapService {
         existing.submittedAt = null;
         existing.completedAt = null;
         if (dueOverride) { const d = new Date(dueOverride); if (!Number.isNaN(d.getTime())) existing.dueDate = d; }
+        // Apply any fresh per-mentee customization supplied on reassign.
+        if (ov) for (const [k, v] of Object.entries(ov)) existing[k] = v;
         await existing.save();
       }
       return existing;
@@ -490,7 +514,8 @@ class LinearRoadmapService {
       status: 'assigned',
       assignedAt: new Date(),
       dueDate: due,
-      isCustomTask: false
+      isCustomTask: false,
+      ...(ov || {})
     });
 
     // Notify the mentee (roadmap-assigned tasks notify just like custom ones).
@@ -529,7 +554,7 @@ class LinearRoadmapService {
    * batch. With no `dueDate` each step uses its own dueOffsetDays (per-step due);
    * a `dueDate` applies one shared deadline to the whole batch.
    */
-  async assignToMentee(mentorId, roadmapId, menteeId, startStep = 0, slot = null, dueDate = null, stepIndexes = null) {
+  async assignToMentee(mentorId, roadmapId, menteeId, startStep = 0, slot = null, dueDate = null, stepIndexes = null, stepOverrides = null) {
     const roadmap = await models.Roadmap.findByPk(roadmapId);
     const steps = await this.getSteps(roadmapId);
     if (!steps.length) throw new ValidationError('This roadmap has no steps to assign');
@@ -585,8 +610,10 @@ class LinearRoadmapService {
     }).then(async (progress) => {
       // Assign each step in the batch (outside the txn is fine; idempotent — an
       // already-assigned step returns its existing task, never a duplicate).
+      const overridesById = stepOverrides && typeof stepOverrides === 'object' ? stepOverrides : null;
       for (const i of indexes) {
-        await this._assignStep(steps[i], menteeId, mentorId, enrollment.id, resolvedDue);
+        const ov = overridesById ? overridesById[steps[i].id] : null;
+        await this._assignStep(steps[i], menteeId, mentorId, enrollment.id, resolvedDue, ov);
       }
       return progress;
     });
@@ -767,11 +794,11 @@ class LinearRoadmapService {
     return this.assignToMentee(mentorId, headId, menteeId, Math.max(0, Number(startStep) || 0), slotId);
   }
 
-  async bulkAssign(mentorId, roadmapId, menteeIds = [], startStep = 0, dueDate = null, stepIndexes = null) {
+  async bulkAssign(mentorId, roadmapId, menteeIds = [], startStep = 0, dueDate = null, stepIndexes = null, stepOverrides = null) {
     const results = [];
     for (const menteeId of menteeIds) {
       try {
-        await this.assignToMentee(mentorId, roadmapId, menteeId, startStep, null, dueDate, stepIndexes);
+        await this.assignToMentee(mentorId, roadmapId, menteeId, startStep, null, dueDate, stepIndexes, stepOverrides);
         results.push({ menteeId, ok: true });
       } catch (error) {
         results.push({ menteeId, ok: false, error: error.message });

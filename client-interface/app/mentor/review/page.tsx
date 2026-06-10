@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import {
   ChevronLeft, ChevronRight, SkipForward, Check, Loader2,
   TrendingUp, TrendingDown, Minus, Flag, Clock, ClipboardCheck, Keyboard, CheckCircle2, ArrowUpRight, Send, Plus, ListTodo, CalendarClock,
-  Trash2, X, History, RotateCcw, CalendarDays, AlertTriangle,
+  Trash2, X, History, RotateCcw, CalendarDays, AlertTriangle, StickyNote,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useMentorCohort, useMentorApprovals, type CohortMentee, type CohortMomentum, type CohortRisk, type ApprovalItem } from '@/lib/hooks/mentor';
@@ -21,6 +21,7 @@ import { AISummaryPanel } from '@/components/mentor/AISummaryPanel';
 import { NudgeButton } from '@/components/mentor/NudgeButton';
 import { ReviewDrawer } from '@/components/mentor/ReviewDrawer';
 import { AssignTaskDrawer } from '@/components/mentor/AssignTaskDrawer';
+import { MenteeTaskDrawer } from '@/components/mentor/MenteeTaskDrawer';
 import { Drawer } from '@/components/shared/Drawer';
 
 type Attendance = 'present' | 'absent' | 'excused';
@@ -225,6 +226,8 @@ export default function CohortReview() {
     }
   }, [refetchQueue, user?.id, menteeId]);
 
+  // Click a task row → full detail + edit/note/reassign/unassign, in-context.
+  const [taskDetail, setTaskDetail] = useState<any>(null); // eslint-disable-line @typescript-eslint/no-explicit-any
   // Per-task inline controls in "Assigned work": change deadline / unassign.
   const [editingDue, setEditingDue] = useState<string | null>(null);
   const [dueVal, setDueVal] = useState('');
@@ -567,14 +570,18 @@ export default function CohortReview() {
                             return (
                               <div key={t.id} className="p-2.5 rounded-xl border border-slate-200">
                                 <div className="flex items-center gap-3">
-                                  <div className="min-w-0 flex-1">
-                                    <p className="text-sm text-slate-900 truncate">{t.roadmapTask?.title || t.title || 'Task'}</p>
+                                  <button type="button" onClick={() => setTaskDetail(t)} className="min-w-0 flex-1 text-left group">
+                                    <p className="text-sm text-slate-900 truncate group-hover:text-brand-600 group-hover:underline">
+                                      {t.roadmapTask?.title || t.title || 'Task'}
+                                      {t.hasOverrides && <span className="ml-1.5 align-middle text-[10px] font-medium text-amber-600">• customized</span>}
+                                    </p>
                                     <div className="flex items-center gap-2 text-xs text-slate-500">
                                       {t.roadmapTask?.type && <span className="capitalize">{t.roadmapTask.type}</span>}
                                       {due && <span className={overdue ? 'text-red-600 inline-flex items-center gap-1' : ''}>{overdue && <Clock className="w-3 h-3" />}due {due.toLocaleDateString()}</span>}
                                       {rating != null && <span className="inline-flex items-center gap-0.5 text-amber-600"><CheckCircle2 className="w-3 h-3" />{rating}★</span>}
+                                      {t.mentorNote && <span className="inline-flex items-center gap-0.5 text-amber-600"><StickyNote className="w-3 h-3" />note</span>}
                                     </div>
-                                  </div>
+                                  </button>
                                   <span className={`px-2 py-0.5 rounded-full text-xs font-medium shrink-0 ${meta.cls}`}>{meta.label}</span>
                                   {canManage && (
                                     <div className="flex items-center gap-0.5 shrink-0">
@@ -814,6 +821,8 @@ export default function CohortReview() {
       </Drawer>
 
       {reviewing && <ReviewDrawer item={reviewing} onClose={() => setReviewing(null)} onReviewed={refresh} />}
+
+      {taskDetail && <MenteeTaskDrawer task={taskDetail} onClose={() => setTaskDetail(null)} onChanged={refresh} />}
 
       {assigning && mentee && (
         <AssignTaskDrawer
