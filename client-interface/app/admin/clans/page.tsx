@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { Users2, Plus, X, Loader2, Trash2, UserPlus, Crown, GraduationCap, Search, ArrowRightLeft } from 'lucide-react';
 import { SelectMenu } from '@/components/shared/SelectMenu';
+import { TablePagination } from '@/components/shared/TablePagination';
 import { ReassignClanModal } from '@/components/admin/ReassignClanModal';
 import { useAdminClans, type Clan } from '@/lib/hooks/admin';
 import { clanApi } from '@/lib/services/clan-api';
@@ -233,15 +234,14 @@ function ClanDrawer({ clanId, mentors, mentees, onClose, onChanged }: {
 }
 
 function AdminClansInner() {
-  const { clans, loading, error, refetch } = useAdminClans();
+  // Server-side search + program filter + pagination (capped on the backend).
+  const { clans, loading, error, refetch, pagination, search, setSearch, programFilter, setProgramFilter } = useAdminClans();
   const searchParams = useSearchParams();
   const [programs, setPrograms] = useState<any[]>([]);
   const [mentors, setMentors] = useState<Person[]>([]);
   const [mentees, setMentees] = useState<Person[]>([]);
   const [creating, setCreating] = useState(false);
   const [openClan, setOpenClan] = useState<string | null>(null);
-  const [query, setQuery] = useState('');
-  const [programFilter, setProgramFilter] = useState('all');
 
   // Deep-link support: /admin/clans?clan=<id> opens that clan's drawer.
   useEffect(() => {
@@ -255,32 +255,19 @@ function AdminClansInner() {
     menteeApi.getAll().then((r: any) => setMentees(r?.data?.mentees ?? [])).catch(() => {});
   }, []);
 
-  const counts = (c: Clan) => {
-    const ms = c.memberships ?? [];
-    return {
-      mentees: ms.filter((m) => m.role === 'mentee').length,
-      mentors: ms.filter((m) => m.role.includes('mentor')).length,
-    };
-  };
+  // Active-member counts come from the paginated endpoint (falls back to any
+  // loaded memberships, e.g. when opened via the drawer).
+  const counts = (c: Clan) => ({
+    mentees: c.menteeCount ?? (c.memberships ?? []).filter((m) => m.role === 'mentee').length,
+    mentors: c.mentorCount ?? (c.memberships ?? []).filter((m) => m.role.includes('mentor')).length,
+  });
 
-  // Distinct programs present in the clan list (for the program filter).
-  const programOptions = useMemo(() => {
-    const seen = new Map<string, string>();
-    for (const c of clans) if (c.program?.id) seen.set(c.program.id, c.program.name || 'Program');
-    return [{ value: 'all', label: 'All programs' }, ...[...seen].map(([value, label]) => ({ value, label }))];
-  }, [clans]);
-
-  // Client-side search across name, program, lead mentor and tags + program filter.
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return clans.filter((c) => {
-      if (programFilter !== 'all' && c.program?.id !== programFilter) return false;
-      if (!q) return true;
-      const lead = c.leadMentor ? `${c.leadMentor.firstName} ${c.leadMentor.lastName}` : '';
-      const hay = [c.name, c.program?.name, lead, ...(c.tags ?? [])].filter(Boolean).join(' ').toLowerCase();
-      return hay.includes(q);
-    });
-  }, [clans, query, programFilter]);
+  // Program filter options from the full program list (not just loaded clans).
+  const programOptions = useMemo(
+    () => [{ value: '', label: 'All programs' }, ...programs.map((p: any) => ({ value: p.id, label: p.name }))],
+    [programs]
+  );
+  const hasFilters = !!search.trim() || !!programFilter;
 
   return (
     <div className="space-y-6">
@@ -294,17 +281,12 @@ function AdminClansInner() {
         </button>
       </div>
 
-      {loading ? (
+      {loading && clans.length === 0 ? (
         <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-brand-600" /></div>
       ) : error ? (
         <div className="bg-card rounded-2xl border border-slate-200 py-16 text-center">
           <p className="text-slate-600 mb-3">{error}</p>
           <button onClick={refetch} className="text-brand-600 hover:text-brand-700 text-sm font-medium">Try again</button>
-        </div>
-      ) : clans.length === 0 ? (
-        <div className="bg-card rounded-2xl border border-slate-200 py-16 text-center">
-          <Users2 className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-          <p className="text-slate-600">No clans yet - create one to start grouping mentees under mentors.</p>
         </div>
       ) : (
         <>
@@ -313,29 +295,38 @@ function AdminClansInner() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
               <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search clans by name, program, lead mentor, or tag…"
                 className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-xl text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500"
               />
             </div>
-            {programOptions.length > 2 && (
+            {programOptions.length > 1 && (
               <div className="sm:w-64">
-                <SelectMenu value={programFilter} onChange={setProgramFilter} options={programOptions} ariaLabel="Filter by program" />
+                <SelectMenu value={programFilter} onChange={setProgramFilter} options={programOptions} placeholder="All programs" ariaLabel="Filter by program" />
               </div>
             )}
-            <span className="text-xs text-slate-500 shrink-0 tabular-nums">{filtered.length} of {clans.length}</span>
+            <span className="text-xs text-slate-500 shrink-0 tabular-nums">{pagination.total} clan{pagination.total === 1 ? '' : 's'}</span>
           </div>
 
-          {filtered.length === 0 ? (
+          {clans.length === 0 ? (
             <div className="bg-card rounded-2xl border border-slate-200 py-16 text-center">
-              <Search className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-              <p className="text-slate-600">No clans match your search.</p>
-              <button onClick={() => { setQuery(''); setProgramFilter('all'); }} className="text-brand-600 hover:text-brand-700 text-sm font-medium mt-2">Clear filters</button>
+              {hasFilters ? (
+                <>
+                  <Search className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                  <p className="text-slate-600">No clans match your search.</p>
+                  <button onClick={() => { setSearch(''); setProgramFilter(''); }} className="text-brand-600 hover:text-brand-700 text-sm font-medium mt-2">Clear filters</button>
+                </>
+              ) : (
+                <>
+                  <Users2 className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                  <p className="text-slate-600">No clans yet - create one to start grouping mentees under mentors.</p>
+                </>
+              )}
             </div>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {filtered.map((c) => {
+              {clans.map((c) => {
             const n = counts(c);
             return (
               <button key={c.id} onClick={() => setOpenClan(c.id)}
@@ -361,6 +352,10 @@ function AdminClansInner() {
             );
               })}
             </div>
+          )}
+
+          {pagination.total > pagination.limit && (
+            <TablePagination pagination={pagination} isLoading={loading} className="pt-1" />
           )}
         </>
       )}

@@ -2,8 +2,10 @@ import { apiClient } from './api-client';
 
 /** Clans - mentor-led groups inside a program (admin management + assignment). */
 export const clanApi = {
-  list: (programId?: string, status?: string) =>
-    apiClient.get('/clans', { params: { programId, status } }),
+  /** No page/limit → full program-scoped list (for pickers/dropdowns).
+   *  Pass page/limit for the server-paginated admin list ({ clans, total, … }). */
+  list: (params: { programId?: string; status?: string; search?: string; page?: number; limit?: number } = {}) =>
+    apiClient.get('/clans', { params }),
   /** Org-wide clan-health snapshot grouped by program (admin dashboard). */
   health: () => apiClient.get('/clans/health'),
   /** Org insights - clan comparison + fairness lens (admin /admin/insights). */

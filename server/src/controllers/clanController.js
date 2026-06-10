@@ -28,13 +28,22 @@ const clanInsights = catchAsync(async (req, res) => {
  * List clans (optionally filtered by program/status).
  */
 const listClans = catchAsync(async (req, res) => {
-  const { programId, status } = req.query;
+  const { programId, status, search, page, limit } = req.query;
   // A program_admin sees only their programs' clans (org admins: all).
   const programScope = await authzService.adminProgramScope(req.user, {
     assignments: req.loadAssignments ? await req.loadAssignments() : undefined
   });
-  const filters = { programId, status };
+  const filters = { programId, status, search };
   if (Array.isArray(programScope) && programScope.length) filters.programIds = programScope;
+
+  // Paginated when the caller asks for a page/limit; otherwise the full
+  // (program-scoped, runaway-guarded) list for dropdowns/pickers.
+  if (page !== undefined || limit !== undefined) {
+    filters.page = page;
+    filters.limit = limit ?? 20;
+    const result = await clanService.listClans(filters);
+    return res.status(200).json(successResponse('Clans retrieved', result));
+  }
   const clans = await clanService.listClans(filters);
   res.status(200).json(successResponse('Clans retrieved', { clans }));
 });

@@ -3,6 +3,8 @@ const router = express.Router();
 const clanController = require('../controllers/clanController');
 const { authenticate, authorize } = require('../middlewares/auth');
 const { requirePermission, requirePermissionMinScope, scope } = require('../middlewares/authz');
+const { validateQuery } = require('../middlewares/validate');
+const clanSchemas = require('../validations/clanValidation');
 const { PERMISSIONS } = require('../config/permissions');
 
 // Current user's clan memberships (any authenticated role).
@@ -11,8 +13,9 @@ router.get('/me/memberships', authenticate, clanController.myMemberships);
 // Programs the current mentor runs (their clans + roster counts).
 router.get('/mentor/programs', authenticate, authorize(['mentor', 'admin']), clanController.mentorPrograms);
 
-// List clans (any authenticated user; filterable by program/status).
-router.get('/', authenticate, clanController.listClans);
+// List clans (any authenticated user; filterable by program/status/search,
+// paginated when page/limit are supplied — limit is hard-capped at 100).
+router.get('/', authenticate, validateQuery(clanSchemas.listQuery), clanController.listClans);
 
 // Org-wide clan-health snapshot + insights (analytics consumers).
 router.get('/health', authenticate, requirePermissionMinScope(PERMISSIONS.ANALYTICS_VIEW), clanController.clanHealth);

@@ -30,7 +30,7 @@ class ClanService {
     return user;
   }
 
-  async listClans({ programId, programIds, status, userId } = {}) {
+  async listClans({ programId, programIds, status, userId, search, page, limit } = {}) {
     const { Op } = require('sequelize');
     const where = {};
     if (Array.isArray(programIds)) {
@@ -41,22 +41,73 @@ class ClanService {
     }
     if (status) where.status = status;
 
+    // Full-text-ish search across name, tags, program name and lead-mentor name.
+    const term = (search || '').trim();
+    if (term) {
+      const like = `%${term}%`;
+      where[Op.or] = [
+        { name: { [Op.iLike]: like } },
+        sequelize.where(sequelize.fn('array_to_string', sequelize.col('Clan.tags'), ' '), { [Op.iLike]: like }),
+        sequelize.where(sequelize.col('program.name'), { [Op.iLike]: like }),
+        sequelize.where(
+          sequelize.fn('concat', sequelize.col('leadMentor.first_name'), ' ', sequelize.col('leadMentor.last_name')),
+          { [Op.iLike]: like }
+        )
+      ];
+    }
+
+    const baseInclude = [
+      { model: models.Program, as: 'program', attributes: ['id', 'name', 'status'] },
+      { model: models.User, as: 'leadMentor', attributes: ['id', 'firstName', 'lastName', 'profilePictureUrl'] }
+    ];
+
+    // ── Paginated mode (admin list): capped page + grouped member counts ──────
+    if (limit != null) {
+      const parsedLimit = Math.min(100, Math.max(1, Number(limit) || 20));
+      const parsedPage = Math.max(1, Number(page) || 1);
+      const { rows, count } = await models.Clan.findAndCountAll({
+        where,
+        include: baseInclude, // belongsTo only → safe with limit, no row multiplication
+        order: [['createdAt', 'DESC']],
+        limit: parsedLimit,
+        offset: (parsedPage - 1) * parsedLimit,
+        distinct: true,
+        subQuery: false // so the search can reference joined program/leadMentor columns
+      });
+
+      // One grouped query for this page's member counts (avoids hasMany + limit).
+      const ids = rows.map((c) => c.id);
+      const countsByClan = {};
+      if (ids.length) {
+        const grouped = await models.ClanMembership.findAll({
+          where: { clanId: { [Op.in]: ids }, status: 'active' },
+          attributes: ['clanId', 'role', [sequelize.fn('COUNT', sequelize.col('id')), 'n']],
+          group: ['clanId', 'role'],
+          raw: true
+        });
+        for (const g of grouped) {
+          const c = (countsByClan[g.clanId] ||= { menteeCount: 0, mentorCount: 0 });
+          if (g.role === 'mentee') c.menteeCount += Number(g.n);
+          else if (String(g.role).includes('mentor') || g.role === 'core_team') c.mentorCount += Number(g.n);
+        }
+      }
+      const clans = rows.map((c) => {
+        const json = c.toJSON();
+        json.menteeCount = countsByClan[c.id]?.menteeCount || 0;
+        json.mentorCount = countsByClan[c.id]?.mentorCount || 0;
+        return json;
+      });
+      return { clans, total: count, page: parsedPage, limit: parsedLimit };
+    }
+
+    // ── Unpaginated mode (dropdowns/pickers): lean + a hard runaway guard ─────
     const clans = await models.Clan.findAll({
       where,
-      include: [
-        { model: models.Program, as: 'program', attributes: ['id', 'name', 'status'] },
-        { model: models.User, as: 'leadMentor', attributes: ['id', 'firstName', 'lastName', 'profilePictureUrl'] },
-        {
-          model: models.ClanMembership,
-          as: 'memberships',
-          required: false,
-          where: { status: 'active' },
-          attributes: ['id', 'userId', 'role', 'status']
-        }
-      ],
-      order: [['createdAt', 'DESC']]
+      include: baseInclude,
+      order: [['createdAt', 'DESC']],
+      subQuery: false,
+      limit: 1000
     });
-
     return clans;
   }
 
