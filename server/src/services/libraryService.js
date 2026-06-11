@@ -1,5 +1,6 @@
 const { models } = require('../db');
 const { NotFoundError, ValidationError } = require('../utils/errors/errorTypes');
+const { sanitizeRichText } = require('../utils/sanitizeHtml');
 
 const CATEGORIES = ['guidance', 'reading', 'template', 'policy'];
 
@@ -30,7 +31,10 @@ class LibraryService {
   async get(id) {
     const d = await models.Document.findByPk(id);
     if (!d) throw new NotFoundError('Document not found');
-    return { ...this._meta(d), content: d.content || '' };
+    // Sanitize on read too: content written before sanitization shipped (or via any
+    // path that bypassed _clean) is neutralized before it can reach the client's
+    // dangerouslySetInnerHTML. Idempotent for already-clean rows.
+    return { ...this._meta(d), content: sanitizeRichText(d.content) || '' };
   }
 
   _clean(data) {
@@ -38,7 +42,7 @@ class LibraryService {
     if (data.title !== undefined) patch.title = String(data.title).trim();
     if (data.category !== undefined) patch.category = CATEGORIES.includes(data.category) ? data.category : 'guidance';
     if (data.summary !== undefined) patch.summary = data.summary || null;
-    if (data.content !== undefined) patch.content = data.content || null;
+    if (data.content !== undefined) patch.content = sanitizeRichText(data.content);
     if (data.url !== undefined) patch.url = data.url || null;
     if (data.readMins !== undefined) patch.readMins = data.readMins ? Number(data.readMins) : null;
     return patch;

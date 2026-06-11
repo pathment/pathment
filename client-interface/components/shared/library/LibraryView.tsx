@@ -11,6 +11,16 @@ import { libraryApi } from '@/lib/services/library-api';
 import { Drawer } from '@/components/shared/Drawer';
 import RichTextEditor from '@/components/shared/RichTextEditor';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
+import DOMPurify from 'isomorphic-dompurify';
+
+// Library content is authored as rich-text HTML and rendered via dangerouslySetInnerHTML.
+// The server already sanitizes on write + read; this is defense-in-depth at the render
+// sink so unsafe markup can never execute even if it somehow reaches the client.
+const RICH_TEXT_ALLOWED_TAGS = [
+  'p', 'br', 'hr', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+  'strong', 'b', 'em', 'i', 's', 'strike', 'u', 'code', 'pre', 'blockquote',
+  'ul', 'ol', 'li', 'a',
+];
 
 const CATEGORIES = ['guidance', 'reading', 'template', 'policy'] as const;
 const CAT_META: Record<string, { icon: typeof BookOpen; cls: string; label: string }> = {
@@ -185,6 +195,13 @@ function ReaderDrawer({ docId, canCurate, onClose, onEdit }: { docId: string; ca
 
   const meta = doc ? (CAT_META[doc.category] || CAT_META.guidance) : CAT_META.guidance;
   const showFooter = Boolean(doc && (doc.url || canCurate));
+  const content = doc?.content;
+  const safeContent = useMemo(
+    () => (content
+      ? DOMPurify.sanitize(content, { ALLOWED_TAGS: RICH_TEXT_ALLOWED_TAGS, ALLOWED_ATTR: ['href', 'title', 'class', 'target', 'rel'] })
+      : ''),
+    [content]
+  );
 
   return (
     <Drawer open onClose={onClose} title={doc?.title || 'Resource'} subtitle={doc ? meta.label : undefined} width="lg"
@@ -215,7 +232,7 @@ function ReaderDrawer({ docId, canCurate, onClose, onEdit }: { docId: string; ca
           </div>
           {doc.summary && <p className="text-slate-600 mb-4 pb-4 border-b border-slate-100">{doc.summary}</p>}
           {doc.content
-            ? <div className="rich-content" dangerouslySetInnerHTML={{ __html: doc.content }} />
+            ? <div className="rich-content" dangerouslySetInnerHTML={{ __html: safeContent }} />
             : <p className="text-slate-500">This is a link-only resource. Use &ldquo;Open original&rdquo; below.</p>}
         </div>
       )}
