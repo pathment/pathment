@@ -258,20 +258,27 @@ function RoadmapCard({ r, action }: { r: LinearRoadmap; action: React.ReactNode 
   const [viewing, setViewing] = useState(false);
   return (
     <div className="bg-card rounded-2xl border border-slate-200 p-5">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
+      {/* Title gets its own full-width row so it never gets squeezed by the
+          action buttons; the actions sit in a wrapping row below (responsive). */}
+      <div className="min-w-0">
+        <div className="flex items-center gap-2 min-w-0">
           <h3 className="font-medium text-slate-900 truncate">{r.name}</h3>
-          <p className="text-xs text-slate-500 mt-0.5">{r.steps.length} step{r.steps.length === 1 ? '' : 's'}</p>
-        </div>
-        <div className="flex items-center gap-1.5 shrink-0">
-          {r.steps.length > 0 && (
-            <button onClick={() => setViewing(true)} title="View steps"
-              className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:text-brand-600 hover:border-brand-300"><Eye className="w-3.5 h-3.5" /></button>
+          {r.isOwner === false && (
+            <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-slate-100 text-slate-500 text-[10px] font-medium px-1.5 py-0.5" title="Owned by a clan teammate — you can assign it">
+              <Users className="w-2.5 h-2.5" />Shared
+            </span>
           )}
-          <button onClick={() => downloadRoadmapJson(r)} title="Export as JSON"
-            className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:text-brand-600 hover:border-brand-300"><FileJson className="w-3.5 h-3.5" /></button>
-          {action}
         </div>
+        <p className="text-xs text-slate-500 mt-0.5">{r.steps.length} step{r.steps.length === 1 ? '' : 's'}</p>
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5 mt-3">
+        {r.steps.length > 0 && (
+          <button onClick={() => setViewing(true)} title="View steps"
+            className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:text-brand-600 hover:border-brand-300"><Eye className="w-3.5 h-3.5" /></button>
+        )}
+        <button onClick={() => downloadRoadmapJson(r)} title="Export as JSON"
+          className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:text-brand-600 hover:border-brand-300"><FileJson className="w-3.5 h-3.5" /></button>
+        {action}
       </div>
       {viewing && <RoadmapStepsDrawer roadmap={r} onClose={() => setViewing(false)} />}
       {r.description && <p className="text-sm text-slate-500 mt-2 line-clamp-2">{r.description}</p>}
@@ -366,15 +373,21 @@ export default function MentorRoadmaps() {
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 {local.map((r) => (
                   <RoadmapCard key={r.id} r={r} action={
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <button onClick={() => setEditing(r)} title="Edit this roadmap"
-                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 text-xs font-medium hover:border-brand-300">
-                        <Pencil className="w-3.5 h-3.5" />Edit
-                      </button>
-                      <button onClick={() => setChaining(r)} title="Set what comes next"
-                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 text-xs font-medium hover:border-brand-300">
-                        <GitBranch className="w-3.5 h-3.5" />Next
-                      </button>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {/* Edit/Next are owner-only; a shared (teammate's) roadmap
+                          can still be assigned by the whole clan team. */}
+                      {r.isOwner !== false && (
+                        <>
+                          <button onClick={() => setEditing(r)} title="Edit this roadmap"
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 text-xs font-medium hover:border-brand-300">
+                            <Pencil className="w-3.5 h-3.5" />Edit
+                          </button>
+                          <button onClick={() => setChaining(r)} title="Set what comes next"
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 text-xs font-medium hover:border-brand-300">
+                            <GitBranch className="w-3.5 h-3.5" />Next
+                          </button>
+                        </>
+                      )}
                       <button onClick={() => setAssigning(r)}
                         className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-brand-50 text-brand-700 text-xs font-medium hover:bg-brand-100">
                         <Users className="w-3.5 h-3.5" />Assign

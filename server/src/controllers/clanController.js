@@ -108,6 +108,29 @@ const removeMember = catchAsync(async (req, res) => {
 });
 
 /**
+ * GET /api/clans/:id/members/:userId/permissions  (admin / lead mentor)
+ * The toggle state for one co-mentor: the full key list + which are revoked.
+ */
+const getMemberPermissions = catchAsync(async (req, res) => {
+  const result = await clanService.getMemberPermissions(req.params.id, req.params.userId);
+  res.status(200).json(successResponse('Permissions retrieved', result));
+});
+
+/**
+ * PATCH /api/clans/:id/members/:userId/permissions  (admin / lead mentor)
+ * Fine-tune one co-mentor's permissions. Body: { denied: ['perm', …] } — the
+ * subset of the co-mentor defaults to revoke for this person (empty = full
+ * parity). Works for co-mentors from any source. Guarded by clan.manage_members,
+ * so co-mentors can't reach it.
+ */
+const setMemberPermissions = catchAsync(async (req, res) => {
+  const result = await clanService.setMemberPermissions(
+    req.params.id, req.params.userId, req.body.denied, req.user.id
+  );
+  res.status(200).json(successResponse('Permissions updated', result));
+});
+
+/**
  * GET /api/clans/:id/available  (admin / lead mentor of the clan)
  * Mentees not in any active clan, that the lead can pull into theirs.
  */
@@ -196,6 +219,8 @@ module.exports = {
   updateClan,
   addMember,
   removeMember,
+  getMemberPermissions,
+  setMemberPermissions,
   availableMembers,
   candidates,
   reassignClan,

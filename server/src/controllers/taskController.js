@@ -1,4 +1,5 @@
 const taskService = require('../services/taskService');
+const authzService = require('../services/authzService');
 const { successResponse } = require('../utils/responses');
 const { catchAsync } = require('../middlewares/errorHandler');
 
@@ -41,12 +42,16 @@ exports.bulkCreateCustomTasks = catchAsync(async (req, res) => {
 exports.getMenteeTasks = catchAsync(async (req, res) => {
   const { menteeId } = req.params;
   const { status, enrollmentId, isCustomTask } = req.query;
-  
-  // Security: Mentees can only view their own tasks
-  if (req.user.role === 'mentee' && req.user.id !== menteeId) {
+
+  // Authorization (scoped, derived): the mentee themselves, an admin, the matched
+  // mentor, OR any lead/co-mentor of the mentee's clan. This is mentee-centric —
+  // it returns ALL of the mentee's work regardless of who assigned it, so a
+  // co-mentor sees the same picture as the lead (not just their own assignments).
+  const assignments = req.loadAssignments ? await req.loadAssignments() : undefined;
+  if (!(await authzService.canViewMentee(req.user, menteeId, { assignments }))) {
     return res.status(403).json({ success: false, message: 'Forbidden' });
   }
-  
+
   const tasks = await taskService.getMenteeTasks(menteeId, {
     status,
     enrollmentId,
@@ -90,15 +95,18 @@ exports.getTaskById = catchAsync(async (req, res) => {
   const { taskId } = req.params;
   
   const task = await taskService.getAssignedTaskById(taskId);
-  
-  // Security check
-  if (req.user.role === 'mentee' && task.menteeId !== req.user.id) {
+
+  // Ownership via scoped RBAC (replaces the legacy "you must be THE assigning
+  // mentor" check, which wrongly blocked co-mentors / cross-clan cover): the
+  // mentee sees their own task; anyone else must be able to view the task's
+  // mentee — admin, the matched mentor, or a lead/co-mentor of the mentee's clan
+  // who still holds mentee.view (respects a revoked co-mentor permission).
+  const assignments = req.loadAssignments ? await req.loadAssignments() : undefined;
+  const allowed = await authzService.canViewMentee(req.user, task.menteeId, { assignments });
+  if (!allowed) {
     return res.status(403).json({ success: false, message: 'Forbidden' });
   }
-  if (req.user.role === 'mentor' && task.mentorId !== req.user.id) {
-    return res.status(403).json({ success: false, message: 'Forbidden' });
-  }
-  
+
   res.status(200).json(successResponse('Task retrieved', { task }));
 });
 

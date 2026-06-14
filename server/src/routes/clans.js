@@ -35,6 +35,12 @@ router.patch('/:id', authenticate, requirePermission(PERMISSIONS.CLAN_MANAGE_MEM
 router.post('/:id/members', authenticate, requirePermission(PERMISSIONS.CLAN_MANAGE_MEMBERS, scope.clan('id')), clanController.addMember);
 router.delete('/:id/members/:userId', authenticate, requirePermission(PERMISSIONS.CLAN_MANAGE_MEMBERS, scope.clan('id')), clanController.removeMember);
 
+// Fine-tune one co-mentor's permissions (lead mentor of THIS clan, or an admin).
+// Co-mentors don't hold clan.manage_members, so they can't edit anyone's perms.
+// Works for co-mentors from any source (team membership / cover / IAM grant).
+router.get('/:id/members/:userId/permissions', authenticate, requirePermission(PERMISSIONS.CLAN_MANAGE_MEMBERS, scope.clan('id')), clanController.getMemberPermissions);
+router.patch('/:id/members/:userId/permissions', authenticate, requirePermission(PERMISSIONS.CLAN_MANAGE_MEMBERS, scope.clan('id')), clanController.setMemberPermissions);
+
 // Reassign a mentee to a different clan (cross-clan admin action). Program admins
 // may only move within programs they administer (enforced in the controller).
 router.post('/reassign', authenticate, requirePermissionMinScope(PERMISSIONS.CLAN_MANAGE_MEMBERS, 'program'), clanController.reassignClan);

@@ -4,6 +4,8 @@ const { NotFoundError, ForbiddenError, ValidationError } = require('../utils/err
 const notificationOrchestrator = require('./notificationOrchestrator');
 const { NOTIFICATION_EVENTS } = require('../config/notificationMatrix');
 const { endOfDayInZone } = require('../utils/timezone');
+const authzService = require('./authzService');
+const { PERMISSIONS } = require('../config/permissions');
 
 class SubmissionService {
   /**
@@ -217,8 +219,8 @@ class SubmissionService {
       throw new NotFoundError('Submission not found');
     }
 
-    if (submission.assignedTask.mentorId !== mentorId) {
-      throw new ForbiddenError('You are not the mentor for this task');
+    if (!(await authzService.canActOnTask(mentorId, submission.assignedTask, PERMISSIONS.TASK_REVIEW))) {
+      throw new ForbiddenError('You do not have permission to act on this task');
     }
 
     if (!submission.extensionRequested) {
@@ -302,8 +304,8 @@ class SubmissionService {
 
     const task = submission.assignedTask;
 
-    if (task.mentorId !== mentorId) {
-      throw new ForbiddenError('You are not the mentor for this task');
+    if (!(await authzService.canActOnTask(mentorId, task, PERMISSIONS.TASK_REVIEW))) {
+      throw new ForbiddenError('You do not have permission to review this submission');
     }
 
     if (submission.status !== 'pending' && submission.status !== 'reviewing') {
@@ -553,11 +555,11 @@ class SubmissionService {
       throw new NotFoundError('Task not found');
     }
 
-    // Check permissions
-    if (userRole === 'mentee' && task.menteeId !== userId) {
-      throw new ForbiddenError('Not authorized');
-    }
-    if (userRole === 'mentor' && task.mentorId !== userId) {
+    // Permissions (derived): the mentee sees their own task's submissions;
+    // anyone else must be able to view the task (lead/co-mentor of the clan,
+    // admin, or the assigning mentor).
+    const isOwnerMentee = task.menteeId === userId;
+    if (!isOwnerMentee && !(await authzService.canActOnTask(userId, task, [PERMISSIONS.MENTEE_VIEW, PERMISSIONS.TASK_REVIEW]))) {
       throw new ForbiddenError('Not authorized');
     }
 

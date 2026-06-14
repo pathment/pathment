@@ -26,6 +26,9 @@ export interface LinearRoadmap {
   skillTags: string[];
   programId: string;
   steps: RoadmapStep[];
+  /** Local roadmaps only: false when it belongs to a clan teammate (shared,
+   *  assignable but not editable by the viewer). Undefined for org roadmaps. */
+  isOwner?: boolean;
 }
 
 export interface UseMentorRoadmapsReturn {

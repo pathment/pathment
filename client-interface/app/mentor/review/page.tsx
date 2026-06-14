@@ -208,14 +208,14 @@ export default function CohortReview() {
     setFocus(0); setNote(''); setNoteSent(false); setBlockers([]); setTasks([]); setProfile(null);
     frictionApi.listBlockers(mentee.id, 'open').then((r: any) => setBlockers(r?.data?.blockers ?? [])).catch(() => {}); // eslint-disable-line @typescript-eslint/no-explicit-any
     mentorApi.getMenteeProfile(mentee.id).then((r: any) => setProfile(r?.data?.profile ?? r?.data ?? null)).catch(() => setProfile(null)); // eslint-disable-line @typescript-eslint/no-explicit-any
-    if (user?.id) {
-      setTasksLoading(true);
-      taskApi.getMentorTasks(user.id, { menteeId: mentee.id })
-        .then((r: any) => setTasks(r?.data?.tasks ?? [])) // eslint-disable-line @typescript-eslint/no-explicit-any
-        .catch(() => setTasks([]))
-        .finally(() => setTasksLoading(false));
-    }
-  }, [mentee?.id, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+    // The mentee's FULL task list (every assignment, whoever made it) — not just
+    // the viewer's own — so a co-mentor sees the same work as the lead.
+    setTasksLoading(true);
+    taskApi.getMenteeTasks(mentee.id)
+      .then((r: any) => setTasks(r?.data?.tasks ?? [])) // eslint-disable-line @typescript-eslint/no-explicit-any
+      .catch(() => setTasks([]))
+      .finally(() => setTasksLoading(false));
+  }, [mentee?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Landing on a mentee marks them "reviewed" (seen) — but only if still pending,
   // so a deferred mentee stays deferred and we never loop. Finished sessions stay put.
@@ -281,10 +281,10 @@ export default function CohortReview() {
   // actions never refetch a stale/previous mentee (the old bug).
   const refresh = useCallback(async () => {
     await refetchQueue();
-    if (user?.id && menteeId) {
-      try { const r: any = await taskApi.getMentorTasks(user.id, { menteeId }); setTasks(r?.data?.tasks ?? []); } catch { /* keep prior */ } // eslint-disable-line @typescript-eslint/no-explicit-any
+    if (menteeId) {
+      try { const r: any = await taskApi.getMenteeTasks(menteeId); setTasks(r?.data?.tasks ?? []); } catch { /* keep prior */ } // eslint-disable-line @typescript-eslint/no-explicit-any
     }
-  }, [refetchQueue, user?.id, menteeId]);
+  }, [refetchQueue, menteeId]);
 
   // Click a task row → full detail + edit/note/reassign/unassign, in-context.
   const [taskDetail, setTaskDetail] = useState<any>(null); // eslint-disable-line @typescript-eslint/no-explicit-any

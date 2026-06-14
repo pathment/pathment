@@ -4,6 +4,7 @@ const { NotFoundError, ValidationError, ForbiddenError } = require('../utils/err
 const notificationOrchestrator = require('./notificationOrchestrator');
 const { NOTIFICATION_EVENTS } = require('../config/notificationMatrix');
 const { endOfDayInZone } = require('../utils/timezone');
+const authzService = require('./authzService');
 
 /**
  * linearRoadmapService - the new design's linear roadmap flow for mentors:
@@ -94,14 +95,41 @@ class LinearRoadmapService {
     return { ...json, steps };
   }
 
-  /** Mentor's own local roadmaps + the org library they can import. */
+  /**
+   * The mentor IDs whose local roadmaps this mentor should see — themselves plus
+   * every lead/co-mentor they SHARE A CLAN with. This is what lets a co-mentor
+   * (or a second lead) assign from the roadmap the clan's lead imported, instead
+   * of staring at an empty "From roadmap" picker. Membership-based (the team
+   * roster), so it self-heals as the clan team changes.
+   */
+  async _clanTeamMentorIds(mentorId) {
+    const ids = new Set([mentorId]);
+    const clanIds = await authzService.mentoredClanIds(mentorId);
+    if (clanIds.length) {
+      const teammates = await models.ClanMembership.findAll({
+        where: {
+          clanId: { [Op.in]: clanIds },
+          status: 'active',
+          role: { [Op.in]: ['lead_mentor', 'co_mentor'] }
+        },
+        attributes: ['userId']
+      });
+      teammates.forEach((t) => t.userId && ids.add(t.userId));
+    }
+    return [...ids];
+  }
+
+  /** A mentor's local roadmaps (incl. their clan team's) + the org library to import. */
   async listForMentor(mentorId) {
+    const ownerIds = await this._clanTeamMentorIds(mentorId);
     const [local, org] = await Promise.all([
-      models.Roadmap.findAll({ where: { source: 'local', ownerMentorId: mentorId }, order: [['created_at', 'DESC']] }),
+      models.Roadmap.findAll({ where: { source: 'local', ownerMentorId: { [Op.in]: ownerIds } }, order: [['created_at', 'DESC']] }),
       models.Roadmap.findAll({ where: { source: 'org', published: true }, order: [['created_at', 'DESC']] })
     ]);
     const [localWithSteps, orgWithSteps] = await Promise.all([
-      Promise.all(local.map((r) => this.withSteps(r))),
+      // `isOwner` lets the UI show Assign for the whole clan team but keep
+      // edit/delete on the roadmap's owner (shared ≠ editable by everyone).
+      Promise.all(local.map(async (r) => ({ ...(await this.withSteps(r)), isOwner: r.ownerMentorId === mentorId }))),
       Promise.all(org.map((r) => this.withSteps(r)))
     ]);
     return { local: localWithSteps, org: orgWithSteps };
@@ -543,7 +571,17 @@ class LinearRoadmapService {
 
   /** Mentee IDs that already have this roadmap assigned (a RoadmapProgress row). */
   async getAssignees(roadmapId) {
-    const rows = await models.RoadmapProgress.findAll({ where: { roadmapId }, attributes: ['menteeId'] });
+    // Lineage-aware (see getMenteeStepStatus): a mentee who has the org base or a
+    // sibling import of this roadmap already "has" it, so don't offer to re-assign.
+    const roadmap = await models.Roadmap.findByPk(roadmapId, { attributes: ['id', 'importedFrom'] });
+    const lineageRoot = (roadmap && roadmap.importedFrom) || roadmapId;
+    const siblings = await models.Roadmap.findAll({
+      where: { [Op.or]: [{ id: lineageRoot }, { importedFrom: lineageRoot }] },
+      attributes: ['id'],
+    });
+    const siblingIds = siblings.map((s) => s.id);
+    if (!siblingIds.includes(roadmapId)) siblingIds.push(roadmapId);
+    const rows = await models.RoadmapProgress.findAll({ where: { roadmapId: { [Op.in]: siblingIds } }, attributes: ['menteeId'] });
     return [...new Set(rows.map((r) => r.menteeId))];
   }
 
@@ -624,19 +662,59 @@ class LinearRoadmapService {
    * select assign UI (which steps are already given, how many active) so a
    * mentor can hand over a week's batch without double-assigning.
    */
+  /**
+   * Per-step "already assigned?" status for a mentee — LINEAGE-AWARE. Every
+   * mentor imports their OWN copy of an org roadmap (new step ids), and steps can
+   * also be assigned straight from the org base, so matching only the exact copy
+   * being viewed makes work assigned from a sibling copy look unassigned — and a
+   * (co-)mentor would re-hand a step the mentee already has. We therefore match a
+   * step as assigned if the mentee has a non-cancelled task for the EQUIVALENT
+   * step (same title) in ANY roadmap of the same lineage: the org base + every
+   * local import of it. Reports the most-advanced status across copies.
+   */
   async getMenteeStepStatus(roadmapId, menteeId) {
     const steps = await this.getSteps(roadmapId);
-    const stepIds = steps.map((s) => s.id);
-    const assigned = stepIds.length
+    const roadmap = await models.Roadmap.findByPk(roadmapId, { attributes: ['id', 'importedFrom'] });
+
+    // The lineage: the org base (this roadmap if it's the org, else what it was
+    // imported from) plus every local copy imported from that base.
+    const lineageRoot = (roadmap && roadmap.importedFrom) || roadmapId;
+    const siblings = await models.Roadmap.findAll({
+      where: { [Op.or]: [{ id: lineageRoot }, { importedFrom: lineageRoot }] },
+      attributes: ['id'],
+    });
+    const siblingIds = siblings.map((s) => s.id);
+    if (!siblingIds.includes(roadmapId)) siblingIds.push(roadmapId);
+
+    const norm = (t) => String(t || '').trim().toLowerCase();
+
+    // Every step across the lineage → its normalized title.
+    const lineageSteps = await models.RoadmapTask.findAll({
+      where: { roadmapId: { [Op.in]: siblingIds } },
+      attributes: ['id', 'title'],
+    });
+    const titleByTaskId = new Map(lineageSteps.map((t) => [t.id, norm(t.title)]));
+    const lineageTaskIds = [...titleByTaskId.keys()];
+
+    const assigned = lineageTaskIds.length
       ? await models.AssignedTask.findAll({
-        where: { roadmapTaskId: { [Op.in]: stepIds }, menteeId, status: { [Op.ne]: 'cancelled' } },
+        where: { roadmapTaskId: { [Op.in]: lineageTaskIds }, menteeId, status: { [Op.ne]: 'cancelled' } },
         attributes: ['roadmapTaskId', 'status'],
       })
       : [];
-    const byTask = {};
-    assigned.forEach((a) => { byTask[a.roadmapTaskId] = a.status; });
+
+    // Best (most-advanced) status per step TITLE across all copies.
+    const RANK = { assigned: 1, not_started: 1, in_progress: 2, revision_needed: 2, submitted: 3, completed: 4 };
+    const statusByTitle = new Map();
+    assigned.forEach((a) => {
+      const title = titleByTaskId.get(a.roadmapTaskId);
+      if (!title) return;
+      const cur = statusByTitle.get(title);
+      if (!cur || (RANK[a.status] || 0) > (RANK[cur] || 0)) statusByTitle.set(title, a.status);
+    });
+
     const ACTIVE = ['assigned', 'not_started', 'in_progress', 'revision_needed', 'submitted'];
-    const steps2 = steps.map((s, i) => ({ index: i, stepId: s.id, title: s.title, type: s.type, status: byTask[s.id] || null }));
+    const steps2 = steps.map((s, i) => ({ index: i, stepId: s.id, title: s.title, type: s.type, status: statusByTitle.get(norm(s.title)) || null }));
     return {
       steps: steps2,
       activeCount: steps2.filter((s) => s.status && ACTIVE.includes(s.status)).length,

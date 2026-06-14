@@ -178,13 +178,13 @@ class ClanRequestsService {
       where: { [Op.or]: [{ toClanId: clanId }, { fromClanId: clanId }] },
       order: [['created_at', 'DESC']],
       include: [
-        { model: models.User, as: 'user', attributes: ['firstName', 'lastName'] },
+        { model: models.User, as: 'user', attributes: ['id', 'firstName', 'lastName'] },
         { model: models.Clan, as: 'fromClan', attributes: ['name'] },
         { model: models.Clan, as: 'toClan', attributes: ['name'] }
       ]
     });
     return rows.map((c) => ({
-      id: c.id, kind: c.kind, user: fullName(c.user),
+      id: c.id, kind: c.kind, user: fullName(c.user), userId: c.userId, toClanId: c.toClanId,
       fromClan: c.fromClan?.name || null, toClan: c.toClan?.name || null,
       note: c.note, status: c.status, at: c.createdAt
     }));

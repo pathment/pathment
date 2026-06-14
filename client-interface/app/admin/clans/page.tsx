@@ -3,9 +3,10 @@
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
-import { Users2, Plus, X, Loader2, Trash2, UserPlus, Crown, GraduationCap, Search, ArrowRightLeft } from 'lucide-react';
+import { Users2, Plus, X, Loader2, Trash2, UserPlus, Crown, GraduationCap, Search, ArrowRightLeft, SlidersHorizontal } from 'lucide-react';
 import { SelectMenu } from '@/components/shared/SelectMenu';
 import { TablePagination } from '@/components/shared/TablePagination';
+import { CoMentorPermissionsDrawer } from '@/components/shared/CoMentorPermissionsDrawer';
 import { ReassignClanModal } from '@/components/admin/ReassignClanModal';
 import { useAdminClans, type Clan } from '@/lib/hooks/admin';
 import { clanApi } from '@/lib/services/clan-api';
@@ -105,6 +106,7 @@ function ClanDrawer({ clanId, mentors, mentees, onClose, onChanged }: {
   const [userId, setUserId] = useState('');
   const [busy, setBusy] = useState(false);
   const [moving, setMoving] = useState<{ userId: string; name: string } | null>(null);
+  const [permMember, setPermMember] = useState<any | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -201,6 +203,11 @@ function ClanDrawer({ clanId, mentors, mentees, onClose, onChanged }: {
                             {ROLE_LABEL[m.role] || m.role}
                           </span>
                         </div>
+                        {m.role === 'co_mentor' && (
+                          <button onClick={() => setPermMember(m)} disabled={busy} title="Edit permissions" className="text-slate-400 hover:text-brand-600 disabled:opacity-50 shrink-0">
+                            <SlidersHorizontal className="w-4 h-4" />
+                          </button>
+                        )}
                         {m.role === 'mentee' && (
                           <button onClick={() => setMoving({ userId: m.userId, name: `${m.user?.firstName ?? ''} ${m.user?.lastName ?? ''}`.trim() })} disabled={busy} title="Move to another clan" className="text-slate-400 hover:text-brand-600 disabled:opacity-50 shrink-0">
                             <ArrowRightLeft className="w-4 h-4" />
@@ -227,6 +234,16 @@ function ClanDrawer({ clanId, mentors, mentees, onClose, onChanged }: {
           currentProgramId={clan?.program?.id ?? null}
           onClose={() => setMoving(null)}
           onDone={() => { load(); onChanged(); }}
+        />
+      )}
+
+      {permMember && (
+        <CoMentorPermissionsDrawer
+          clanId={clanId}
+          userId={permMember.user?.id ?? permMember.userId}
+          name={`${permMember.user?.firstName ?? ''} ${permMember.user?.lastName ?? ''}`.trim() || undefined}
+          onClose={() => setPermMember(null)}
+          onSaved={() => { load(); onChanged(); }}
         />
       )}
     </div>

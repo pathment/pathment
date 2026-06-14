@@ -1,10 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Loader2, Plus, Search, ShieldCheck, Trash2, UserPlus, X, Pencil } from 'lucide-react';
+import { Loader2, Plus, Search, ShieldCheck, SlidersHorizontal, Trash2, UserPlus, X, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { apiClient } from '@/lib/services/api-client';
+import { CoMentorPermissionsDrawer } from '@/components/shared/CoMentorPermissionsDrawer';
 import {
   accessApi,
   type CustomRole,
@@ -238,6 +239,8 @@ function AccessPanel({ user }: { user: DirectoryUser }) {
   const [access, setAccess] = useState<UserAccess | null>(null);
   const [loading, setLoading] = useState(true);
   const [granting, setGranting] = useState(false);
+  const [permClanId, setPermClanId] = useState<string | null>(null);
+  const userName = `${user.firstName} ${user.lastName}`.trim() || user.email;
 
   const load = useCallback(() => {
     setLoading(true);
@@ -276,7 +279,12 @@ function AccessPanel({ user }: { user: DirectoryUser }) {
                       <p className="text-sm font-medium text-slate-900">{a.roleLabel}</p>
                       <p className="text-xs text-slate-500">{a.scopeLabel}</p>
                     </div>
-                    <button onClick={() => revoke(a.id)} className="p-1.5 rounded-md text-rose-500 hover:bg-rose-50" aria-label="Revoke"><Trash2 className="w-4 h-4" /></button>
+                    <div className="flex items-center gap-1">
+                      {a.role === 'co_mentor' && a.scopeType === 'clan' && a.scopeId && (
+                        <button onClick={() => setPermClanId(a.scopeId)} className="p-1.5 rounded-md text-slate-400 hover:text-brand-600 hover:bg-brand-50" aria-label="Edit permissions" title="Edit co-mentor permissions"><SlidersHorizontal className="w-4 h-4" /></button>
+                      )}
+                      <button onClick={() => revoke(a.id)} className="p-1.5 rounded-md text-rose-500 hover:bg-rose-50" aria-label="Revoke"><Trash2 className="w-4 h-4" /></button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -299,6 +307,9 @@ function AccessPanel({ user }: { user: DirectoryUser }) {
       )}
 
       {granting && <GrantDrawer user={user} onClose={() => setGranting(false)} onGranted={() => { setGranting(false); load(); }} />}
+      {permClanId && (
+        <CoMentorPermissionsDrawer clanId={permClanId} userId={user.id} name={userName} onClose={() => setPermClanId(null)} />
+      )}
     </div>
   );
 }

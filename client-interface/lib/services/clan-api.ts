@@ -28,6 +28,14 @@ export const clanApi = {
   addMember: (id: string, userId: string, role: 'lead_mentor' | 'co_mentor' | 'mentee' | 'core_team') =>
     apiClient.post(`/clans/${id}/members`, { userId, role }),
   removeMember: (id: string, userId: string) => apiClient.delete(`/clans/${id}/members/${userId}`),
+  /** A co-mentor's current toggle state: { keys, denied }. Works for co-mentors
+   *  from any source (team membership / cross-clan cover / IAM grant). */
+  getMemberPermissions: (id: string, userId: string) =>
+    apiClient.get(`/clans/${id}/members/${userId}/permissions`),
+  /** Fine-tune one co-mentor's permissions in a clan. `denied` is the subset of
+   *  co-mentor default permissions to revoke (empty = full parity). */
+  setMemberPermissions: (id: string, userId: string, denied: string[]) =>
+    apiClient.patch(`/clans/${id}/members/${userId}/permissions`, { denied }),
   // Lead mentor: list unassigned mentees + invite a new one straight into the clan.
   availableMembers: (id: string, q?: string) => apiClient.get(`/clans/${id}/available`, { params: q ? { q } : {} }),
   inviteToClan: (id: string, email: string) => apiClient.post(`/clans/${id}/invite`, { email }),

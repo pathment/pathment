@@ -70,10 +70,15 @@ const ROLES = {
   co_mentor: {
     label: 'Co-mentor',
     scope: 'clan',
-    description: 'Mentors within a clan, but cannot change its membership.',
+    description: 'Full mentoring access by default; the lead mentor and admins manage the team and can fine-tune each co-mentor.',
+    // Co-mentors default to the SAME power as a lead mentor, EXCEPT
+    // clan.manage_members (managing the team + editing permissions stays with
+    // the lead mentor + admins). A lead/admin can then revoke any of these for
+    // an individual co-mentor via clan_memberships.permission_overrides.
     permissions: [
-      P.TASK_ASSIGN, P.TASK_REVIEW, P.MENTEE_VIEW,
-      P.ROADMAP_PUBLISH_LOCAL, P.LIBRARY_MANAGE, P.ANNOUNCEMENT_POST, P.COMMUNITY_POST
+      P.TASK_ASSIGN, P.TASK_REVIEW, P.MENTEE_VIEW, P.MENTEE_MANAGE,
+      P.ROADMAP_PUBLISH_LOCAL, P.LIBRARY_MANAGE, P.ANNOUNCEMENT_POST,
+      P.ANALYTICS_VIEW, P.COMMUNITY_POST
     ]
   },
   core_team: {

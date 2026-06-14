@@ -1,6 +1,12 @@
 const { models, sequelize } = require('../db');
 const { NotFoundError, ValidationError, ConflictError } = require('../utils/errors/errorTypes');
 const { createAuditLog } = require('../utils/auditContext');
+const { ROLES } = require('../config/roles');
+
+// The permissions a co-mentor holds by default — and therefore the exact set a
+// lead mentor / admin may toggle on or off for an individual co-mentor. Derived
+// from the co_mentor role bundle so it can never drift from the source of truth.
+const CO_MENTOR_PERMISSIONS = ROLES.co_mentor.permissions;
 
 /**
  * Clan service - clans are mentor-led groups inside a Program. A mentee is
@@ -258,6 +264,86 @@ class ClanService {
     membership.leftAt = new Date();
     await membership.save();
     return membership;
+  }
+
+  /** The permission keys a lead/admin may toggle for a co-mentor (the defaults). */
+  coMentorPermissionKeys() {
+    return [...CO_MENTOR_PERMISSIONS];
+  }
+
+  /**
+   * Is `userId` a co-mentor of `clanId` via ANY path — team membership, an
+   * accepted cross-clan cover, or an IAM role grant? This is what makes a
+   * permission override legitimate (and is why the override is keyed by
+   * clan+user, not by a single membership row).
+   */
+  async isCoMentorInClan(clanId, userId) {
+    const membership = await models.ClanMembership.findOne({
+      where: { clanId, userId, role: 'co_mentor', status: 'active' }, attributes: ['id']
+    });
+    if (membership) return true;
+
+    if (models.CrossClanAssignment) {
+      const cover = await models.CrossClanAssignment.findOne({
+        where: { userId, toClanId: clanId, status: 'active' }, attributes: ['id']
+      });
+      if (cover) return true;
+    }
+
+    const grant = await models.RoleAssignment.findOne({
+      where: { userId, role: 'co_mentor', scopeType: 'clan', scopeId: clanId }, attributes: ['id']
+    });
+    return Boolean(grant);
+  }
+
+  /** The permissions currently revoked for one co-mentor in a clan (the toggle state). */
+  async getMemberPermissions(clanId, userId) {
+    if (!(await this.isCoMentorInClan(clanId, userId))) {
+      throw new ValidationError('That person is not a co-mentor of this clan');
+    }
+    const row = await models.ClanMemberPermission.findOne({ where: { clanId, userId }, attributes: ['denied'] });
+    return { keys: [...CO_MENTOR_PERMISSIONS], denied: (row && row.denied) || [] };
+  }
+
+  /**
+   * Fine-tune ONE co-mentor's permissions within a clan. A co-mentor starts with
+   * every default permission; passing `denied` (a subset of the toggleable keys)
+   * revokes exactly those for this person, in this clan only — no matter how they
+   * became a co-mentor. An empty list restores full parity (the row is removed).
+   *
+   * Authorization (lead-mentor-of-this-clan OR admin) is enforced by the route's
+   * `clan.manage_members @ clan` guard, which co-mentors deliberately don't hold.
+   */
+  async setMemberPermissions(clanId, userId, denied, actorId = null) {
+    if (!(await this.isCoMentorInClan(clanId, userId))) {
+      throw new ValidationError('That person is not a co-mentor of this clan');
+    }
+
+    // Keep only valid, toggleable keys — silently drop anything unknown so a
+    // stale client can never deny a permission outside the co-mentor scope.
+    const allowed = new Set(CO_MENTOR_PERMISSIONS);
+    const cleaned = [...new Set((Array.isArray(denied) ? denied : []).filter((p) => allowed.has(p)))];
+
+    if (!cleaned.length) {
+      await models.ClanMemberPermission.destroy({ where: { clanId, userId } });
+    } else {
+      const [row, created] = await models.ClanMemberPermission.findOrCreate({
+        where: { clanId, userId },
+        defaults: { clanId, userId, denied: cleaned, updatedBy: actorId }
+      });
+      if (!created) {
+        row.denied = cleaned;
+        row.updatedBy = actorId;
+        await row.save();
+      }
+    }
+
+    await createAuditLog({
+      userId: actorId, action: 'CO_MENTOR_PERMISSIONS_UPDATED', entityType: 'Clan', entityId: clanId,
+      newValues: { clanId, userId, denied: cleaned }
+    }).catch(() => {});
+
+    return { clanId, userId, denied: cleaned };
   }
 
   /**

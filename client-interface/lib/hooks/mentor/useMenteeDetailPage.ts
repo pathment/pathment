@@ -57,7 +57,9 @@ export function useMenteeDetailPage(menteeId: string): UseMenteeDetailPageReturn
           setMatch({ mentee: active.mentee, enrollment: active });
         }
       }
-      const tasksRes = await taskApi.getMentorTasks(user.id, { menteeId });
+      // Mentee-centric: ALL of this mentee's tasks (whoever assigned them), so a
+      // co-mentor sees the same work as the lead — not just their own assignments.
+      const tasksRes = await taskApi.getMenteeTasks(menteeId);
       setTasks(tasksRes?.data?.tasks || []);
     } catch (error: any) {
       console.error('Failed to fetch mentee details:', error);

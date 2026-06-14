@@ -1,4 +1,5 @@
 const submissionService = require('../services/submissionService');
+const authzService = require('../services/authzService');
 const { successResponse } = require('../utils/responses');
 const { catchAsync } = require('../middlewares/errorHandler');
 
@@ -71,11 +72,12 @@ exports.getSubmission = catchAsync(async (req, res) => {
 
   const submission = await submissionService.getSubmissionById(submissionId);
 
-  // Check permissions
-  if (req.user.role === 'mentee' && submission.assignedTask.menteeId !== req.user.id) {
-    return res.status(403).json({ success: false, message: 'Forbidden' });
-  }
-  if (req.user.role === 'mentor' && submission.assignedTask.mentorId !== req.user.id) {
+  // Ownership via scoped RBAC (replaces the legacy "you must be THE assigning
+  // mentor" check that blocked co-mentors / cross-clan cover): the mentee sees
+  // their own submission; anyone else must be able to view the task's mentee.
+  const assignments = req.loadAssignments ? await req.loadAssignments() : undefined;
+  const allowed = await authzService.canViewMentee(req.user, submission.assignedTask.menteeId, { assignments });
+  if (!allowed) {
     return res.status(403).json({ success: false, message: 'Forbidden' });
   }
 

@@ -33,6 +33,11 @@ const grants = (key, perm, custom) => {
   if (custom && custom[key]) return custom[key].permissions.includes(perm);
   return false;
 };
+// Same as grants(), but honours per-assignment exceptions (a co-mentor whose
+// lead un-checked specific permissions). `assignment.deny` is the list of
+// permissions revoked for THIS grant only.
+const assignmentGrants = (assignment, perm, custom) =>
+  grants(assignment.role, perm, custom) && !(assignment.deny && assignment.deny.includes(perm));
 
 /**
  * Scoped RBAC engine. A user holds roles at scopes; a permission check asks:
@@ -52,6 +57,20 @@ class AuthzService {
   async getAssignments(user) {
     if (!user) return [];
     const custom = await loadCustomRoles();
+
+    // Per-co-mentor permission exceptions, keyed by clan and INDEPENDENT of how
+    // the person became a co-mentor (team membership / cross-clan cover / IAM
+    // grant). Loaded once, then applied to every co_mentor@clan assignment below.
+    const denyByClan = new Map();
+    if (models.ClanMemberPermission) {
+      const overrideRows = await models.ClanMemberPermission.findAll({
+        where: { userId: user.id }, attributes: ['clanId', 'denied']
+      });
+      for (const r of overrideRows) {
+        if (Array.isArray(r.denied) && r.denied.length) denyByClan.set(r.clanId, r.denied);
+      }
+    }
+
     const assignments = [];
     const seen = new Set();
     const add = (role, scopeType, scopeId = null) => {
@@ -59,7 +78,9 @@ class AuthzService {
       const key = `${role}:${scopeType}:${scopeId || ''}`;
       if (seen.has(key)) return;
       seen.add(key);
-      assignments.push({ role, scopeType, scopeId });
+      // A co-mentor's clan-scoped permissions can be individually revoked.
+      const deny = (role === 'co_mentor' && scopeType === 'clan') ? (denyByClan.get(scopeId) || null) : null;
+      assignments.push({ role, scopeType, scopeId, deny });
     };
 
     // 1a. Base account type → its home assignment. Elevated / cross-role access
@@ -117,7 +138,7 @@ class AuthzService {
     if (!user) return false;
     const custom = await loadCustomRoles();
     const assignments = opts.assignments || (await this.getAssignments(user));
-    return assignments.some((a) => grants(a.role, permission, custom) && this._covers(a, resource));
+    return assignments.some((a) => assignmentGrants(a, permission, custom) && this._covers(a, resource));
   }
 
   /** The set of permissions the user has for a resource - drives client UI. */
@@ -126,7 +147,7 @@ class AuthzService {
     const assignments = opts.assignments || (await this.getAssignments(user));
     const granted = new Set();
     for (const perm of ALL_PERMISSIONS) {
-      if (assignments.some((a) => grants(a.role, perm, custom) && this._covers(a, resource))) granted.add(perm);
+      if (assignments.some((a) => assignmentGrants(a, perm, custom) && this._covers(a, resource))) granted.add(perm);
     }
     return [...granted];
   }
@@ -142,7 +163,7 @@ class AuthzService {
     const assignments = await this.getAssignments(user);
     const granted = [];
     for (const perm of ALL_PERMISSIONS) {
-      if (assignments.some((a) => grants(a.role, perm, custom))) granted.push(perm);
+      if (assignments.some((a) => assignmentGrants(a, perm, custom))) granted.push(perm);
     }
     return granted;
   }
@@ -182,7 +203,7 @@ class AuthzService {
 
     const mentorsSomewhere = assignments.some((a) =>
       ['clan', 'program'].includes(a.scopeType) &&
-      MENTOR_PERMISSIONS.some((perm) => grants(a.role, perm, custom))
+      MENTOR_PERMISSIONS.some((perm) => assignmentGrants(a, perm, custom))
     );
     if (user.role === 'mentor' || mentorsSomewhere) caps.add('mentor');
 
@@ -211,7 +232,7 @@ class AuthzService {
     const min = SCOPE_RANK[minLevel] ?? 2;
     const custom = await loadCustomRoles();
     const assignments = opts.assignments || (await this.getAssignments(user));
-    return assignments.some((a) => grants(a.role, permission, custom) && (SCOPE_RANK[a.scopeType] ?? 0) >= min);
+    return assignments.some((a) => assignmentGrants(a, permission, custom) && (SCOPE_RANK[a.scopeType] ?? 0) >= min);
   }
 
   /**
@@ -274,6 +295,29 @@ class AuthzService {
     for (const c of menteeClans) {
       const resource = await this.scopeOfClan(c.clanId);
       if (await this.can(user, P.MENTEE_VIEW, resource, { assignments })) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Can `userId` act on `task` with one of `permissions` (any-of)? True for the
+   * task's assigning mentor (kept for continuity), an admin, or anyone holding
+   * the permission at the task's clan/program scope — a lead mentor, a co-mentor,
+   * or accepted cross-clan cover — and it RESPECTS a co-mentor's revoked
+   * permissions. This replaces the legacy `task.mentorId === you` ownership the
+   * task/submission write paths used, which wrongly blocked every co-mentor (and
+   * mis-fired for mentee-based co-mentors, since it keyed off the base role).
+   */
+  async canActOnTask(userId, task, permissions) {
+    if (!userId || !task) return false;
+    if (task.mentorId && task.mentorId === userId) return true; // the assigning mentor
+    const user = await models.User.findByPk(userId, { attributes: ['id', 'role'] });
+    if (!user) return false;
+    const resource = await this.scopeOfAssignedTask(task.id);
+    const assignments = await this.getAssignments(user);
+    const perms = Array.isArray(permissions) ? permissions : [permissions];
+    for (const p of perms) {
+      if (await this.can(user, p, resource, { assignments })) return true;
     }
     return false;
   }
