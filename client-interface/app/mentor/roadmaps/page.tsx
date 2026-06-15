@@ -92,7 +92,7 @@ function AssignDrawer({ roadmap, onClose, onAssigned }: { roadmap: LinearRoadmap
             </div>
             <select value={startStep} onChange={(e) => setStartStep(Number(e.target.value))}
               className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500">
-              {roadmap.steps.map((s, i) => <option key={s.id} value={i}>{i + 1}. {s.title}</option>)}
+              {roadmap.steps.map((s, i) => <option key={s.id} value={i}>{i + 1}. {s.title}{s.pointsBase != null ? ` · ${s.pointsBase} pts` : ''}</option>)}
             </select>
             <div className="flex items-center justify-between mt-1">
               <p className="text-xs text-slate-400">Skip steps they already know.</p>
@@ -296,8 +296,9 @@ function RoadmapCard({ r, action }: { r: LinearRoadmap; action: React.ReactNode 
           {r.steps.slice(0, 4).map((s, i) => (
             <li key={s.id}>
               <button onClick={() => setViewing(true)} title="View step details"
-                className="w-full text-left text-xs text-slate-500 hover:text-brand-600 hover:underline truncate py-0.5">
-                {i + 1}. {s.title}
+                className="w-full text-left text-xs text-slate-500 hover:text-brand-600 hover:underline py-0.5 flex items-center gap-2">
+                <span className="truncate">{i + 1}. {s.title}</span>
+                {s.pointsBase != null && <span className="text-[10px] text-slate-400 shrink-0">{s.pointsBase} pts</span>}
               </button>
             </li>
           ))}

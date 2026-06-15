@@ -500,8 +500,15 @@ export default function CohortReview() {
   // Keyboard shortcuts.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || reviewing || assigning) return;
+      // Never hijack typing: bail for inputs/selects AND rich-text editors
+      // (TipTap is a contenteditable DIV — the old tag-only check missed it, so
+      // letters like s/t/a/c fired shortcuts while you were writing).
+      const el = e.target as HTMLElement | null;
+      const tag = el?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el?.isContentEditable) return;
+      // Also bail while any field-bearing drawer is open (review / assign / task
+      // edit / extension / history) — its inputs own the keyboard.
+      if (reviewing || assigning || taskDetail || extReview || historyOpen) return;
       const k = e.key.toLowerCase();
       if (k === 't') { e.preventDefault(); setAssigning(true); return; }
       if (k === 'arrowright' || k === 'l') { e.preventDefault(); go(1); }
@@ -519,7 +526,7 @@ export default function CohortReview() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [go, skip, approve, requestChanges, mark, pending, focus, reviewing, assigning]);
+  }, [go, skip, approve, requestChanges, mark, pending, focus, reviewing, assigning, taskDetail, extReview, historyOpen]);
 
   if (loading) return <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-brand-600" /></div>;
   if (!cohort.length) return (

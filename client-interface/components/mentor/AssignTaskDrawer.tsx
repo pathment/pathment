@@ -466,6 +466,9 @@ export function AssignTaskDrawer({
                                 <input type="checkbox" disabled={isActive} checked={checked} onChange={() => toggleStep(s.index)}
                                   className="w-4 h-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500" />
                                 <span className="flex-1 truncate text-slate-700">{s.index + 1}. {s.title}</span>
+                                {selectedRoadmap.steps[s.index]?.pointsBase != null && (
+                                  <span className="text-[10px] text-slate-400 shrink-0">{selectedRoadmap.steps[s.index]?.pointsBase} pts</span>
+                                )}
                                 {!!stepOverrides[s.stepId] && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 shrink-0">customized</span>}
                                 {isActive && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-sky-100 text-sky-700 shrink-0">assigned</span>}
                                 {isDone && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 shrink-0">done</span>}
