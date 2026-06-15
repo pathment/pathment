@@ -44,6 +44,15 @@ export const accessApi = {
     apiClient.get<any>('/access/roles').then((r) => (r.data?.roles || []) as RoleCatalogEntry[]),
   userAccess: (userId: string) =>
     apiClient.get<any>(`/access/users/${userId}`).then((r) => r.data as UserAccess),
+  /** Paginated org-wide user directory for the IAM People tab (all roles, searchable). */
+  directory: (params: { search?: string; role?: string; page?: number; limit?: number } = {}) => {
+    const qs = new URLSearchParams();
+    if (params.search) qs.set('search', params.search);
+    if (params.role) qs.set('role', params.role);
+    if (params.page) qs.set('page', String(params.page));
+    if (params.limit) qs.set('limit', String(params.limit));
+    return apiClient.get<any>(`/access/directory?${qs.toString()}`).then((r) => r.data as { users: DirectoryUser[]; total: number; page: number; limit: number });
+  },
   grant: (payload: { userId: string; role: string; scopeType: string; scopeId?: string | null }) =>
     apiClient.post<any>('/access/grants', payload),
   revoke: (assignmentId: string) =>

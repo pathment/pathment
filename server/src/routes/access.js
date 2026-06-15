@@ -12,6 +12,7 @@ router.get('/me/permissions', accessController.myPermissions);
 
 // Managing who-can-do-what is itself a permission (access.manage).
 router.get('/roles', requirePermission(PERMISSIONS.ACCESS_MANAGE), accessController.getRoleCatalog);
+router.get('/directory', requirePermission(PERMISSIONS.ACCESS_MANAGE), accessController.getDirectory);
 router.get('/users/:userId', requirePermission(PERMISSIONS.ACCESS_MANAGE), accessController.getUserAccess);
 router.post('/grants', requirePermission(PERMISSIONS.ACCESS_MANAGE), accessController.grantRole);
 router.delete('/grants/:id', requirePermission(PERMISSIONS.ACCESS_MANAGE), accessController.revokeRole);

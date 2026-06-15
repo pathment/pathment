@@ -6,6 +6,9 @@ import { toast } from 'sonner';
 
 import { apiClient } from '@/lib/services/api-client';
 import { CoMentorPermissionsDrawer } from '@/components/shared/CoMentorPermissionsDrawer';
+import { TablePagination } from '@/components/shared/TablePagination';
+import { usePagination } from '@/lib/hooks/shared/usePagination';
+import { useDebounce } from '@/lib/hooks/shared/useDebounce';
 import {
   accessApi,
   type CustomRole,
@@ -76,22 +79,42 @@ export default function RolesAccessPage() {
 }
 
 /* ─────────────────────────── People ─────────────────────────── */
+const ROLE_TABS: { key: string; label: string }[] = [
+  { key: '', label: 'All' },
+  { key: 'admin', label: 'Admins' },
+  { key: 'mentor', label: 'Mentors' },
+  { key: 'mentee', label: 'Mentees' },
+];
+
 function PeopleTab() {
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<DirectoryUser[]>([]);
-  const [searching, setSearching] = useState(false);
+  const debouncedSearch = useDebounce(query, 350);
+  const [roleFilter, setRoleFilter] = useState('');
+  const [users, setUsers] = useState<DirectoryUser[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<DirectoryUser | null>(null);
   const [inviting, setInviting] = useState(false);
+  const pagination = usePagination({ initialPage: 1, initialLimit: 20 });
 
-  // Load the directory on mount (empty query) and whenever the search changes.
-  useEffect(() => {
-    const q = query.trim();
-    const t = setTimeout(() => {
-      setSearching(true);
-      accessApi.searchUsers(q).then(setResults).catch(() => setResults([])).finally(() => setSearching(false));
-    }, q ? 250 : 0);
-    return () => clearTimeout(t);
-  }, [query]);
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await accessApi.directory({
+        search: debouncedSearch.trim() || undefined,
+        role: roleFilter || undefined,
+        page: pagination.page,
+        limit: pagination.limit,
+      });
+      setUsers(res.users);
+      pagination.setTotal(res.total);
+    } catch { setUsers([]); }
+    finally { setLoading(false); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, roleFilter, pagination.page, pagination.limit]);
+
+  useEffect(() => { load(); }, [load]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { pagination.reset(); }, [debouncedSearch, roleFilter]);
 
   return (
     <div className="grid lg:grid-cols-12 gap-6">
@@ -111,12 +134,24 @@ function PeopleTab() {
               <UserPlus className="w-4 h-4" /> Invite
             </button>
           </div>
-          <div className="mt-3 max-h-[60vh] overflow-y-auto divide-y divide-slate-100">
-            {searching ? (
+
+          {/* Role filter */}
+          <div className="mt-3 flex items-center gap-1">
+            {ROLE_TABS.map((t) => (
+              <button key={t.key} onClick={() => setRoleFilter(t.key)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${roleFilter === t.key ? 'bg-brand-100 text-brand-700' : 'text-slate-500 hover:bg-slate-100'}`}>
+                {t.label}
+              </button>
+            ))}
+            <span className="ml-auto text-xs text-slate-400 tabular-nums">{pagination.total} {pagination.total === 1 ? 'person' : 'people'}</span>
+          </div>
+
+          <div className="mt-2 min-h-[40vh] divide-y divide-slate-100">
+            {loading ? (
               <div className="py-8 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-brand-600" /></div>
-            ) : results.length === 0 ? (
-              <p className="py-8 text-center text-sm text-slate-400">{query.trim() ? 'No matches.' : 'No users yet - invite someone to get started.'}</p>
-            ) : results.map((u) => (
+            ) : users.length === 0 ? (
+              <p className="py-8 text-center text-sm text-slate-400">{query.trim() || roleFilter ? 'No matches.' : 'No users yet — invite someone to get started.'}</p>
+            ) : users.map((u) => (
               <button
                 key={u.id}
                 onClick={() => setSelected(u)}
@@ -127,6 +162,10 @@ function PeopleTab() {
               </button>
             ))}
           </div>
+
+          {pagination.total > pagination.limit && (
+            <TablePagination pagination={pagination} isLoading={loading} className="pt-2" />
+          )}
         </div>
       </div>
       <div className="lg:col-span-7">
@@ -137,7 +176,7 @@ function PeopleTab() {
         )}
       </div>
 
-      {inviting && <InviteWithAccessDrawer onClose={() => setInviting(false)} onInvited={() => { setInviting(false); setQuery(''); }} />}
+      {inviting && <InviteWithAccessDrawer onClose={() => setInviting(false)} onInvited={() => { setInviting(false); setQuery(''); load(); }} />}
     </div>
   );
 }

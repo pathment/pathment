@@ -34,6 +34,11 @@ const getUserAccess = catchAsync(async (req, res) => {
   res.status(200).json(successResponse('User access', access));
 });
 
+const getDirectory = catchAsync(async (req, res) => {
+  const result = await accessService.listDirectory(req.query);
+  res.status(200).json(successResponse('Directory', result));
+});
+
 const grantRole = catchAsync(async (req, res) => {
   const assignment = await accessService.grantRole(
     { userId: req.body.userId, role: req.body.role, scopeType: req.body.scopeType, scopeId: req.body.scopeId },
@@ -71,6 +76,6 @@ const getAuditLogs = catchAsync(async (req, res) => {
 });
 
 module.exports = {
-  getRoleCatalog, getUserAccess, grantRole, revokeRole, myPermissions, inviteWithRole,
+  getRoleCatalog, getUserAccess, getDirectory, grantRole, revokeRole, myPermissions, inviteWithRole,
   listCustomRoles, createCustomRole, updateCustomRole, deleteCustomRole, getAuditLogs
 };

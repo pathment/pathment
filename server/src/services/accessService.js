@@ -107,6 +107,38 @@ class AccessService {
     return scopeType;
   }
 
+  /**
+   * Paginated user directory for the IAM "People" tab — ALL roles, searchable,
+   * not recipient-scoped (unlike the messaging search), so an admin can browse
+   * the whole org. Includes the user themselves.
+   */
+  async listDirectory({ search, role, page = 1, limit = 25 } = {}) {
+    const { Op } = require('sequelize');
+    const parsedLimit = Math.min(50, Math.max(1, Number(limit) || 25));
+    const parsedPage = Math.max(1, Number(page) || 1);
+
+    const where = { status: { [Op.in]: ['active', 'suspended'] } };
+    if (role && ['admin', 'mentor', 'mentee'].includes(role)) where.role = role;
+    const term = (search || '').trim();
+    if (term) {
+      const like = `%${term}%`;
+      where[Op.or] = [
+        { firstName: { [Op.iLike]: like } },
+        { lastName: { [Op.iLike]: like } },
+        { email: { [Op.iLike]: like } },
+      ];
+    }
+
+    const { rows, count } = await models.User.findAndCountAll({
+      where,
+      attributes: ['id', 'firstName', 'lastName', 'email', 'role', 'status', 'profilePictureUrl'],
+      order: [['firstName', 'ASC'], ['lastName', 'ASC']],
+      limit: parsedLimit,
+      offset: (parsedPage - 1) * parsedLimit,
+    });
+    return { users: rows.map((u) => u.toJSON()), total: count, page: parsedPage, limit: parsedLimit };
+  }
+
   /** A user's explicit (revocable) + derived (read-only) assignments. */
   async listUserAccess(userId) {
     const user = await models.User.findByPk(userId, {
@@ -138,10 +170,23 @@ class AccessService {
         }))
     );
 
+    // Always surface the base ACCOUNT role first, so the panel is never empty
+    // (a mentor with no clan would otherwise show nothing) and the account type
+    // is obvious. Drop the redundant mentee@self derived entry it covers.
+    const baseLabels = { admin: 'Admin', mentor: 'Mentor', mentee: 'Mentee' };
+    const baseEntry = {
+      role: user.role, roleLabel: baseLabels[user.role] || user.role,
+      scopeType: 'account', scopeId: null, scopeLabel: 'Account type',
+    };
+    const derivedWithBase = [
+      baseEntry,
+      ...derived.filter((d) => !(d.role === user.role && d.scopeType === 'self')),
+    ];
+
     return {
-      user: { id: user.id, firstName: user.firstName, lastName: user.lastName, email: user.email },
+      user: { id: user.id, firstName: user.firstName, lastName: user.lastName, email: user.email, role: user.role },
       explicit,
-      derived
+      derived: derivedWithBase
     };
   }
 

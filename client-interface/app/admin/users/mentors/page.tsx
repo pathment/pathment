@@ -309,7 +309,7 @@ export default function AdminMentorsListPage() {
       const isSuspended = row.status === 'suspended';
       const name = `${row.firstName} ${row.lastName}`;
       return (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center justify-end gap-2">
           <Link
             href={`/admin/mentors/${row.id}`}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-brand-600 hover:bg-brand-50 rounded-lg transition-colors"
