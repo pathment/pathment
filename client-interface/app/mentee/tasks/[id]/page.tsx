@@ -145,6 +145,17 @@ export default function TaskDetailsPage({ params }: PageProps) {
               </p>
             </div>
           )}
+          {(task.points ?? task.pointsBase ?? task.roadmapTask?.pointsBase) != null && (
+            <div>
+              <p className="text-xs text-slate-500 mb-1">Points</p>
+              <p className="text-sm text-slate-900 flex items-center gap-1">
+                <Award className="w-4 h-4 text-brand-500" />
+                {task.status === 'completed' && task.pointsAwarded != null
+                  ? `${task.pointsAwarded} / ${task.points ?? task.pointsBase ?? task.roadmapTask?.pointsBase}`
+                  : `Worth ${task.points ?? task.pointsBase ?? task.roadmapTask?.pointsBase}`}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Rating & Points (completed tasks) */}

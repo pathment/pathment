@@ -333,7 +333,7 @@ class SubmissionService {
       throw new ValidationError('Rating must be between 0 and 5');
     }
 
-    const maxPoints = task.roadmapTask?.pointsBase ?? 10;
+    const maxPoints = task.pointsBase ?? task.roadmapTask?.pointsBase ?? 10;
 
     if (isApproved && pointsAwarded !== undefined && pointsAwarded !== null) {
       const parsedPoints = Number(pointsAwarded);
@@ -726,12 +726,15 @@ class SubmissionService {
         submissionUrls: s.submissionUrls || [],
         submittedAt: s.submittedAt,
         isLate: t.isLate,
-        title: t.roadmapTask?.title || 'Task',
+        // Prefer the per-mentee override so the mentor reviews exactly what the
+        // mentee saw, and the max points reflect this assignment's points.
+        title: t.titleOverride || t.roadmapTask?.title || 'Task',
         type: t.roadmapTask?.type || null,
-        brief: t.roadmapTask?.description || null,
-        deliverable: t.roadmapTask?.deliverable || null,
-        criteria: t.roadmapTask?.acceptanceCriteria || [],
-        maxPoints: t.roadmapTask?.pointsBase ?? 10,
+        brief: t.descriptionOverride || t.roadmapTask?.description || null,
+        deliverable: t.deliverableOverride || t.roadmapTask?.deliverable || null,
+        criteria: (Array.isArray(t.acceptanceCriteriaOverride) && t.acceptanceCriteriaOverride.length)
+          ? t.acceptanceCriteriaOverride : (t.roadmapTask?.acceptanceCriteria || []),
+        maxPoints: t.pointsBase ?? t.roadmapTask?.pointsBase ?? 10,
         mentee: m ? {
           id: m.id,
           name: `${m.firstName} ${m.lastName}`.trim(),
