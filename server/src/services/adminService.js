@@ -619,6 +619,105 @@ class AdminService {
   }
 
   /**
+   * Admin edits a user's profile: name, email, and base role (mentee↔mentor).
+   * Email changes are trusted (kept verified). Base-role changes only apply to
+   * mentee/mentor accounts (admin accounts aren't demoted here), and the
+   * beforeSave hook keeps `capabilities` in sync. Returns the updated public user.
+   */
+  async updateUser(targetUserId, updates = {}, adminUserId = null) {
+    const user = await models.User.findByPk(targetUserId);
+    if (!user) throw new NotFoundError('User not found');
+
+    const before = { firstName: user.firstName, lastName: user.lastName, email: user.email, role: user.role };
+
+    if (updates.firstName !== undefined) user.firstName = String(updates.firstName).trim().slice(0, 100);
+    if (updates.lastName !== undefined) user.lastName = String(updates.lastName).trim().slice(0, 100);
+
+    if (updates.email !== undefined && updates.email && updates.email.trim().toLowerCase() !== user.email) {
+      const email = updates.email.trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new ValidationError('Enter a valid email address');
+      const clash = await models.User.findOne({ where: { email, id: { [Op.ne]: user.id } }, attributes: ['id'] });
+      if (clash) throw new ConflictError('That email is already in use by another account');
+      user.email = email;
+      // Admin-set email is trusted → keep it usable immediately.
+      user.emailVerified = true;
+      user.emailVerifiedAt = new Date();
+    }
+
+    if (updates.role !== undefined && updates.role !== user.role) {
+      if (!['mentee', 'mentor'].includes(updates.role)) {
+        throw new ValidationError('Base role must be mentee or mentor');
+      }
+      if (user.role === 'admin') {
+        throw new ValidationError('Admin accounts cannot be re-roled here — manage them in Roles & Access');
+      }
+      user.role = updates.role; // beforeSave hook adds it to capabilities
+    }
+
+    await user.save();
+
+    await createAuditLog({
+      userId: adminUserId, action: 'USER_UPDATED_BY_ADMIN', entityType: 'User', entityId: user.id,
+      oldValues: before, newValues: { firstName: user.firstName, lastName: user.lastName, email: user.email, role: user.role },
+    }).catch(() => {});
+
+    return {
+      id: user.id, firstName: user.firstName, lastName: user.lastName,
+      email: user.email, role: user.role, status: user.status, capabilities: user.capabilities,
+    };
+  }
+
+  /**
+   * Admin sets a user's password directly (e.g. "they can't log in" support).
+   * Logs them out of all sessions so the new password takes effect everywhere.
+   */
+  async setUserPassword(targetUserId, newPassword, adminUserId = null) {
+    if (!newPassword || String(newPassword).length < 8) {
+      throw new ValidationError('Password must be at least 8 characters');
+    }
+    const user = await models.User.findByPk(targetUserId);
+    if (!user) throw new NotFoundError('User not found');
+
+    user.passwordHash = await bcrypt.hash(String(newPassword), 12);
+    await user.save();
+    await models.UserSession.destroy({ where: { userId: user.id } });
+    await models.RefreshToken.destroy({ where: { userId: user.id } });
+
+    await createAuditLog({
+      userId: adminUserId, action: 'USER_PASSWORD_SET_BY_ADMIN', entityType: 'User', entityId: user.id,
+    }).catch(() => {});
+
+    return { message: `Password updated for ${user.firstName} ${user.lastName}. They've been signed out.` };
+  }
+
+  /** Admin triggers the normal "forgot password" reset email for a user. */
+  async sendUserPasswordReset(targetUserId) {
+    const user = await models.User.findByPk(targetUserId, { attributes: ['id', 'email', 'firstName', 'lastName'] });
+    if (!user) throw new NotFoundError('User not found');
+    const authService = require('./authService');
+    await authService.forgotPassword(user.email);
+    return { message: `A password-reset link was sent to ${user.email}` };
+  }
+
+  /**
+   * Admin disables/resets a user's 2FA (e.g. they lost their authenticator and
+   * are locked out). Idempotent. NOTE: an admin can't ENABLE 2FA for someone —
+   * enrolment needs the user's own authenticator app; they re-enable it in Settings.
+   */
+  async disableUserTwoFactor(targetUserId, adminUserId = null) {
+    const user = await models.User.findByPk(targetUserId, { attributes: ['id', 'firstName', 'lastName', 'twoFactorEnabled'] });
+    if (!user) throw new NotFoundError('User not found');
+    if (!user.twoFactorEnabled) return { message: 'Two-factor was already off for this user.' };
+
+    const securityService = require('./securityService');
+    await securityService.disable2FA(targetUserId);
+    await createAuditLog({
+      userId: adminUserId, action: 'USER_2FA_DISABLED_BY_ADMIN', entityType: 'User', entityId: targetUserId,
+    }).catch(() => {});
+    return { message: `Two-factor disabled for ${user.firstName} ${user.lastName}. They can log in without a code and re-enable it in Settings.` };
+  }
+
+  /**
    * Delete a user (mentee or mentor) and all their associated data. Admin-only.
    * An admin cannot delete themselves or another admin.
    */

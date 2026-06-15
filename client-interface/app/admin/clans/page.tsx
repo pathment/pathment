@@ -103,10 +103,17 @@ function ClanDrawer({ clanId, mentors, mentees, onClose, onChanged }: {
   const [clan, setClan] = useState<Clan | null>(null);
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState<'mentee' | 'co_mentor' | 'lead_mentor'>('mentee');
-  const [userId, setUserId] = useState('');
   const [busy, setBusy] = useState(false);
   const [moving, setMoving] = useState<{ userId: string; name: string } | null>(null);
   const [permMember, setPermMember] = useState<any | null>(null);
+
+  // Searchable person picker (server-backed) so ANYONE is findable — not just the
+  // first 20 of a base-role directory. This is how a removed/re-roled person
+  // reliably shows up to be re-added.
+  const [pickQuery, setPickQuery] = useState('');
+  const [pickResults, setPickResults] = useState<Person[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [picked, setPicked] = useState<Person | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -115,18 +122,30 @@ function ClanDrawer({ clanId, mentors, mentees, onClose, onChanged }: {
   };
   useEffect(() => { load(); }, [clanId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Anyone can be a co/lead mentor (mentor OR mentee), so non-mentee roles pick
-  // from everyone (deduped); the mentee role still lists mentees to place.
-  const everyone = Array.from(new Map([...mentors, ...mentees].map((p) => [p.id, p])).values());
-  const options = role === 'mentee' ? mentees : everyone;
+  // Mentee role → unassigned mentees; co/lead → any active person not already a
+  // mentor here (candidates endpoint). Debounced.
+  useEffect(() => {
+    const q = pickQuery.trim();
+    if (q.length < 1) { setPickResults([]); return; }
+    let alive = true;
+    const t = setTimeout(() => {
+      setSearching(true);
+      const req = role === 'mentee' ? clanApi.availableMembers(clanId, q) : clanApi.candidates(clanId, q);
+      req
+        .then((r: any) => { if (alive) setPickResults((r.data?.people || []).map((p: any) => ({ id: p.id, firstName: p.firstName ?? (p.name || '').split(' ')[0] ?? '', lastName: p.lastName ?? (p.name || '').split(' ').slice(1).join(' '), email: p.email }))); })
+        .catch(() => { if (alive) setPickResults([]); })
+        .finally(() => { if (alive) setSearching(false); });
+    }, 250);
+    return () => { alive = false; clearTimeout(t); };
+  }, [pickQuery, role, clanId]);
 
   const add = async () => {
-    if (!userId) { toast.error('Pick a person'); return; }
+    if (!picked) { toast.error('Search and pick a person'); return; }
     try {
       setBusy(true);
-      await clanApi.addMember(clanId, userId, role);
+      await clanApi.addMember(clanId, picked.id, role);
       toast.success('Member added');
-      setUserId('');
+      setPicked(null); setPickQuery(''); setPickResults([]);
       await load(); onChanged();
     } catch (e: any) { toast.error(e?.response?.data?.message || 'Could not add member'); }
     finally { setBusy(false); }
@@ -166,20 +185,41 @@ function ClanDrawer({ clanId, mentors, mentees, onClose, onChanged }: {
               <div className="rounded-xl border border-slate-200 p-4">
                 <h3 className="text-sm font-medium text-slate-700 mb-3 flex items-center gap-1.5"><UserPlus className="w-4 h-4 text-brand-500" />Add member</h3>
                 <div className="flex flex-wrap gap-2">
-                  <select value={role} onChange={(e) => { setRole(e.target.value as any); setUserId(''); }} className={field}>
+                  <select value={role} onChange={(e) => { setRole(e.target.value as any); setPicked(null); setPickQuery(''); setPickResults([]); }} className={field}>
                     <option value="mentee">Mentee</option>
                     <option value="co_mentor">Co-mentor</option>
                     <option value="lead_mentor">Lead mentor</option>
                   </select>
-                  <select value={userId} onChange={(e) => setUserId(e.target.value)} className={`${field} flex-1 min-w-40`}>
-                    <option value="">Select {role === 'mentee' ? 'mentee' : 'person'}</option>
-                    {options.map((p) => <option key={p.id} value={p.id}>{p.firstName} {p.lastName}</option>)}
-                  </select>
-                  <button onClick={add} disabled={busy} className="px-3 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm inline-flex items-center gap-1.5 disabled:opacity-50">
+                  <div className="flex-1 min-w-40">
+                    {picked ? (
+                      <div className="flex items-center justify-between gap-2 border border-slate-300 rounded-lg px-3 py-2 text-sm">
+                        <span className="truncate">{picked.firstName} {picked.lastName}{picked.email ? ` · ${picked.email}` : ''}</span>
+                        <button onClick={() => setPicked(null)} className="text-slate-400 hover:text-slate-600 shrink-0"><X className="w-4 h-4" /></button>
+                      </div>
+                    ) : (
+                      <div className="relative">
+                        <input value={pickQuery} onChange={(e) => setPickQuery(e.target.value)} placeholder={`Search ${role === 'mentee' ? 'a mentee' : 'anyone'} by name or email…`}
+                          className={`${field} w-full`} />
+                        {(pickResults.length > 0 || searching) && (
+                          <div className="absolute z-20 mt-1 w-full max-h-56 overflow-y-auto rounded-lg border border-slate-200 bg-card shadow-lg dark:shadow-[0_8px_30px_rgba(0,0,0,0.5)]">
+                            {searching ? (
+                              <div className="py-4 flex justify-center"><Loader2 className="w-4 h-4 animate-spin text-slate-400" /></div>
+                            ) : pickResults.map((p) => (
+                              <button key={p.id} onClick={() => { setPicked(p); setPickResults([]); }} className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50">
+                                <span className="block text-slate-900">{p.firstName} {p.lastName}</span>
+                                {p.email && <span className="block text-xs text-slate-500">{p.email}</span>}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <button onClick={add} disabled={busy || !picked} className="px-3 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm inline-flex items-center gap-1.5 disabled:opacity-50">
                     {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}Add
                   </button>
                 </div>
-                <p className="text-xs text-slate-400 mt-2">Adding a mentee here places them in this clan (their mentor assignment).</p>
+                <p className="text-xs text-slate-400 mt-2">Search finds anyone (incl. someone you removed earlier). Adding a mentee here places them in this clan.</p>
               </div>
 
               {/* Members */}

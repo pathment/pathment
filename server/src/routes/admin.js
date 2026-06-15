@@ -89,6 +89,38 @@ router.delete(
   adminController.deleteUser
 );
 
+// Edit a user (name / email / base role) — admin user management.
+router.patch(
+  '/users/:id',
+  authenticate,
+  requirePermission(PERMISSIONS.USER_MANAGE),
+  adminController.updateUser
+);
+
+// Set a user's password directly (admin support action).
+router.post(
+  '/users/:id/password',
+  authenticate,
+  requirePermission(PERMISSIONS.USER_MANAGE),
+  adminController.setUserPassword
+);
+
+// Send a user a password-reset link.
+router.post(
+  '/users/:id/send-reset',
+  authenticate,
+  requirePermission(PERMISSIONS.USER_MANAGE),
+  adminController.sendUserPasswordReset
+);
+
+// Disable / reset a user's 2FA (locked-out support).
+router.post(
+  '/users/:id/disable-2fa',
+  authenticate,
+  requirePermission(PERMISSIONS.USER_MANAGE),
+  adminController.disableUserTwoFactor
+);
+
 // Suspend a user
 router.put(
   '/users/:id/suspend',

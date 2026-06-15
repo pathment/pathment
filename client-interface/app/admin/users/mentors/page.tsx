@@ -12,7 +12,9 @@ import {
   Trash2,
   ShieldOff,
   ShieldCheck,
+  Pencil,
 } from 'lucide-react';
+import { EditUserDrawer } from '@/components/admin/EditUserDrawer';
 import { DataTable, DataTableColumn } from '@/components/shared/DataTable';
 import { TablePagination } from '@/components/shared/TablePagination';
 import {
@@ -185,6 +187,7 @@ export default function AdminMentorsListPage() {
 
   const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
   const [suspendLoading, setSuspendLoading] = useState<string | null>(null);
+  const [editUser, setEditUser] = useState<MentorListItem | null>(null);
   const [suspendModalOpen, setSuspendModalOpen] = useState(false);
   const [suspendRow, setSuspendRow] = useState<MentorListItem | null>(null);
 
@@ -283,6 +286,13 @@ export default function AdminMentorsListPage() {
                 ? <ShieldCheck className="w-3.5 h-3.5" />
                 : <ShieldOff className="w-3.5 h-3.5" />}
             {isSuspended ? 'Unsuspend' : 'Suspend'}
+          </button>
+          <button
+            onClick={() => setEditUser(row)}
+            title="Edit user"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+          >
+            <Pencil className="w-3.5 h-3.5" />Edit
           </button>
           <button
             onClick={() => handleDelete(row.id, name)}
@@ -395,6 +405,14 @@ export default function AdminMentorsListPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {editUser && (
+        <EditUserDrawer
+          user={{ id: editUser.id, firstName: editUser.firstName, lastName: editUser.lastName, email: editUser.email, role: 'mentor' }}
+          onClose={() => setEditUser(null)}
+          onSaved={refetch}
+        />
+      )}
     </div>
   );
 }

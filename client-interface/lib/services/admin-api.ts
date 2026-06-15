@@ -30,6 +30,17 @@ export const adminApi = {
       return response.data;
     }
   },
+  /** Admin user management — edit profile/email/base-role + password actions. */
+  users: {
+    update: (id: string, data: { firstName?: string; lastName?: string; email?: string; role?: 'mentee' | 'mentor' }) =>
+      apiClient.patch(`/admin/users/${id}`, data),
+    setPassword: (id: string, password: string) =>
+      apiClient.post(`/admin/users/${id}/password`, { password }),
+    sendReset: (id: string) =>
+      apiClient.post(`/admin/users/${id}/send-reset`, {}),
+    disable2FA: (id: string) =>
+      apiClient.post(`/admin/users/${id}/disable-2fa`, {}),
+  },
   /** Co-mentor promotion pipeline — admin review of mentor nominations. */
   promotions: {
     list: () => apiClient.get('/admin/promotions'),

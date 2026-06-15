@@ -174,6 +174,30 @@ class AdminController {
     res.status(200).json(successResponse(result.message, {}));
   });
 
+  /** Admin edits a user (name / email / base role). PATCH /api/admin/users/:id */
+  updateUser = catchAsync(async (req, res) => {
+    const user = await adminService.updateUser(req.params.id, req.body, req.user.id);
+    res.status(200).json(successResponse('User updated', { user }));
+  });
+
+  /** Admin sets a user's password directly. POST /api/admin/users/:id/password */
+  setUserPassword = catchAsync(async (req, res) => {
+    const result = await adminService.setUserPassword(req.params.id, req.body.password, req.user.id);
+    res.status(200).json(successResponse(result.message, {}));
+  });
+
+  /** Admin sends a password-reset link. POST /api/admin/users/:id/send-reset */
+  sendUserPasswordReset = catchAsync(async (req, res) => {
+    const result = await adminService.sendUserPasswordReset(req.params.id);
+    res.status(200).json(successResponse(result.message, {}));
+  });
+
+  /** Admin disables/resets a user's 2FA. POST /api/admin/users/:id/disable-2fa */
+  disableUserTwoFactor = catchAsync(async (req, res) => {
+    const result = await adminService.disableUserTwoFactor(req.params.id, req.user.id);
+    res.status(200).json(successResponse(result.message, {}));
+  });
+
   /**
    * Update a user's platform capabilities (role views they may switch into).
    * The primary `role` is always preserved by the User model hook.

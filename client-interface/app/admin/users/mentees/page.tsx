@@ -10,6 +10,7 @@ import {
   ExternalLink,
   Flame,
   Trash2,
+  Pencil,
   Loader2,
   ShieldOff,
   ShieldCheck,
@@ -35,6 +36,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useMenteesList, MenteeListItem } from '@/lib/hooks/admin/useMenteesList';
 import { ReassignClanModal } from '@/components/admin/ReassignClanModal';
+import { EditUserDrawer } from '@/components/admin/EditUserDrawer';
 import { menteeApi } from '@/lib/services/mentee-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { toast } from 'sonner';
@@ -165,6 +167,7 @@ export default function AdminMenteesListPage() {
   const [suspendModalOpen, setSuspendModalOpen] = useState(false);
   const [suspendRow, setSuspendRow] = useState<MenteeListItem | null>(null);
   const [movingMentee, setMovingMentee] = useState<MenteeListItem | null>(null);
+  const [editUser, setEditUser] = useState<MenteeListItem | null>(null);
 
   const handleDelete = async (id: string, name: string) => {
     if (!confirm(`Permanently delete ${name}? This removes all their enrollments and data and cannot be undone.`)) return;
@@ -275,6 +278,14 @@ export default function AdminMenteesListPage() {
                 ? <ShieldCheck className="w-3.5 h-3.5" />
                 : <ShieldOff className="w-3.5 h-3.5" />}
             {isSuspended ? 'Unsuspend' : 'Suspend'}
+          </button>
+          <button
+            onClick={() => setEditUser(row)}
+            title="Edit user"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+          >
+            <Pencil className="w-3.5 h-3.5" />
+            Edit
           </button>
           <button
             onClick={() => handleDelete(row.id, name)}
@@ -393,6 +404,14 @@ export default function AdminMenteesListPage() {
           currentProgramId={movingMentee.currentClan?.programId ?? null}
           onClose={() => setMovingMentee(null)}
           onDone={refetch}
+        />
+      )}
+
+      {editUser && (
+        <EditUserDrawer
+          user={{ id: editUser.id, firstName: editUser.firstName, lastName: editUser.lastName, email: editUser.email, role: 'mentee' }}
+          onClose={() => setEditUser(null)}
+          onSaved={refetch}
         />
       )}
     </div>

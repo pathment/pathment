@@ -38,6 +38,9 @@ export const clanApi = {
     apiClient.patch(`/clans/${id}/members/${userId}/permissions`, { denied }),
   // Lead mentor: list unassigned mentees + invite a new one straight into the clan.
   availableMembers: (id: string, q?: string) => apiClient.get(`/clans/${id}/available`, { params: q ? { q } : {} }),
+  // Anyone active (mentor OR mentee) not already a mentor in this clan — searchable
+  // candidate pool for adding a co-mentor / core-team member (incl. re-adding a removed one).
+  candidates: (id: string, q?: string) => apiClient.get(`/clans/${id}/candidates`, { params: q ? { q } : {} }),
   inviteToClan: (id: string, email: string) => apiClient.post(`/clans/${id}/invite`, { email }),
   /** Move a mentee to a different clan (admin). Same program keeps progress; a
    *  different program wipes the old enrollment + tasks (clean transfer). */
