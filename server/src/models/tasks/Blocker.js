@@ -21,8 +21,10 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
       field: 'assigned_task_id'
     },
+    // Free-form "What's blocking you?" text — mentees often write a paragraph,
+    // so TEXT (no 255 cap) to avoid "value too long" insert failures.
     title: {
-      type: DataTypes.STRING(255),
+      type: DataTypes.TEXT,
       allowNull: false
     },
     category: {

@@ -15,8 +15,12 @@ class FrictionService {
   }
 
   async createBlocker(data, createdBy) {
-    const { title, menteeId } = data;
+    const { menteeId } = data;
+    const title = typeof data.title === 'string' ? data.title.trim() : '';
     if (!title || !menteeId) throw new ValidationError('title and menteeId are required');
+    // Generous cap with a friendly message, so a huge paste is a clean 400 — not
+    // an opaque DB error. (Column is TEXT, so normal paragraphs are fine.)
+    if (title.length > 5000) throw new ValidationError('That blocker note is too long — please keep it under 5000 characters.');
     return models.Blocker.create({
       menteeId,
       assignedTaskId: data.assignedTaskId || null,
