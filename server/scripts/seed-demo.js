@@ -92,6 +92,7 @@ async function cleanupDemo() {
     await models.Program.destroy({ where: { id: program.id }, force: true });
   }
   if (userIds.length) {
+    if (models.UserSkill) await models.UserSkill.destroy({ where: { userId: { [Op.in]: userIds } }, force: true });
     await models.MenteeProfile.destroy({ where: { userId: { [Op.in]: userIds } }, force: true });
     await models.MentorProfile.destroy({ where: { userId: { [Op.in]: userIds } }, force: true });
     await models.AdminProfile.destroy({ where: { userId: { [Op.in]: userIds } }, force: true });
@@ -587,6 +588,71 @@ async function seed() {
   });
 
   console.log("✅ Blockers, delays, notes, schedules & announcements created\n");
+
+  // ── Rich directory data (skills, profile stats, last-active) so the admin ────
+  //    Mentors/Mentees tables look real instead of empty. ───────────────────────
+  console.log("✨ Enriching profiles (skills, stats, last active)…");
+
+  // Skills — find-or-create so it works whether or not seed:skills was run.
+  const SKILL_NAMES = ["React", "Node.js", "TypeScript", "PostgreSQL", "CSS", "Testing", "Docker", "System Design", "JavaScript", "Express"];
+  const skillByName = {};
+  for (const name of SKILL_NAMES) {
+    const [s] = await models.Skill.findOrCreate({ where: { name }, defaults: { name, category: "Engineering" } });
+    skillByName[name] = s;
+  }
+  const attachSkills = async (userId, names, level) => {
+    for (const n of names) {
+      const s = skillByName[n];
+      if (!s) continue;
+      await models.UserSkill.findOrCreate({ where: { userId, skillId: s.id }, defaults: { userId, skillId: s.id, proficiencyLevel: level } });
+    }
+  };
+
+  // Mentors: expertise + headline stats + a recent login.
+  const mentorSpec = {
+    [aisha.id]: ["React", "CSS", "TypeScript", "Testing"],
+    [omar.id]: ["Node.js", "PostgreSQL", "Express", "System Design"],
+    [sam.id]: ["JavaScript", "React", "Docker"],
+  };
+  for (const m of [aisha, omar, sam]) {
+    const specs = mentorSpec[m.id] || [];
+    await attachSkills(m.id, specs, 90);
+    await models.User.update({ lastLoginAt: daysAgo(0) }, { where: { id: m.id } });
+    await models.MentorProfile.update(
+      { currentMenteeCount: 4, totalMenteesGuided: 6, avgFeedbackRating: 4.6, successRate: 92, specialization: specs },
+      { where: { userId: m.id } }
+    );
+  }
+  await models.User.update({ lastLoginAt: daysAgo(0) }, { where: { id: admin.id } });
+
+  // Mentees: per-archetype gamification stats + skills + last login = last active.
+  const MENTEE_STATS = {
+    star:       { points: 1450, level: 6, streak: 18, tasks: 5, badges: 5, programs: 1, edu: "BSc Computer Science" },
+    on_track:   { points: 820,  level: 4, streak: 7,  tasks: 4, badges: 3, programs: 1, edu: "BSc Computer Science" },
+    disengaged: { points: 90,   level: 1, streak: 0,  tasks: 1, badges: 0, programs: 1, edu: "Self-learner" },
+    new:        { points: 0,    level: 1, streak: 0,  tasks: 0, badges: 0, programs: 1, edu: "Bootcamp" },
+    fighting:   { points: 540,  level: 3, streak: 4,  tasks: 3, badges: 2, programs: 1, edu: "Diploma in IT" },
+    watch:      { points: 610,  level: 3, streak: 0,  tasks: 3, badges: 2, programs: 1, edu: "BSc (in progress)" },
+    review:     { points: 700,  level: 3, streak: 5,  tasks: 4, badges: 3, programs: 1, edu: "Coding bootcamp" },
+    average:    { points: 480,  level: 2, streak: 3,  tasks: 3, badges: 1, programs: 1, edu: "Self-taught" },
+  };
+  const MENTEE_SKILLS = ["JavaScript", "React", "CSS", "Node.js"];
+  for (const s of menteeSpecs) {
+    const u = mentees[s.local].user;
+    const st = MENTEE_STATS[s.archetype] || MENTEE_STATS.average;
+    await attachSkills(u.id, MENTEE_SKILLS.slice(0, 2 + (st.level % 3)), 50 + st.level * 5);
+    await models.User.update({ lastLoginAt: s.active == null ? daysAgo(0) : daysAgo(s.active) }, { where: { id: u.id } });
+    await models.MenteeProfile.update(
+      {
+        totalPoints: st.points, currentLevel: st.level, currentStreakDays: st.streak,
+        longestStreakDays: Math.max(st.streak, st.streak + 4), totalTasksCompleted: st.tasks,
+        totalBadgesEarned: st.badges, totalProgramsEnrolled: st.programs, totalProgramsCompleted: 0,
+        avgTaskRating: st.points > 0 ? 4 : 0, currentEducation: st.edu,
+      },
+      { where: { userId: u.id } }
+    );
+  }
+  console.log("✅ Profiles enriched (skills, points, levels, last active)\n");
 
   // ── Promotion pipeline (mentee → co-mentor) ──────────────────────────────────
   // Maya (the star) is nominated and marked ready, so /admin/promotions shows an
