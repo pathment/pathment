@@ -124,6 +124,49 @@ class ChangelogService {
     return this.toPublic(row);
   }
 
+  /**
+   * Bulk-import entries from a pasted JSON array (admin authoring). Each item is
+   * validated independently: the valid ones are created, the bad ones reported —
+   * so one typo doesn't sink the whole paste. `publishAll` (the import-level
+   * toggle) is the default publish state; a per-item `publish` overrides it.
+   * Returns { created, total, errors: [{ index, title, message }] }.
+   */
+  async importMany(authorId, items, publishAll = false) {
+    if (!Array.isArray(items) || !items.length) {
+      throw new ValidationError('Provide a non-empty JSON array of updates');
+    }
+    if (items.length > 100) throw new ValidationError('Import at most 100 updates at once');
+
+    const errors = [];
+    const rows = [];
+    items.forEach((item, index) => {
+      try {
+        if (!item || typeof item !== 'object') throw new ValidationError('Each item must be an object');
+        const data = this.sanitize(item);
+        if (!data.title) throw new ValidationError('Title is required');
+        if (!data.body) throw new ValidationError('Body is required');
+        const publish = item.publish === undefined ? publishAll : Boolean(item.publish);
+        rows.push({
+          title: data.title,
+          body: data.body,
+          type: data.type || 'feature',
+          audience: data.audience || ROLE_VIEWS,
+          isMajor: data.isMajor || false,
+          actionUrl: data.actionUrl ?? null,
+          actionLabel: data.actionLabel ?? null,
+          createdBy: authorId,
+          publishedAt: publish ? new Date() : null,
+        });
+      } catch (e) {
+        errors.push({ index, title: item && item.title ? String(item.title).slice(0, 80) : null, message: e.message });
+      }
+    });
+
+    let created = [];
+    if (rows.length) created = await models.ProductUpdate.bulkCreate(rows);
+    return { created: created.length, total: items.length, errors };
+  }
+
   async update(id, input) {
     const row = await models.ProductUpdate.findByPk(id);
     if (!row) throw new NotFoundError('Update not found');

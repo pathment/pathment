@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { toast } from 'sonner';
 import dynamic from 'next/dynamic';
-import { PackageOpen, Plus, Pencil, Trash2, Eye, EyeOff, Rocket, ArrowUpCircle, Wrench, Search, X } from 'lucide-react';
+import { PackageOpen, Plus, Pencil, Trash2, Eye, EyeOff, Rocket, ArrowUpCircle, Wrench, Search, X, Upload } from 'lucide-react';
 import { Drawer } from '@/components/shared/Drawer';
 import { SelectMenu } from '@/components/shared/SelectMenu';
 import { TablePagination } from '@/components/shared/TablePagination';
@@ -37,6 +37,11 @@ export default function AdminChangelogPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<ChangelogInput>(EMPTY);
   const [saving, setSaving] = useState(false);
+  // JSON bulk-import (paste a JSON array, optionally publish on import).
+  const [importOpen, setImportOpen] = useState(false);
+  const [importText, setImportText] = useState('');
+  const [importPublish, setImportPublish] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   // Server-side search + filters + pagination (capped on the backend).
   const pagination = usePagination({ initialPage: 1, initialLimit: 10 });
@@ -75,6 +80,38 @@ export default function AdminChangelogPage() {
   const clearFilters = () => { setSearch(''); setTypeFilter(''); setStatusFilter(''); };
 
   const openNew = () => { setEditingId(null); setForm(EMPTY); setDrawerOpen(true); };
+
+  const runImport = async () => {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(importText);
+    } catch {
+      toast.error('That isn\'t valid JSON — check for a missing comma or quote.');
+      return;
+    }
+    const payload = Array.isArray(parsed)
+      ? { updates: parsed as ChangelogInput[], publish: importPublish }
+      : { ...(parsed as { updates: ChangelogInput[] }), publish: importPublish };
+    if (!Array.isArray(payload.updates) || !payload.updates.length) {
+      toast.error('Expected a JSON array of updates (or { "updates": [...] }).');
+      return;
+    }
+    setImporting(true);
+    try {
+      const res = await changelogApi.importMany(payload);
+      if (res.created > 0) {
+        toast.success(`Imported ${res.created} of ${res.total}${importPublish ? ' (published)' : ' as drafts'}.`);
+      }
+      if (res.errors?.length) {
+        toast.error(`${res.errors.length} skipped: ${res.errors.slice(0, 3).map((e) => `#${e.index + 1} ${e.message}`).join('; ')}`);
+      }
+      if (res.created > 0) { setImportOpen(false); setImportText(''); setImportPublish(false); await load(); }
+    } catch (e: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+      toast.error(e?.response?.data?.message || 'Could not import the updates.');
+    } finally {
+      setImporting(false);
+    }
+  };
   const openEdit = (e: ChangelogAdminEntry) => {
     setEditingId(e.id);
     setForm({ title: e.title, body: e.body, type: e.type, audience: e.audience, isMajor: e.isMajor, actionUrl: e.actionUrl || '', actionLabel: e.actionLabel || '' });
@@ -138,9 +175,14 @@ export default function AdminChangelogPage() {
           </h1>
           <p className="text-slate-500 mt-1">Post product updates. Users see a role-filtered feed with an unread badge; major items pop a one-time modal.</p>
         </div>
-        <button onClick={openNew} className="inline-flex items-center gap-2 px-4 py-2.5 bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold rounded-xl transition-colors shrink-0">
-          <Plus className="w-4 h-4" /> New update
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <button onClick={() => setImportOpen(true)} className="inline-flex items-center gap-2 px-4 py-2.5 border border-slate-200 hover:border-brand-300 text-slate-700 text-sm font-semibold rounded-xl transition-colors">
+            <Upload className="w-4 h-4" /> Import JSON
+          </button>
+          <button onClick={openNew} className="inline-flex items-center gap-2 px-4 py-2.5 bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold rounded-xl transition-colors">
+            <Plus className="w-4 h-4" /> New update
+          </button>
+        </div>
       </div>
 
       {/* Search + filters */}
@@ -302,6 +344,55 @@ export default function AdminChangelogPage() {
               />
             </div>
           </div>
+        </div>
+      </Drawer>
+
+      {/* Import JSON drawer */}
+      <Drawer
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        title="Import updates from JSON"
+        subtitle="Paste a JSON array of updates. They import as drafts unless you tick publish."
+        width="lg"
+        footer={
+          <div className="flex items-center justify-between gap-2 w-full">
+            <label className="inline-flex items-center gap-2 text-sm text-slate-600">
+              <input type="checkbox" checked={importPublish} onChange={(e) => setImportPublish(e.target.checked)} className="w-4 h-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500" />
+              Publish on import
+            </label>
+            <div className="flex gap-2">
+              <button onClick={() => setImportOpen(false)} className="px-4 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm">Cancel</button>
+              <button onClick={runImport} disabled={importing || !importText.trim()} className="px-4 py-2 rounded-lg bg-brand-600 text-white text-sm font-medium disabled:opacity-50 inline-flex items-center gap-2">
+                {importing && <Upload className="w-4 h-4 animate-pulse" />}Import
+              </button>
+            </div>
+          </div>
+        }
+      >
+        <div className="space-y-3">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 dark:bg-slate-800/40 p-3 text-xs text-slate-500">
+            <p className="font-medium text-slate-600 mb-1">Format — an array of:</p>
+            <pre className="whitespace-pre-wrap text-[11px] leading-relaxed">{`[
+  {
+    "title": "Required",
+    "body": "Required. Plain text or simple HTML.",
+    "type": "feature | improvement | fix",   // default: feature
+    "audience": ["admin","mentor","mentee"],  // default: all
+    "isMajor": false,                          // pops the one-time modal
+    "actionUrl": "/mentor/roadmaps",           // optional
+    "actionLabel": "Open",                     // optional
+    "publish": true                            // optional, per-item
+  }
+]`}</pre>
+          </div>
+          <textarea
+            value={importText}
+            onChange={(e) => setImportText(e.target.value)}
+            rows={16}
+            spellCheck={false}
+            placeholder='Paste your JSON here…'
+            className="w-full border border-slate-300 rounded-xl p-3 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-brand-500 resize-y"
+          />
         </div>
       </Drawer>
     </div>

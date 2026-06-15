@@ -14,6 +14,7 @@ router.post('/seen', authenticate, changelogController.markSeen);
 // Authoring is an org/system action — gated on system.settings (org admins hold it).
 router.get('/manage', authenticate, requirePermission(PERMISSIONS.SYSTEM_SETTINGS), validateQuery(changelogSchemas.listQuery), changelogController.listAll);
 router.post('/', authenticate, requirePermission(PERMISSIONS.SYSTEM_SETTINGS), changelogController.create);
+router.post('/import', authenticate, requirePermission(PERMISSIONS.SYSTEM_SETTINGS), changelogController.importMany);
 router.patch('/:id', authenticate, requirePermission(PERMISSIONS.SYSTEM_SETTINGS), changelogController.update);
 router.delete('/:id', authenticate, requirePermission(PERMISSIONS.SYSTEM_SETTINGS), changelogController.remove);
 

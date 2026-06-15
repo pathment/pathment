@@ -38,4 +38,13 @@ const remove = catchAsync(async (req, res) => {
   res.status(200).json(successResponse('Update deleted'));
 });
 
-module.exports = { feed, markSeen, listAll, create, update, remove };
+// POST /api/changelog/import — bulk-create from a pasted JSON array.
+// Body: { updates: [...], publish?: boolean } OR a bare [...] array.
+const importMany = catchAsync(async (req, res) => {
+  const items = Array.isArray(req.body) ? req.body : (req.body && req.body.updates);
+  const publishAll = !Array.isArray(req.body) && Boolean(req.body && req.body.publish);
+  const result = await changelogService.importMany(req.user.id, items, publishAll);
+  res.status(201).json(successResponse('Updates imported', result));
+});
+
+module.exports = { feed, markSeen, listAll, create, update, remove, importMany };

@@ -75,4 +75,10 @@ export const changelogApi = {
   async remove(id: string): Promise<void> {
     await apiClient.delete(`/changelog/${id}`);
   },
+
+  // Bulk import from a pasted JSON array (or { updates, publish }).
+  async importMany(payload: ChangelogInput[] | { updates: ChangelogInput[]; publish?: boolean }): Promise<{ created: number; total: number; errors: { index: number; title: string | null; message: string }[] }> {
+    const res = await apiClient.post<any>('/changelog/import', payload);
+    return res.data;
+  },
 };
