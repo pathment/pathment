@@ -60,7 +60,7 @@ export function WorkspaceSignIn() {
         onClick={() => setOpen((value) => !value)}
         aria-haspopup="dialog"
         aria-expanded={open}
-        className="text-sm font-medium text-zinc-600 transition-colors hover:text-zinc-950"
+        className="text-sm font-medium text-zinc-600 transition-colors hover:text-brand-700"
       >
         Sign In
       </button>
@@ -94,7 +94,7 @@ export function WorkspaceSignIn() {
             <button
               type="submit"
               disabled={!slug}
-              className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-zinc-950 px-4 py-2.5 text-sm font-semibold text-white transition-all duration-200 hover:bg-zinc-800 enabled:hover:-translate-y-0.5 enabled:hover:shadow-md-soft disabled:cursor-not-allowed disabled:opacity-40"
+              className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white transition-all duration-200 hover:bg-brand-700 enabled:hover:-translate-y-0.5 enabled:hover:shadow-md-soft disabled:cursor-not-allowed disabled:opacity-40"
             >
               Continue <ArrowRight className="h-4 w-4" />
             </button>

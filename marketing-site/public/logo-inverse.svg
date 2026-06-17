@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 248 48" fill="none" role="img" aria-label="Pathment">
+  <defs>
+    <linearGradient id="pm-mark-bg-inv" x1="4" y1="44" x2="44" y2="4" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2563eb"/>
+      <stop offset="1" stop-color="#60a5fa"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="48" height="48" rx="12" fill="url(#pm-mark-bg-inv)"/>
+  <rect x="0.75" y="0.75" width="46.5" height="46.5" rx="11.25" stroke="#ffffff" stroke-opacity="0.25"/>
+  <path
+    d="M16.5 37V17.5C16.5 12.8 31.5 12.8 31.5 20.8C31.5 29 23.5 29.5 16.5 26.5"
+    stroke="#ffffff"
+    stroke-width="4.2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <circle cx="16.5" cy="37" r="3" fill="#ffffff"/>
+  <circle cx="31.5" cy="20.8" r="2.2" fill="#dbeafe"/>
+  <text
+    x="60"
+    y="33"
+    fill="#ffffff"
+    font-family="Sora, ui-sans-serif, system-ui, -apple-system, sans-serif"
+    font-size="26"
+    font-weight="600"
+    letter-spacing="-0.04em"
+  >Pathment</text>
+</svg>

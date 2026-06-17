@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Inter, JetBrains_Mono, Sora } from 'next/font/google';
+import { SmoothScroll } from '../components/landing/SmoothScroll';
 import './globals.css';
 
 const inter = Inter({
@@ -30,6 +31,7 @@ export const metadata: Metadata = {
   metadataBase: new URL('https://pathment.me'),
   icons: {
     icon: [
+      { url: '/favicon.svg', type: 'image/svg+xml' },
       { url: '/assets/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
       { url: '/assets/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
       { url: '/favicon.ico', sizes: 'any' },
@@ -64,6 +66,7 @@ export default function RootLayout({
         suppressHydrationWarning
         className={`${inter.variable} ${sora.variable} ${jetbrainsMono.variable}`}
       >
+        <SmoothScroll />
         {children}
       </body>
     </html>

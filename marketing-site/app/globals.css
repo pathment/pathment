@@ -11,8 +11,9 @@
   --color-brand-500: #2563eb;
   --color-brand-600: #1d4ed8;
   --color-brand-700: #1d4ed8;
+  --color-brand-800: #1e40af;
   --color-brand-900: #1e3a8a;
-  --color-brand-950: #0f172a;
+  --color-brand-950: #172554;
 
   --shadow-sm-soft: 0 1px 2px 0 rgba(0, 0, 0, 0.02);
   --shadow-md-soft: 0 4px 12px -2px rgba(0, 0, 0, 0.03), 0 2px 6px -1px rgba(0, 0, 0, 0.02);
@@ -27,8 +28,23 @@ body {
 
 html {
   -webkit-text-size-adjust: 100%;
-  scroll-behavior: smooth;
   scroll-padding-top: 5.5rem;
+}
+
+html.lenis {
+  height: auto;
+}
+
+html.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+
+.lenis.lenis-smooth [data-lenis-prevent] {
+  overscroll-behavior: contain;
+}
+
+.lenis.lenis-stopped {
+  overflow: hidden;
 }
 
 ::selection {
@@ -45,12 +61,13 @@ html {
 body {
   font-family: var(--font-sans);
   background-color: #fcfcfd;
-  color: #09090b;
+  color: #172554;
   font-feature-settings: 'cv11', 'ss01';
   letter-spacing: -0.011em;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
 }
 
 /* Display font: tighter tracking and balanced wrapping for headings */
@@ -69,4 +86,27 @@ h4 {
 .grid-pattern {
   background-image: radial-gradient(#e4e4e7 1px, transparent 1px);
   background-size: 24px 24px;
+}
+
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-logo-marquee {
+  animation: marquee 50s linear infinite;
+  width: max-content;
+}
+
+.animate-marquee {
+  animation: marquee 40s linear infinite;
+  width: max-content;
+}
+
+.pause-on-hover:hover {
+  animation-play-state: paused;
 }

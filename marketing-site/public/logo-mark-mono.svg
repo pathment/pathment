@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" role="img" aria-label="Pathment mark">
+  <path
+    d="M22 48V24C22 18 46 18 46 28C46 37 31 38 22 34"
+    stroke="#2563eb"
+    stroke-width="5"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <circle cx="22" cy="48" r="4.5" fill="#1e40af"/>
+  <circle cx="46" cy="28" r="2.4" fill="#60a5fa"/>
+</svg>

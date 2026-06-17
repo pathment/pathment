@@ -1,11 +1,14 @@
-import { Capabilities } from '../components/landing/Capabilities';
-import { Enterprise } from '../components/landing/Enterprise';
+import { DeepFeatures } from '../components/landing/DeepFeatures';
+import { FAQ } from '../components/landing/FAQ';
+import { Features } from '../components/landing/Features';
 import { FinalCta } from '../components/landing/FinalCta';
 import { Footer } from '../components/landing/Footer';
 import { Hero } from '../components/landing/Hero';
-import { Navbar } from '../components/landing/Navbar';
-import { ProblemSolution } from '../components/landing/ProblemSolution';
+import { LogoMarquee } from '../components/landing/LogoMarquee';
 import { Workflow } from '../components/landing/Workflow';
+import { Navbar } from '../components/landing/Navbar';
+import { Solutions } from '../components/landing/Solutions';
+import { Testimonials } from '../components/landing/Testimonials';
 
 export default function HomePage() {
   return (
@@ -13,10 +16,13 @@ export default function HomePage() {
       <Navbar />
       <main>
         <Hero />
-        <ProblemSolution />
+        <LogoMarquee />
+        <Solutions />
+        <Features />
+        <DeepFeatures />
         <Workflow />
-        <Capabilities />
-        <Enterprise />
+        <Testimonials />
+        <FAQ />
         <FinalCta />
       </main>
       <Footer />
