@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import {
   ChevronLeft, ChevronRight, SkipForward, Check, Loader2,
   TrendingUp, TrendingDown, Minus, Flag, Clock, ClipboardCheck, Keyboard, CheckCircle2, ArrowUpRight, Send, Plus, ListTodo, CalendarClock,
-  Trash2, X, History, RotateCcw, CalendarDays, AlertTriangle, StickyNote, Search,
+  Trash2, X, History, RotateCcw, CalendarDays, AlertTriangle, StickyNote, Search, Lock,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useMentorCohort, useMentorApprovals, type CohortMentee, type CohortMomentum, type CohortRisk, type ApprovalItem } from '@/lib/hooks/mentor';
@@ -76,6 +76,7 @@ export default function CohortReview() {
   const [session, setSession] = useState<ReviewSession | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [sessions, setSessions] = useState<ReviewSessionSummary[]>([]);
+  const [cohortReviewDeleteLocked, setCohortReviewDeleteLocked] = useState(false);
   // Mentees already given an "up next" heads-up this visit (avoid double-pinging).
   const [pinged, setPinged] = useState<Set<string>>(new Set());
   const [focus, setFocus] = useState(0);
@@ -142,6 +143,8 @@ export default function CohortReview() {
       const r: any = sessionParam // eslint-disable-line @typescript-eslint/no-explicit-any
         ? await mentorApi.getReviewSession(sessionParam)
         : await mentorApi.getTodayReviewSession();
+      if (r?.data?.policies?.cohortReviewDeleteLocked) setCohortReviewDeleteLocked(true);
+      else if (r?.data?.policies) setCohortReviewDeleteLocked(false);
       const loaded = r?.data?.session ?? null;
       if (loaded) {
         setSession(loaded);
@@ -428,17 +431,25 @@ export default function CohortReview() {
 
   const openHistory = useCallback(async () => {
     setHistoryOpen(true);
-    try { const r: any = await mentorApi.listReviewSessions(); setSessions(r?.data?.sessions ?? []); } // eslint-disable-line @typescript-eslint/no-explicit-any
+    try {
+      const r: any = await mentorApi.listReviewSessions(); // eslint-disable-line @typescript-eslint/no-explicit-any
+      setSessions(r?.data?.sessions ?? []);
+      if (r?.data?.policies?.cohortReviewDeleteLocked) setCohortReviewDeleteLocked(true);
+      else if (r?.data?.policies) setCohortReviewDeleteLocked(false);
+    }
     catch { setSessions([]); }
   }, []);
 
-  // Manage a saved session from history. Delete is TIERED: an empty session is a
-  // one-tap discard; one with recorded data needs an explicit confirm naming what
-  // is lost. (A future admin "lock" can disable delete org-wide — enforced server-side.)
+  // Manage a saved session from history. Delete is tiered: empty sessions are a
+  // one-tap discard; sessions with data need an explicit confirm naming what is lost.
   const [busySession, setBusySession] = useState<string | null>(null);
   const sessionIsEmpty = (s: ReviewSessionSummary) =>
     s.counts.reviewed === 0 && s.counts.present === 0 && s.counts.absent === 0 && s.counts.excused === 0 && s.counts.deferred === 0;
   const removeHistorySession = async (s: ReviewSessionSummary) => {
+    if (cohortReviewDeleteLocked) {
+      toast.error('Deletion is locked by your organization');
+      return;
+    }
     const dateLabel = new Date(`${s.sessionDate}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
     const empty = sessionIsEmpty(s);
     const title = empty ? `Discard the empty review for ${dateLabel}?` : `Permanently delete the review for ${dateLabel}?`;
@@ -1032,6 +1043,12 @@ export default function CohortReview() {
 
       {/* Cohort-review history: browse & open past dated sessions to view or edit. */}
       <Drawer open={historyOpen} onClose={() => setHistoryOpen(false)} width="md" title="Cohort review history" subtitle="Open a past session to view or edit it">
+        {cohortReviewDeleteLocked && (
+          <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3 text-sm text-amber-900">
+            <Lock className="w-4 h-4 shrink-0 mt-0.5" />
+            <span>Deletion is locked by your organization. Review records cannot be removed.</span>
+          </div>
+        )}
         <div className="space-y-2">
           {sessions.length === 0 ? (
             <p className="text-sm text-slate-400 text-center py-10">No saved reviews yet.</p>
@@ -1065,12 +1082,14 @@ export default function CohortReview() {
                       <RotateCcw className="w-3.5 h-3.5" />Reopen
                     </button>
                   )}
-                  <button type="button" onClick={() => removeHistorySession(s)} disabled={busy}
-                    className="px-2 py-1 rounded-md text-xs font-medium text-red-600 hover:bg-red-50 inline-flex items-center gap-1 disabled:opacity-50"
-                    title={sessionIsEmpty(s) ? 'Discard empty session' : 'Delete session'}>
-                    {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                    {sessionIsEmpty(s) ? 'Discard' : 'Delete'}
-                  </button>
+                  {!cohortReviewDeleteLocked && (
+                    <button type="button" onClick={() => removeHistorySession(s)} disabled={busy}
+                      className="px-2 py-1 rounded-md text-xs font-medium text-red-600 hover:bg-red-50 inline-flex items-center gap-1 disabled:opacity-50"
+                      title={sessionIsEmpty(s) ? 'Discard empty session' : 'Delete session'}>
+                      {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                      {sessionIsEmpty(s) ? 'Discard' : 'Delete'}
+                    </button>
+                  )}
                 </div>
               </div>
             );

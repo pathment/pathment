@@ -1,6 +1,12 @@
 const { catchAsync } = require('../middlewares/errorHandler');
 const { successResponse } = require('../utils/responses');
 const cohortReviewService = require('../services/cohortReviewService');
+const orgGovernanceService = require('../services/orgGovernanceService');
+
+async function withPolicies(payload) {
+  const policies = await orgGovernanceService.getPolicies();
+  return { ...payload, policies };
+}
 
 /** GET /api/mentor/review/sessions/today — today's session if it exists, else
  *  null + today's date. Lazy: we DON'T create a row just because the page was
@@ -8,13 +14,13 @@ const cohortReviewService = require('../services/cohortReviewService');
  *  the first real action (see POST /sessions). */
 const today = catchAsync(async (req, res) => {
   const result = await cohortReviewService.getTodayOrNull(req.user.id);
-  res.status(200).json(successResponse('Review session', result));
+  res.status(200).json(successResponse('Review session', await withPolicies(result)));
 });
 
 /** GET /api/mentor/review/sessions — full history with counts. */
 const list = catchAsync(async (req, res) => {
   const sessions = await cohortReviewService.listSessions(req.user.id);
-  res.status(200).json(successResponse('Review sessions', { sessions }));
+  res.status(200).json(successResponse('Review sessions', await withPolicies({ sessions })));
 });
 
 /** POST /api/mentor/review/sessions — start a new session ({ date?, title? }). */
@@ -26,7 +32,7 @@ const create = catchAsync(async (req, res) => {
 /** GET /api/mentor/review/sessions/:id */
 const get = catchAsync(async (req, res) => {
   const session = await cohortReviewService.getSession(req.user.id, req.params.id);
-  res.status(200).json(successResponse('Review session', { session }));
+  res.status(200).json(successResponse('Review session', await withPolicies({ session })));
 });
 
 /** PATCH /api/mentor/review/sessions/:id — edit title/note/date. */

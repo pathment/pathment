@@ -97,6 +97,7 @@ export const navigationConfig: Record<string, NavLink[]> = {
       children: [
         { path: '/admin/announcements', icon: Megaphone, label: 'Announcements', permission: 'community.moderate' },
         { path: '/admin/changelog', icon: PackageOpen, label: "What's New", permission: 'system.settings' },
+        { path: '/admin/governance', icon: ShieldCheck, label: 'Governance', permission: 'system.settings' },
         { path: '/admin/rewards', icon: Gift, label: 'Rewards', permission: 'gamification.manage' },
         { path: '/admin/moderation', icon: ShieldAlert, label: 'Moderation', permission: 'community.moderate' },
       ],

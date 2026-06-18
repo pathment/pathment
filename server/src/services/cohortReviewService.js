@@ -3,6 +3,7 @@ const { models } = require('../db');
 const { NotFoundError, ForbiddenError, ValidationError } = require('../utils/errors/errorTypes');
 const { todayInZone } = require('../utils/timezone');
 const cohortService = require('./cohortService');
+const orgGovernanceService = require('./orgGovernanceService');
 
 /**
  * cohortReviewService - dated, saved, editable cohort-review sessions.
@@ -212,6 +213,9 @@ class CohortReviewService {
   }
 
   async deleteSession(mentorId, sessionId) {
+    if (await orgGovernanceService.isCohortReviewDeleteLocked()) {
+      throw new ForbiddenError('Cohort review deletion is locked by your organization for audit compliance');
+    }
     const session = await this._own(mentorId, sessionId);
     await models.CohortReviewEntry.destroy({ where: { sessionId: session.id } });
     await session.destroy();
