@@ -18,6 +18,7 @@ import {
 import RichTextEditor from '@/components/shared/RichTextEditor';
 import { useMentorTaskFeedback } from '@/lib/hooks/mentor';
 import { PageHeader } from '@/components/admin/ui';
+import { formatFileSize } from '@/lib/utils/formatting';
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -230,7 +231,9 @@ export default function FeedbackProvision({ params }: PageProps) {
                     <FileText className="w-5 h-5 text-slate-600" />
                     <div>
                       <p className="text-sm text-slate-900">{file.fileName}</p>
-                      <p className="text-xs text-slate-500">{(file.fileSize / 1024).toFixed(2)} KB</p>
+                      {Number(file.fileSizeBytes) > 0 && (
+                        <p className="text-xs text-slate-500">{formatFileSize(Number(file.fileSizeBytes))}</p>
+                      )}
                     </div>
                   </div>
                   <a
