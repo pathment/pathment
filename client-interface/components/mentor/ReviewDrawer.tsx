@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { Check, Star, ExternalLink, Loader2, Clock, ShieldCheck } from 'lucide-react';
 import { submissionService } from '@/lib/services/submissionService';
 import { Drawer } from '@/components/shared/Drawer';
+import { FeedbackAssist } from '@/components/mentor/FeedbackAssist';
 import { looksLikeHtml } from '@/lib/utils/html';
 import type { ApprovalItem } from '@/lib/hooks/mentor';
 
@@ -213,28 +214,30 @@ export function ReviewDrawer({
           <p className="mt-1 text-xs text-slate-400">Out of {total}. Awarded only when you approve.</p>
         </div>
 
-        {/* Feedback templates */}
-        <div>
-          <h3 className="text-sm font-medium text-slate-700 mb-2">Quick feedback</h3>
-          <div className="flex flex-wrap gap-2">
-            {FEEDBACK_TEMPLATES.map((t) => (
-              <button key={t} onClick={() => addTemplate(t)}
-                className="px-2.5 py-1 rounded-full border border-slate-200 text-xs text-slate-600 hover:border-brand-300 hover:text-brand-700">
-                {t}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Notes */}
+        {/* Notes + feedback assist (AI draft, templates, saved snippets) */}
         <div>
           <h3 className="text-sm font-medium text-slate-700 mb-2">Notes to the mentee</h3>
+          <FeedbackAssist
+            templates={FEEDBACK_TEMPLATES}
+            getCurrentText={() => notes}
+            getDraftContext={() => ({
+              taskTitle: item.title,
+              brief: item.brief,
+              criteria: item.criteria,
+              // The draft tone follows the likely decision: all required ticked → approving, else changes.
+              decision: allRequiredTicked ? 'approved' : 'changes',
+              count: 1,
+            })}
+            onInsert={(t) => addTemplate(t)}
+            // Replace when empty, otherwise append on its own line.
+            onApplyDraft={(t) => setNotes((prev) => (prev.trim() ? `${prev}\n${t}` : t))}
+          />
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={4}
             placeholder="What's good, what to change…"
-            className="w-full border border-slate-300 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none"
+            className="mt-2 w-full border border-slate-300 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none"
           />
         </div>
       </div>

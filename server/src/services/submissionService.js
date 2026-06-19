@@ -825,6 +825,50 @@ class SubmissionService {
       decision: 'approved'
     });
   }
+
+  /**
+   * AI-draft concise, constructive mentor feedback for a submitted task, using
+   * the mentor's configured AI connection (feature: 'feedback'). The tone follows
+   * `decision` (approved = affirming + a growth nudge; changes = clearly states
+   * what to fix). When `count > 1` it's phrased for a GROUP (general, not "you").
+   * Returns the text; bubbles the ValidationError (no AI key) so the client can
+   * surface the "AI not configured" message.
+   */
+  async draftFeedback(mentorId, { taskTitle, brief, criteria, decision, count } = {}) {
+    const n = Math.max(1, Number(count) || 1);
+    const isApproved = decision === 'approved' || decision === 'approved_notes';
+    const criteriaList = Array.isArray(criteria)
+      ? criteria.map((c) => String(c).trim()).filter(Boolean)
+      : [];
+
+    const brief_ = [
+      `Task: ${String(taskTitle || 'Submitted task').trim()}`,
+      brief ? `What the task asked for: ${String(brief).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 800)}` : null,
+      criteriaList.length ? `Acceptance criteria: ${criteriaList.slice(0, 12).join('; ')}` : null,
+      `Decision: ${isApproved ? 'approving the work' : decision === 'rejected' ? 'rejecting the work' : 'requesting changes'}`,
+      n > 1 ? `Audience: a GROUP of ${n} mentees who submitted this same task (write generally, do not address one person).` : 'Audience: the single mentee who submitted this task.',
+    ].filter(Boolean).join('\n');
+
+    const tone = isApproved
+      ? 'The work is being approved. Be affirming and specific about what was done well, then add ONE concrete growth nudge for next time.'
+      : decision === 'rejected'
+        ? 'The work is being rejected. Be respectful but clear about why it does not meet the bar and what a passing submission would need.'
+        : 'Changes are being requested. Clearly and concretely state what needs to be fixed before resubmission.';
+
+    const audience = n > 1
+      ? 'Write for the whole group in general terms (e.g. "the submissions", "this work") — never single anyone out.'
+      : 'Write directly to the mentee.';
+
+    const system =
+      'You are an experienced mentor writing brief, constructive feedback on a submitted task. ' +
+      'Write 2-4 sentences, warm but professional, specific and actionable. ' +
+      'No headings, no bullet lists, no markdown, no preamble. Do not invent facts beyond the brief. ' +
+      `${tone} ${audience}`;
+    const prompt = `Here is the task context. Write the feedback.\n\n${brief_}`;
+
+    const groqService = require('./groqService');
+    return groqService.generateText({ system, prompt, feature: 'feedback', userId: mentorId, temperature: 0.6, maxTokens: 300 });
+  }
 }
 
 module.exports = new SubmissionService();

@@ -5,6 +5,7 @@ const cohortReviewController = require('../controllers/cohortReviewController');
 const reviewLockController = require('../controllers/reviewLockController');
 const linearRoadmapController = require('../controllers/linearRoadmapController');
 const promotionController = require('../controllers/promotionController');
+const feedbackController = require('../controllers/feedbackController');
 const { authenticate, authorize } = require('../middlewares/auth');
 const { requirePermission } = require('../middlewares/authz');
 const { PERMISSIONS } = require('../config/permissions');
@@ -76,6 +77,12 @@ router.post('/roadmaps/:id/assign', mentorOnly, linearRoadmapController.assign);
 router.post('/roadmaps/advance', mentorOnly, linearRoadmapController.advance);
 router.get('/roadmaps/:id/links', mentorOnly, linearRoadmapController.getLinks);
 router.put('/roadmaps/:id/links', mentorOnly, linearRoadmapController.setLinks);
+
+// Mentor feedback (Phase 2): AI-drafted feedback + saved snippets.
+router.post('/feedback/draft', mentorOnly, feedbackController.draftFeedback);
+router.get('/feedback-snippets', mentorOnly, feedbackController.listSnippets);
+router.post('/feedback-snippets', mentorOnly, feedbackController.createSnippet);
+router.delete('/feedback-snippets/:id', mentorOnly, feedbackController.removeSnippet);
 
 // Promotions (mentee → co-mentor). Final promote is admin-gated.
 router.get('/promotions', mentorOnly, promotionController.list);

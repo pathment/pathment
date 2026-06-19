@@ -74,6 +74,31 @@ export const mentorApi = {
   // Send a gentle nudge to a mentee.
   nudge: (menteeId: string, message?: string) => apiClient.post('/mentor/nudge', { menteeId, message }),
 
+  // AI-draft constructive feedback for a submitted task (uses the mentor's AI
+  // connection). Throws with the server message when AI is not configured.
+  draftFeedback: (payload: {
+    taskTitle: string;
+    brief?: string | null;
+    criteria?: string[];
+    decision: 'approved' | 'approved_notes' | 'changes' | 'rejected';
+    count?: number;
+  }) =>
+    apiClient
+      .post<{ data: { text: string } }>('/mentor/feedback/draft', payload, { timeout: 120000 })
+      .then((r) => r.data),
+
+  // Saved feedback snippets (per-mentor).
+  listFeedbackSnippets: () =>
+    apiClient
+      .get<{ data: { snippets: { id: string; label: string; body: string }[] } }>('/mentor/feedback-snippets')
+      .then((r) => r.data.snippets),
+  createFeedbackSnippet: (payload: { label: string; body: string }) =>
+    apiClient
+      .post<{ data: { snippet: { id: string; label: string; body: string } } }>('/mentor/feedback-snippets', payload)
+      .then((r) => r.data.snippet),
+  removeFeedbackSnippet: (id: string) =>
+    apiClient.delete(`/mentor/feedback-snippets/${id}`),
+
   // Promotions (mentee → co-mentor).
   listPromotions: () => apiClient.get('/mentor/promotions'),
   nominate: (menteeId: string) => apiClient.post('/mentor/promotions', { menteeId }),

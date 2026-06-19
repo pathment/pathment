@@ -35,6 +35,9 @@ export type { UseMentorScheduleReturn, AvailabilitySlot, Meeting } from './useMe
 export { useMentorPromotions } from './useMentorPromotions';
 export type { UseMentorPromotionsReturn, PromotionCandidate, PromotionStage } from './useMentorPromotions';
 
+export { useFeedbackSnippets } from './useFeedbackSnippets';
+export type { UseFeedbackSnippetsReturn, FeedbackSnippet } from './useFeedbackSnippets';
+
 export { useRewards } from './useRewards';
 export type { UseRewardsReturn, Gift, Redemption } from './useRewards';
 

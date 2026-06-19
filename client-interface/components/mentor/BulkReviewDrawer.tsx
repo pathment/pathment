@@ -4,7 +4,14 @@ import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { Check, Star, Loader2, MessageSquareWarning } from 'lucide-react';
 import { Drawer } from '@/components/shared/Drawer';
+import { FeedbackAssist } from '@/components/mentor/FeedbackAssist';
 import type { ApprovalItem, BulkReviewPayload } from '@/lib/hooks/mentor';
+
+const BULK_TEMPLATES = [
+  'Solid work across the board - meets the bar.',
+  'Good effort. A couple of things to tighten before this is done.',
+  'Please address the points below and resubmit.',
+];
 
 type Mode = 'approve' | 'changes';
 
@@ -174,12 +181,27 @@ export function BulkReviewDrawer({
           <h3 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
             Feedback {mode === 'changes' && <span className="text-rose-500">*</span>}
           </h3>
+          <FeedbackAssist
+            templates={BULK_TEMPLATES}
+            getCurrentText={() => feedback}
+            getDraftContext={() => ({
+              // Use the shared task context (first item); count = the selection size, so the
+              // draft is phrased for the group when reviewing more than one submission.
+              taskTitle: taskCount > 1 ? `${taskCount} tasks` : (items[0]?.title ?? 'Submitted task'),
+              brief: taskCount > 1 ? undefined : items[0]?.brief,
+              criteria: taskCount > 1 ? undefined : items[0]?.criteria,
+              decision: mode === 'approve' ? 'approved' : 'changes',
+              count: items.length,
+            })}
+            onInsert={(t) => setFeedback((prev) => (prev.trim() ? `${prev}\n${t}` : t))}
+            onApplyDraft={(t) => setFeedback((prev) => (prev.trim() ? `${prev}\n${t}` : t))}
+          />
           <textarea
             value={feedback}
             onChange={(e) => setFeedback(e.target.value)}
             rows={4}
             placeholder={mode === 'approve' ? 'Optional note sent to every mentee…' : 'What needs to change (required)…'}
-            className="w-full border border-slate-300 dark:border-slate-700 dark:bg-slate-800 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none"
+            className="mt-2 w-full border border-slate-300 dark:border-slate-700 dark:bg-slate-800 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none"
           />
           <p className="mt-1 text-xs text-slate-400">
             This same note goes to all {count} selected mentee{count === 1 ? '' : 's'}.
