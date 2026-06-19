@@ -128,6 +128,14 @@ async function mkUser(role, n) {
   ok('MENTEE_ADD: lead mentor via clan.manage_members', await authzService.can(fLead, P.CLAN_MANAGE_MEMBERS, clanARes));
   ok('MENTEE_ADD: plain mentee NO', !(await authzService.can(fPlain, P.MENTEE_ADD, clanARes)));
 
+  // Toggle path: a lead/admin disabling mentee.add for THIS co-mentor blocks it
+  // (and leaves their other permissions intact), then re-enabling restores it.
+  await clanService.setMemberPermissions(clan.id, fCo.id, [P.MENTEE_ADD], fLead.id);
+  ok('MENTEE_ADD: co-mentor BLOCKED after lead disables it', !(await authzService.can(fCo, P.MENTEE_ADD, clanARes)));
+  ok('MENTEE_ADD: other perms intact (task.assign still yes)', await authzService.can(fCo, P.TASK_ASSIGN, clanARes));
+  await clanService.setMemberPermissions(clan.id, fCo.id, [], fLead.id);
+  ok('MENTEE_ADD: co-mentor restored after re-enable', await authzService.can(fCo, P.MENTEE_ADD, clanARes));
+
   ok('completion (TASK_REVIEW): lead mentor yes', await authzService.can(fLead, P.TASK_REVIEW, clanARes));
   ok('completion (TASK_REVIEW): co-mentor yes (preserved)', await authzService.can(fCo, P.TASK_REVIEW, clanARes));
   ok('completion (TASK_REVIEW): plain mentee NO', !(await authzService.can(fPlain, P.TASK_REVIEW, clanARes)));

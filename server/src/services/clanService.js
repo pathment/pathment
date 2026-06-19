@@ -213,7 +213,7 @@ class ClanService {
     const user = await models.User.findByPk(userId);
     if (!user) throw new NotFoundError('User not found');
 
-    return sequelize.transaction(async (transaction) => {
+    const membership = await sequelize.transaction(async (transaction) => {
       await this.ensureCapability(user, CAPABILITY_FOR_CLAN_ROLE[role], transaction);
 
       let membership = await models.ClanMembership.findOne({ where: { clanId, userId }, transaction });
@@ -266,6 +266,18 @@ class ClanService {
 
       return membership;
     });
+
+    // Audit who added whom — especially a co-mentor using mentee.add — so leads
+    // and admins have an accountability trail. Internal/system placements pass
+    // no actor and are intentionally not attributed here.
+    if (actor) {
+      await createAuditLog({
+        userId: actor.id, action: 'CLAN_MEMBER_ADDED', entityType: 'Clan', entityId: clanId,
+        newValues: { clanId, userId, role }
+      }).catch(() => {});
+    }
+
+    return membership;
   }
 
   async removeMember(clanId, userId) {
@@ -288,19 +300,29 @@ class ClanService {
    */
   async getMyClanAccess(clanId, user) {
     const userId = user.id;
+    const resource = await authzService.scopeOfClan(clanId);
+
+    // Derive capabilities from authzService so this matches the route guards for
+    // a co-mentor from ANY source — a team membership, a cross-clan cover, or an
+    // IAM grant — not just a clan_memberships row. (A membership-only check here
+    // would 403 a legitimate cover/IAM co-mentor that the API actually allows.)
+    const canManageTeam = await authzService.can(user, P.CLAN_MANAGE_MEMBERS, resource);
+    const canAddMentees = canManageTeam || await authzService.can(user, P.MENTEE_ADD, resource);
+    const canViewMentees = await authzService.can(user, P.MENTEE_VIEW, resource);
+
+    if (!canManageTeam && !canAddMentees && !canViewMentees) {
+      throw new AuthorizationError('You are not a mentor of this clan');
+    }
+
+    // Prefer the real membership role; fall back to an inferred role for
+    // cover/IAM co-mentors who hold capability without a membership row.
     const membership = await models.ClanMembership.findOne({
       where: { clanId, userId, status: 'active' },
       attributes: ['role']
     });
-    if (!membership || !['lead_mentor', 'co_mentor'].includes(membership.role)) {
-      throw new AuthorizationError('You are not a mentor of this clan');
-    }
+    const role = membership?.role || (canManageTeam ? 'lead_mentor' : 'co_mentor');
 
-    const resource = await authzService.scopeOfClan(clanId);
-    const canManageTeam = await authzService.can(user, P.CLAN_MANAGE_MEMBERS, resource);
-    const canAddMentees = canManageTeam || await authzService.can(user, P.MENTEE_ADD, resource);
-
-    return { role: membership.role, canManageTeam, canAddMentees };
+    return { role, canManageTeam, canAddMentees };
   }
 
   /**
