@@ -49,8 +49,10 @@ app.use(cors({
   credentials: true
 }));
 
-// Body parser middleware
-app.use(express.json({ limit: '10mb' }));
+// Body parser middleware. Stash the raw body so provider webhooks (Resend/Svix)
+// can verify their HMAC signature against the EXACT received bytes — JSON.parse
+// would otherwise re-serialize and break the signature.
+app.use(express.json({ limit: '10mb', verify: (req, _res, buf) => { req.rawBody = buf; } }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Seed per-request audit context (IP + user-agent) for downstream audit writes.

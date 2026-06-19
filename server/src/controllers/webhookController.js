@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const { models, sequelize } = require('../db');
 
 /**
@@ -10,11 +11,42 @@ const { models, sequelize } = require('../db');
  *
  * POST /webhooks/resend
  *
- * Auth: Resend signs with Svix. We don't pull in the svix dep here; instead, if
- * RESEND_WEBHOOK_SECRET is set we require it as a shared secret (header
- * `x-webhook-secret` or `?secret=`). Set that secret in the Resend dashboard URL
- * and the env. If unset (dev), we accept unauthenticated.
+ * Auth: Resend signs with Svix (headers svix-id / svix-timestamp / svix-signature,
+ * an HMAC-SHA256 over the RAW body). Set RESEND_WEBHOOK_SECRET to the dashboard
+ * "Signing Secret" (the `whsec_…` value) and we verify the signature. If the env
+ * value is NOT a whsec secret we treat it as a legacy shared secret (header
+ * `x-webhook-secret` or `?secret=`) for backward compatibility. If unset (dev),
+ * we accept unauthenticated.
+ *
+ * NOTE: the previous version only did the shared-secret check — Resend never
+ * sends that header, so a set secret rejected every real event (401) and Resend
+ * disabled the endpoint. Verifying the Svix signature is the actual fix.
  */
+
+/** Verify a Svix-signed webhook against the raw body. */
+function verifySvixSignature(req, signingSecret) {
+  const id = req.headers['svix-id'];
+  const timestamp = req.headers['svix-timestamp'];
+  const signatureHeader = req.headers['svix-signature'];
+  if (!id || !timestamp || !signatureHeader) return false;
+
+  // Replay guard: reject timestamps more than 5 minutes from now.
+  const ts = Number(timestamp);
+  if (!Number.isFinite(ts) || Math.abs(Date.now() / 1000 - ts) > 300) return false;
+
+  const body = req.rawBody ? req.rawBody.toString('utf8') : JSON.stringify(req.body || {});
+  const signedContent = `${id}.${timestamp}.${body}`;
+  const key = Buffer.from(signingSecret.replace(/^whsec_/, ''), 'base64');
+  const expected = crypto.createHmac('sha256', key).update(signedContent).digest('base64');
+
+  // Header is a space-separated list of "v1,<base64sig>"; any match passes.
+  return signatureHeader.split(' ').some((part) => {
+    const sig = part.split(',')[1];
+    if (!sig || sig.length !== expected.length) return false;
+    try { return crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected)); }
+    catch { return false; }
+  });
+}
 async function suppress(email, reason, detail) {
   const normalized = String(email || '').trim().toLowerCase();
   if (!normalized) return;
@@ -28,11 +60,14 @@ async function suppress(email, reason, detail) {
 }
 
 exports.handleResendWebhook = async (req, res) => {
-  // Optional shared-secret gate.
+  // Auth gate. whsec_… → verify the Svix signature; anything else → legacy
+  // shared secret; unset → open (dev).
   const secret = process.env.RESEND_WEBHOOK_SECRET;
   if (secret) {
-    const provided = req.headers['x-webhook-secret'] || req.query.secret;
-    if (provided !== secret) return res.status(401).json({ ok: false, error: 'bad_secret' });
+    const ok = secret.startsWith('whsec_')
+      ? verifySvixSignature(req, secret)
+      : (req.headers['x-webhook-secret'] === secret || req.query.secret === secret);
+    if (!ok) return res.status(401).json({ ok: false, error: 'unauthorized' });
   }
 
   const event = req.body || {};
