@@ -31,7 +31,10 @@ interface ReviewEntry { id?: string; menteeId: string; attendance: Attendance | 
 // `draft` = today's session that doesn't exist on the server yet. It's created
 // lazily on the first real action so merely opening the page leaves no record.
 interface ReviewSession { id: string; sessionDate: string; title: string | null; status: 'in_progress' | 'finished' | 'draft'; note: string | null; finishedAt?: string | null; entries: ReviewEntry[] }
-interface ReviewSessionSummary extends Omit<ReviewSession, 'entries'> { counts: { total: number; present: number; absent: number; excused: number; reviewed: number; deferred: number } }
+interface ReviewSessionSummary extends Omit<ReviewSession, 'entries'> {
+  counts: { total: number; present: number; absent: number; excused: number; reviewed: number; deferred: number };
+  access?: { canDelete: boolean; requestStatus: 'pending' | 'approved' | 'denied' | null };
+}
 
 const RISK_PILL: Record<CohortRisk, { label: string; cls: string; dot: string }> = {
   high: { label: 'At risk', cls: 'bg-red-50 text-red-700 border-red-200', dot: 'bg-red-500' },
@@ -76,7 +79,11 @@ export default function CohortReview() {
   const [session, setSession] = useState<ReviewSession | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [sessions, setSessions] = useState<ReviewSessionSummary[]>([]);
-  const [cohortReviewDeleteLocked, setCohortReviewDeleteLocked] = useState(false);
+  const [reviewPolicies, setReviewPolicies] = useState({
+    cohortReviewDeleteLocked: false,
+    clanGrantActive: false,
+    pendingSessionIds: [] as string[],
+  });
   // Mentees already given an "up next" heads-up this visit (avoid double-pinging).
   const [pinged, setPinged] = useState<Set<string>>(new Set());
   const [focus, setFocus] = useState(0);
@@ -143,8 +150,11 @@ export default function CohortReview() {
       const r: any = sessionParam // eslint-disable-line @typescript-eslint/no-explicit-any
         ? await mentorApi.getReviewSession(sessionParam)
         : await mentorApi.getTodayReviewSession();
-      if (r?.data?.policies?.cohortReviewDeleteLocked) setCohortReviewDeleteLocked(true);
-      else if (r?.data?.policies) setCohortReviewDeleteLocked(false);
+      if (r?.data?.policies) setReviewPolicies({
+        cohortReviewDeleteLocked: Boolean(r.data.policies.cohortReviewDeleteLocked),
+        clanGrantActive: Boolean(r.data.policies.clanGrantActive),
+        pendingSessionIds: r.data.policies.pendingSessionIds ?? [],
+      });
       const loaded = r?.data?.session ?? null;
       if (loaded) {
         setSession(loaded);
@@ -434,8 +444,11 @@ export default function CohortReview() {
     try {
       const r: any = await mentorApi.listReviewSessions(); // eslint-disable-line @typescript-eslint/no-explicit-any
       setSessions(r?.data?.sessions ?? []);
-      if (r?.data?.policies?.cohortReviewDeleteLocked) setCohortReviewDeleteLocked(true);
-      else if (r?.data?.policies) setCohortReviewDeleteLocked(false);
+      if (r?.data?.policies) setReviewPolicies({
+        cohortReviewDeleteLocked: Boolean(r.data.policies.cohortReviewDeleteLocked),
+        clanGrantActive: Boolean(r.data.policies.clanGrantActive),
+        pendingSessionIds: r.data.policies.pendingSessionIds ?? [],
+      });
     }
     catch { setSessions([]); }
   }, []);
@@ -446,8 +459,8 @@ export default function CohortReview() {
   const sessionIsEmpty = (s: ReviewSessionSummary) =>
     s.counts.reviewed === 0 && s.counts.present === 0 && s.counts.absent === 0 && s.counts.excused === 0 && s.counts.deferred === 0;
   const removeHistorySession = async (s: ReviewSessionSummary) => {
-    if (cohortReviewDeleteLocked) {
-      toast.error('Deletion is locked by your organization');
+    if (!s.access?.canDelete && reviewPolicies.cohortReviewDeleteLocked) {
+      toast.error('Deletion is locked. Request admin approval first.');
       return;
     }
     const dateLabel = new Date(`${s.sessionDate}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
@@ -465,6 +478,24 @@ export default function CohortReview() {
       if (s.id === session?.id || sessionParam === s.id) { setHistoryOpen(false); router.push('/mentor/review'); }
     } catch (e) { toast.error(extractApiErrorMessage(e, 'Could not delete the session')); }
     finally { setBusySession(null); }
+  };
+  const requestSessionEdit = async (s: ReviewSessionSummary) => {
+    if (!(await confirm({
+      title: 'Request deletion permission?',
+      description: 'Your admin will review this. You can delete this session only after approval or during a clan unlock window.',
+      confirmLabel: 'Submit request',
+    }))) return;
+    try {
+      setBusySession(s.id);
+      await mentorApi.requestReviewSessionEdit(s.id, { reason: 'Mentor requested permission to delete this cohort review session.' });
+      setSessions((prev) => prev.map((x) => (x.id === s.id ? { ...x, access: { canDelete: false, requestStatus: 'pending' } } : x)));
+      setReviewPolicies((p) => ({ ...p, pendingSessionIds: [...p.pendingSessionIds, s.id] }));
+      toast.success('Request sent to admin');
+    } catch (e) {
+      toast.error(extractApiErrorMessage(e, 'Could not submit request'));
+    } finally {
+      setBusySession(null);
+    }
   };
   const reopenHistorySession = async (s: ReviewSessionSummary) => {
     try {
@@ -1043,10 +1074,15 @@ export default function CohortReview() {
 
       {/* Cohort-review history: browse & open past dated sessions to view or edit. */}
       <Drawer open={historyOpen} onClose={() => setHistoryOpen(false)} width="md" title="Cohort review history" subtitle="Open a past session to view or edit it">
-        {cohortReviewDeleteLocked && (
+        {reviewPolicies.cohortReviewDeleteLocked && !reviewPolicies.clanGrantActive && (
           <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3 text-sm text-amber-900">
             <Lock className="w-4 h-4 shrink-0 mt-0.5" />
-            <span>Deletion is locked by your organization. Review records cannot be removed.</span>
+            <span>Deletion is locked by your organization. Request admin approval or wait for a clan unlock window.</span>
+          </div>
+        )}
+        {reviewPolicies.clanGrantActive && (
+          <div className="mb-4 flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-3 text-sm text-emerald-900">
+            <span>Your clan has a temporary unlock — you can delete reviews until the window expires.</span>
           </div>
         )}
         <div className="space-y-2">
@@ -1082,14 +1118,21 @@ export default function CohortReview() {
                       <RotateCcw className="w-3.5 h-3.5" />Reopen
                     </button>
                   )}
-                  {!cohortReviewDeleteLocked && (
+                  {s.access?.canDelete ? (
                     <button type="button" onClick={() => removeHistorySession(s)} disabled={busy}
                       className="px-2 py-1 rounded-md text-xs font-medium text-red-600 hover:bg-red-50 inline-flex items-center gap-1 disabled:opacity-50"
                       title={sessionIsEmpty(s) ? 'Discard empty session' : 'Delete session'}>
                       {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
                       {sessionIsEmpty(s) ? 'Discard' : 'Delete'}
                     </button>
-                  )}
+                  ) : reviewPolicies.cohortReviewDeleteLocked && s.access?.requestStatus === 'pending' ? (
+                    <span className="px-2 py-1 text-xs font-medium text-amber-700">Request pending</span>
+                  ) : reviewPolicies.cohortReviewDeleteLocked ? (
+                    <button type="button" onClick={() => requestSessionEdit(s)} disabled={busy}
+                      className="px-2 py-1 rounded-md text-xs font-medium text-brand-700 hover:bg-brand-50 inline-flex items-center gap-1 disabled:opacity-50">
+                      Request deletion
+                    </button>
+                  ) : null}
                 </div>
               </div>
             );

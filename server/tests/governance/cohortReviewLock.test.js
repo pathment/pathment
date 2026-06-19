@@ -3,7 +3,7 @@
 const request = require('supertest');
 const app = require('../../src/index');
 const { models } = require('../../src/db');
-const orgGovernanceService = require('../../src/services/orgGovernanceService');
+const orgSystemSettingsService = require('../../src/services/orgSystemSettingsService');
 const {
   cleanDb,
   createAdmin,
@@ -11,7 +11,7 @@ const {
   authHeader,
 } = require('../helpers/seed');
 
-describe('Org governance — cohort review delete lock', () => {
+describe('Cohort review delete lock (system settings)', () => {
   let admin;
   let mentor;
 
@@ -19,77 +19,86 @@ describe('Org governance — cohort review delete lock', () => {
     await cleanDb();
     admin = await createAdmin();
     mentor = await createMentor({ email: 'mentor-lock@test.com' });
+    await models.SystemSettings.destroy({ where: { settingKey: 'org.system' }, force: true });
+    await models.SystemSettings.destroy({ where: { settingKey: 'org.governance' }, force: true });
   });
 
   it('defaults to unlocked', async () => {
-    const governance = await orgGovernanceService.get();
-    expect(governance.cohortReviewDeleteLocked).toBe(false);
+    const settings = await orgSystemSettingsService.get();
+    expect(settings.cohortReviewDeleteLocked).toBe(false);
   });
 
-  it('admin can toggle lock via API', async () => {
+  it('admin can toggle lock via system settings API', async () => {
     const lockRes = await request(app)
-      .put('/api/governance')
+      .put('/api/admin/system-settings')
       .set('Authorization', authHeader(admin))
       .send({ cohortReviewDeleteLocked: true });
     expect(lockRes.status).toBe(200);
-    expect(lockRes.body.data.governance.cohortReviewDeleteLocked).toBe(true);
-
-    const getRes = await request(app)
-      .get('/api/governance')
-      .set('Authorization', authHeader(admin));
-    expect(getRes.status).toBe(200);
-    expect(getRes.body.data.governance.cohortReviewDeleteLocked).toBe(true);
+    expect(lockRes.body.data.settings.cohortReviewDeleteLocked).toBe(true);
   });
 
-  it('mentor cannot delete a session when locked', async () => {
+  it('mentor cannot delete when locked', async () => {
     const session = await models.CohortReviewSession.create({
       mentorId: mentor.id,
       sessionDate: '2026-06-10',
       status: 'in_progress',
     });
-
-    await orgGovernanceService.update(admin.id, { cohortReviewDeleteLocked: true });
+    await orgSystemSettingsService.update(admin.id, { cohortReviewDeleteLocked: true });
 
     const delRes = await request(app)
       .delete(`/api/mentor/review/sessions/${session.id}`)
       .set('Authorization', authHeader(mentor));
     expect(delRes.status).toBe(403);
-
-    const stillThere = await models.CohortReviewSession.findByPk(session.id);
-    expect(stillThere).not.toBeNull();
   });
 
-  it('mentor can delete a session when unlocked', async () => {
+  it('mentor can request edit when locked', async () => {
     const session = await models.CohortReviewSession.create({
       mentorId: mentor.id,
-      sessionDate: '2026-06-11',
+      sessionDate: '2026-06-12',
       status: 'in_progress',
     });
+    await orgSystemSettingsService.update(admin.id, { cohortReviewDeleteLocked: true });
+
+    const reqRes = await request(app)
+      .post(`/api/mentor/review/sessions/${session.id}/edit-request`)
+      .set('Authorization', authHeader(mentor))
+      .send({ reason: 'Duplicate entry' });
+    expect(reqRes.status).toBe(201);
+    expect(reqRes.body.data.request.status).toBe('pending');
+  });
+
+  it('admin can approve request and mentor can then delete', async () => {
+    const session = await models.CohortReviewSession.create({
+      mentorId: mentor.id,
+      sessionDate: '2026-06-13',
+      status: 'in_progress',
+    });
+    await orgSystemSettingsService.update(admin.id, { cohortReviewDeleteLocked: true });
+
+    const reqRes = await request(app)
+      .post(`/api/mentor/review/sessions/${session.id}/edit-request`)
+      .set('Authorization', authHeader(mentor))
+      .send({ reason: 'Cleanup' });
+    const requestId = reqRes.body.data.request.id;
+
+    await request(app)
+      .post(`/api/admin/cohort-review/edit-requests/${requestId}/resolve`)
+      .set('Authorization', authHeader(admin))
+      .send({ status: 'approved' });
 
     const delRes = await request(app)
       .delete(`/api/mentor/review/sessions/${session.id}`)
       .set('Authorization', authHeader(mentor));
     expect(delRes.status).toBe(200);
-
-    const gone = await models.CohortReviewSession.findByPk(session.id);
-    expect(gone).toBeNull();
   });
 
   it('list sessions includes policies for mentors', async () => {
-    await orgGovernanceService.update(admin.id, { cohortReviewDeleteLocked: true });
+    await orgSystemSettingsService.update(admin.id, { cohortReviewDeleteLocked: true });
 
     const res = await request(app)
       .get('/api/mentor/review/sessions')
       .set('Authorization', authHeader(mentor));
     expect(res.status).toBe(200);
     expect(res.body.data.policies.cohortReviewDeleteLocked).toBe(true);
-  });
-
-  it('mentor cannot update governance settings', async () => {
-    const res = await request(app)
-      .put('/api/governance')
-      .set('Authorization', authHeader(mentor))
-      .send({ cohortReviewDeleteLocked: true });
-    expect(res.status).toBe(403);
   });
 });

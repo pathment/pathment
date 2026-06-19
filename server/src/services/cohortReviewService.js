@@ -1,9 +1,10 @@
 const { Op } = require('sequelize');
 const { models } = require('../db');
 const { NotFoundError, ForbiddenError, ValidationError } = require('../utils/errors/errorTypes');
+const { createAuditLog } = require('../utils/auditContext');
 const { todayInZone } = require('../utils/timezone');
 const cohortService = require('./cohortService');
-const orgGovernanceService = require('./orgGovernanceService');
+const cohortReviewAccessService = require('./cohortReviewAccessService');
 
 /**
  * cohortReviewService - dated, saved, editable cohort-review sessions.
@@ -136,7 +137,8 @@ class CohortReviewService {
       if (e.status === 'reviewed') b.reviewed++;
       if (e.status === 'deferred') b.deferred++;
     });
-    return sessions.map((s) => ({ ...s.toJSON(), counts: bySession[s.id] || blank() }));
+    const summaries = sessions.map((s) => ({ ...s.toJSON(), counts: bySession[s.id] || blank() }));
+    return cohortReviewAccessService.enrichSessionSummaries(mentorId, summaries);
   }
 
   async _own(mentorId, sessionId) {
@@ -213,13 +215,24 @@ class CohortReviewService {
   }
 
   async deleteSession(mentorId, sessionId) {
-    if (await orgGovernanceService.isCohortReviewDeleteLocked()) {
-      throw new ForbiddenError('Cohort review deletion is locked by your organization for audit compliance');
-    }
     const session = await this._own(mentorId, sessionId);
+    if (!(await cohortReviewAccessService.canDeleteSession(mentorId, sessionId))) {
+      throw new ForbiddenError('Cohort review deletion is locked. Request admin approval or wait for a clan unlock window.');
+    }
     await models.CohortReviewEntry.destroy({ where: { sessionId: session.id } });
     await session.destroy();
+    await createAuditLog({
+      userId: mentorId,
+      action: 'COHORT_REVIEW_SESSION_DELETED',
+      entityType: 'CohortReviewSession',
+      entityId: session.id,
+      oldValues: { sessionDate: session.sessionDate, title: session.title, status: session.status },
+    });
     return { deleted: true };
+  }
+
+  async requestSessionEdit(mentorId, sessionId, body = {}) {
+    return cohortReviewAccessService.requestSessionEdit(mentorId, sessionId, body);
   }
 }
 

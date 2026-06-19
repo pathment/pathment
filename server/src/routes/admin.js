@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const adminController = require('../controllers/adminController');
 const promotionController = require('../controllers/promotionController');
+const cohortReviewAdminController = require('../controllers/cohortReviewAdminController');
 const { validateBody, validateQuery } = require('../middlewares/validate');
 const { adminSchemas } = require('../validations/adminValidation');
 const { authenticate, authorize } = require('../middlewares/auth');
@@ -171,6 +172,46 @@ router.post(
   authenticate,
   requirePermission(PERMISSIONS.USER_MANAGE),
   promotionController.decline
+);
+
+// Org system settings (cohort review deletion lock, etc.)
+router.get(
+  '/system-settings',
+  authenticate,
+  requirePermission(PERMISSIONS.SYSTEM_SETTINGS),
+  cohortReviewAdminController.getSystemSettings
+);
+router.put(
+  '/system-settings',
+  authenticate,
+  requirePermission(PERMISSIONS.SYSTEM_SETTINGS),
+  cohortReviewAdminController.updateSystemSettings
+);
+
+// Cohort review edit access while deletion lock is on
+router.get(
+  '/cohort-review/edit-requests',
+  authenticate,
+  requirePermission(PERMISSIONS.SYSTEM_SETTINGS),
+  cohortReviewAdminController.listEditRequests
+);
+router.post(
+  '/cohort-review/edit-requests/:id/resolve',
+  authenticate,
+  requirePermission(PERMISSIONS.SYSTEM_SETTINGS),
+  cohortReviewAdminController.resolveEditRequest
+);
+router.get(
+  '/cohort-review/clan-grants',
+  authenticate,
+  requirePermission(PERMISSIONS.SYSTEM_SETTINGS),
+  cohortReviewAdminController.listClanGrants
+);
+router.post(
+  '/cohort-review/clan-grants',
+  authenticate,
+  requirePermission(PERMISSIONS.SYSTEM_SETTINGS),
+  cohortReviewAdminController.createClanGrant
 );
 
 module.exports = router;

@@ -56,6 +56,8 @@ export const mentorApi = {
   finishReviewSession: (id: string) => apiClient.post(`/mentor/review/sessions/${id}/finish`, {}),
   reopenReviewSession: (id: string) => apiClient.post(`/mentor/review/sessions/${id}/reopen`, {}),
   deleteReviewSession: (id: string) => apiClient.delete(`/mentor/review/sessions/${id}`),
+  requestReviewSessionEdit: (id: string, data: { reason?: string }) =>
+    apiClient.post(`/mentor/review/sessions/${id}/edit-request`, data),
 
   // Approvals queue (pending reviews across the cohort) + bulk approve.
   getApprovals: () => apiClient.get('/mentor/approvals'),

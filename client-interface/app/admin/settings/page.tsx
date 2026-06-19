@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { User, Bell, Shield, Loader2, Save, KeyRound, Palette } from 'lucide-react';
+import { User, Bell, Shield, Loader2, Save, KeyRound, Palette, Building2 } from 'lucide-react';
 import { useAdminSettings } from '@/lib/hooks/admin';
 import { PageHeader, TabBar } from '@/components/admin/ui';
 import SecurityTab from '@/components/shared/SecurityTab';
@@ -10,8 +10,11 @@ import { AppearanceTab } from '@/components/settings/AppearanceTab';
 import AIConnectionsTab from '@/components/settings/AIConnectionsTab';
 import { NotificationPreferencesTab } from '@/components/settings/NotificationPreferencesTab';
 
+import { OrgSystemSettingsTab } from '@/components/settings/OrgSystemSettingsTab';
+
 const TABS = [
   { id: 'profile', label: 'Profile', icon: User },
+  { id: 'organization', label: 'Organization', icon: Building2 },
   { id: 'appearance', label: 'Appearance', icon: Palette },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'ai', label: 'AI Connections', icon: KeyRound },
@@ -112,6 +115,7 @@ export default function AdminSettings() {
             </div>
           )}
 
+          {activeTab === 'organization' && <OrgSystemSettingsTab />}
           {activeTab === 'appearance' && <AppearanceTab />}
           {activeTab === 'notifications' && <NotificationPreferencesTab role="admin" />}
           {activeTab === 'ai' && <AIConnectionsTab />}

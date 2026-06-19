@@ -1,10 +1,10 @@
 const { catchAsync } = require('../middlewares/errorHandler');
 const { successResponse } = require('../utils/responses');
 const cohortReviewService = require('../services/cohortReviewService');
-const orgGovernanceService = require('../services/orgGovernanceService');
+const cohortReviewAccessService = require('../services/cohortReviewAccessService');
 
-async function withPolicies(payload) {
-  const policies = await orgGovernanceService.getPolicies();
+async function withPolicies(mentorId, payload) {
+  const policies = await cohortReviewAccessService.getMentorPolicies(mentorId);
   return { ...payload, policies };
 }
 
@@ -14,13 +14,13 @@ async function withPolicies(payload) {
  *  the first real action (see POST /sessions). */
 const today = catchAsync(async (req, res) => {
   const result = await cohortReviewService.getTodayOrNull(req.user.id);
-  res.status(200).json(successResponse('Review session', await withPolicies(result)));
+  res.status(200).json(successResponse('Review session', await withPolicies(req.user.id, result)));
 });
 
 /** GET /api/mentor/review/sessions — full history with counts. */
 const list = catchAsync(async (req, res) => {
   const sessions = await cohortReviewService.listSessions(req.user.id);
-  res.status(200).json(successResponse('Review sessions', await withPolicies({ sessions })));
+  res.status(200).json(successResponse('Review sessions', await withPolicies(req.user.id, { sessions })));
 });
 
 /** POST /api/mentor/review/sessions — start a new session ({ date?, title? }). */
@@ -32,7 +32,8 @@ const create = catchAsync(async (req, res) => {
 /** GET /api/mentor/review/sessions/:id */
 const get = catchAsync(async (req, res) => {
   const session = await cohortReviewService.getSession(req.user.id, req.params.id);
-  res.status(200).json(successResponse('Review session', await withPolicies({ session })));
+  const access = await cohortReviewAccessService.getSessionAccess(req.user.id, req.params.id);
+  res.status(200).json(successResponse('Review session', await withPolicies(req.user.id, { session, access })));
 });
 
 /** PATCH /api/mentor/review/sessions/:id — edit title/note/date. */
@@ -65,4 +66,10 @@ const remove = catchAsync(async (req, res) => {
   res.status(200).json(successResponse('Review session deleted', result));
 });
 
-module.exports = { today, list, create, get, update, setEntry, finish, reopen, remove };
+/** POST /api/mentor/review/sessions/:id/edit-request */
+const requestEdit = catchAsync(async (req, res) => {
+  const request = await cohortReviewService.requestSessionEdit(req.user.id, req.params.id, req.body || {});
+  res.status(201).json(successResponse('Edit request submitted', { request }, 201));
+});
+
+module.exports = { today, list, create, get, update, setEntry, finish, reopen, remove, requestEdit };

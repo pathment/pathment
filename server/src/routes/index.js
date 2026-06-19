@@ -36,7 +36,6 @@ const accessRoutes = require('./access');
 const aiConnectionRoutes = require('./aiConnections');
 const programReviewRoutes = require('./programReviews');
 const changelogRoutes = require('./changelog');
-const governanceRoutes = require('./governance');
 
 /**
  * API Routes
@@ -131,9 +130,6 @@ router.use('/roadmaps', linearRoadmapRoutes);
 
 // Mentor handbook (admin-authored org doc, read by mentors)
 router.use('/mentor-spec', mentorSpecRoutes);
-
-// Org governance (compliance toggles — admin only)
-router.use('/governance', governanceRoutes);
 
 // Registration intake - cohorts + applications (admin)
 router.use('/intake', intakeRoutes);

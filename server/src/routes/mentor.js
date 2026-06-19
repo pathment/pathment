@@ -44,6 +44,7 @@ router.put('/review/sessions/:id/entries/:menteeId', mentorOnly, cohortReviewCon
 router.post('/review/sessions/:id/finish', mentorOnly, cohortReviewController.finish);
 router.post('/review/sessions/:id/reopen', mentorOnly, cohortReviewController.reopen);
 router.delete('/review/sessions/:id', mentorOnly, cohortReviewController.remove);
+router.post('/review/sessions/:id/edit-request', mentorOnly, cohortReviewController.requestEdit);
 router.post('/mentee/:id/collaborators', mentorOnly, cohortController.addCollaborator);
 router.delete('/mentee/:id/collaborators/:collaboratorId', mentorOnly, cohortController.removeCollaborator);
 
