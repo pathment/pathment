@@ -269,7 +269,7 @@ export function Features() {
         label="Features"
         titleId="features-title"
         title="Every tool your program runs on"
-        description="From intake to task review, community, scheduling, and rewards — the product capabilities that power day-to-day mentorship."
+        description="From intake to task review, community, scheduling, and rewards, the product capabilities that power day-to-day mentorship."
       />
 
       <Stagger className="mx-auto flex max-w-6xl flex-col gap-4 lg:gap-5">

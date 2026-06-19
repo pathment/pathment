@@ -91,7 +91,7 @@ function InsightsVisual() {
       </div>
       <div className="mt-4 flex items-start gap-2 rounded-xl border border-brand-100 bg-brand-50 p-3 text-xs text-brand-800">
         <LineChart className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-        4 pairs flagged — avg. 12 days since last check-in
+        4 pairs flagged, avg. 12 days since last check-in
       </div>
     </div>
   );
@@ -131,7 +131,7 @@ export function PlatformHighlights() {
         label="Why Pathment"
         titleId="platform-highlights"
         title="A mentorship platform built for engineering teams"
-        description="Smart matching, AI roadmaps, and real-time program insights — everything your org needs to run structured growth at scale."
+        description="Smart matching, AI roadmaps, and real-time program insights, everything your org needs to run structured growth at scale."
       />
 
       <div className="mx-auto grid max-w-6xl grid-cols-1 gap-10 lg:grid-cols-[240px_1fr] lg:gap-16">

@@ -35,7 +35,7 @@ export const platformHighlights = [
     label: 'Smart matching',
     title: 'Pair every mentee with the right mentor',
     description:
-      'Pathment analyzes skills, goals, and availability to recommend optimal mentor-mentee pairs — with admin approval on every match before programs go live.',
+      'Pathment analyzes skills, goals, and availability to recommend optimal mentor-mentee pairs, with admin approval on every match before programs go live.',
     visual: 'matching',
   },
   {
@@ -49,9 +49,9 @@ export const platformHighlights = [
   {
     id: 'insights',
     label: 'Program insights',
-    title: 'Real-time visibility for engineering leaders',
+    title: 'Real-time visibility for program leads',
     description:
-      'Track program wellness, detect at-risk pairs, and generate promotion-ready summaries — so leaders always know who is progressing and who needs support.',
+      'Track program wellness, detect at-risk pairs, and generate promotion-ready summaries, so leaders always know who is progressing and who needs support.',
     visual: 'insights',
   },
 ] as const;
@@ -63,19 +63,22 @@ export const navItems = [
 ] as const;
 
 export const heroHighlights = [
-  'Built for 800+ engineers',
   'AI-generated roadmaps',
-  'Smart mentor matching',
+  'Mentor matching & approvals',
+  'Task review & feedback',
   'Gamified progress',
 ] as const;
 
-export const trustLogos = [
-  { name: 'Northwind', icon: 'snowflake' },
-  { name: 'Globex', icon: 'arrow-box' },
-  { name: 'Initech', icon: 'diamonds' },
-  { name: 'Acme Corp', icon: 'angle' },
-  { name: 'Umbrella', icon: 'layers' },
-  { name: 'Codecraft', icon: 'brackets' },
+// Real traction (Pathment + the Dev Weekends fellowship it runs on). Scrolls in
+// the marquee strip under the hero. Keep these honest and update as they grow.
+export const impactStats = [
+  { value: '3,000+', label: 'mentees on Pathment' },
+  { value: '1,600+', label: 'engineers trained' },
+  { value: '200+', label: 'job placements' },
+  { value: '100+', label: 'certified fellows' },
+  { value: '9', label: 'Google Summer of Code acceptances' },
+  { value: '7', label: 'countries' },
+  { value: '30,000+', label: 'community members' },
 ] as const;
 
 export const solutionTabs = [
@@ -85,7 +88,7 @@ export const solutionTabs = [
     icon: 'users',
     headline: 'Pair every mentee with the right mentor',
     description:
-      'Pathment analyzes skills, goals, and availability to recommend optimal mentor-mentee pairs — with admin approval on every match before programs go live.',
+      'Pathment analyzes skills, goals, and availability to recommend optimal mentor-mentee pairs, with admin approval on every match before programs go live.',
     visual: 'matching',
   },
   {
@@ -103,7 +106,7 @@ export const solutionTabs = [
     icon: 'line-chart',
     headline: 'Real-time visibility for engineering leaders',
     description:
-      'Track program wellness, detect at-risk pairs, and generate promotion-ready summaries — so leaders always know who is progressing and who needs support.',
+      'Track program wellness, detect at-risk pairs, and generate promotion-ready summaries, so leaders always know who is progressing and who needs support.',
     visual: 'insights',
   },
   {
@@ -112,7 +115,7 @@ export const solutionTabs = [
     icon: 'messages',
     headline: 'Structured check-ins that keep pairs on track',
     description:
-      'Run mentorship programs with structured check-in templates, async feedback loops, and milestone reviews — without chasing updates manually.',
+      'Run mentorship programs with structured check-in templates, async feedback loops, and milestone reviews, without chasing updates manually.',
     visual: 'operations',
   },
 ] as const;
@@ -122,7 +125,7 @@ export const featureCards = [
     icon: 'clipboard-check',
     title: 'Task Submit & Review',
     description:
-      'Mentees submit versioned work with files and links. Mentors approve, request changes, or leave inline feedback — and the roadmap advances automatically on approval.',
+      'Mentees submit versioned work with files and links. Mentors approve, request changes, or leave inline feedback, and the roadmap advances automatically on approval.',
     layout: 'featured',
     visual: 'task-review',
   },
@@ -130,7 +133,7 @@ export const featureCards = [
     icon: 'file-text',
     title: 'Intake & Assessments',
     description:
-      'Shareable cohort apply links, admin-built assessments, and a magic-link status page — accept, invite, register, and place applicants in one structured flow.',
+      'Shareable cohort apply links, admin-built assessments, and a magic-link status page, accept, invite, register, and place applicants in one structured flow.',
     layout: 'compact',
     visual: 'intake',
   },
@@ -146,7 +149,7 @@ export const featureCards = [
     icon: 'calendar',
     title: 'Scheduling & 1:1s',
     description:
-      'Mentors publish availability, mentees book 1:1s, and both sides capture meeting notes with sentiment and next steps — all in one place.',
+      'Mentors publish availability, mentees book 1:1s, and both sides capture meeting notes with sentiment and next steps, all in one place.',
     layout: 'compact',
     visual: 'scheduling',
   },
@@ -174,7 +177,7 @@ export const deepFeatures = [
     label: 'Real-time Messaging',
     title: 'Keep every conversation in context',
     description:
-      '1:1 chat with delivery and read receipts, emoji reactions, and notifications — so mentor-mentee communication stays tied to the work, not scattered across tools.',
+      '1:1 chat with delivery and read receipts, emoji reactions, and notifications, so mentor-mentee communication stays tied to the work, not scattered across tools.',
     cta: 'See how it works',
     href: '#how-it-works',
     visual: 'messaging',
@@ -194,7 +197,7 @@ export const workflowSteps = [
     icon: 'rocket',
     title: 'Deploy programs',
     description:
-      'Launch cohorts with AI-generated roadmaps, smart mentor matching, and structured check-in templates — no manual setup required.',
+      'Launch cohorts with AI-generated roadmaps, smart mentor matching, and structured check-in templates, no manual setup required.',
   },
   {
     step: '03',
@@ -211,12 +214,12 @@ export const currentStatePoints = [
     body: 'Programs depend heavily on accidental personal connections and individual efforts, leading to unequal opportunity.',
   },
   {
-    label: 'No progression blueprint:',
-    body: 'Milestones are generic, non-standardized, and untracked. Mentees lack definitive skill targets.',
+    label: 'No clear path:',
+    body: 'Milestones are generic and untracked, so mentees never quite know what to work on next.',
   },
   {
-    label: 'Blind engineering leaders:',
-    body: 'Executive teams cannot see capability growth in real-time, resulting in promotion misalignment and talent churn.',
+    label: 'No visibility:',
+    body: 'Program leads can’t see who’s progressing, who’s stuck, or where to step in, until it’s too late.',
   },
 ] as const;
 
@@ -235,49 +238,41 @@ export const pathmentSystemPoints = [
   },
 ] as const;
 
-export const testimonials = [
-  {
-    name: 'Sarah Chen',
-    role: 'VP Engineering, Northwind Systems',
-    quote:
-      'Pathment gave us the visibility we never had. We can finally see who\'s progressing, who\'s stuck, and where to invest in our people.',
-    rating: 5,
-  },
-  {
-    name: 'Marcus Webb',
-    role: 'Engineering Director, Globex Digital',
-    quote:
-      'Our mentorship program went from ad-hoc coffee chats to a structured system. Promotion reviews are now backed by real progression data.',
-    rating: 5,
-  },
-  {
-    name: 'Priya Sharma',
-    role: 'Head of People, Initech Labs',
-    quote:
-      'The AI-generated roadmaps save our mentors hours every week. Mentees know exactly what to work on next — no more guesswork.',
-    rating: 5,
-  },
-  {
-    name: 'James Okonkwo',
-    role: 'Staff Engineer, Acme Platform',
-    quote:
-      'As a mentor, I finally have a system that tracks what we\'ve covered and what\'s next. The check-in templates alone changed everything.',
-    rating: 5,
-  },
-  {
-    name: 'Elena Rodriguez',
-    role: 'CTO, Umbrella Tech',
-    quote:
-      'We scaled from 40 to 200 engineers without losing our culture of growth. Pathment made mentorship operational, not optional.',
-    rating: 5,
-  },
+// Real flagship: the Dev Weekends fellowship runs on Pathment. All numbers below
+// are real and supplied by the team. No invented quotes or logos.
+export const devWeekends = {
+  name: 'Dev Weekends',
+  url: 'https://devweekends.com',
+  kicker: 'Powering Dev Weekends',
+  title: 'A free developer fellowship, run on Pathment',
+  blurb:
+    'Dev Weekends is a free, volunteer-driven developer fellowship running across 7 countries. They use Pathment to train engineers, run structured mentorship and mock interviews, and get fellows placement-ready, free forever.',
+  stats: [
+    { value: '1,600+', label: 'Engineers trained' },
+    { value: '200+', label: 'Job placements', detail: '25+ at Turing, 50+ remote' },
+    { value: '100+', label: 'Certified fellows' },
+    { value: '9', label: 'GSoC acceptances', detail: 'plus ESoC & LFX' },
+    { value: '30,000+', label: 'Community members' },
+    { value: '7', label: 'Countries' },
+  ],
+} as const;
+
+// Honest, attractive integration story. Bring-your-own-key AI (any OpenAI-compatible
+// provider) is the real differentiator; email + media handling are built in.
+export const integrations = [
+  { name: 'Groq', category: 'AI' },
+  { name: 'OpenAI', category: 'AI' },
+  { name: 'Anthropic', category: 'AI' },
+  { name: 'OpenRouter', category: 'AI' },
+  { name: 'Resend', category: 'Email' },
+  { name: 'Cloudinary', category: 'Files & media' },
 ] as const;
 
 export const faqItems = [
   {
     question: 'Do I need technical skills to set this up?',
     answer:
-      'No. Pathment is designed for engineering leaders and people ops teams. You configure programs through an intuitive admin dashboard — no engineering resources required to get started.',
+      'No. Pathment is built for program leads, mentors, and ops teams. You configure everything through an admin dashboard, no engineering work required to get started.',
   },
   {
     question: 'How does AI-generated roadmap creation work?',
@@ -290,19 +285,19 @@ export const faqItems = [
       'Every organization runs in an isolated workspace on a private subdomain. Data is fully separated between tenants, with email verification, secure password reset, and role-based access controls.',
   },
   {
-    question: 'Can we pilot before rolling out company-wide?',
+    question: 'Can we pilot before rolling out everywhere?',
     answer:
-      'Yes. Most teams start with a single cohort or engineering group, validate the workflow, and expand once they see measurable progression outcomes.',
+      'Yes. Most teams start with a single cohort or group, validate the workflow, and expand once they see progress they can measure.',
   },
   {
-    question: 'What tools does Pathment integrate with?',
+    question: 'What does Pathment connect to?',
     answer:
-      'Pathment connects with the tools your engineering teams already use — including Slack, GitHub, Jira, Notion, Google Calendar, and Linear — to keep mentorship aligned with daily work.',
+      'Almost everything runs in one place: programs, roadmaps, task submission and review, scheduling, community, and 1:1 messaging. For AI features like roadmap generation you bring your own key from any OpenAI-compatible provider (Groq, OpenAI, Anthropic, or OpenRouter), so you control the model and the cost. Email is handled by Resend and file uploads by Cloudinary, both built in. There is nothing to wire up before your first cohort.',
   },
   {
     question: 'What if we need a custom program structure?',
     answer:
-      'Our solution engineering team works with enterprise customers to design custom progression blueprints, role frameworks, and program templates tailored to your organization\'s career ladder.',
+      'Pathment is built around programs, cohorts, and mentor-led clans, with custom roadmaps, roles, and scoped permissions, so you can model your own progression paths and team structure without a rebuild.',
   },
 ] as const;
 

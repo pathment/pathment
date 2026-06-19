@@ -24,10 +24,10 @@ export function Hero() {
           >
             <span className="flex items-center gap-1 font-semibold text-brand-900">
               <Star className="h-3.5 w-3.5 fill-brand-500 text-brand-500" />
-              4.9
+              Built for structured mentorship
             </span>
             <span className="text-zinc-400">·</span>
-            <span className="text-center">Trusted by engineering teams at scale</span>
+            <span className="text-center">Programs · Cohorts · Clans</span>
           </motion.div>
 
           <motion.h1
@@ -36,8 +36,8 @@ export function Hero() {
             transition={{ duration: 0.55, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
             className="mb-5 text-balance font-display text-[2rem] leading-[1.08] font-semibold tracking-tight text-brand-950 sm:mb-6 sm:text-5xl md:text-6xl"
           >
-            Structured growth, <br className="hidden sm:inline" />
-            <span className="font-normal italic text-brand-600">at enterprise scale.</span>
+            Mentorship that actually <br className="hidden sm:inline" />
+            <span className="font-normal italic text-brand-600">runs like a program.</span>
           </motion.h1>
 
           <motion.p
@@ -46,9 +46,9 @@ export function Hero() {
             transition={{ duration: 0.55, delay: 0.16, ease: [0.22, 1, 0.36, 1] }}
             className="mx-auto mb-8 max-w-2xl text-base leading-relaxed text-zinc-600 sm:mb-10 sm:text-lg"
           >
-            Pathment gives engineering &amp; product teams a rigorous system for competency
-            development through smart mentor matching, AI-generated roadmaps, and gamified,
-            verifiable progress.
+            Pathment gives mentors and program leads one place to match pairs, assign
+            AI-built roadmaps, review submitted work, run 1:1s, and see real progress
+            instead of scattered docs, spreadsheets, and guesswork.
           </motion.p>
 
           <motion.div

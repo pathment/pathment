@@ -14,8 +14,8 @@ export function Footer() {
           <div className="space-y-4 sm:col-span-2">
             <Brand compact />
             <p className="max-w-xs text-xs leading-relaxed text-zinc-500">
-              AI-powered mentorship infrastructure for high-growth enterprise teams. Align
-              development structure to platform performance.
+              One place to run structured mentorship, match pairs, build roadmaps, review
+              work, and see real progress.
             </p>
             <div className="flex items-center gap-3 text-zinc-400">
               <a href="#" aria-label="GitHub" className="text-base hover:text-zinc-600">
@@ -52,7 +52,7 @@ export function Footer() {
               Newsletter
             </h4>
             <p className="mb-4 text-xs leading-relaxed text-zinc-500">
-              Get tips on building structured mentorship programs for engineering teams.
+              Tips on running structured mentorship programs that actually stick.
             </p>
             <form className="flex flex-col gap-2">
               <input

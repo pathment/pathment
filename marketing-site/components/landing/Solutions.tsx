@@ -97,7 +97,7 @@ function InsightsPanel() {
         ))}
       </div>
       <div className="mt-3 rounded-lg border border-brand-100 bg-brand-50 px-3 py-2 text-[11px] text-brand-800">
-        4 pairs flagged — avg. 12 days since last check-in
+        4 pairs flagged, avg. 12 days since last check-in
       </div>
     </div>
   );

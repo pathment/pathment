@@ -13,13 +13,15 @@ import {
   Wallet,
 } from 'lucide-react';
 import {
+  animate,
   motion,
+  useInView,
   useMotionValueEvent,
   useScroll,
   useTransform,
   type MotionValue,
 } from 'framer-motion';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { heroFloatingCards } from './content';
 
 const icons: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -44,21 +46,25 @@ function ScrollAnimatedNumber({
   start?: number;
   end?: number;
 }) {
+  // Count up ONCE when the stat scrolls into view. (Previously this was tied to a
+  // deep scroll fraction, so the hero stats sat at 0 / 0.0% on load, looking
+  // broken. In-view + animate guarantees they fill as soon as they're visible.)
+  const ref = useRef<HTMLSpanElement>(null);
+  const inView = useInView(ref, { once: true, margin: '-12% 0px' });
   const [display, setDisplay] = useState(decimal ? '0.0' : '0');
 
-  useMotionValueEvent(progress, 'change', (v) => {
-    if (v < start) {
-      setDisplay(decimal ? '0.0' : '0');
-      return;
-    }
-    const t = Math.min(Math.max((v - start) / (end - start), 0), 1);
-    const eased = 1 - Math.pow(1 - t, 3);
-    const current = value * eased;
-    setDisplay(decimal ? current.toFixed(1) : Math.round(current).toString());
-  });
+  useEffect(() => {
+    if (!inView) return;
+    const controls = animate(0, value, {
+      duration: 1.1,
+      ease: [0.22, 1, 0.36, 1],
+      onUpdate: (v) => setDisplay(decimal ? v.toFixed(1) : Math.round(v).toString()),
+    });
+    return () => controls.stop();
+  }, [inView, value, decimal]);
 
   return (
-    <span>
+    <span ref={ref}>
       {display}
       {suffix}
     </span>
@@ -159,7 +165,7 @@ export function HeroDashboard() {
 
   return (
     <div ref={scrollRef} className="relative mx-auto w-full max-w-5xl px-2 pb-6 sm:px-0 sm:pb-10">
-      {/* Scroll track spacer — gives room for scroll-driven animation */}
+      {/* Scroll track spacer, gives room for scroll-driven animation */}
       <div className="pointer-events-none absolute inset-x-0 -top-8 h-8" aria-hidden />
 
       <motion.div

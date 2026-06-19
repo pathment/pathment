@@ -281,11 +281,11 @@ export function Workflow() {
               titleId="how-it-works-title"
               align="left"
               className="mb-0 md:mb-0 lg:mb-0"
-              title="From setup to insight — just three simple steps"
+              title="From setup to insight, just three simple steps"
             />
           </div>
 
-          {/* Sticky stacked cards — scroll through on the right */}
+          {/* Sticky stacked cards, scroll through on the right */}
           <div className="relative lg:max-w-md xl:max-w-lg">
             {workflowSteps.map((step, index) => (
               <StickyStep

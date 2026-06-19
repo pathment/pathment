@@ -15,11 +15,11 @@ export function FinalCta() {
 
             <div className="relative mx-auto max-w-2xl text-center">
               <h2 className="mb-4 font-display text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-                Let Pathment take the guesswork out of mentorship
+                Take the guesswork out of mentorship
               </h2>
               <p className="mb-10 text-base leading-relaxed text-blue-100">
-                From smart matching to AI roadmaps and progress analytics — give your engineering
-                team a structured system for measurable growth.
+                From mentor matching to AI roadmaps, task reviews, and progress you can see.
+                Give your team one structured system instead of scattered tools.
               </p>
               <form
                 action="mailto:enterprise@pathment.com"
@@ -42,7 +42,7 @@ export function FinalCta() {
                 </button>
               </form>
               <p className="mt-4 text-xs text-blue-100/80">
-                For enterprise security configurations or customized RFP reviews, reach us at{' '}
+                Have questions about setup, security, or a custom program structure? Reach us at{' '}
                 <a
                   href="mailto:enterprise@pathment.com"
                   className="font-medium text-white underline decoration-white/40 underline-offset-2 hover:decoration-white"
