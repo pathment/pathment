@@ -20,6 +20,45 @@ const stepIcons: Record<string, LucideIcon> = {
   trending: TrendingUp,
 };
 
+const GAUGE_TICKS = [
+  { x1: 42, y1: 118, x2Idle: 28, y2Idle: 118, x2Active: 22, y2Active: 118 },
+  { x1: 42.314, y1: 111.008, x2Idle: 28.37, y2Idle: 109.753, x2Active: 22.395, y2Active: 109.215 },
+  { x1: 43.253, y1: 104.073, x2Idle: 29.478, y2Idle: 101.573, x2Active: 23.575, y2Active: 100.501 },
+  { x1: 44.811, y1: 97.249, x2Idle: 31.315, y2Idle: 93.525, x2Active: 25.532, y2Active: 91.928 },
+  { x1: 46.974, y1: 90.593, x2Idle: 33.866, y2Idle: 85.674, x2Active: 28.249, y2Active: 83.565 },
+  { x1: 49.724, y1: 84.157, x2Idle: 37.111, y2Idle: 78.083, x2Active: 31.705, y2Active: 75.479 },
+  { x1: 53.041, y1: 77.994, x2Idle: 41.023, y2Idle: 70.813, x2Active: 35.872, y2Active: 67.736 },
+  { x1: 56.897, y1: 72.153, x2Idle: 45.57, y2Idle: 63.924, x2Active: 40.716, y2Active: 60.397 },
+  { x1: 61.26, y1: 66.681, x2Idle: 50.717, y2Idle: 57.47, x2Active: 46.199, y2Active: 53.522 },
+  { x1: 66.097, y1: 61.622, x2Idle: 56.422, y2Idle: 51.503, x2Active: 52.276, y2Active: 47.166 },
+  { x1: 71.368, y1: 57.017, x2Idle: 62.639, y2Idle: 46.072, x2Active: 58.898, y2Active: 41.381 },
+  { x1: 77.03, y1: 52.903, x2Idle: 69.317, y2Idle: 41.219, x2Active: 66.012, y2Active: 36.212 },
+  { x1: 83.038, y1: 49.314, x2Idle: 76.404, y2Idle: 36.985, x2Active: 73.561, y2Active: 31.702 },
+  { x1: 89.344, y1: 46.277, x2Idle: 83.842, y2Idle: 33.403, x2Active: 81.484, y2Active: 27.886 },
+  { x1: 95.897, y1: 43.818, x2Idle: 91.57, y2Idle: 30.503, x2Active: 89.716, y2Active: 24.796 },
+  { x1: 102.643, y1: 41.956, x2Idle: 99.528, y2Idle: 28.307, x2Active: 98.193, y2Active: 22.457 },
+  { x1: 109.53, y1: 40.706, x2Idle: 107.651, y2Idle: 26.833, x2Active: 106.845, y2Active: 20.887 },
+  { x1: 116.501, y1: 40.079, x2Idle: 115.872, y2Idle: 26.093, x2Active: 115.603, y2Active: 20.099 },
+  { x1: 123.499, y1: 40.079, x2Idle: 124.128, y2Idle: 26.093, x2Active: 124.397, y2Active: 20.099 },
+  { x1: 130.47, y1: 40.706, x2Idle: 132.349, y2Idle: 26.833, x2Active: 133.155, y2Active: 20.887 },
+  { x1: 137.357, y1: 41.956, x2Idle: 140.472, y2Idle: 28.307, x2Active: 141.807, y2Active: 22.457 },
+  { x1: 144.103, y1: 43.818, x2Idle: 148.43, y2Idle: 30.503, x2Active: 150.284, y2Active: 24.796 },
+  { x1: 150.656, y1: 46.277, x2Idle: 156.158, y2Idle: 33.403, x2Active: 158.516, y2Active: 27.886 },
+  { x1: 156.962, y1: 49.314, x2Idle: 163.596, y2Idle: 36.985, x2Active: 166.439, y2Active: 31.702 },
+  { x1: 162.97, y1: 52.903, x2Idle: 170.683, y2Idle: 41.219, x2Active: 173.988, y2Active: 36.212 },
+  { x1: 168.632, y1: 57.017, x2Idle: 177.361, y2Idle: 46.072, x2Active: 181.102, y2Active: 41.381 },
+  { x1: 173.903, y1: 61.622, x2Idle: 183.578, y2Idle: 51.503, x2Active: 187.724, y2Active: 47.166 },
+  { x1: 178.74, y1: 66.681, x2Idle: 189.283, y2Idle: 57.47, x2Active: 193.801, y2Active: 53.522 },
+  { x1: 183.103, y1: 72.153, x2Idle: 194.43, y2Idle: 63.924, x2Active: 199.284, y2Active: 60.397 },
+  { x1: 186.959, y1: 77.994, x2Idle: 198.977, y2Idle: 70.813, x2Active: 204.128, y2Active: 67.736 },
+  { x1: 190.276, y1: 84.157, x2Idle: 202.889, y2Idle: 78.083, x2Active: 208.295, y2Active: 75.479 },
+  { x1: 193.026, y1: 90.593, x2Idle: 206.134, y2Idle: 85.674, x2Active: 211.751, y2Active: 83.565 },
+  { x1: 195.189, y1: 97.249, x2Idle: 208.685, y2Idle: 93.525, x2Active: 214.468, y2Active: 91.928 },
+  { x1: 196.747, y1: 104.073, x2Idle: 210.522, y2Idle: 101.573, x2Active: 216.425, y2Active: 100.501 },
+  { x1: 197.686, y1: 111.008, x2Idle: 211.63, y2Idle: 109.753, x2Active: 217.605, y2Active: 109.215 },
+  { x1: 198, y1: 118, x2Idle: 212, y2Idle: 118, x2Active: 218, y2Active: 118 },
+] as const;
+
 function ConnectGauge({ progress }: { progress: MotionValue<number> }) {
   const [activeTicks, setActiveTicks] = useState(0);
 
@@ -31,25 +70,17 @@ function ConnectGauge({ progress }: { progress: MotionValue<number> }) {
   return (
     <div className="relative flex h-36 items-end justify-center overflow-hidden sm:h-40">
       <svg viewBox="0 0 240 130" className="h-full w-full max-w-[220px]" aria-hidden>
-        {Array.from({ length: 36 }).map((_, i) => {
-          const angle = (-180 + (i / 35) * 180) * (Math.PI / 180);
-          const innerR = 78;
-          const outerR = i < activeTicks ? 98 : 92;
-          const cx = 120;
-          const cy = 118;
-          const x1 = cx + innerR * Math.cos(angle);
-          const y1 = cy + innerR * Math.sin(angle);
-          const x2 = cx + outerR * Math.cos(angle);
-          const y2 = cy + outerR * Math.sin(angle);
+        {GAUGE_TICKS.map((tick, i) => {
+          const active = i < activeTicks;
           return (
             <line
               key={i}
-              x1={x1}
-              y1={y1}
-              x2={x2}
-              y2={y2}
-              stroke={i < activeTicks ? '#2563eb' : '#e4e4e7'}
-              strokeWidth={i < activeTicks ? 2.5 : 2}
+              x1={tick.x1}
+              y1={tick.y1}
+              x2={active ? tick.x2Active : tick.x2Idle}
+              y2={active ? tick.y2Active : tick.y2Idle}
+              stroke={active ? '#2563eb' : '#e4e4e7'}
+              strokeWidth={active ? 2.5 : 2}
               strokeLinecap="round"
             />
           );
