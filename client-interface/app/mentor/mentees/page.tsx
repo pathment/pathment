@@ -6,7 +6,7 @@ import { Loader2, Search, Users, Users2 } from 'lucide-react';
 import { useMentorCohort } from '@/lib/hooks/mentor';
 import { MenteeCard } from '@/components/mentor/MenteeCard';
 
-type Filter = 'all' | 'attention' | 'on_track';
+type Filter = 'all' | 'attention' | 'on_track' | 'completed';
 
 export default function MentorMentees() {
   const router = useRouter();
@@ -22,22 +22,65 @@ export default function MentorMentees() {
     return [...map.entries()].map(([id, name]) => ({ id, name }));
   }, [cohort]);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return cohort.filter((m) => {
-      if (clan !== 'all' && m.clan?.id !== clan) return false;
-      if (filter === 'attention' && !(m.risk !== 'low' || m.openBlockers > 0 || m.pendingApprovals > 0)) return false;
-      if (filter === 'on_track' && !(m.risk === 'low' && m.momentum !== 'down')) return false;
-      if (q && !(m.name.toLowerCase().includes(q) || m.email.toLowerCase().includes(q))) return false;
-      return true;
-    });
-  }, [cohort, search, clan, filter]);
+const filtered = useMemo(() => {
+  const q = search.trim().toLowerCase();
 
-  const FILTERS: { key: Filter; label: string }[] = [
-    { key: 'all', label: 'Everyone' },
-    { key: 'attention', label: 'Needs attention' },
-    { key: 'on_track', label: 'On track' },
-  ];
+  return cohort.filter((m) => {
+    // Clan filter
+    if (clan !== 'all' && m.clan?.id !== clan) return false;
+
+    // Needs attention
+   if (
+  filter === 'attention' &&
+  !(
+    !m.isCompleted &&
+    (
+      m.risk !== 'low' ||
+      m.openBlockers > 0 ||
+      m.pendingApprovals > 0
+    )
+  )
+) {
+  return false;
+}
+
+    // On track (exclude completed mentees)
+    if (
+      filter === 'on_track' &&
+      !(m.risk === 'low' && m.momentum !== 'down' && !m.isCompleted)
+    ) {
+      return false;
+    }
+
+    // Completed
+    if (
+      filter === 'completed' &&
+      m.isCompleted !== true
+    ) {
+      return false;
+    }
+
+    // Search
+    if (
+      q &&
+      !(
+        m.name.toLowerCase().includes(q) ||
+        m.email.toLowerCase().includes(q)
+      )
+    ) {
+      return false;
+    }
+
+    return true;
+  });
+}, [cohort, search, clan, filter]);
+
+ const FILTERS: { key: Filter; label: string }[] = [
+  { key: 'all', label: 'Everyone' },
+  { key: 'attention', label: 'Needs attention' },
+  { key: 'on_track', label: 'On track' },
+  { key: 'completed', label: 'Completed' },
+];
 
   return (
     <div className="space-y-6">

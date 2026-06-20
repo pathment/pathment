@@ -244,7 +244,7 @@ class CohortService {
     const mentee = await models.User.findByPk(menteeId, {
       attributes: ['id', 'firstName', 'lastName', 'email', 'profilePictureUrl'],
       include: [
-        { model: models.MenteeProfile, as: 'menteeProfile', attributes: ['lastActivityDate', 'currentOccupation'] },
+        { model: models.MenteeProfile, as: 'menteeProfile', attributes: ['lastActivityDate', 'currentOccupation', 'currentLevel'] },
         {
           model: models.Enrollment,
           as: 'enrollments',
@@ -304,8 +304,13 @@ class CohortService {
     // Concrete, rule-based "why" chips for the at-risk / review cards (no AI).
     const signals = this._buildSignals({ tasks, lastActiveDays, onTimeRate, openBlockers, highSeverityBlockers, momentum, pendingApprovals });
 
-    // Their most recent cohort-review attendance (for the "last meeting" chip).
-    const lastAttendance = await this._lastAttendance(menteeId);
+    // Compute completion status and related metadata.
+    const enrollmentStatus = enrollment?.status || null;
+    const isCompleted = enrollmentStatus === 'program_completed';
+    const currentLevel = enrollment?.currentLevel ?? mentee.menteeProfile?.currentLevel ?? null;
+    const levelDisplay = currentLevel ? `Level ${currentLevel}` : '-';
+    const tasksTotal = tasks.length;
+    const tasksCompleted = tasks.filter((t) => t.status === 'completed').length;
 
     return {
       id: mentee.id,
@@ -314,7 +319,7 @@ class CohortService {
       email: mentee.email,
       profilePictureUrl: mentee.profilePictureUrl || null,
       program: enrollment?.program?.name || '-',
-      level: '-',
+      level: levelDisplay,
       week,
       totalWeeks,
       absoluteProgress: absolute,
@@ -328,8 +333,17 @@ class CohortService {
       signals,
       avgRating: enrollment ? Number(enrollment.avgTaskRating) || 0 : 0,
       lastActive: lastActivityDate ? humanizeDays(lastActiveDays) : 'never',
-      lastAttendance, // { status, date } | null — most recent review attendance
-      sentiment: 'neutral'
+      sentiment: 'neutral',
+      // Completion status fields (additive, safe for in-progress enrollments)
+      enrollmentStatus,
+      isCompleted,
+      currentLevel,
+      programName: enrollment?.program?.name || null,
+      programDurationWeeks: enrollment?.program?.totalDurationWeeks || null,
+      completedAt: isCompleted ? enrollment?.updatedAt : null,
+      tasksTotal,
+      tasksCompleted,
+      openBlockersCount: openBlockers
     };
   }
 
@@ -356,7 +370,7 @@ class CohortService {
    * mentee's actual stats - not a fabricated narrative - until the LLM-backed
    * summary feature is wired in.
    */
-  async getMenteeDetail(menteeId) {
+   async getMenteeDetail(menteeId) {
     const row = await this.buildMenteeRow(menteeId);
     if (!row) return null;
 
@@ -378,7 +392,7 @@ class CohortService {
         order: [['created_at', 'DESC']],
         include: [{ model: models.User, as: 'author', attributes: ['firstName', 'lastName'] }]
       }),
-      models.MenteeProfile.findOne({ where: { userId: menteeId }, attributes: ['personality'] })
+      models.MenteeProfile.findOne({ where: { userId: menteeId }, attributes: ['personality', 'currentLevel'] })
     ]);
 
     const meetingNotes = await models.MeetingNote.findAll({
