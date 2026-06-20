@@ -13,7 +13,7 @@ router.post('/redeem', authenticate, requirePermission(PERMISSIONS.MENTEE_VIEW, 
 router.get('/balance/:menteeId', authenticate, requirePermission(PERMISSIONS.MENTEE_VIEW, scope.mentee('menteeId')), c.menteeBalance);
 
 // Catalog management (admin only).
-router.post('/gifts/upload', authenticate, requirePermissionMinScope(PERMISSIONS.GAMIFICATION_MANAGE), upload.single('file'), c.uploadGiftImage);
+router.post('/gifts/upload', authenticate, requirePermissionMinScope(PERMISSIONS.GAMIFICATION_MANAGE), upload.singleSafe('file'), c.uploadGiftImage);
 router.post('/gifts', authenticate, requirePermissionMinScope(PERMISSIONS.GAMIFICATION_MANAGE), c.createGift);
 router.patch('/gifts/:id', authenticate, requirePermissionMinScope(PERMISSIONS.GAMIFICATION_MANAGE), c.updateGift);
 router.delete('/gifts/:id', authenticate, requirePermissionMinScope(PERMISSIONS.GAMIFICATION_MANAGE), c.removeGift);

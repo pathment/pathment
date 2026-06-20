@@ -7,6 +7,9 @@ const { uploadToCloudinary } = require('../utils/cloudinaryUpload');
 // Upload a gift image/GIF → returns { url } for the gift form to store.
 const uploadGiftImage = catchAsync(async (req, res) => {
   if (!req.file) throw new ValidationError('No image uploaded');
+  if (!(req.file.mimetype || '').startsWith('image/')) {
+    throw new ValidationError('Please upload an image file (PNG, JPG, GIF, or WebP).');
+  }
   const result = await uploadToCloudinary(req.file.buffer, 'pathment/gifts', 'image');
   res.status(200).json(successResponse('Uploaded', { url: result.secure_url }));
 });

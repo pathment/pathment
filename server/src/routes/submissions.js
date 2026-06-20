@@ -15,7 +15,7 @@ router.post(
   '/:taskId',
   authenticate,
   authorize(['mentee']),
-  upload.array('files', 5), // Allow up to 5 files
+  upload.arraySafe('files', 5), // Allow up to 5 files (clean 400 on type/size errors)
   submissionController.submitTask
 );
 
