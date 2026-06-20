@@ -187,7 +187,7 @@ export function AssessmentDrawer({
         <div className="space-y-5">
           {/* Meta */}
           <div className="space-y-3">
-            <input value={meta.title} onChange={(e) => setMeta({ ...meta, title: e.target.value })} placeholder="Assessment title" className="w-full text-base font-semibold border-0 border-b border-slate-200 focus:border-brand-500 focus:outline-none bg-transparent pb-2 text-slate-900 dark:text-slate-100" />
+            <input value={meta.title} onChange={(e) => setMeta({ ...meta, title: e.target.value })} placeholder="Assessment title" className="w-full text-base font-semibold border-0 border-b border-slate-200 focus:border-brand-500 focus:outline-none bg-transparent pb-2 text-slate-900 dark:text-slate-700" />
             <textarea rows={2} value={meta.description} onChange={(e) => setMeta({ ...meta, description: e.target.value })} placeholder="Short description (shown to applicants)" className="w-full border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-card" />
             <textarea rows={2} value={meta.instructions} onChange={(e) => setMeta({ ...meta, instructions: e.target.value })} placeholder="Instructions (e.g. how it's graded, time expectations)" className="w-full border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-card" />
             <div className="grid grid-cols-3 gap-3">
@@ -221,10 +221,10 @@ export function AssessmentDrawer({
 
           {/* Add question */}
           <div className="rounded-xl border border-dashed border-slate-300 dark:border-slate-700 p-3">
-            <p className="text-sm font-medium text-slate-700 dark:text-slate-200 mb-2 inline-flex items-center gap-1"><Plus className="w-4 h-4" /> Add a question</p>
+            <p className="text-sm font-medium text-slate-700 dark:text-slate-700 mb-2 inline-flex items-center gap-1"><Plus className="w-4 h-4" /> Add a question</p>
             <div className="flex flex-wrap gap-2">
               {(Object.keys(TYPE_LABELS) as AssessmentQuestionType[]).map((t) => (
-                <button key={t} onClick={() => addQuestion(t)} className="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs text-slate-700 dark:text-slate-200 hover:border-brand-300 hover:bg-brand-50/40">{TYPE_LABELS[t]}</button>
+                <button key={t} onClick={() => addQuestion(t)} className="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs text-slate-700 dark:text-slate-700 hover:border-brand-300 hover:bg-brand-50/40">{TYPE_LABELS[t]}</button>
               ))}
             </div>
           </div>
@@ -277,12 +277,12 @@ function QuestionCard({
             </div>
           )}
           <div className="mt-4 flex items-center gap-4 text-sm">
-            <label className="inline-flex items-center gap-2 text-slate-600 dark:text-slate-300">
+            <label className="inline-flex items-center gap-2 text-slate-600 dark:text-slate-500">
               <input type="checkbox" checked={q.required} onChange={(e) => onPatch({ required: e.target.checked })} className="accent-brand-600" /> Required
             </label>
-            <label className="inline-flex items-center gap-2 text-slate-600 dark:text-slate-300">
+            <label className="inline-flex items-center gap-2 text-slate-600 dark:text-slate-500">
               Points
-              <input type="number" min={0} value={q.points} onChange={(e) => onPatch({ points: e.target.value === '' ? 0 : Math.max(0, parseInt(e.target.value, 10) || 0) })} className="w-20 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500" />
+              <input type="number" min={0} value={q.points} onChange={(e) => onPatch({ points: e.target.value === '' ? 0 : Math.max(0, parseInt(e.target.value, 10) || 0) })} className="w-20 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-sm bg-card dark:text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-500" />
             </label>
             {!AUTO_GRADED.includes(q.type) && <span className="text-xs text-slate-400">graded manually</span>}
           </div>
