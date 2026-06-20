@@ -403,7 +403,24 @@ export default function CohortReview() {
     // Toggle off if re-clicking the same mark; persisted on the session entry.
     const current = entriesByMentee[mentee.id]?.attendance ?? null;
     patchEntry(mentee.id, { attendance: current === status ? null : status }, true);
-  }, [mentee, editable, entriesByMentee, patchEntry]);
+    if (current !== status) {
+      const nextIndex = cohort.findIndex((m, i) => i > idx && !entriesByMentee[m.id]?.attendance);
+      if (nextIndex !== -1) {
+        selectMentee(nextIndex);
+      } else if (idx < cohort.length - 1) {
+        go(1);
+      }
+    }
+  }, [mentee, editable, entriesByMentee, patchEntry, cohort, idx, selectMentee, go]);
+
+  const markAll = useCallback((status: Attendance) => {
+    if (!editable) return;
+    cohort.forEach((m) => {
+      if (entriesByMentee[m.id]?.attendance !== status) {
+        patchEntry(m.id, { attendance: status }, true);
+      }
+    });
+  }, [cohort, editable, entriesByMentee, patchEntry]);
 
   const finishOrReopen = useCallback(async () => {
     if (!session) return;
@@ -648,13 +665,49 @@ export default function CohortReview() {
         )}
       </div>
 
-      {/* Progress dots */}
-      <div className="flex flex-wrap items-center gap-1.5">
-        {cohort.map((m, i) => {
-          const a = attendance[m.id];
-          const cls = i === idx ? 'bg-slate-900' : a === 'present' ? 'bg-emerald-500' : a === 'absent' ? 'bg-red-500' : seen.has(m.id) ? 'bg-slate-400' : 'bg-slate-200';
-          return <button key={m.id} onClick={() => selectMentee(i)} title={m.name} className={`w-2.5 h-2.5 rounded-full ${cls}`} />;
-        })}
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-medium text-slate-700">Mentees</h3>
+          <div className="flex items-center gap-2">
+            <button onClick={() => markAll('present')} className="px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 transition-colors">Mark All Present</button>
+            <button onClick={() => markAll('absent')} className="px-3 py-1.5 text-xs font-medium rounded-lg bg-red-50 text-red-700 hover:bg-red-100 border border-red-200 transition-colors">Mark All Absent</button>
+          </div>
+        </div>
+        <div className="flex gap-3 overflow-x-auto pb-4 snap-x [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+          {cohort.map((m, i) => {
+            const a = attendance[m.id];
+            const isSelected = i === idx;
+            const statusColor = a === 'present' ? 'bg-emerald-500' : a === 'absent' ? 'bg-red-500' : 'bg-slate-300';
+            const initials = m.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase();
+            return (
+              <button
+                key={m.id}
+                onClick={() => selectMentee(i)}
+                className={`snap-start shrink-0 flex items-center gap-3 p-2 rounded-xl border transition-all ${
+                  isSelected 
+                    ? 'border-brand-500 bg-brand-50 shadow-sm' 
+                    : 'border-slate-200 bg-card hover:bg-slate-50'
+                }`}
+                style={{ width: '200px' }}
+              >
+                <div className="relative">
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center font-medium ${isSelected ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-700'}`}>
+                    {initials}
+                  </div>
+                  <div className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-white ${statusColor}`} />
+                </div>
+                <div className="flex-1 text-left min-w-0">
+                  <div className={`font-medium text-sm truncate ${isSelected ? 'text-brand-900' : 'text-slate-900'}`}>
+                    {m.name}
+                  </div>
+                  <div className="text-xs text-slate-500 truncate">
+                    {a === 'present' ? 'Present' : a === 'absent' ? 'Absent' : 'Not marked'}
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {deferred.size > 0 && (
