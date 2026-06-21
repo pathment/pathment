@@ -38,7 +38,9 @@ export const activityApi = {
     apiClient.get<MyActivityResponse>('/activity/me/summary', { params: { days } }),
 
   getMenteeSummary: (menteeId: string, days = 7) =>
-    apiClient.get<MenteeActivityResponse>(`/activity/mentee/${menteeId}/summary`, {
+    // Body is the standard envelope { data: MenteeActivityResponse } — the old
+    // generic omitted the `data` wrapper, which forced an `as unknown as` cast.
+    apiClient.get<{ data: MenteeActivityResponse }>(`/activity/mentee/${menteeId}/summary`, {
       params: { days },
     }),
 

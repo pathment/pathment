@@ -7,7 +7,8 @@ import {
   FileText, Loader2, Copy, Check, AlertTriangle, Star, TrendingUp, TrendingDown,
   Minus, ClipboardCheck, Flag, ArrowUpRight, Activity, Gauge, Sparkles, Printer, RefreshCw,
 } from 'lucide-react';
-import { useMentorCohort, type CohortMentee } from '@/lib/hooks/mentor';
+import { useMentorCohort } from '@/lib/hooks/mentor';
+import type { CohortMentee } from '@/lib/types/cohort';
 import { mentorApi } from '@/lib/services/mentor-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { useAuth } from '@/lib/context/AuthContext';

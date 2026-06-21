@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { UserPlus, Loader2, Trash2, Stethoscope } from 'lucide-react';
-import type { ProfileCollaborator } from '@/lib/hooks/mentor';
+import type { ProfileCollaborator } from '@/lib/types/insights';
 
 /**
  * Collaborators - specialists invited to work with a mentee (psychologist,

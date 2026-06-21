@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Gauge, Loader2, TrendingUp, TrendingDown, Minus, ArrowUpRight, Search } from 'lucide-react';
-import { useMentorCohort, type CohortMentee, type CohortMomentum } from '@/lib/hooks/mentor';
+import { useMentorCohort } from '@/lib/hooks/mentor';
+import type { CohortMentee, CohortMomentum } from '@/lib/types/cohort';
 import { SelectMenu } from '@/components/shared/SelectMenu';
 import { usePagination } from '@/lib/hooks/shared/usePagination';
 import { TablePagination } from '@/components/shared/TablePagination';

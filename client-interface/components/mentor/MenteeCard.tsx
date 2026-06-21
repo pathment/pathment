@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { DualProgress } from '@/components/mentor/DualProgress';
 import { NudgeButton } from '@/components/mentor/NudgeButton';
-import type { CohortMentee, CohortRisk, CohortMomentum } from '@/lib/hooks/mentor';
+import type { CohortMentee, CohortRisk, CohortMomentum } from '@/lib/types/cohort';
 
 /**
  * The single, consistent mentee summary card. Used by the Cockpit, My Mentees

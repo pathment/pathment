@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { menteeApi } from '@/lib/services/mentee-api';
-import type { MenteeProfile } from '@/lib/hooks/mentor';
+import type { MenteeProfile } from '@/lib/types/insights';
 
 export interface UseMyProgressReturn {
   progress: MenteeProfile | null;

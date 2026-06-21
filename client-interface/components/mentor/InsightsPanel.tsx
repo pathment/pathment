@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { Loader2, Plus, Lightbulb } from 'lucide-react';
-import type { ProfileInsight } from '@/lib/hooks/mentor';
+import type { ProfileInsight } from '@/lib/types/insights';
 
 const KINDS = ['general', 'personality', 'analytical', 'issue', 'strength'];
 const SOURCES = ['1:1', 'text', 'observation'];

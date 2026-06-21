@@ -1,5 +1,6 @@
 import {apiClient} from './api-client';
 import { apiConfig } from '@/lib/config/api';
+import type { CohortMentee, CohortTotals } from '@/lib/types/cohort';
 
 export const mentorApi = {
   // Get all active mentors
@@ -9,7 +10,8 @@ export const mentorApi = {
   },
 
   // The logged-in mentor's cohort for the Cockpit (computed fairness signals).
-  getCohort: () => apiClient.get('/mentor/cohort'),
+  getCohort: () =>
+    apiClient.get<{ data?: { cohort?: CohortMentee[]; totals?: CohortTotals | null } }>('/mentor/cohort'),
 
   // Period-scoped cohort throughput (week / month window).
   getCohortActivity: (period: 'week' | 'month') =>

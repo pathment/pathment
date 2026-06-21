@@ -1,43 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { mentorApi } from '@/lib/services/mentor-api';
+import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useClan, ALL_CLANS } from '@/lib/context/ClanContext';
-
-export type CohortMomentum = 'up' | 'flat' | 'down';
-export type CohortRisk = 'low' | 'watch' | 'high';
-
-export interface CohortMentee {
-  id: string;
-  name: string;
-  avatar: string;
-  email: string;
-  profilePictureUrl: string | null;
-  program: string;
-  level: string;
-  week: number;
-  totalWeeks: number;
-  absoluteProgress: number;
-  relativeProgress: number;
-  onTimeRate: number;
-  pendingApprovals: number;
-  openBlockers: number;
-  momentum: CohortMomentum;
-  risk: CohortRisk;
-  riskReason: string | null;
-  /** Concrete rule-based "why" chips, e.g. "No activity in 6 days". */
-  signals?: string[];
-  avgRating: number;
-  lastActive: string;
-  sentiment: string;
-  clan?: { id: string; name: string } | null;
-}
-
-export interface CohortTotals {
-  mentees: number;
-  pendingApprovals: number;
-  openBlockers: number;
-  atRisk: number;
-  onTimeRate: number;
-}
+import { cohortQueries } from '@/lib/queries/cohort';
+import type { CohortMentee, CohortTotals } from '@/lib/types/cohort';
 
 export interface UseMentorCohortReturn {
   cohort: CohortMentee[];
@@ -48,31 +13,13 @@ export interface UseMentorCohortReturn {
 }
 
 export function useMentorCohort(): UseMentorCohortReturn {
-  const [allCohort, setAllCohort] = useState<CohortMentee[]>([]);
-  const [rawTotals, setRawTotals] = useState<CohortTotals | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const { activeClanId } = useClan();
+  const query = useQuery(cohortQueries.mine());
 
-  const fetchCohort = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const res = await mentorApi.getCohort();
-      setAllCohort(res?.data?.cohort ?? []);
-      setRawTotals(res?.data?.totals ?? null);
-    } catch (err) {
-      setError('Failed to load your cohort');
-      setAllCohort([]);
-      setRawTotals(null);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchCohort();
-  }, [fetchCohort]);
+  // useMemo so the `?? []` default doesn't produce a new array ref each render
+  // (which would churn the dependent useMemos below).
+  const allCohort = useMemo(() => query.data?.cohort ?? [], [query.data?.cohort]);
+  const rawTotals = query.data?.totals ?? null;
 
   // Scope to the active clan (multi-clan mentors). 'all' = the merged view.
   const cohort = useMemo(
@@ -94,5 +41,13 @@ export function useMentorCohort(): UseMentorCohortReturn {
     };
   }, [cohort, allCohort, activeClanId, rawTotals]);
 
-  return { cohort, totals, loading, error, refetch: fetchCohort };
+  return {
+    cohort,
+    totals,
+    loading: query.isPending,
+    error: query.isError ? 'Failed to load your cohort' : null,
+    refetch: async () => {
+      await query.refetch();
+    },
+  };
 }

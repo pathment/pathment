@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Loader2, Pencil, Check } from 'lucide-react';
-import type { Personality } from '@/lib/hooks/mentor';
+import type { Personality } from '@/lib/types/insights';
 
 const DIMS: { key: keyof Personality; label: string }[] = [
   { key: 'consistency', label: 'Consistency' },

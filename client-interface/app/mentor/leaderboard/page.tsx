@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from 'react';
 import { Trophy, Loader2, Award, TrendingUp, TrendingDown, Minus, Crown, Info } from 'lucide-react';
-import { useMentorCohort, type CohortMentee, type CohortMomentum } from '@/lib/hooks/mentor';
+import { useMentorCohort } from '@/lib/hooks/mentor';
+import type { CohortMentee, CohortMomentum } from '@/lib/types/cohort';
 
 // Real, honest signals only - no fabricated XP. Standings rank by RELATIVE
 // progress (the platform's fairness metric: output credited for logged,

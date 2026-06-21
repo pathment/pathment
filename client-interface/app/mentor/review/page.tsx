@@ -9,7 +9,8 @@ import {
   Trash2, X, History, RotateCcw, CalendarDays, AlertTriangle, StickyNote, Search, Lock, Unlock,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useMentorCohort, useMentorApprovals, type CohortMentee, type CohortMomentum, type CohortRisk, type ApprovalItem } from '@/lib/hooks/mentor';
+import { useMentorCohort, useMentorApprovals, type ApprovalItem } from '@/lib/hooks/mentor';
+import type { CohortMentee, CohortMomentum, CohortRisk } from '@/lib/types/cohort';
 import { useAuth } from '@/lib/context/AuthContext';
 import { useClan, ALL_CLANS } from '@/lib/context/ClanContext';
 import { mentorApi } from '@/lib/services/mentor-api';

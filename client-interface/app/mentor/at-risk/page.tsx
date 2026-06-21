@@ -6,7 +6,8 @@ import { toast } from 'sonner';
 import {
   Bell, MessageSquare, ArrowUpRight, Clock, TrendingUp, TrendingDown, Minus, Loader2,
 } from 'lucide-react';
-import { useMentorCohort, type CohortMentee, type CohortMomentum } from '@/lib/hooks/mentor';
+import { useMentorCohort } from '@/lib/hooks/mentor';
+import type { CohortMentee, CohortMomentum } from '@/lib/types/cohort';
 import { mentorApi } from '@/lib/services/mentor-api';
 import { DualProgress } from '@/components/mentor/DualProgress';
 

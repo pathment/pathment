@@ -3,25 +3,10 @@ export { useMentorDashboard } from './useMentorDashboard';
 export type { UseMentorDashboardReturn } from './useMentorDashboard';
 
 export { useMentorCohort } from './useMentorCohort';
-export type {
-  UseMentorCohortReturn,
-  CohortMentee,
-  CohortTotals,
-  CohortRisk,
-  CohortMomentum,
-} from './useMentorCohort';
+export type { UseMentorCohortReturn } from './useMentorCohort';
 
 export { useMenteeProfile } from './useMenteeProfile';
-export type {
-  UseMenteeProfileReturn,
-  MenteeProfile,
-  ProfileBlocker,
-  ProfileDelay,
-  Personality,
-  ProfileInsight,
-  MeetingNote,
-  ProfileCollaborator,
-} from './useMenteeProfile';
+export type { UseMenteeProfileReturn } from './useMenteeProfile';
 
 export { useMentorApprovals } from './useMentorApprovals';
 export type { UseMentorApprovalsReturn, ApprovalItem, BulkReviewPayload } from './useMentorApprovals';

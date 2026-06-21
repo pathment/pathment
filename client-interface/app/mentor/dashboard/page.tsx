@@ -6,7 +6,8 @@ import {
   Users, ClipboardCheck, AlertTriangle, Flag, Loader2, Plus,
 } from 'lucide-react';
 import { useAuth } from '@/lib/context/AuthContext';
-import { useMentorCohort, type CohortMentee, type CohortRisk } from '@/lib/hooks/mentor';
+import { useMentorCohort } from '@/lib/hooks/mentor';
+import type { CohortMentee, CohortRisk } from '@/lib/types/cohort';
 import { StatsCard } from '@/components/admin/ui';
 import { MenteeCard } from '@/components/mentor/MenteeCard';
 import { AssignTaskDrawer } from '@/components/mentor/AssignTaskDrawer';

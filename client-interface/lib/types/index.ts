@@ -6,3 +6,6 @@ export * from './task';
 export * from './enrollment';
 export * from './common';
 export * from './activity';
+export * from './cohort';
+export * from './matches';
+export * from './insights';

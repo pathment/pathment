@@ -9,7 +9,9 @@ import {
   Target, TrendingUp, TrendingDown, Minus, Flag, Check, User, Loader2,
   Star, ThumbsUp, ThumbsDown, AlertCircle, ChevronLeft,
 } from 'lucide-react';
-import { useMenteeDetailPage, useMenteeProfile, type CohortRisk, type CohortMomentum } from '@/lib/hooks/mentor';
+import { useMenteeDetailPage, useMenteeProfile } from '@/lib/hooks/mentor';
+import type { CohortRisk, CohortMomentum } from '@/lib/types/cohort';
+import type { WorkHistoryItem } from '@/lib/types/task';
 import { useAuth } from '@/lib/context/AuthContext';
 import { useMenteeActivity } from '@/lib/hooks/mentor/useMenteeActivity';
 import { frictionApi } from '@/lib/services/friction-api';
@@ -190,19 +192,19 @@ export default function MenteeDetail() {
   const mentee = match.mentee;
   const enrollment = match.enrollment;
   const profile = mentee?.menteeProfile;
-  const progress = insights?.absoluteProgress ?? (parseFloat(enrollment?.overallProgressPercentage) || 0);
+  const progress = insights?.absoluteProgress ?? (parseFloat(enrollment?.overallProgressPercentage ?? '') || 0);
 
   const levelName = insights?.level || 'Level 1';
   const week = insights?.week ?? enrollment?.currentWeek ?? 1;
   const totalWeeks = insights?.totalWeeks || 0;
 
   // Work history groups (prefer computed grouping; fall back to raw task list).
-  const grouped: Record<string, any[]> =
+  const grouped: Record<string, WorkHistoryItem[]> =
     insights?.tasksByStatus ??
-    (tasks || []).reduce((acc: Record<string, any[]>, t: any) => {
+    (tasks ?? []).reduce((acc: Record<string, WorkHistoryItem[]>, t) => {
       const k = t.status || 'assigned';
       (acc[k] = acc[k] || []).push({
-        id: t.id, title: t.roadmapTask?.title || t.title, status: t.status,
+        id: t.id, title: t.roadmapTask?.title || t.title || '', status: t.status,
         source: t.isCustomTask ? 'Custom' : (t.roadmapName || t.roadmapTask?.roadmap?.name ? `Roadmap · ${t.roadmapName || t.roadmapTask?.roadmap?.name}` : 'Roadmap'),
         points: t.points ?? t.pointsBase ?? t.roadmapTask?.pointsBase ?? null,
       });
@@ -362,7 +364,7 @@ export default function MenteeDetail() {
                       <span className="text-xs text-slate-400">{grouped[status].length}</span>
                     </div>
                     <div className="space-y-2">
-                      {grouped[status].map((t: any) => (
+                      {grouped[status].map((t) => (
                         <button
                           key={t.id}
                           onClick={() => router.push(`/mentor/tasks/${t.id}`)}
@@ -612,21 +614,21 @@ export default function MenteeDetail() {
       <div className="grid lg:grid-cols-2 gap-6">
         <div className="bg-card rounded-2xl border border-slate-200 p-6">
           <h3 className="text-slate-900 mb-4">Learning profile</h3>
-          {profile?.learningGoals?.length > 0 && (
+          {(profile?.learningGoals?.length ?? 0) > 0 && (
             <div className="mb-4">
               <div className="flex items-center gap-2 text-slate-600 text-sm mb-2"><Target className="w-4 h-4" />Goals</div>
               <div className="flex flex-wrap gap-2">
-                {profile.learningGoals.map((g: string, i: number) => (
+                {profile?.learningGoals?.map((g, i) => (
                   <span key={i} className="px-2 py-1 bg-brand-50 text-brand-700 rounded text-xs">{g}</span>
                 ))}
               </div>
             </div>
           )}
-          {profile?.interests?.length > 0 && (
+          {(profile?.interests?.length ?? 0) > 0 && (
             <div className="mb-4">
               <div className="flex items-center gap-2 text-slate-600 text-sm mb-2"><Star className="w-4 h-4" />Interests</div>
               <div className="flex flex-wrap gap-2">
-                {profile.interests.map((s: string, i: number) => (
+                {profile?.interests?.map((s, i) => (
                   <span key={i} className="px-2 py-1 bg-purple-50 text-purple-700 rounded text-xs">{s}</span>
                 ))}
               </div>

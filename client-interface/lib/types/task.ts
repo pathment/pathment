@@ -1,5 +1,39 @@
 import { TaskType, TaskDifficulty } from './roadmap';
 
+// A mentee's assigned task as returned by taskApi.getMenteeTasks (AssignedTask
+// with its roadmapTask join) — the subset the mentee detail page consumes.
+export interface MenteeTask {
+  id: string;
+  title: string | null;
+  status: string;
+  dueDate?: string | null;
+  isLate?: boolean;
+  finalRating?: number | null;
+  points?: number | null;
+  pointsBase?: number | null;
+  isCustomTask?: boolean;
+  roadmapName?: string | null;
+  roadmapTask?: {
+    title?: string | null;
+    pointsBase?: number | null;
+    roadmap?: { id: string; name: string } | null;
+  } | null;
+}
+
+// Flattened row rendered in the mentee detail "Work history" list. Compatible
+// with both MenteeProfile.tasksByStatus items and the raw-task fallback mapping.
+export interface WorkHistoryItem {
+  id: string;
+  title: string;
+  status?: string;
+  source?: string;
+  points?: number | null;
+  isLate?: boolean;
+  finalRating?: number | null;
+  type?: string | null;
+  dueDate?: string | null;
+}
+
 // Task Instance Types (Assigned to Mentees)
 export interface Task {
   id: string;
