@@ -1,7 +1,7 @@
 'use client';
 
 import {
-  ClipboardCheck, Flag, Clock, TrendingUp, TrendingDown, Minus, ArrowUpRight, Users2,
+  ClipboardCheck, Flag, Clock, TrendingUp, TrendingDown, Minus, ArrowUpRight, Users2, ListPlus, Inbox,
 } from 'lucide-react';
 import { DualProgress } from '@/components/mentor/DualProgress';
 import { NudgeButton } from '@/components/mentor/NudgeButton';
@@ -37,8 +37,9 @@ function Avatar({ m }: { m: CohortMentee }) {
     : <div className="w-11 h-11 bg-brand-100 rounded-full flex items-center justify-center shrink-0"><span className="text-brand-700 font-medium text-sm">{m.avatar}</span></div>;
 }
 
-export function MenteeCard({ m, onOpen, showClan = false }: { m: CohortMentee; onOpen: () => void; showClan?: boolean }) {
+export function MenteeCard({ m, onOpen, showClan = false, onAssign }: { m: CohortMentee; onOpen: () => void; showClan?: boolean; onAssign?: () => void }) {
   const risk = RISK_BADGE[m.risk];
+  const noTasks = m.taskCount === 0;
   return (
     <div
       role="button"
@@ -77,6 +78,11 @@ export function MenteeCard({ m, onOpen, showClan = false }: { m: CohortMentee; o
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5">
+        {noTasks && (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-xs font-medium">
+            <Inbox className="w-3 h-3" />No tasks yet
+          </span>
+        )}
         {m.pendingApprovals > 0 && (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-brand-50 text-brand-700 text-xs font-medium">
             <ClipboardCheck className="w-3 h-3" />{m.pendingApprovals} to review
@@ -106,8 +112,23 @@ export function MenteeCard({ m, onOpen, showClan = false }: { m: CohortMentee; o
         </div>
       )}
 
-      <div className="mt-3 flex items-center justify-end text-xs font-medium text-brand-600 opacity-0 group-hover:opacity-100 transition-opacity">
-        Open full story <ArrowUpRight className="ml-0.5 w-3.5 h-3.5" />
+      <div className="mt-3 flex items-center justify-between">
+        {onAssign ? (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onAssign(); }}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
+              noTasks
+                ? 'bg-brand-600 text-white hover:bg-brand-700'
+                : 'border border-slate-200 text-slate-600 hover:border-brand-300 hover:text-brand-700'
+            }`}
+          >
+            <ListPlus className="w-3.5 h-3.5" />Assign work
+          </button>
+        ) : <span />}
+        <span className="inline-flex items-center text-xs font-medium text-brand-600 opacity-0 group-hover:opacity-100 transition-opacity">
+          Open full story <ArrowUpRight className="ml-0.5 w-3.5 h-3.5" />
+        </span>
       </div>
     </div>
   );

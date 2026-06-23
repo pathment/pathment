@@ -356,6 +356,7 @@ class CohortService {
       avgRating: enrollment ? Number(enrollment.avgTaskRating) || 0 : 0,
       lastActive: lastActivityDate ? humanizeDays(lastActiveDays) : 'never',
       lastAttendance, // { status, date } | null — most recent review attendance
+      taskCount: tasks.length, // total assigned tasks — 0 = never been given work
       sentiment: 'neutral'
     };
   }
