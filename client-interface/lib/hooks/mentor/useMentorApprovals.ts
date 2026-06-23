@@ -40,6 +40,8 @@ export interface ChangesRequestedItem {
   title: string;
   type: string | null;
   revisionCount: number;
+  /** 'changes' = changes requested, 'rejected' = rejected. Both await resubmission. */
+  decision: 'changes' | 'rejected';
   revisionNotes: string | null;
   feedbackText: string | null;
   requestedAt: string;

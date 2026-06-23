@@ -947,6 +947,9 @@ class SubmissionService {
         title: t.titleOverride || t.roadmapTask?.title || 'Task',
         type: t.roadmapTask?.type || null,
         revisionCount: t.revisionCount || 0,
+        // 'rejected' vs 'changes' — both leave the task at 'revision_needed', so
+        // the only signal of the mentor's intent is the latest feedback decision.
+        decision: latestFb?.decision === 'rejected' ? 'rejected' : 'changes',
         revisionNotes: latestFb?.revisionNotes || null,
         feedbackText: latestFb?.feedbackText || null,
         // When we asked for changes (falls back to the task's last update).

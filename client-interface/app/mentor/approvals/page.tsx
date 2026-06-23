@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { toast } from 'sonner';
 import {
   ClipboardCheck, CheckCircle2, Clock, Loader2, ChevronRight, CalendarClock, Check, X,
-  Search, ArrowDownUp, Layers, RotateCcw, ArrowUpRight,
+  Search, ArrowDownUp, Layers, RotateCcw, ArrowUpRight, XCircle,
 } from 'lucide-react';
 import { useMentorApprovals, type ApprovalItem } from '@/lib/hooks/mentor';
 import { ReviewDrawer } from '@/components/mentor/ReviewDrawer';
@@ -48,9 +48,10 @@ export default function MentorApprovals() {
   const [lateOnly, setLateOnly] = useState(false);
   const [groupByTask, setGroupByTask] = useState(false);
 
-  // Changes-requested controls (its own search + sort, independent of To-review).
+  // Sent-back controls (its own search + sort + decision filter, independent of To-review).
   const [changesSearch, setChangesSearch] = useState('');
   const [changesNewestFirst, setChangesNewestFirst] = useState(true);
+  const [decisionFilter, setDecisionFilter] = useState<'all' | 'changes' | 'rejected'>('all');
 
   // A deadline is the MENTEE's calendar day — compute "today" and the current
   // due date in THEIR timezone (not UTC / the mentor's browser) so the date the
@@ -99,10 +100,18 @@ export default function MentorApprovals() {
     return [...map.values()];
   }, [filteredReview]);
 
-  // Apply search + sort to the Changes-requested list.
+  // Counts per decision (for the filter chips), independent of search.
+  const changesCounts = useMemo(() => ({
+    all: changesRequested.length,
+    changes: changesRequested.filter((it) => it.decision === 'changes').length,
+    rejected: changesRequested.filter((it) => it.decision === 'rejected').length,
+  }), [changesRequested]);
+
+  // Apply decision filter + search + sort to the Sent-back list.
   const filteredChanges = useMemo(() => {
     const q = changesSearch.trim().toLowerCase();
     let list = changesRequested;
+    if (decisionFilter !== 'all') list = list.filter((it) => it.decision === decisionFilter);
     if (q) {
       list = list.filter(
         (it) =>
@@ -114,7 +123,7 @@ export default function MentorApprovals() {
       (a, b) => new Date(a.requestedAt).getTime() - new Date(b.requestedAt).getTime()
     );
     return changesNewestFirst ? sorted.reverse() : sorted;
-  }, [changesRequested, changesSearch, changesNewestFirst]);
+  }, [changesRequested, changesSearch, changesNewestFirst, decisionFilter]);
 
   const selectedItems = useMemo(
     () => queue.filter((q) => selected.has(q.submissionId)),
@@ -175,7 +184,7 @@ export default function MentorApprovals() {
 
   const tabs: { key: Tab; label: string; count: number }[] = [
     { key: 'review', label: 'To review', count: reviewItems.length },
-    { key: 'changes', label: 'Changes requested', count: changesRequested.length },
+    { key: 'changes', label: 'Sent back', count: changesRequested.length },
     { key: 'extensions', label: 'Extension requests', count: extensionItems.length },
   ];
 
@@ -407,24 +416,51 @@ export default function MentorApprovals() {
         /* ── Changes requested (awaiting resubmission) ───────────── */
         <>
           {changesRequested.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="relative flex-1 min-w-[200px]">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input
-                  value={changesSearch}
-                  onChange={(e) => setChangesSearch(e.target.value)}
-                  placeholder="Search mentee or task…"
-                  className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
-                />
+            <div className="space-y-3">
+              {/* Decision filter chips */}
+              <div className="flex flex-wrap items-center gap-2">
+                {([
+                  { key: 'all' as const, label: 'All', count: changesCounts.all, active: 'bg-slate-900 text-white border-slate-900', dot: '' },
+                  { key: 'changes' as const, label: 'Changes requested', count: changesCounts.changes, active: 'bg-orange-600 text-white border-orange-600', dot: 'bg-orange-500' },
+                  { key: 'rejected' as const, label: 'Rejected', count: changesCounts.rejected, active: 'bg-red-600 text-white border-red-600', dot: 'bg-red-500' },
+                ]).map((chip) => {
+                  const isActive = decisionFilter === chip.key;
+                  return (
+                    <button
+                      key={chip.key}
+                      onClick={() => setDecisionFilter(chip.key)}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm transition-colors ${
+                        isActive ? chip.active : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                      }`}
+                    >
+                      {chip.dot && <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-white/80' : chip.dot}`} />}
+                      {chip.label}
+                      <span className={`text-xs ${isActive ? 'text-white/80' : 'text-slate-400'}`}>{chip.count}</span>
+                    </button>
+                  );
+                })}
               </div>
-              <button
-                onClick={() => setChangesNewestFirst((v) => !v)}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 text-sm text-slate-600 hover:border-brand-300 hover:text-brand-700"
-                title="Toggle sort order"
-              >
-                <ArrowDownUp className="w-4 h-4" />
-                {changesNewestFirst ? 'Newest first' : 'Oldest first'}
-              </button>
+
+              {/* Search + sort */}
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative flex-1 min-w-[200px]">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    value={changesSearch}
+                    onChange={(e) => setChangesSearch(e.target.value)}
+                    placeholder="Search mentee or task…"
+                    className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  />
+                </div>
+                <button
+                  onClick={() => setChangesNewestFirst((v) => !v)}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 text-sm text-slate-600 hover:border-brand-300 hover:text-brand-700"
+                  title="Toggle sort order"
+                >
+                  <ArrowDownUp className="w-4 h-4" />
+                  {changesNewestFirst ? 'Newest first' : 'Oldest first'}
+                </button>
+              </div>
             </div>
           )}
 
@@ -440,18 +476,30 @@ export default function MentorApprovals() {
             </div>
           ) : (
             <div className="bg-card rounded-2xl border border-slate-200 divide-y divide-slate-100">
-              {filteredChanges.map((item) => (
+              {filteredChanges.map((item) => {
+                const isRejected = item.decision === 'rejected';
+                return (
                 <div key={item.taskId} className="flex items-start gap-4 px-5 py-4">
-                  <div className="w-9 h-9 bg-orange-100 rounded-full flex items-center justify-center shrink-0">
-                    <span className="text-orange-700 text-xs font-medium">{item.mentee?.avatar}</span>
+                  <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${isRejected ? 'bg-red-100' : 'bg-orange-100'}`}>
+                    <span className={`text-xs font-medium ${isRejected ? 'text-red-700' : 'text-orange-700'}`}>{item.mentee?.avatar}</span>
                   </div>
 
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-sm font-medium text-slate-900 truncate">{item.title}</p>
-                      {item.revisionCount > 0 && (
+                      {isRejected ? (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-red-50 text-red-700 text-[11px]">
+                          <XCircle className="w-3 h-3" />
+                          rejected
+                        </span>
+                      ) : (
                         <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-orange-50 text-orange-700 text-[11px]">
                           <RotateCcw className="w-3 h-3" />
+                          changes requested
+                        </span>
+                      )}
+                      {item.revisionCount > 0 && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[11px]">
                           revision {item.revisionCount}
                         </span>
                       )}
@@ -469,7 +517,7 @@ export default function MentorApprovals() {
                     </div>
                     {(item.revisionNotes || item.feedbackText) && (
                       <p className="mt-2 text-sm text-slate-600 bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">
-                        <span className="text-slate-400">You asked for: </span>
+                        <span className="text-slate-400">{isRejected ? 'Rejection reason: ' : 'You asked for: '}</span>
                         {item.revisionNotes || item.feedbackText}
                       </p>
                     )}
@@ -482,7 +530,8 @@ export default function MentorApprovals() {
                     View task <ArrowUpRight className="w-3.5 h-3.5" />
                   </Link>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </>
