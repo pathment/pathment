@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import {
   ChevronLeft, ChevronRight, SkipForward, Check, Loader2,
   TrendingUp, TrendingDown, Minus, Flag, Clock, ClipboardCheck, Keyboard, CheckCircle2, ArrowUpRight, Send, Plus, ListTodo, CalendarClock,
-  Trash2, X, History, RotateCcw, CalendarDays, AlertTriangle, StickyNote, Search, Lock, Unlock,
+  Trash2, X, History, RotateCcw, CalendarDays, AlertTriangle, StickyNote, Search, Lock, Unlock, PauseCircle,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useMentorCohort, useMentorApprovals, type CohortMentee, type CohortMomentum, type CohortRisk, type ApprovalItem } from '@/lib/hooks/mentor';
@@ -63,7 +63,7 @@ export default function CohortReview() {
   const searchParams = useSearchParams();
   const { user } = useAuth();
   const { clans, activeClanId, setActiveClanId } = useClan();
-  const { cohort, loading } = useMentorCohort();
+  const { cohort, loading, refetch: refetchCohort } = useMentorCohort();
   const { queue, refetch: refetchQueue } = useMentorApprovals();
   const confirm = useConfirm();
 
@@ -336,6 +336,30 @@ export default function CohortReview() {
     if (mentee && editable) patchEntry(mentee.id, { status: 'deferred' }, true);
     go(1);
   }, [mentee, go, editable, patchEntry]);
+
+  // Pause the mentee you're reviewing (they stopped showing up). Confirms,
+  // pauses, drops them from the cohort, and moves on to the next person.
+  const [pausing, setPausing] = useState(false);
+  const pauseCurrent = useCallback(async () => {
+    if (!mentee) return;
+    const ok = await confirm({
+      title: `Pause ${mentee.name}?`,
+      description: `They'll stay in the clan and keep getting reminders to come back, but won't count toward your clan's reports until they re-engage.`,
+      confirmLabel: 'Pause mentee',
+    });
+    if (!ok) return;
+    setPausing(true);
+    try {
+      await mentorApi.pauseMentee(mentee.id, undefined, effectiveClanId ?? undefined);
+      toast.success(`${mentee.name} paused`);
+      go(1);
+      await refetchCohort();
+    } catch (e) {
+      toast.error(extractApiErrorMessage(e, 'Could not pause this mentee'));
+    } finally {
+      setPausing(false);
+    }
+  }, [mentee, confirm, effectiveClanId, go, refetchCohort]);
 
   // Refresh the queue + the CURRENT mentee's tasks. Keyed on the live mentee so
   // actions never refetch a stale/previous mentee (the old bug).
@@ -749,6 +773,14 @@ export default function CohortReview() {
               </div>
               <div className="flex items-center gap-1 shrink-0">
                 <NudgeButton menteeId={mentee!.id} menteeName={mentee!.name} variant="icon" />
+                <button
+                  onClick={pauseCurrent}
+                  disabled={pausing}
+                  title="Pause this mentee (stopped attending)"
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 disabled:opacity-50"
+                >
+                  <PauseCircle className="w-4 h-4" />
+                </button>
                 <Link href={`/mentor/mentees/${mentee!.id}`} className="text-xs text-brand-600 hover:text-brand-700 inline-flex items-center gap-0.5">Profile <ArrowUpRight className="w-3.5 h-3.5" /></Link>
               </div>
             </div>

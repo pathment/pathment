@@ -271,8 +271,9 @@ class MentorshipPauseService {
             relatedEntityId: m.clanId,
             emailSubject: `Your clan is waiting for you`,
           },
-          // Unique per stage so the same touch never double-sends.
-          dedupe: { relatedEntityType: 'mentee_reengage', relatedEntityId: `${m.id}:${m.reengageStage}` },
+          // No dedupe key: the reengageStage state machine below already
+          // guarantees each cadence touch sends exactly once (and a string
+          // dedupe id is not a valid UUID for the notifications table).
         });
         await m.update({ reengageStage: m.reengageStage + 1, reengageCount: m.reengageCount + 1, lastReengagedAt: new Date() });
         sent += 1;
@@ -295,24 +296,31 @@ class MentorshipPauseService {
       if (!paused.length) return 0;
       const mentee = await models.User.findByPk(menteeId, { attributes: ['id', 'firstName', 'lastName'] });
       for (const m of paused) {
+        // Resume first — this must succeed even if the notification fails.
         await m.update({ status: 'active', pausedAt: null, pausedReason: null, pausedBy: null, reengageCount: 0, reengageStage: 0, lastReengagedAt: null, pauseSuggestionDismissedAt: null });
-        const mentorIds = await this._clanMentorIds(m.clanId);
-        if (mentorIds.length) {
-          const clan = await models.Clan.findByPk(m.clanId, { attributes: ['name'] });
-          await notificationOrchestrator.dispatch({
-            eventKey: NOTIFICATION_EVENTS.MENTEE_RETURNED,
-            recipients: mentorIds.map((userId) => ({ userId })),
-            payload: {
-              title: `${this._name(mentee)} is back 🎉`,
-              message: `${this._name(mentee)} re-engaged in ${clan?.name || 'your clan'} (${trigger}) and has been moved back to active.`,
-              actionUrl: `/mentor/mentees/${menteeId}`,
-              actionLabel: 'View mentee',
-              relatedEntityType: 'user',
-              relatedEntityId: menteeId,
-              emailSubject: `${this._name(mentee)} returned to your clan`,
-            },
-            dedupe: { relatedEntityType: 'mentee_returned', relatedEntityId: `${m.id}:${Math.floor(Date.now() / DAY_MS)}` },
-          });
+        // Notify the clan's mentors (best-effort; isolated so a notification
+        // error never undoes/blocks the resume). No dedupe: this method only
+        // fires when actually paused, so it can't double-send within an episode.
+        try {
+          const mentorIds = await this._clanMentorIds(m.clanId);
+          if (mentorIds.length) {
+            const clan = await models.Clan.findByPk(m.clanId, { attributes: ['name'] });
+            await notificationOrchestrator.dispatch({
+              eventKey: NOTIFICATION_EVENTS.MENTEE_RETURNED,
+              recipients: mentorIds.map((userId) => ({ userId })),
+              payload: {
+                title: `${this._name(mentee)} is back 🎉`,
+                message: `${this._name(mentee)} re-engaged in ${clan?.name || 'your clan'} (${trigger}) and has been moved back to active.`,
+                actionUrl: `/mentor/mentees/${menteeId}`,
+                actionLabel: 'View mentee',
+                relatedEntityType: 'user',
+                relatedEntityId: menteeId,
+                emailSubject: `${this._name(mentee)} returned to your clan`,
+              },
+            });
+          }
+        } catch (notifyErr) {
+          console.error('[autoResumeIfPaused] notify failed (resume still applied):', notifyErr.message);
         }
       }
       return paused.length;
