@@ -233,6 +233,11 @@ class CohortReviewService {
     if (patch.note !== undefined) entry.note = patch.note || null;
     await entry.save();
 
+    // Re-engagement: marking a paused mentee present means they came back.
+    if (patch.attendance === 'present') {
+      require('./mentorshipPauseService').autoResumeIfPaused(menteeId, 'attended a review').catch(() => {});
+    }
+
     const fresh = await models.CohortReviewEntry.findByPk(entry.id, {
       include: [{ model: models.User, as: 'mentee', attributes: ['id', 'firstName', 'lastName'] }],
     });

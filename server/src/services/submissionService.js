@@ -116,6 +116,9 @@ class SubmissionService {
       ...(Number.isFinite(reportedHours) && reportedHours > 0 ? { timeSpentHours: reportedHours } : {})
     });
 
+    // Re-engagement: a paused mentee who submits work has come back → resume.
+    require('./mentorshipPauseService').autoResumeIfPaused(task.menteeId, 'submitted work').catch(() => {});
+
     // Return complete submission with files
     const fullSubmission = await this.getSubmissionById(submission.id);
 

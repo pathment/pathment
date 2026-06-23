@@ -32,9 +32,19 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING(20),
       defaultValue: 'active',
       validate: {
-        isIn: [['active', 'invited', 'removed']]
+        // 'paused' = stopped attending / never started; kept in the clan but
+        // excluded from reports and sent win-back reminders.
+        isIn: [['active', 'invited', 'removed', 'paused']]
       }
     },
+    // Pause + re-engagement bookkeeping (see migration 065).
+    pausedAt: { type: DataTypes.DATE, allowNull: true, field: 'paused_at' },
+    pausedReason: { type: DataTypes.TEXT, allowNull: true, field: 'paused_reason' },
+    pausedBy: { type: DataTypes.STRING(20), allowNull: true, field: 'paused_by' },
+    reengageCount: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0, field: 'reengage_count' },
+    lastReengagedAt: { type: DataTypes.DATE, allowNull: true, field: 'last_reengaged_at' },
+    reengageStage: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0, field: 'reengage_stage' },
+    pauseSuggestionDismissedAt: { type: DataTypes.DATE, allowNull: true, field: 'pause_suggestion_dismissed_at' },
     // The enrollment this membership corresponds to (for mentees), so a clan
     // membership ties back to the existing program enrollment when relevant.
     enrollmentId: {

@@ -6,6 +6,7 @@ const reviewLockController = require('../controllers/reviewLockController');
 const linearRoadmapController = require('../controllers/linearRoadmapController');
 const promotionController = require('../controllers/promotionController');
 const feedbackController = require('../controllers/feedbackController');
+const mentorshipPauseController = require('../controllers/mentorshipPauseController');
 const { authenticate, authorize } = require('../middlewares/auth');
 const { requirePermission } = require('../middlewares/authz');
 const { PERMISSIONS } = require('../config/permissions');
@@ -23,6 +24,15 @@ router.get('/cohort', authenticate, authorize(['mentor', 'admin']), cohortContro
 router.get('/cohort/activity', authenticate, authorize(['mentor', 'admin']), cohortController.getCohortActivity);
 // AI-drafted narrative summary of the cohort (uses the mentor's AI connection).
 router.post('/cohort/report-summary', authenticate, authorize(['mentor', 'admin']), cohortController.getCohortReportSummary);
+
+// Paused mentees + win-back: list paused, list "suggested to pause", and
+// pause/resume/dismiss. Paused mentees stay in the clan but drop out of reports.
+router.get('/paused', mentorOnly, mentorshipPauseController.listPaused);
+router.get('/pause-suggestions', mentorOnly, mentorshipPauseController.listSuggestions);
+router.post('/pause-suggestions/:menteeId/dismiss', mentorOnly, mentorshipPauseController.dismissSuggestion);
+router.get('/mentees/:menteeId/pause-state', mentorOnly, mentorshipPauseController.menteeState);
+router.post('/mentees/:menteeId/pause', mentorOnly, mentorshipPauseController.pause);
+router.post('/mentees/:menteeId/resume', mentorOnly, mentorshipPauseController.resume);
 
 // Rich profile bundle for a single mentee.
 router.get('/mentee/:id', authenticate, authorize(['mentor', 'admin']), cohortController.getMenteeProfile);

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import {
-  BookOpen, Calendar, CalendarCheck, CheckCircle2, Clock, Mail, MessageSquare, Plus,
+  BookOpen, Calendar, CalendarCheck, CheckCircle2, Clock, Mail, MessageSquare, Plus, PauseCircle, PlayCircle,
   Target, TrendingUp, TrendingDown, Minus, Flag, Check, User, Loader2,
   Star, ThumbsUp, ThumbsDown, AlertCircle, ChevronLeft,
 } from 'lucide-react';
@@ -140,6 +140,20 @@ export default function MenteeDetail() {
     finally { setAttLoading(false); }
   };
 
+  // Pause / resume this mentee (paused = kept in clan, out of reports, gets
+  // win-back reminders). pauseState comes back on the profile.
+  const pauseState = (insights as any)?.pauseState as { paused?: boolean } | undefined; // eslint-disable-line @typescript-eslint/no-explicit-any
+  const [pauseBusy, setPauseBusy] = useState(false);
+  const togglePause = async () => {
+    setPauseBusy(true);
+    try {
+      if (pauseState?.paused) { await mentorApi.resumeMentee(menteeId); toast.success('Mentee resumed'); }
+      else { await mentorApi.pauseMentee(menteeId); toast.success('Mentee paused — kept in the clan, out of reports'); }
+      await refetchProfile();
+    } catch { toast.error('Could not update pause status'); }
+    finally { setPauseBusy(false); }
+  };
+
   const onSavePersonality = async (dims: Record<string, number>) => {
     await mentorApi.updatePersonality(menteeId, dims);
     await refetchProfile();
@@ -262,6 +276,13 @@ export default function MenteeDetail() {
               className="px-4 py-2 bg-card hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl transition-colors flex items-center gap-2"
             >
               <CalendarCheck className="w-4 h-4" />Attendance
+            </button>
+            <button
+              onClick={togglePause}
+              disabled={pauseBusy}
+              className={`px-4 py-2 rounded-xl transition-colors flex items-center gap-2 border disabled:opacity-50 ${pauseState?.paused ? 'bg-brand-50 border-brand-200 text-brand-700 hover:bg-brand-100' : 'bg-card border-slate-200 text-slate-700 hover:bg-slate-50'}`}
+            >
+              {pauseState?.paused ? <><PlayCircle className="w-4 h-4" />Resume</> : <><PauseCircle className="w-4 h-4" />Pause</>}
             </button>
             {(enrollment?.status === 'active' || enrollment?.status === 'matched') && (
               <button

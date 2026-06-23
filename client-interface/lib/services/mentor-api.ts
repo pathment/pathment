@@ -74,6 +74,18 @@ export const mentorApi = {
     }
   ) => apiClient.post('/mentor/approvals/bulk-review', { submissionIds, ...payload }),
 
+  // Paused mentees + win-back. Paused mentees stay in the clan but drop out of
+  // reports and receive re-engagement reminders.
+  listPausedMentees: () => apiClient.get('/mentor/paused'),
+  getMenteePauseState: (menteeId: string) => apiClient.get(`/mentor/mentees/${menteeId}/pause-state`),
+  listPauseSuggestions: () => apiClient.get('/mentor/pause-suggestions'),
+  pauseMentee: (menteeId: string, reason?: string, clanId?: string) =>
+    apiClient.post(`/mentor/mentees/${menteeId}/pause`, { reason, clanId }),
+  resumeMentee: (menteeId: string, clanId?: string) =>
+    apiClient.post(`/mentor/mentees/${menteeId}/resume`, { clanId }),
+  dismissPauseSuggestion: (menteeId: string, clanId?: string) =>
+    apiClient.post(`/mentor/pause-suggestions/${menteeId}/dismiss`, { clanId }),
+
   // Send a gentle nudge to a mentee.
   nudge: (menteeId: string, message?: string) => apiClient.post('/mentor/nudge', { menteeId, message }),
 

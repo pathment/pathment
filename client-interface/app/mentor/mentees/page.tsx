@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Loader2, Search, Users, Users2 } from 'lucide-react';
 import { useMentorCohort } from '@/lib/hooks/mentor';
 import { MenteeCard } from '@/components/mentor/MenteeCard';
+import { PausedMenteesPanel } from '@/components/mentor/PausedMenteesPanel';
 
 type Filter = 'all' | 'attention' | 'on_track';
 
@@ -47,6 +48,9 @@ export default function MentorMentees() {
           <p className="text-slate-600">{totals ? `${totals.mentees} mentee${totals.mentees === 1 ? '' : 's'} across ${clans.length || 1} clan${clans.length === 1 ? '' : 's'}` : 'Your cohort across all your clans.'}</p>
         </div>
       </div>
+
+      {/* Inactive mentees: suggested-to-pause queue + currently paused list. */}
+      <PausedMenteesPanel />
 
       {/* Search + status filter */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">

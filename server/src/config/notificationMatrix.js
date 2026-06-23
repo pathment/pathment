@@ -29,7 +29,10 @@ EXTENSION_HANDLED: 'extension_handled',
   NEW_MENTEE_IN_CLAN: 'new_mentee_in_clan',
   PROMOTION_NOMINATED: 'promotion_nominated',
   REVIEW_UNLOCK_REQUESTED: 'review_unlock_requested',
-  REVIEW_UNLOCK_HANDLED: 'review_unlock_handled'
+  REVIEW_UNLOCK_HANDLED: 'review_unlock_handled',
+  MENTEE_PAUSE_SUGGESTED: 'mentee_pause_suggested',
+  MENTEE_REENGAGE: 'mentee_reengage',
+  MENTEE_RETURNED: 'mentee_returned'
 };
 
 const NOTIFICATION_MATRIX = {
@@ -189,6 +192,24 @@ const NOTIFICATION_MATRIX = {
     type: 'system',
     preferenceKey: 'promotion_nominated',
     channels: { inApp: true, email: true, chat: false }
+  },
+  // A mentee looks inactive and is suggested for pausing (to the mentor).
+  [NOTIFICATION_EVENTS.MENTEE_PAUSE_SUGGESTED]: {
+    type: 'system',
+    preferenceKey: 'mentee_pause_suggested',
+    channels: { inApp: true, email: false, chat: false }
+  },
+  // Win-back reminder to a paused mentee (in-app + email, the Zomato model).
+  [NOTIFICATION_EVENTS.MENTEE_REENGAGE]: {
+    type: 'system',
+    preferenceKey: 'mentee_reengage',
+    channels: { inApp: true, email: true, chat: false }
+  },
+  // A paused mentee re-engaged and is back to active (to the mentor).
+  [NOTIFICATION_EVENTS.MENTEE_RETURNED]: {
+    type: 'system',
+    preferenceKey: 'mentee_returned',
+    channels: { inApp: true, email: true, chat: false }
   }
 };
 
@@ -217,7 +238,9 @@ const EMAIL_PREFERENCE_CATEGORIES = [
   { group: 'Program', key: 'promotion_nominated', label: 'A mentee is nominated for promotion (admins)' },
   { group: 'Milestones', key: 'completion_ready_for_signoff', label: 'Completion is ready for sign-off' },
   { group: 'Milestones', key: 'program_completed', label: 'A program is completed' },
-  { group: 'Digests', key: 'weekly_progress_report', label: 'Weekly progress report' }
+  { group: 'Digests', key: 'weekly_progress_report', label: 'Weekly progress report' },
+  { group: 'Program', key: 'mentee_returned', label: 'A paused mentee returns to my clan' },
+  { group: 'Program', key: 'mentee_reengage', label: 'Reminders to come back when I\'m paused' }
 ];
 
 module.exports = {

@@ -24,6 +24,18 @@ class NotificationScheduler {
     await this.notifyDeadlinePassed();
     await this.sendWeeklyProgressReports();
     await this.postWeeklyStandups();
+    await this.sendReengagementReminders();
+  }
+
+  /** Win-back reminders to paused mentees, on the configured cadence. */
+  async sendReengagementReminders() {
+    try {
+      const pauseService = require('./mentorshipPauseService');
+      const sent = await pauseService.runReengagement();
+      if (sent) console.log(`[scheduler] sent ${sent} re-engagement reminder(s)`);
+    } catch (error) {
+      console.error('re-engagement reminder run failed:', error.message);
+    }
   }
 
   async notifyDeadlineApproaching() {

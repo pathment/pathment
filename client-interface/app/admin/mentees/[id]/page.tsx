@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useMenteeProfile } from '@/lib/hooks/admin';
 import { StatsCard, PageHeader } from '@/components/admin/ui';
+import { MenteePauseButton } from '@/components/mentor/MenteePauseButton';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -139,6 +140,11 @@ export default function AdminMenteeProfilePage() {
                   {mp.currentOccupation}
                 </div>
               )}
+            </div>
+
+            {/* Pause / resume this mentee (kept in clan, out of reports). */}
+            <div className="mt-5 pt-4 border-t border-slate-100">
+              <MenteePauseButton menteeId={mentee.id} className="w-full justify-center" />
             </div>
           </div>
 

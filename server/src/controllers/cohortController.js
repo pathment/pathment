@@ -52,6 +52,8 @@ const getMenteeProfile = catchAsync(async (req, res) => {
   if (!profile) {
     return res.status(404).json({ success: false, message: 'Mentee not found', statusCode: 404 });
   }
+  // Pause state within the requester's clans (drives the Pause/Resume control).
+  try { profile.pauseState = await require('../services/mentorshipPauseService').menteeState(req.user, req.params.id); } catch { profile.pauseState = { paused: false, clanId: null }; }
   res.status(200).json(successResponse('Mentee profile retrieved', { profile }));
 });
 
