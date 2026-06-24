@@ -99,7 +99,7 @@ export function SelectMenu({ value, onChange, options, placeholder = 'Select…'
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={ariaLabel}
-        className="w-full flex items-center justify-between gap-2 px-3 py-2.5 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-700 dark:text-slate-200 bg-card hover:border-slate-300 dark:hover:border-slate-600 focus:outline-none focus:ring-2 focus:ring-brand-500"
+        className="w-full flex items-center justify-between gap-2 px-3 py-2.5 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-700 dark:text-slate-700 bg-card hover:border-slate-300 dark:hover:border-slate-600 focus:outline-none focus:ring-2 focus:ring-brand-500"
       >
         <span className={`truncate ${selected ? '' : 'text-slate-400'}`}>{selected?.label ?? placeholder}</span>
         <ChevronDown className={`w-4 h-4 text-slate-400 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
@@ -121,7 +121,7 @@ export function SelectMenu({ value, onChange, options, placeholder = 'Select…'
                   value={query}
                   onChange={(e) => { setQuery(e.target.value); setActiveIdx(0); }}
                   placeholder="Search…"
-                  className="w-full pl-8 pr-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-card text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  className="w-full pl-8 pr-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-card text-sm text-slate-700 dark:text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
                 />
               </div>
             </div>
@@ -143,7 +143,7 @@ export function SelectMenu({ value, onChange, options, placeholder = 'Select…'
                   className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-left text-sm transition-colors ${
                     i === activeIdx
                       ? 'bg-brand-50 dark:bg-brand-500/15 text-brand-800 dark:text-brand-200'
-                      : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
+                      : 'text-slate-700 dark:text-slate-700 hover:bg-slate-50 dark:hover:bg-slate-100'
                   }`}
                 >
                   <span className="truncate">{o.label}</span>

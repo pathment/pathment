@@ -172,7 +172,7 @@ export default function AdminChangelogPage() {
     <div>
       <div className="flex items-start justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-700 flex items-center gap-2">
             <PackageOpen className="w-6 h-6 text-brand-600" /> What's New
           </h1>
           <p className="text-slate-500 mt-1">Post product updates. Users see a role-filtered feed with an unread badge; major items pop a one-time modal.</p>
@@ -195,7 +195,7 @@ export default function AdminChangelogPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search updates by title…"
-            className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-card text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
+            className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-card text-slate-900 dark:text-slate-700 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
           />
         </div>
         <div className="w-full sm:w-44">
@@ -229,7 +229,7 @@ export default function AdminChangelogPage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <p className="font-semibold text-slate-900 dark:text-slate-100">{e.title}</p>
+                    <p className="font-semibold text-slate-900 dark:text-slate-700">{e.title}</p>
                     {e.isMajor && <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">Major</span>}
                     {e.isDraft
                       ? <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">Draft</span>
@@ -278,27 +278,27 @@ export default function AdminChangelogPage() {
       >
         <div className="space-y-5">
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">Title</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-700 mb-1.5">Title</label>
             <input
               value={form.title}
               onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
               placeholder="e.g. Customize a task for one mentee"
-              className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-card text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
+              className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-card text-slate-900 dark:text-slate-700 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">What changed</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-700 mb-1.5">What changed</label>
             <RichTextEditor content={form.body} onChange={(html) => setForm((f) => ({ ...f, body: html }))} placeholder="Describe the benefit to the user…" minHeight="160px" />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">Type</label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-700 mb-1.5">Type</label>
               <SelectMenu value={form.type} onChange={(v) => setForm((f) => ({ ...f, type: v as ChangelogType }))} options={TYPE_OPTS} ariaLabel="Update type" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">Show to</label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-700 mb-1.5">Show to</label>
               <div className="flex flex-wrap gap-1.5">
                 {ROLES.map((r) => (
                   <button
@@ -321,28 +321,28 @@ export default function AdminChangelogPage() {
           <label className="flex items-center gap-3 p-3 rounded-lg border border-slate-200 dark:border-slate-600 cursor-pointer">
             <input type="checkbox" checked={!!form.isMajor} onChange={(e) => setForm((f) => ({ ...f, isMajor: e.target.checked }))} className="w-4 h-4 rounded accent-brand-600" />
             <span className="text-sm">
-              <span className="font-medium text-slate-800 dark:text-slate-100">Major update</span>
+              <span className="font-medium text-slate-800 dark:text-slate-700">Major update</span>
               <span className="text-slate-500"> — pops a one-time modal for users on their next visit. Reserve for real features.</span>
             </span>
           </label>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">Action link <span className="text-slate-400 font-normal">(optional)</span></label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-700 mb-1.5">Action link <span className="text-slate-400 font-normal">(optional)</span></label>
               <input
                 value={form.actionUrl || ''}
                 onChange={(e) => setForm((f) => ({ ...f, actionUrl: e.target.value }))}
                 placeholder="/mentor/roadmaps"
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-card text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-brand-500 outline-none"
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-card text-slate-900 dark:text-slate-700 focus:ring-2 focus:ring-brand-500 outline-none"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">Link label</label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-700 mb-1.5">Link label</label>
               <input
                 value={form.actionLabel || ''}
                 onChange={(e) => setForm((f) => ({ ...f, actionLabel: e.target.value }))}
                 placeholder="Try it"
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-card text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-brand-500 outline-none"
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-card text-slate-900 dark:text-slate-700 focus:ring-2 focus:ring-brand-500 outline-none"
               />
             </div>
           </div>
