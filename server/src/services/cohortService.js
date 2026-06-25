@@ -357,6 +357,7 @@ class CohortService {
       lastActive: lastActivityDate ? humanizeDays(lastActiveDays) : 'never',
       lastAttendance, // { status, date } | null — most recent review attendance
       taskCount: tasks.length, // total assigned tasks — 0 = never been given work
+      tasksCompleted: tasks.filter((t) => t.status === 'completed').length, // real output, for effort-weighted leaderboard
       sentiment: 'neutral'
     };
   }

@@ -29,6 +29,8 @@ export interface CohortMentee {
   lastActive: string;
   /** Total tasks ever assigned. 0 = this mentee has never been given any work. */
   taskCount: number;
+  /** Tasks actually completed — real output, used to effort-weight the leaderboard. */
+  tasksCompleted: number;
   sentiment: string;
   clan?: { id: string; name: string } | null;
 }

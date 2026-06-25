@@ -1,5 +1,11 @@
 const { models } = require('../db');
-const { NotFoundError, ValidationError } = require('../utils/errors/errorTypes');
+const { NotFoundError, ValidationError, ForbiddenError } = require('../utils/errors/errorTypes');
+
+// Grace window for a mentee to delete a friction record they logged. Long
+// enough to undo an accidental/duplicate entry, short enough that nobody can
+// scrub a week's worth of blockers off their record right before a review.
+// (Mentors/admins are exempt — they delete as moderators.) Tunable.
+const DELETE_WINDOW_MS = 6 * 60 * 60 * 1000; // 6 hours
 
 /**
  * frictionService - blockers and delay events. These are the mentee-facing
@@ -41,6 +47,27 @@ class FrictionService {
     return blocker;
   }
 
+  /**
+   * Delete a blocker outright. A mentee may only delete their OWN blocker, and
+   * only within the grace window (after that it's a permanent part of the
+   * record — they can still Resolve it). Mentors/admins may delete any, anytime.
+   */
+  async deleteBlocker(id, user) {
+    const blocker = await models.Blocker.findByPk(id);
+    if (!blocker) throw new NotFoundError('Blocker not found');
+    if (user && user.role === 'mentee') {
+      if (blocker.menteeId !== user.id) {
+        throw new ForbiddenError('You can only delete your own blockers');
+      }
+      const age = Date.now() - new Date(blocker.openedAt || blocker.createdAt).getTime();
+      if (age > DELETE_WINDOW_MS) {
+        throw new ForbiddenError('Blockers can only be deleted within 6 hours of logging them. Mark it resolved instead.');
+      }
+    }
+    await blocker.destroy();
+    return { deleted: true, id };
+  }
+
   // ── Delays ──────────────────────────────────────────────────────────────
   async listDelays({ menteeId }) {
     const where = {};
@@ -71,6 +98,22 @@ class FrictionService {
     if (category) delay.category = category;
     await delay.save();
     return delay;
+  }
+
+  /**
+   * Reject (remove) a PENDING logged delay. Lets a mentor clear duplicate/bogus
+   * requests. An already-accepted delay is locked: it's been credited toward the
+   * mentee's fair progress, so removing it would retroactively change standings —
+   * not allowed. The route is permission-gated (TASK_REVIEW on the delay's scope).
+   */
+  async rejectDelay(id) {
+    const delay = await models.DelayEvent.findByPk(id);
+    if (!delay) throw new NotFoundError('Delay event not found');
+    if (delay.accepted) {
+      throw new ValidationError('This delay was already accepted and credited — it can no longer be rejected.');
+    }
+    await delay.destroy();
+    return { deleted: true, id };
   }
 }
 

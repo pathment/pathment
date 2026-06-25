@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Flag, CheckCircle2, Plus, Loader2, Link2 } from 'lucide-react';
+import { Flag, CheckCircle2, Plus, Loader2, Link2, Trash2 } from 'lucide-react';
 import { useAuth } from '@/lib/context/AuthContext';
+import { useConfirm } from '@/lib/context/ConfirmContext';
 import { frictionApi } from '@/lib/services/friction-api';
 import { taskApi } from '@/lib/services/task-api';
 import { Drawer } from '@/components/shared/Drawer';
@@ -30,8 +31,15 @@ const SEVERITY_CLASS: Record<string, string> = {
 
 const daysOpen = (iso: string) => Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86400000));
 
-function BlockerRow({ b, onResolve, busy }: { b: Blocker; onResolve: () => void; busy: boolean }) {
+// Mentees can only delete a blocker within this window of logging it (to undo an
+// accident). After that it's part of the record — they Resolve it instead. Kept
+// in sync with the server's DELETE_WINDOW_MS.
+const DELETE_WINDOW_MS = 6 * 60 * 60 * 1000; // 6 hours
+const withinDeleteWindow = (iso: string) => Date.now() - new Date(iso).getTime() < DELETE_WINDOW_MS;
+
+function BlockerRow({ b, onResolve, onDelete, busy, deleting }: { b: Blocker; onResolve: () => void; onDelete: () => void; busy: boolean; deleting: boolean }) {
   const resolved = b.status === 'resolved';
+  const canDelete = withinDeleteWindow(b.openedAt);
   return (
     <div className="flex items-start gap-3 px-4 py-3.5">
       <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg border ${resolved ? 'border-emerald-200 text-emerald-600' : 'border-slate-200 text-slate-400'}`}>
@@ -46,21 +54,30 @@ function BlockerRow({ b, onResolve, busy }: { b: Blocker; onResolve: () => void;
           <span>{resolved ? 'Cleared' : `Open ${daysOpen(b.openedAt)} day${daysOpen(b.openedAt) === 1 ? '' : 's'}`}</span>
         </div>
       </div>
-      {!resolved && (
-        <button onClick={onResolve} disabled={busy} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 text-slate-600 text-xs font-medium hover:border-emerald-300 hover:text-emerald-700 disabled:opacity-50 shrink-0">
-          {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}Mark resolved
-        </button>
-      )}
+      <div className="flex items-center gap-1.5 shrink-0">
+        {!resolved && (
+          <button onClick={onResolve} disabled={busy} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 text-slate-600 text-xs font-medium hover:border-emerald-300 hover:text-emerald-700 disabled:opacity-50">
+            {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}Mark resolved
+          </button>
+        )}
+        {canDelete && (
+          <button onClick={onDelete} disabled={deleting} title="Delete this blocker (within 6h of logging)" aria-label="Delete blocker" className="grid h-7 w-7 place-items-center rounded-lg border border-slate-200 text-slate-400 hover:border-red-200 hover:text-red-600 disabled:opacity-50">
+            {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
 
 export default function MenteeBlockers() {
   const { user } = useAuth();
+  const confirm = useConfirm();
   const [blockers, setBlockers] = useState<Blocker[]>([]);
   const [tasks, setTasks] = useState<TaskOpt[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
 
   const fetchAll = useCallback(async () => {
@@ -83,6 +100,18 @@ export default function MenteeBlockers() {
   const resolve = async (id: string) => {
     try { setBusy(id); await frictionApi.resolveBlocker(id); await fetchAll(); }
     catch { toast.error('Could not resolve'); } finally { setBusy(null); }
+  };
+
+  const remove = async (b: Blocker) => {
+    const ok = await confirm({
+      title: 'Delete this blocker?',
+      description: `"${b.title}" will be removed for good. This can't be undone.`,
+      confirmLabel: 'Delete',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    try { setDeleting(b.id); await frictionApi.deleteBlocker(b.id); await fetchAll(); toast.success('Blocker deleted'); }
+    catch { toast.error('Could not delete the blocker'); } finally { setDeleting(null); }
   };
 
   const open = blockers.filter((b) => b.status === 'open');
@@ -114,7 +143,7 @@ export default function MenteeBlockers() {
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Open</p>
               <div className="bg-card rounded-2xl border border-slate-200 divide-y divide-slate-100">
-                {open.map((b) => <BlockerRow key={b.id} b={b} onResolve={() => resolve(b.id)} busy={busy === b.id} />)}
+                {open.map((b) => <BlockerRow key={b.id} b={b} onResolve={() => resolve(b.id)} onDelete={() => remove(b)} busy={busy === b.id} deleting={deleting === b.id} />)}
               </div>
             </div>
           )}
@@ -122,7 +151,7 @@ export default function MenteeBlockers() {
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Resolved</p>
               <div className="bg-card rounded-2xl border border-slate-200 divide-y divide-slate-100">
-                {resolved.map((b) => <BlockerRow key={b.id} b={b} onResolve={() => {}} busy={false} />)}
+                {resolved.map((b) => <BlockerRow key={b.id} b={b} onResolve={() => {}} onDelete={() => remove(b)} busy={false} deleting={deleting === b.id} />)}
               </div>
             </div>
           )}
