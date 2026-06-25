@@ -357,7 +357,7 @@ export default function TaskDetailsPage({ params }: PageProps) {
                 {fb.feedbackText && (
                   <div>
                     <p className="text-xs font-medium text-slate-500 mb-1">{isChanges ? 'What the mentor asked for' : 'Feedback'}</p>
-                    <p className="text-sm text-slate-800 whitespace-pre-wrap">{fb.feedbackText}</p>
+                    <div className="text-sm text-slate-800 whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: fb.feedbackText }} />
                   </div>
                 )}
 
