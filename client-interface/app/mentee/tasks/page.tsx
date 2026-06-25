@@ -180,13 +180,15 @@ export default function MenteeTasks() {
                     const overdue = isOverdue(task.dueDate) && !['completed', 'submitted'].includes(task.status);
 
                     return (
-                <div key={task.id} className="p-6 hover:bg-slate-50 transition-colors">
+                <div key={task.id} className="p-6 hover:bg-slate-50 transition-colors w-full overflow-hidden">
                   <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-4">
                     <div className="flex-1 min-w-0">
                       <div className="flex flex-wrap items-center gap-2 mb-2">
-                        <h3 className="text-slate-900">{task.roadmapTask?.title}</h3>
-                        {getTaskSourceBadge(task.isCustomTask)}
-                        {getDifficultyBadge(task.roadmapTask?.difficulty)}
+                        <h3 className="text-slate-900 break-words min-w-0 flex-1">{task.roadmapTask?.title}</h3>
+                        <div className="flex flex-wrap items-center gap-2 shrink-0">
+                          {getTaskSourceBadge(task.isCustomTask)}
+                          {getDifficultyBadge(task.roadmapTask?.difficulty)}
+                        </div>
                       </div>
                       
                       {/* Show cancellation info if task is cancelled */}
@@ -194,45 +196,45 @@ export default function MenteeTasks() {
                         <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-lg">
                           <div className="flex items-start gap-2">
                             <XCircle className="w-4 h-4 text-red-600 mt-0.5 shrink-0" />
-                            <div>
-                              <p className="text-red-900 font-medium text-sm">Task Cancelled</p>
-                              <p className="text-red-700 text-sm mt-1">{task.cancellationReason}</p>
+                            <div className="min-w-0">
+                              <p className="text-red-900 font-medium text-sm break-words">Task Cancelled</p>
+                              <p className="text-red-700 text-sm mt-1 break-words">{task.cancellationReason}</p>
                             </div>
                           </div>
                         </div>
                       )}
                       
-                      <p className="text-slate-600 text-sm line-clamp-2 mb-3">
+                      <p className="text-slate-600 text-sm line-clamp-2 mb-3 break-words">
                         {stripHtml(task.roadmapTask?.description)}
                       </p>
                       
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-600">
                         {task.dueDate && (
                           <>
-                            <span className={`flex items-center gap-1 ${overdue ? 'text-red-600' : ''}`}>
-                              <Calendar className="w-4 h-4" />
+                            <span className={`flex items-center gap-1 shrink-0 ${overdue ? 'text-red-600' : ''}`}>
+                              <Calendar className="w-4 h-4 shrink-0" />
                               Due {new Date(task.dueDate).toLocaleDateString()}
                               {overdue && ' (Overdue)'}
                             </span>
-                            <span>•</span>
+                            <span className="hidden sm:inline">•</span>
                           </>
                         )}
-                        <span>{task.roadmapTask?.estimatedHours || 0}h estimated</span>
+                        <span className="shrink-0">{task.roadmapTask?.estimatedHours || 0}h estimated</span>
                         {task.roadmapTask?.pointsBase && (
                           <>
-                            <span>•</span>
-                            <span>{task.roadmapTask.pointsBase} points</span>
+                            <span className="hidden sm:inline">•</span>
+                            <span className="shrink-0">{task.roadmapTask.pointsBase} points</span>
                           </>
                         )}
                       </div>
                       
                       {task.finalRating && (
-                        <div className="mt-2 flex items-center gap-2">
-                          <div className="flex items-center gap-1">
+                        <div className="mt-2 flex items-center gap-2 flex-wrap">
+                          <div className="flex items-center gap-1 shrink-0">
                             {[1, 2, 3, 4, 5].map((star) => (
                               <Star
                                 key={star}
-                                className={`w-4 h-4 ${
+                                className={`w-4 h-4 shrink-0 ${
                                   star <= task.finalRating
                                     ? 'fill-yellow-400 text-yellow-400'
                                     : 'text-slate-300'
@@ -240,20 +242,22 @@ export default function MenteeTasks() {
                               />
                             ))}
                           </div>
-                          <span className="text-slate-600 text-sm">
+                          <span className="text-slate-600 text-sm shrink-0">
                             {task.pointsAwarded} points earned
                           </span>
                         </div>
                       )}
                     </div>
 
-                    <div className="flex flex-col items-start sm:items-end gap-2 shrink-0">
-                      <StatusBadge status={task.status} />
+                    <div className="flex flex-col items-start sm:items-end gap-2 shrink-0 max-w-full">
+                      <div className="max-w-full overflow-hidden">
+                        <StatusBadge status={task.status} />
+                      </div>
                       
                       {task.status === 'assigned' && (
                         <button
                           onClick={() => handleStartTask(task.id)}
-                          className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm transition-colors"
+                          className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm transition-colors w-full sm:w-auto break-words"
                         >
                           Start Task
                         </button>
@@ -268,20 +272,20 @@ export default function MenteeTasks() {
                             deliverable: task.roadmapTask?.deliverable,
                             acceptanceCriteria: task.roadmapTask?.acceptanceCriteria || [],
                           })}
-                          className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm transition-colors"
+                          className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm transition-colors w-full sm:w-auto break-words"
                         >
                           Submit Work
                         </button>
                       )}
                       
                       {task.status === 'submitted' && (
-                        <span className="text-slate-600 text-sm">
+                        <span className="text-slate-600 text-sm shrink-0">
                           Awaiting review
                         </span>
                       )}
                       
                       {task.status === 'cancelled' && (
-                        <span className="text-red-600 text-sm">
+                        <span className="text-red-600 text-sm shrink-0">
                           No action needed
                         </span>
                       )}
@@ -289,7 +293,7 @@ export default function MenteeTasks() {
                       {task.status === 'completed' && task.submissions?.[0]?.feedback?.[0] && (
                         <button
                           onClick={() => router.push(`/mentee/feedback/${task.id}`)}
-                          className="text-brand-600 hover:underline text-sm"
+                          className="text-brand-600 hover:underline text-sm shrink-0"
                         >
                           View Feedback
                         </button>
@@ -298,7 +302,7 @@ export default function MenteeTasks() {
                       {/* Always show a way to view task details */}
                       <button
                         onClick={() => router.push(`/mentee/tasks/${task.id}`)}
-                        className="text-slate-600 hover:text-brand-600 text-sm transition-colors cursor-pointer"
+                        className="text-slate-600 hover:text-brand-600 text-sm transition-colors cursor-pointer shrink-0"
                       >
                         View Details
                       </button>
