@@ -10,6 +10,7 @@ import { TaskEditDrawer } from '@/components/mentor/TaskEditDrawer';
 import taskApi from '@/lib/services/task-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { useConfirm } from '@/lib/context/ConfirmContext';
+import { pointsForDifficulty } from '@/lib/config/points';
 
 const STATUS_CLS: Record<string, string> = {
   assigned: 'bg-slate-100 text-slate-600', not_started: 'bg-slate-100 text-slate-600',
@@ -106,7 +107,7 @@ export function MenteeTaskDrawer({ task, onClose, onChanged }: { task: any; onCl
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
             {due && <span className="inline-flex items-center gap-1"><Clock className="w-3.5 h-3.5" />due {due.toLocaleDateString()}</span>}
             {rt.estimatedHours != null && <span>{rt.estimatedHours}h est.</span>}
-            {(task.points ?? task.pointsBase ?? rt.pointsBase) != null && <span className="inline-flex items-center gap-1"><Award className="w-3.5 h-3.5" />{task.points ?? task.pointsBase ?? rt.pointsBase} pts</span>}
+            <span className="inline-flex items-center gap-1"><Award className="w-3.5 h-3.5" />{pointsForDifficulty(rt.difficulty)} pts</span>
           </div>
 
           {task.status === 'cancelled' && task.cancellationReason && (

@@ -38,11 +38,10 @@ export function BulkReviewDrawer({
   const [feedback, setFeedback] = useState('');
   const [busy, setBusy] = useState(false);
 
-  // Distinct max-points across the selection.
+  // Points are STANDARD by difficulty (fixed per task, not chosen here). The
+  // selection may span tasks of different difficulty → different point values.
   const maxima = useMemo(() => [...new Set(items.map((i) => i.maxPoints ?? 10))], [items]);
   const mixedMax = maxima.length > 1;
-  const commonMax = maxima[0] ?? 10;
-  const [points, setPoints] = useState<number>(commonMax);
 
   // How many distinct tasks the selection spans (peer-group key, title fallback).
   const taskCount = useMemo(
@@ -62,7 +61,7 @@ export function BulkReviewDrawer({
       decision: isApprove ? 'approved' : 'changes',
       feedbackText: feedback.trim() || (isApprove ? 'Approved.' : 'Changes requested.'),
       ...(isApprove
-        ? { rating, pointsAwarded: Math.max(0, Math.round(points) || 0) }
+        ? { rating }
         : { revisionNotes: feedback.trim() }),
     };
     try {
@@ -156,22 +155,15 @@ export function BulkReviewDrawer({
             </div>
 
             <div>
-              <h3 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Points awarded</h3>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  min={0}
-                  value={points}
-                  onChange={(e) => setPoints(Math.max(0, Number(e.target.value) || 0))}
-                  className="w-20 border border-slate-300 dark:border-slate-700 dark:bg-slate-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-                />
-                {!mixedMax && <span className="text-sm text-slate-500">/ {commonMax}</span>}
-              </div>
-              {mixedMax && (
-                <p className="mt-1 text-xs text-amber-600">
-                  Selected tasks have different max points; this value applies to all.
-                </p>
-              )}
+              <h3 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Points</h3>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-sm font-medium tabular-nums">
+                {mixedMax ? `${Math.min(...maxima)}–${Math.max(...maxima)} pts` : `${maxima[0] ?? 0} pts`}
+              </span>
+              <p className="mt-1 text-xs text-slate-400">
+                {mixedMax
+                  ? 'Each task awards its own standard points by difficulty.'
+                  : 'Set by task difficulty. Awarded in full on approval.'}
+              </p>
             </div>
           </>
         )}

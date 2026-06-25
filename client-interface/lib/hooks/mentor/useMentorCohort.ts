@@ -28,6 +28,8 @@ export interface CohortMentee {
   signals?: string[];
   avgRating: number;
   lastActive: string;
+  /** Total tasks ever assigned. 0 = this mentee has never been given any work. */
+  taskCount: number;
   sentiment: string;
   clan?: { id: string; name: string } | null;
   // Completion status fields (Issue #340)

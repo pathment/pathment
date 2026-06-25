@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import {
-  BookOpen, Calendar, CheckCircle2, Clock, Mail, MessageSquare, Plus,
+  BookOpen, Calendar, CalendarCheck, CheckCircle2, Clock, Mail, MessageSquare, Plus, PauseCircle, PlayCircle,
   Target, TrendingUp, TrendingDown, Minus, Flag, Check, User, Loader2,
   Star, ThumbsUp, ThumbsDown, AlertCircle, ChevronLeft, Trophy, Users2,
 } from 'lucide-react';
@@ -24,6 +24,7 @@ import { AssignTaskDrawer } from '@/components/mentor/AssignTaskDrawer';
 import { NudgeButton } from '@/components/mentor/NudgeButton';
 import { CollaboratorsCard } from '@/components/mentor/CollaboratorsCard';
 import { TracksPanel } from '@/components/mentor/TracksPanel';
+import { Drawer } from '@/components/shared/Drawer';
 
 // ── Small presentational helpers (current indigo/slate design system) ────────
 const RISK_PILL: Record<CohortRisk, { label: string; className: string; dot: string }> = {
@@ -174,6 +175,33 @@ export default function MenteeDetail() {
   const [loggingOneOnOne, setLoggingOneOnOne] = useState(false);
   const [assigningTask, setAssigningTask] = useState(false);
 
+  // Full cohort-review attendance record for this mentee (every meeting they
+  // were marked on, newest first) — same data as the cohort-review drawer.
+  const [attOpen, setAttOpen] = useState(false);
+  const [attLoading, setAttLoading] = useState(false);
+  const [attHistory, setAttHistory] = useState<{ sessionId: string; date: string | null; status: 'present' | 'absent' | 'excused'; title: string | null }[]>([]);
+  const openAttendance = async () => {
+    setAttOpen(true);
+    setAttLoading(true);
+    try { const r: any = await mentorApi.getMenteeAttendanceHistory(menteeId); setAttHistory(r?.data?.history ?? []); } // eslint-disable-line @typescript-eslint/no-explicit-any
+    catch { setAttHistory([]); }
+    finally { setAttLoading(false); }
+  };
+
+  // Pause / resume this mentee (paused = kept in clan, out of reports, gets
+  // win-back reminders). pauseState comes back on the profile.
+  const pauseState = (insights as any)?.pauseState as { paused?: boolean } | undefined; // eslint-disable-line @typescript-eslint/no-explicit-any
+  const [pauseBusy, setPauseBusy] = useState(false);
+  const togglePause = async () => {
+    setPauseBusy(true);
+    try {
+      if (pauseState?.paused) { await mentorApi.resumeMentee(menteeId); toast.success('Mentee resumed'); }
+      else { await mentorApi.pauseMentee(menteeId); toast.success('Mentee paused — kept in the clan, out of reports'); }
+      await refetchProfile();
+    } catch { toast.error('Could not update pause status'); }
+    finally { setPauseBusy(false); }
+  };
+
   const onSavePersonality = async (dims: Record<string, number>) => {
     await mentorApi.updatePersonality(menteeId, dims);
     await refetchProfile();
@@ -307,6 +335,19 @@ export default function MenteeDetail() {
               <Plus className="w-4 h-4" />Assign task
             </button>
             <NudgeButton menteeId={menteeId} menteeName={insights?.name} className="!rounded-xl !px-4" />
+            <button
+              onClick={openAttendance}
+              className="px-4 py-2 bg-card hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl transition-colors flex items-center gap-2"
+            >
+              <CalendarCheck className="w-4 h-4" />Attendance
+            </button>
+            <button
+              onClick={togglePause}
+              disabled={pauseBusy}
+              className={`px-4 py-2 rounded-xl transition-colors flex items-center gap-2 border disabled:opacity-50 ${pauseState?.paused ? 'bg-brand-50 border-brand-200 text-brand-700 hover:bg-brand-100' : 'bg-card border-slate-200 text-slate-700 hover:bg-slate-50'}`}
+            >
+              {pauseState?.paused ? <><PlayCircle className="w-4 h-4" />Resume</> : <><PauseCircle className="w-4 h-4" />Pause</>}
+            </button>
             {(enrollment?.status === 'active' || enrollment?.status === 'matched') && (
               <button
                 onClick={() => setShowCompleteConfirm(true)}
@@ -710,6 +751,48 @@ export default function MenteeDetail() {
           onAssigned={fetchMenteeDetails}
         />
       )}
+
+      {/* ── Attendance record — every cohort review this mentee was marked on,
+          newest first (same data as the cohort-review attendance drawer). ──── */}
+      <Drawer open={attOpen} onClose={() => setAttOpen(false)} width="md"
+        title="Attendance record"
+        subtitle={`${`${mentee?.firstName ?? ''} ${mentee?.lastName ?? ''}`.trim() || insights?.name || 'Mentee'} · ${attHistory.length} recorded meeting${attHistory.length === 1 ? '' : 's'}`}>
+        {attLoading ? (
+          <div className="flex items-center justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-brand-500" /></div>
+        ) : attHistory.length === 0 ? (
+          <p className="text-sm text-slate-400 text-center py-10">No attendance recorded yet — nothing before they joined.</p>
+        ) : (
+          <>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500 mb-3">
+              <span className="text-emerald-600">{attHistory.filter((h) => h.status === 'present').length} present</span>
+              <span className="text-red-500">{attHistory.filter((h) => h.status === 'absent').length} absent</span>
+              <span className="text-amber-600">{attHistory.filter((h) => h.status === 'excused').length} excused</span>
+            </div>
+            <div className="space-y-2">
+              {attHistory.map((h) => {
+                const dateLabel = h.date
+                  ? new Date(`${h.date}T00:00:00`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+                  : 'Undated';
+                const dot = h.status === 'present' ? 'bg-emerald-500' : h.status === 'excused' ? 'bg-amber-500' : 'bg-rose-500';
+                const pill = h.status === 'present' ? 'bg-emerald-100 text-emerald-700' : h.status === 'excused' ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700';
+                return (
+                  <div key={h.sessionId}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 dark:border-slate-700 px-3.5 py-3">
+                    <div className="min-w-0">
+                      <span className="text-sm font-medium text-slate-900 inline-flex items-center gap-1.5">
+                        <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />
+                        {dateLabel}
+                      </span>
+                      {h.title && <p className="text-xs text-slate-500 mt-0.5 truncate">{h.title}</p>}
+                    </div>
+                    <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full capitalize shrink-0 ${pill}`}>{h.status}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </Drawer>
 
       {/* ── Learning profile + Activity ──────────────────────────────── */}
       <div className="grid lg:grid-cols-2 gap-6">

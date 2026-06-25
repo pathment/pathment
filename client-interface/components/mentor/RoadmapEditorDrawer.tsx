@@ -9,6 +9,7 @@ import {
 import { roadmapAiApi, type RoadmapStepInput } from '@/lib/services/roadmap-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import RichTextEditor from '@/components/shared/RichTextEditor';
+import { pointsForDifficulty } from '@/lib/config/points';
 
 const STEP_TYPES = ['project', 'assignment', 'reading', 'video', 'quiz', 'discussion'];
 const EFFORTS = ['xs', 's', 'm', 'l', 'xl'];
@@ -475,7 +476,7 @@ export function RoadmapEditorDrawer({
                       <select value={s.difficulty} onChange={(e) => setStep(s.key, { difficulty: e.target.value })} title="Difficulty" className="border border-slate-300 rounded-lg px-2 py-1.5 text-sm bg-card capitalize focus:outline-none focus:ring-2 focus:ring-brand-500">
                         {DIFFICULTIES.map((d) => <option key={d} value={d}>{d}</option>)}
                       </select>
-                      <input type="number" min={0} value={s.points} onChange={(e) => setStep(s.key, { points: e.target.value })} title="Points" placeholder="pts" className="border border-slate-300 rounded-lg px-2 py-1.5 text-sm w-16 focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                      <span title="Points (set by difficulty)" className="inline-flex items-center px-2.5 py-1.5 rounded-lg bg-slate-100 text-slate-600 text-sm font-medium tabular-nums">{pointsForDifficulty(s.difficulty)} pts</span>
                       <input type="number" min={1} value={s.dueOffsetDays} onChange={(e) => setStep(s.key, { dueOffsetDays: e.target.value })} title="Due (+days)" placeholder="due +days" className="border border-slate-300 rounded-lg px-2 py-1.5 text-sm w-24 focus:outline-none focus:ring-2 focus:ring-brand-500" />
                     </div>
 

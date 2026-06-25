@@ -6,11 +6,12 @@ import { toast } from 'sonner';
 import {
   ChevronLeft, ChevronRight, SkipForward, Check, Loader2,
   TrendingUp, TrendingDown, Minus, Flag, Clock, ClipboardCheck, Keyboard, CheckCircle2, ArrowUpRight, Send, Plus, ListTodo, CalendarClock,
-  Trash2, X, History, RotateCcw, CalendarDays, AlertTriangle, StickyNote, Search, Lock, Unlock,
+  Trash2, X, History, RotateCcw, CalendarDays, AlertTriangle, StickyNote, Search, Lock, Unlock, PauseCircle,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useMentorCohort, useMentorApprovals, type CohortMentee, type CohortMomentum, type CohortRisk, type ApprovalItem } from '@/lib/hooks/mentor';
 import { useAuth } from '@/lib/context/AuthContext';
+import { useClan, ALL_CLANS } from '@/lib/context/ClanContext';
 import { mentorApi } from '@/lib/services/mentor-api';
 import { taskApi } from '@/lib/services/task-api';
 import { submissionService } from '@/lib/services/submissionService';
@@ -61,9 +62,22 @@ export default function CohortReview() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useAuth();
-  const { cohort, loading } = useMentorCohort();
+  const { clans, activeClanId, setActiveClanId } = useClan();
+  const { cohort, loading, refetch: refetchCohort } = useMentorCohort();
   const { queue, refetch: refetchQueue } = useMentorApprovals();
   const confirm = useConfirm();
+
+  // Cohort review is CLAN-scoped: a session belongs to a clan, shared by its
+  // lead + co-mentors. "All clans" can't map to one dated session, so for a
+  // multi-clan mentor we pin to a concrete clan (keeps the cohort list and the
+  // session on the same clan). Single-clan mentors never see the picker and the
+  // server resolves their one clan automatically.
+  const effectiveClanId = activeClanId !== ALL_CLANS ? activeClanId : (clans[0]?.id ?? null);
+  useEffect(() => {
+    if (clans.length >= 2 && activeClanId === ALL_CLANS && clans[0]?.id) {
+      setActiveClanId(clans[0].id);
+    }
+  }, [clans, activeClanId, setActiveClanId]);
 
   const [idx, setIdx] = useState(0);
   const [tasks, setTasks] = useState<any[]>([]); // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -94,6 +108,12 @@ export default function CohortReview() {
   const mentee: CohortMentee | undefined = cohort[idx];
   const menteeId = mentee?.id;
 
+  // Keep idx in range when the cohort shrinks (e.g. after pausing a mentee, who
+  // drops out of the list). Without this, idx can point past the end → crash.
+  useEffect(() => {
+    if (cohort.length && idx > cohort.length - 1) setIdx(cohort.length - 1);
+  }, [cohort.length, idx]);
+
   // ── Search + deep-link: jump to a mentee, and keep ?mentee=<id> in the URL so a
   // refresh lands on the same person. ──────────────────────────────────────────
   const [jumpQuery, setJumpQuery] = useState('');
@@ -115,15 +135,19 @@ export default function CohortReview() {
     params.set('mentee', id);
     router.replace(`/mentor/review?${params.toString()}`, { scroll: false });
   }, [cohort, searchParams, router]);
-  // Restore the current mentee from ?mentee=<id> once the cohort has loaded
-  // (deep-link / refresh). Only acts when the URL points elsewhere, so it never
-  // fights selectMentee.
+  // Restore the current mentee from ?mentee=<id> ONCE, the first time the cohort
+  // loads (deep-link / refresh). After that, navigation (selectMentee) owns both
+  // idx and the URL. Running this on every menteeParam change made it fight
+  // selectMentee on a lagging param, so Prev/Next appeared not to update the URL.
+  const restoredRef = useRef(false);
   useEffect(() => {
-    if (!cohort.length || !menteeParam) return;
+    if (restoredRef.current || !cohort.length) return;
+    restoredRef.current = true;
+    if (!menteeParam) return;
     const i = cohort.findIndex((m) => m.id === menteeParam);
-    if (i >= 0 && i !== idx) setIdx(i);
+    if (i >= 0) setIdx(i);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cohort, menteeParam]);
+  }, [cohort]);
   const pending = useMemo(
     () => queue.filter((q) => q.mentee?.id === mentee?.id),
     [queue, mentee?.id]
@@ -142,7 +166,7 @@ export default function CohortReview() {
     try {
       const r: any = sessionParam // eslint-disable-line @typescript-eslint/no-explicit-any
         ? await mentorApi.getReviewSession(sessionParam)
-        : await mentorApi.getTodayReviewSession();
+        : await mentorApi.getTodayReviewSession(effectiveClanId);
       const loaded = r?.data?.session ?? null;
       if (loaded) {
         setSession(loaded);
@@ -162,7 +186,7 @@ export default function CohortReview() {
     } finally {
       setSessionLoading(false);
     }
-  }, [sessionParam]);
+  }, [sessionParam, effectiveClanId]);
   useEffect(() => { loadSession(); }, [loadSession]);
 
   // Derive attendance / seen / deferred from the session's entries.
@@ -198,7 +222,7 @@ export default function CohortReview() {
     if (session && session.id) return session;
     if (ensureRef.current) return ensureRef.current;
     const run = (async (): Promise<ReviewSession | null> => {
-      const r: any = await mentorApi.createReviewSession({}); // eslint-disable-line @typescript-eslint/no-explicit-any
+      const r: any = await mentorApi.createReviewSession({ clanId: effectiveClanId }); // eslint-disable-line @typescript-eslint/no-explicit-any
       const created: ReviewSession | null = r?.data?.session ?? null;
       if (!created) throw new Error('Could not start the review');
       const seenIds = [...seenLocalRef.current];
@@ -215,7 +239,7 @@ export default function CohortReview() {
     })();
     ensureRef.current = run;
     try { return await run; } finally { ensureRef.current = null; }
-  }, [session]);
+  }, [session, effectiveClanId]);
 
   // Optimistically patch one mentee's entry, then persist. `commit` marks a
   // deliberate action (attendance/defer/finish) that should create today's
@@ -322,6 +346,30 @@ export default function CohortReview() {
     if (mentee && editable) patchEntry(mentee.id, { status: 'deferred' }, true);
     go(1);
   }, [mentee, go, editable, patchEntry]);
+
+  // Pause the mentee you're reviewing (they stopped showing up). Confirms,
+  // pauses, drops them from the cohort, and moves on to the next person.
+  const [pausing, setPausing] = useState(false);
+  const pauseCurrent = useCallback(async () => {
+    if (!mentee) return;
+    const ok = await confirm({
+      title: `Pause ${mentee.name}?`,
+      description: `They'll stay in the clan and keep getting reminders to come back, but won't count toward your clan's reports until they re-engage.`,
+      confirmLabel: 'Pause mentee',
+    });
+    if (!ok) return;
+    setPausing(true);
+    try {
+      await mentorApi.pauseMentee(mentee.id, undefined, effectiveClanId ?? undefined);
+      toast.success(`${mentee.name} paused`);
+      go(1);
+      await refetchCohort();
+    } catch (e) {
+      toast.error(extractApiErrorMessage(e, 'Could not pause this mentee'));
+    } finally {
+      setPausing(false);
+    }
+  }, [mentee, confirm, effectiveClanId, go, refetchCohort]);
 
   // Refresh the queue + the CURRENT mentee's tasks. Keyed on the live mentee so
   // actions never refetch a stale/previous mentee (the old bug).
@@ -458,9 +506,9 @@ export default function CohortReview() {
     setHistoryOpen(true);
     setRequestingAccess(false); setAccessReason('');
     loadLockState();
-    try { const r: any = await mentorApi.listReviewSessions(); setSessions(r?.data?.sessions ?? []); } // eslint-disable-line @typescript-eslint/no-explicit-any
+    try { const r: any = await mentorApi.listReviewSessions(effectiveClanId); setSessions(r?.data?.sessions ?? []); } // eslint-disable-line @typescript-eslint/no-explicit-any
     catch { setSessions([]); }
-  }, [loadLockState]);
+  }, [loadLockState, effectiveClanId]);
 
   // Manage a saved session from history. Delete is TIERED: an empty session is a
   // one-tap discard; one with recorded data needs an explicit confirm naming what
@@ -587,6 +635,13 @@ export default function CohortReview() {
     </div>
   );
 
+  // The current index can briefly point past the end right after the cohort
+  // shrinks (e.g. you just paused this mentee). Render nothing for that one
+  // frame instead of dereferencing an undefined mentee and crashing.
+  if (!mentee) return (
+    <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-brand-600" /></div>
+  );
+
   const risk = RISK_PILL[mentee!.risk];
   const pendingCount = (session?.entries || []).filter((e) => e.status === 'pending').length;
   const allSeen = (session?.entries?.length ?? 0) > 0 && pendingCount === 0;
@@ -619,6 +674,34 @@ export default function CohortReview() {
           <button onClick={() => go(1)} disabled={idx === cohort.length - 1} className="px-3 py-2 rounded-lg bg-brand-600 text-white text-sm hover:bg-brand-700 disabled:opacity-40 inline-flex items-center gap-1">Next<ChevronRight className="w-4 h-4" /></button>
         </div>
       </div>
+
+      {/* Clan tabs — only for mentors who run more than one clan. Each clan has
+          its own daily session + history, shared by its lead and co-mentors. */}
+      {clans.length >= 2 && (
+        <div className="flex items-center gap-1 overflow-x-auto border-b border-slate-200">
+          {clans.map((c) => {
+            const active = c.id === effectiveClanId;
+            return (
+              <button
+                key={c.id}
+                onClick={() => {
+                  if (c.id === activeClanId) return;
+                  setActiveClanId(c.id);
+                  setIdx(0);
+                  const params = new URLSearchParams(Array.from(searchParams.entries()));
+                  params.delete('session'); params.delete('mentee');
+                  router.replace(`/mentor/review${params.toString() ? `?${params.toString()}` : ''}`, { scroll: false });
+                }}
+                className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap transition-colors ${
+                  active ? 'border-brand-600 text-brand-700' : 'border-transparent text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                {c.name}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Jump to a mentee */}
       <div className="relative max-w-xs">
@@ -707,6 +790,14 @@ export default function CohortReview() {
               </div>
               <div className="flex items-center gap-1 shrink-0">
                 <NudgeButton menteeId={mentee!.id} menteeName={mentee!.name} variant="icon" />
+                <button
+                  onClick={pauseCurrent}
+                  disabled={pausing}
+                  title="Pause this mentee (stopped attending)"
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 disabled:opacity-50"
+                >
+                  <PauseCircle className="w-4 h-4" />
+                </button>
                 <Link href={`/mentor/mentees/${mentee!.id}`} className="text-xs text-brand-600 hover:text-brand-700 inline-flex items-center gap-0.5">Profile <ArrowUpRight className="w-3.5 h-3.5" /></Link>
               </div>
             </div>

@@ -7,13 +7,13 @@ const cohortReviewService = require('../services/cohortReviewService');
  *  opened (that produced accidental phantom sessions). The session is created on
  *  the first real action (see POST /sessions). */
 const today = catchAsync(async (req, res) => {
-  const result = await cohortReviewService.getTodayOrNull(req.user.id);
+  const result = await cohortReviewService.getTodayOrNull(req.user.id, req.query.clanId || null);
   res.status(200).json(successResponse('Review session', result));
 });
 
-/** GET /api/mentor/review/sessions — full history with counts. */
+/** GET /api/mentor/review/sessions?clanId= — full history (for the clan) with counts. */
 const list = catchAsync(async (req, res) => {
-  const sessions = await cohortReviewService.listSessions(req.user.id);
+  const sessions = await cohortReviewService.listSessions(req.user.id, req.query.clanId || null);
   res.status(200).json(successResponse('Review sessions', { sessions }));
 });
 

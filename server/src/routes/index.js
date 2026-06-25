@@ -152,6 +152,9 @@ router.use('/program-reviews', programReviewRoutes);
 // Email queue admin: DLQ inspection, retry, suppression list
 router.use('/admin/emails', require('./emailAdmin'));
 
+// In-app feedback / bug reports: anyone submits, admins triage
+router.use('/feedback', require('./feedback'));
+
 
 
 // TODO: Add more route modules here

@@ -5,6 +5,7 @@ const notificationOrchestrator = require('./notificationOrchestrator');
 const { NOTIFICATION_EVENTS } = require('../config/notificationMatrix');
 const { endOfDayInZone } = require('../utils/timezone');
 const authzService = require('./authzService');
+const { pointsForDifficulty } = require('../config/points');
 
 /**
  * linearRoadmapService - the new design's linear roadmap flow for mentors:
@@ -191,7 +192,8 @@ class LinearRoadmapService {
       dueOffsetDays: Number.isFinite(Number(step.dueOffsetDays)) && step.dueOffsetDays !== null && step.dueOffsetDays !== '' ? Number(step.dueOffsetDays) : null,
       isMandatory: true,
       isCustomTask: false,
-      pointsBase: step.pointsBase || 10
+      // Standard points by difficulty (no hand-typed values).
+      pointsBase: pointsForDifficulty(step.difficulty)
     };
   }
 
@@ -543,8 +545,8 @@ class LinearRoadmapService {
       assignedAt: new Date(),
       dueDate: due,
       isCustomTask: false,
-      // Carry the step's points onto the assignment so they show + can be edited.
-      pointsBase: Number.isFinite(Number(step.pointsBase)) ? Number(step.pointsBase) : 10,
+      // Standard points by the step's difficulty (single source of truth).
+      pointsBase: pointsForDifficulty(step.difficulty),
       ...(ov || {})
     });
 

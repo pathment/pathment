@@ -46,7 +46,8 @@ const PERMISSIONS = {
   // Platform
   ANALYTICS_VIEW: 'analytics.view',
   ACCESS_MANAGE: 'access.manage',            // grant/revoke roles (IAM itself)
-  SYSTEM_SETTINGS: 'system.settings'
+  SYSTEM_SETTINGS: 'system.settings',
+  FEEDBACK_MANAGE: 'feedback.manage'         // triage user-submitted feedback / bug reports
 };
 
 const ALL_PERMISSIONS = Object.values(PERMISSIONS);

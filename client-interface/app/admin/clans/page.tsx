@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
-import { Users2, Plus, X, Loader2, Trash2, UserPlus, Crown, GraduationCap, Search, ArrowRightLeft, SlidersHorizontal } from 'lucide-react';
+import { Users2, Plus, X, Loader2, Trash2, UserPlus, Crown, GraduationCap, Search, ArrowRightLeft, SlidersHorizontal, PauseCircle, PlayCircle } from 'lucide-react';
 import { SelectMenu, type SelectOption } from '@/components/shared/SelectMenu';
 import { TablePagination } from '@/components/shared/TablePagination';
 import { CoMentorPermissionsDrawer } from '@/components/shared/CoMentorPermissionsDrawer';
@@ -244,8 +244,26 @@ function ClanDrawer({ clanId, mentors, mentees, onClose, onChanged }: {
                           <span className="inline-flex items-center gap-1 text-xs text-slate-500">
                             {m.role.includes('mentor') ? <Crown className="w-3 h-3" /> : <GraduationCap className="w-3 h-3" />}
                             {ROLE_LABEL[m.role] || m.role}
+                            {m.status === 'paused' && <span className="ml-1 px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-medium">Paused</span>}
                           </span>
                         </div>
+                        {m.role === 'mentee' && (
+                          <button
+                            onClick={async () => {
+                              setBusy(true);
+                              try {
+                                if (m.status === 'paused') { await mentorApi.resumeMentee(m.userId, clanId); toast.success('Resumed'); }
+                                else { await mentorApi.pauseMentee(m.userId, undefined, clanId); toast.success('Paused — kept in clan, out of reports'); }
+                                await load();
+                              } catch { toast.error('Could not update pause'); } finally { setBusy(false); }
+                            }}
+                            disabled={busy}
+                            title={m.status === 'paused' ? 'Resume mentee' : 'Pause mentee'}
+                            className={`shrink-0 disabled:opacity-50 ${m.status === 'paused' ? 'text-brand-600 hover:text-brand-700' : 'text-slate-400 hover:text-amber-600'}`}
+                          >
+                            {m.status === 'paused' ? <PlayCircle className="w-4 h-4" /> : <PauseCircle className="w-4 h-4" />}
+                          </button>
+                        )}
                         {m.role === 'co_mentor' && (
                           <button onClick={() => setPermMember(m)} disabled={busy} title="Edit permissions" className="text-slate-400 hover:text-brand-600 disabled:opacity-50 shrink-0">
                             <SlidersHorizontal className="w-4 h-4" />

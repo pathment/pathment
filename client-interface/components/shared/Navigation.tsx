@@ -17,6 +17,7 @@ import {
   Check,
   Settings,
   HelpCircle,
+  MessageSquarePlus,
   ShieldCheck,
   Search,
 } from 'lucide-react';
@@ -26,6 +27,7 @@ import { usePermissions } from '@/lib/hooks/usePermissions';
 import { useClan, ALL_CLANS } from '@/lib/context/ClanContext';
 import { SelectMenu } from './SelectMenu';
 import { CommandPalette } from './CommandPalette';
+import { FeedbackDrawer } from './FeedbackDrawer';
 import { NotificationDrawer } from './NotificationDrawer';
 import { ChangelogDrawer } from './ChangelogDrawer';
 import { UserProfileCard } from './UserProfileCard';
@@ -50,6 +52,7 @@ export default function Navigation({ role }: NavigationProps) {
   const { logout, user, availableRoles, setActiveRole } = useAuth();
   const { clans, activeClanId, setActiveClanId } = useClan();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
   const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
@@ -325,6 +328,7 @@ export default function Navigation({ role }: NavigationProps) {
   return (
     <>
       <CommandPalette role={role} />
+      <FeedbackDrawer open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
 
       {/* ── Desktop Sidebar ── */}
       <div className="hidden lg:flex lg:flex-col lg:w-64 lg:fixed lg:inset-y-0 bg-card border-r border-slate-100">
@@ -333,12 +337,8 @@ export default function Navigation({ role }: NavigationProps) {
           {/* Brand — own row so the logo reads cleanly */}
           <div className="px-4 pt-5 pb-3">
             <div className="flex items-center gap-3">
-              <div className="flex items-center justify-center w-10 h-10 bg-gradient-to-br from-brand-500 to-brand-700 rounded-2xl shadow-sm shadow-brand-300/50 shrink-0">
-                <svg viewBox="0 0 512 512" className="w-6 h-6" fill="none" aria-hidden="true">
-                  <path d="M196 388 V176 C 196 126 346 126 346 216 C 346 300 256 306 196 264" stroke="#fff" strokeWidth="44" strokeLinecap="round" strokeLinejoin="round" />
-                  <circle cx="196" cy="388" r="28" fill="#fff" />
-                </svg>
-              </div>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/logo-tile.png" alt="Pathment" className="w-11 h-11 rounded-2xl shadow-sm shrink-0" />
               <div className="min-w-0">
                 <div className="font-bold text-slate-900 text-base leading-tight truncate">Pathment</div>
                 <div className="text-slate-400 text-xs capitalize truncate">{role} portal</div>
@@ -361,6 +361,16 @@ export default function Navigation({ role }: NavigationProps) {
             </span>
             <span data-tour="notifications" className="flex-1 flex justify-center">
               {user?.id && <NotificationDrawer userId={user.id} apiBaseUrl={apiBaseUrl} />}
+            </span>
+            <span data-tour="feedback" className="flex-1 flex justify-center">
+              <button
+                onClick={() => setFeedbackOpen(true)}
+                title="Send feedback / report a bug"
+                aria-label="Send feedback"
+                className="w-full flex items-center justify-center p-2 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-50 transition-colors"
+              >
+                <MessageSquarePlus className="w-5 h-5" />
+              </button>
             </span>
             <Link
               href={`/${role}/settings`}
@@ -416,12 +426,8 @@ export default function Navigation({ role }: NavigationProps) {
       <div className="lg:hidden fixed top-0 left-0 right-0 glass border-b border-slate-100 dark:border-slate-700 z-60">
         <div className="flex items-center justify-between px-4 py-3.5">
           <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-9 h-9 bg-gradient-to-br from-brand-500 to-brand-700 rounded-2xl shadow-sm shadow-brand-300/50">
-              <svg viewBox="0 0 512 512" className="w-5 h-5" fill="none" aria-hidden="true">
-                <path d="M196 388 V176 C 196 126 346 126 346 216 C 346 300 256 306 196 264" stroke="#fff" strokeWidth="44" strokeLinecap="round" strokeLinejoin="round" />
-                <circle cx="196" cy="388" r="28" fill="#fff" />
-              </svg>
-            </div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo-tile.png" alt="Pathment" className="w-10 h-10 rounded-2xl shadow-sm" />
             <div>
               <div className="font-semibold text-slate-900 text-sm">Pathment</div>
               <div className="text-slate-400 text-xs capitalize">{role}</div>

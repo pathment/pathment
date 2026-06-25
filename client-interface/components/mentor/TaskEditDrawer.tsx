@@ -8,6 +8,7 @@ import RichTextEditor from '@/components/shared/RichTextEditor';
 import taskApi from '@/lib/services/task-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { cleanHtml } from '@/lib/utils/html';
+import { pointsForDifficulty } from '@/lib/config/points';
 
 interface ResourceItem { title: string; url: string; resourceType?: string }
 
@@ -25,21 +26,20 @@ export function TaskEditDrawer({
   onSaved: () => void;
 }) {
   const rt = task.roadmapTask || {};
-  const effectivePoints = task.points ?? task.pointsBase ?? rt.pointsBase ?? 10;
+  // Points are standard by difficulty (read-only here).
+  const standardPoints = pointsForDifficulty(rt.difficulty);
   const initial = {
     title: rt.title || '',
     description: rt.description || '',
     deliverable: rt.deliverable || '',
     criteria: (rt.acceptanceCriteria || []).join('\n'),
     note: task.mentorNote || '',
-    points: String(effectivePoints),
   };
   const [title, setTitle] = useState(initial.title);
   const [description, setDescription] = useState(initial.description);
   const [deliverable, setDeliverable] = useState(initial.deliverable);
   const [criteria, setCriteria] = useState(initial.criteria);
   const [note, setNote] = useState(initial.note);
-  const [points, setPoints] = useState(initial.points);
   const [resources, setResources] = useState<ResourceItem[]>(
     (rt.resources || []).map((r: any) => ({ title: r.title || '', url: r.url || '', resourceType: r.resourceType || 'reading' }))
   );
@@ -63,7 +63,6 @@ export function TaskEditDrawer({
       payload.acceptanceCriteriaOverride = arr.length ? arr : null;
     }
     if (note !== initial.note) payload.mentorNote = note.trim() || null;
-    if (points !== initial.points) payload.pointsBase = points.trim() ? Math.max(0, Number(points) || 0) : null;
     if (resourcesTouched) {
       const arr = resources.filter((r) => r.url.trim()).map((r) => ({ title: r.title.trim() || r.url.trim(), url: r.url.trim(), resourceType: r.resourceType || 'reading' }));
       payload.resourcesOverride = arr.length ? arr : null;
@@ -111,8 +110,10 @@ export function TaskEditDrawer({
         </div>
         <div>
           <label className={label}>Points</label>
-          <input type="number" min={0} value={points} onChange={(e) => setPoints(e.target.value)} className={`${field} max-w-[8rem]`} />
-          <p className="mt-1 text-xs text-slate-400">Points this mentee earns on completion.</p>
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 text-sm font-medium tabular-nums">
+            {standardPoints} pts
+          </span>
+          <p className="mt-1 text-xs text-slate-400">Set by task difficulty{rt.difficulty ? ` (${rt.difficulty})` : ''} — same for every mentee.</p>
         </div>
         <div>
           <label className={label}>Acceptance criteria <span className="text-slate-400 font-normal">(one per line)</span></label>

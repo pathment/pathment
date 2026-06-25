@@ -17,6 +17,7 @@ import {
   FileText,
   Compass,
   Megaphone,
+  MessageSquarePlus,
   GitPullRequest,
   MessageSquare,
   UserPlus,
@@ -99,6 +100,7 @@ export const navigationConfig: Record<string, NavLink[]> = {
         { path: '/admin/changelog', icon: PackageOpen, label: "What's New", permission: 'system.settings' },
         { path: '/admin/rewards', icon: Gift, label: 'Rewards', permission: 'gamification.manage' },
         { path: '/admin/moderation', icon: ShieldAlert, label: 'Moderation', permission: 'community.moderate' },
+        { path: '/admin/feedback', icon: MessageSquarePlus, label: 'Feedback', permission: 'feedback.manage' },
       ],
     },
     {

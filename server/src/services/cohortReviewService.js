@@ -4,6 +4,7 @@ const { NotFoundError, ForbiddenError, ValidationError } = require('../utils/err
 const { todayInZone } = require('../utils/timezone');
 const { createAuditLog } = require('../utils/auditContext');
 const cohortService = require('./cohortService');
+const authzService = require('./authzService');
 const lockService = require('./cohortReviewLockService');
 
 /**
@@ -51,10 +52,12 @@ class CohortReviewService {
    * Also clears any stale "phantom" entries for a late-joiner that a previous
    * (pre-fix) reconcile created — but only ones the mentor never touched.
    */
-  async _reconcileEntries(session, mentorId) {
+  async _reconcileEntries(session) {
+    // Clan-scoped: the cohort is everyone in THIS session's clan, so a lead and
+    // a co-mentor of the clan reconcile to the exact same mentee set.
     const [menteeIds, joinDates] = await Promise.all([
-      cohortService.resolveMenteeIds(mentorId),
-      cohortService.menteeJoinDates(mentorId),
+      cohortService.resolveMenteeIdsForClan(session.clanId),
+      cohortService.menteeJoinDatesForClan(session.clanId),
     ]);
     const sessionDate = String(session.sessionDate); // 'YYYY-MM-DD'
     const joinedBySession = (id) => {
@@ -86,42 +89,62 @@ class CohortReviewService {
     }
   }
 
-  /** Today's session for this mentor (in THEIR timezone), creating one if needed. */
-  async getOrCreateToday(mentorId) {
+  /**
+   * Resolve which clan a request operates on. A mentor mentors one or more
+   * clans (lead / co / cross-clan cover). If `clanId` is given it must be one of
+   * them; otherwise we default to their (first) mentored clan. Cohort review is
+   * per-clan, so there is always exactly one target clan.
+   */
+  async _resolveClanId(mentorId, clanId) {
+    const clanIds = await authzService.mentoredClanIds(mentorId);
+    if (!clanIds.length) throw new ForbiddenError('You do not mentor any clan');
+    if (clanId) {
+      if (!clanIds.includes(clanId)) throw new ForbiddenError('You do not mentor this clan');
+      return clanId;
+    }
+    return clanIds[0];
+  }
+
+  /** Today's session for this clan (in the mentor's timezone), creating one if needed. */
+  async getOrCreateToday(mentorId, clanId) {
+    const resolvedClanId = await this._resolveClanId(mentorId, clanId);
     const tz = await this._mentorTz(mentorId);
     const today = todayInZone(tz);
     let session = await models.CohortReviewSession.findOne({
-      where: { mentorId, sessionDate: today },
+      where: { clanId: resolvedClanId, sessionDate: today },
       order: [['created_at', 'DESC']],
     });
     if (!session) {
-      session = await models.CohortReviewSession.create({ mentorId, sessionDate: today, status: 'in_progress' });
+      session = await models.CohortReviewSession.create({ mentorId, clanId: resolvedClanId, sessionDate: today, status: 'in_progress' });
     }
-    await this._reconcileEntries(session, mentorId);
+    await this._reconcileEntries(session);
     return this._withEntries(session);
   }
 
   /**
-   * Today's session WITHOUT creating one. Returns { session, today } — session is
-   * null until the mentor takes a real action (then the client POSTs to create).
-   * This is what stops "just opening the page" from leaving a phantom session.
+   * Today's session WITHOUT creating one. Returns { session, today, clanId } —
+   * session is null until someone takes a real action (then the client POSTs to
+   * create). This is what stops "just opening the page" from leaving a phantom
+   * session. The session is shared by everyone who mentors the clan.
    */
-  async getTodayOrNull(mentorId) {
+  async getTodayOrNull(mentorId, clanId) {
+    const resolvedClanId = await this._resolveClanId(mentorId, clanId);
     const tz = await this._mentorTz(mentorId);
     const today = todayInZone(tz);
     const session = await models.CohortReviewSession.findOne({
-      where: { mentorId, sessionDate: today },
+      where: { clanId: resolvedClanId, sessionDate: today },
       order: [['created_at', 'DESC']],
     });
-    if (!session) return { session: null, today };
-    await this._reconcileEntries(session, mentorId);
-    return { session: await this._withEntries(session), today };
+    if (!session) return { session: null, today, clanId: resolvedClanId };
+    await this._reconcileEntries(session);
+    return { session: await this._withEntries(session), today, clanId: resolvedClanId };
   }
 
-  /** Full history (newest first) with quick attendance/progress counts per session. */
-  async listSessions(mentorId) {
+  /** Full history (newest first) for a clan, with attendance/progress counts. */
+  async listSessions(mentorId, clanId) {
+    const resolvedClanId = await this._resolveClanId(mentorId, clanId);
     const sessions = await models.CohortReviewSession.findAll({
-      where: { mentorId },
+      where: { clanId: resolvedClanId },
       order: [['session_date', 'DESC'], ['created_at', 'DESC']],
     });
     const ids = sessions.map((s) => s.id);
@@ -140,31 +163,50 @@ class CohortReviewService {
     return sessions.map((s) => ({ ...s.toJSON(), counts: bySession[s.id] || blank() }));
   }
 
-  async _own(mentorId, sessionId) {
+  /**
+   * Anyone who mentors the session's clan (lead / co-mentor / cover) may view and
+   * edit it — that's the whole point of clan-scoping. Replaces the old
+   * "only the creating mentor" ownership check.
+   */
+  async _canAccess(mentorId, sessionId) {
     const session = await models.CohortReviewSession.findByPk(sessionId);
     if (!session) throw new NotFoundError('Review session not found');
-    if (session.mentorId !== mentorId) throw new ForbiddenError('This review session belongs to another mentor');
+    const clanIds = await authzService.mentoredClanIds(mentorId);
+    // Legacy sessions with no clan fall back to creator-only access.
+    if (!session.clanId) {
+      if (session.mentorId !== mentorId) throw new ForbiddenError('This review session belongs to another mentor');
+      return session;
+    }
+    if (!clanIds.includes(session.clanId)) throw new ForbiddenError('You do not mentor this clan');
     return session;
   }
 
   async getSession(mentorId, sessionId) {
-    const session = await this._own(mentorId, sessionId);
-    await this._reconcileEntries(session, mentorId);
+    const session = await this._canAccess(mentorId, sessionId);
+    await this._reconcileEntries(session);
     return this._withEntries(session);
   }
 
-  async createSession(mentorId, { date, title } = {}) {
+  async createSession(mentorId, { date, title, clanId } = {}) {
+    const resolvedClanId = await this._resolveClanId(mentorId, clanId);
     const tz = await this._mentorTz(mentorId);
     const sessionDate = date && /^\d{4}-\d{2}-\d{2}$/.test(String(date)) ? String(date) : todayInZone(tz);
-    const session = await models.CohortReviewSession.create({
-      mentorId, sessionDate, title: (title || '').trim().slice(0, 150) || null, status: 'in_progress',
+    // One session per clan per day: reuse an existing one rather than duplicating.
+    let session = await models.CohortReviewSession.findOne({
+      where: { clanId: resolvedClanId, sessionDate },
+      order: [['created_at', 'DESC']],
     });
-    await this._reconcileEntries(session, mentorId);
+    if (!session) {
+      session = await models.CohortReviewSession.create({
+        mentorId, clanId: resolvedClanId, sessionDate, title: (title || '').trim().slice(0, 150) || null, status: 'in_progress',
+      });
+    }
+    await this._reconcileEntries(session);
     return this._withEntries(session);
   }
 
   async updateSession(mentorId, sessionId, updates = {}) {
-    const session = await this._own(mentorId, sessionId);
+    const session = await this._canAccess(mentorId, sessionId);
     if (updates.title !== undefined) session.title = String(updates.title || '').trim().slice(0, 150) || null;
     if (updates.note !== undefined) session.note = updates.note || null;
     if (updates.sessionDate !== undefined && /^\d{4}-\d{2}-\d{2}$/.test(String(updates.sessionDate))) session.sessionDate = updates.sessionDate;
@@ -174,7 +216,7 @@ class CohortReviewService {
 
   /** Upsert a mentee's attendance / status / note within a session. */
   async setEntry(mentorId, sessionId, menteeId, patch = {}) {
-    const session = await this._own(mentorId, sessionId);
+    const session = await this._canAccess(mentorId, sessionId);
     let entry = await models.CohortReviewEntry.findOne({ where: { sessionId: session.id, menteeId } });
     if (!entry) entry = await models.CohortReviewEntry.create({ sessionId: session.id, menteeId, status: 'pending' });
 
@@ -191,6 +233,11 @@ class CohortReviewService {
     if (patch.note !== undefined) entry.note = patch.note || null;
     await entry.save();
 
+    // Re-engagement: marking a paused mentee present means they came back.
+    if (patch.attendance === 'present') {
+      require('./mentorshipPauseService').autoResumeIfPaused(menteeId, 'attended a review').catch(() => {});
+    }
+
     const fresh = await models.CohortReviewEntry.findByPk(entry.id, {
       include: [{ model: models.User, as: 'mentee', attributes: ['id', 'firstName', 'lastName'] }],
     });
@@ -198,7 +245,7 @@ class CohortReviewService {
   }
 
   async finishSession(mentorId, sessionId) {
-    const session = await this._own(mentorId, sessionId);
+    const session = await this._canAccess(mentorId, sessionId);
     session.status = 'finished';
     session.finishedAt = new Date();
     await session.save();
@@ -207,7 +254,7 @@ class CohortReviewService {
 
   async reopenSession(mentorId, sessionId) {
     await lockService.assertCanDelete(mentorId);
-    const session = await this._own(mentorId, sessionId);
+    const session = await this._canAccess(mentorId, sessionId);
     session.status = 'in_progress';
     session.finishedAt = null;
     await session.save();
@@ -216,7 +263,7 @@ class CohortReviewService {
 
   async deleteSession(mentorId, sessionId) {
     await lockService.assertCanDelete(mentorId);
-    const session = await this._own(mentorId, sessionId);
+    const session = await this._canAccess(mentorId, sessionId);
     await models.CohortReviewEntry.destroy({ where: { sessionId: session.id } });
     await session.destroy();
     createAuditLog({

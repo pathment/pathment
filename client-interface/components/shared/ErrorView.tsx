@@ -33,7 +33,7 @@ export function ErrorView({
             </button>
           )}
           {home && (
-            <a href={home} className="rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800">
+            <a href={home} className="rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800">
               Go to dashboard
             </a>
           )}

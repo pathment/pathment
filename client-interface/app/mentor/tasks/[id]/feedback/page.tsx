@@ -19,6 +19,7 @@ import RichTextEditor from '@/components/shared/RichTextEditor';
 import { useMentorTaskFeedback } from '@/lib/hooks/mentor';
 import { PageHeader } from '@/components/admin/ui';
 import { formatFileSize } from '@/lib/utils/formatting';
+import { pointsForDifficulty } from '@/lib/config/points';
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -38,25 +39,21 @@ export default function FeedbackProvision({ params }: PageProps) {
     feedbackText,
     revisionNotes,
     decision,
-    pointsAwarded,
     inlineFeedback,
     error,
     ratingError,
     feedbackError,
     decisionError,
     revisionError,
-    pointsError,
     setRating,
     setHoveredRating,
     setFeedbackText,
     setRevisionNotes,
     setDecision,
-    setPointsAwarded,
     setRatingError,
     setFeedbackError,
     setDecisionError,
     setRevisionError,
-    setPointsError,
     addInlineFeedback,
     updateInlineFeedback,
     removeInlineFeedback,
@@ -83,7 +80,7 @@ export default function FeedbackProvision({ params }: PageProps) {
   const taskDescription = task.roadmapTask?.description || task.description;
   const taskDeliverable = task.roadmapTask?.deliverable || task.deliverable;
   const acceptanceCriteria = task.roadmapTask?.acceptanceCriteria || task.acceptanceCriteria || [];
-  const maxPoints = task.roadmapTask?.pointsBase || 10;
+  const standardPoints = pointsForDifficulty(task.roadmapTask?.difficulty || task.difficulty);
 
   return (
     <div className="space-y-6">
@@ -270,7 +267,9 @@ export default function FeedbackProvision({ params }: PageProps) {
         {/* Rating */}
         <div>
           <label className="block text-sm text-slate-700 mb-2">
-            Rating <span className="text-red-500">*</span>
+            Rating {decision === 'revision'
+              ? <span className="text-slate-400 text-xs">(optional)</span>
+              : <span className="text-red-500">*</span>}
           </label>
           <div className="flex gap-2">
             {[1, 2, 3, 4, 5].map((star) => (
@@ -306,7 +305,9 @@ export default function FeedbackProvision({ params }: PageProps) {
         {/* General Feedback */}
         <div>
           <label className="block text-sm text-slate-700 mb-2">
-            General Feedback <span className="text-red-500">*</span>
+            General Feedback {decision === 'revision'
+              ? <span className="text-slate-400 text-xs">(optional — your revision notes below cover the details)</span>
+              : <span className="text-red-500">*</span>}
           </label>
           <div className={feedbackError ? 'ring-2 ring-red-400 rounded-lg' : ''}>
             <RichTextEditor
@@ -418,40 +419,16 @@ export default function FeedbackProvision({ params }: PageProps) {
           )}
         </div>
 
-         {/* Points (if approved) */}
+         {/* Points (if approved) — standard by difficulty, not editable. */}
         {decision === 'approve' && (
           <div>
-            <label className="block text-sm text-slate-700 mb-2">
-              Points Awarded <span className="text-slate-500 text-xs">(Max: {maxPoints})</span>
-            </label>
-            <input
-              type="number"
-              value={pointsAwarded}
-              onChange={(e) => {
-                const newValue = Number(e.target.value);
-                // const maxPoints = task?.roadmapTask?.pointsBase || task?.pointsBase || 10;
-                
-                // Clamp behavior: if user types more than max, show max instead
-                if (newValue > maxPoints) {
-                  setPointsAwarded(maxPoints);
-                } else {
-                  setPointsAwarded(newValue);
-                }
-              }}
-              min="0"
-              max={task?.roadmapTask?.pointsBase || task?.pointsBase || 10}
-              className={`w-32 px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                pointsAwarded >= maxPoints
-                  ? 'points-input-disabled'
-                  : 'points-input-enabled'
-              }`}
-            />
-            {pointsError && (
-              <p className="mt-2 text-sm text-red-600 flex items-center gap-1">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                {pointsError}
-              </p>
-            )}
+            <label className="block text-sm text-slate-700 mb-2">Points</label>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 text-sm font-medium tabular-nums">
+              {standardPoints} pts
+            </span>
+            <p className="mt-1 text-xs text-slate-400">
+              Set by task difficulty{task.roadmapTask?.difficulty ? ` (${task.roadmapTask.difficulty})` : ''}. Awarded in full on approval.
+            </p>
           </div>
         )}
 

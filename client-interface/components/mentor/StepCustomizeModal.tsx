@@ -6,6 +6,7 @@ import RichTextEditor from '@/components/shared/RichTextEditor';
 import { ResourceLink } from '@/components/shared/ResourceLink';
 import { cleanHtml } from '@/lib/utils/html';
 import type { RoadmapStep } from '@/lib/hooks/mentor';
+import { pointsForDifficulty } from '@/lib/config/points';
 
 interface ResourceItem { title: string; url: string; resourceType?: string }
 type Override = Record<string, unknown>;
@@ -114,13 +115,11 @@ export function StepCustomizeModal({
                 {step.type && <span className="px-2 py-0.5 rounded bg-brand-50 text-brand-700 text-[11px] font-medium capitalize">{step.type}</span>}
                 {step.difficulty && <span className={`px-2 py-0.5 rounded text-[11px] font-medium capitalize ${DIFF_CLS[step.difficulty] || 'bg-slate-100 text-slate-600'}`}>{step.difficulty}</span>}
               </div>
-              {(step.effort || step.dueOffsetDays != null || step.pointsBase != null) && (
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
-                  {step.effort && <span className="inline-flex items-center gap-1"><Clock className="w-3.5 h-3.5" />effort {step.effort}</span>}
-                  {step.dueOffsetDays != null && <span>due +{step.dueOffsetDays}d</span>}
-                  {step.pointsBase != null && <span className="inline-flex items-center gap-1"><Award className="w-3.5 h-3.5" />{step.pointsBase} pts</span>}
-                </div>
-              )}
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
+                {step.effort && <span className="inline-flex items-center gap-1"><Clock className="w-3.5 h-3.5" />effort {step.effort}</span>}
+                {step.dueOffsetDays != null && <span>due +{step.dueOffsetDays}d</span>}
+                <span className="inline-flex items-center gap-1"><Award className="w-3.5 h-3.5" />{pointsForDifficulty(step.difficulty)} pts</span>
+              </div>
               {step.description && (isHtml
                 ? <div className="prose prose-sm max-w-none dark:prose-invert text-slate-600 dark:text-slate-300" dangerouslySetInnerHTML={{ __html: step.description }} />
                 : <p className="text-sm text-slate-600 whitespace-pre-wrap">{step.description}</p>)}

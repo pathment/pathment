@@ -2,8 +2,9 @@
 
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import {
-  Users, ClipboardCheck, AlertTriangle, Flag, Loader2, Plus,
+  Users, ClipboardCheck, AlertTriangle, Flag, Loader2, Plus, Inbox, ArrowRight,
 } from 'lucide-react';
 import { useAuth } from '@/lib/context/AuthContext';
 import { useMentorCohort, type CohortMentee, type CohortRisk } from '@/lib/hooks/mentor';
@@ -39,6 +40,8 @@ export default function MentorCockpit() {
   const { cohort, totals, loading, error, refetch } = useMentorCohort();
   const [filter, setFilter] = useState<Filter>('all');
   const [bulkAssign, setBulkAssign] = useState(false);
+
+  const noTaskCount = useMemo(() => cohort.filter((m) => m.taskCount === 0).length, [cohort]);
 
   const list = useMemo(() => {
     const order: Record<CohortRisk, number> = { high: 0, watch: 1, low: 2 };
@@ -98,6 +101,22 @@ export default function MentorCockpit() {
         <StatsCard icon={Flag} label="Open blockers" value={totals?.openBlockers ?? '…'} colorClass="text-amber-600 bg-amber-50" />
         <StatsCard icon={Users} label="Cohort on-time" value={totals ? `${totals.onTimeRate}%` : '…'} colorClass="text-emerald-600 bg-emerald-50" />
       </div>
+
+      {/* No-tasks nudge — links into the filtered Mentees view to assign work */}
+      {noTaskCount > 0 && (
+        <Link
+          href="/mentor/mentees?filter=no_tasks"
+          className="flex items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 hover:border-amber-300 transition-colors"
+        >
+          <span className="text-sm text-amber-800 inline-flex items-center gap-2">
+            <Inbox className="w-4 h-4 shrink-0" />
+            <strong className="font-semibold">{noTaskCount}</strong> mentee{noTaskCount === 1 ? ' has' : 's have'} no tasks yet — assign work to get them started.
+          </span>
+          <span className="text-sm font-medium text-amber-800 inline-flex items-center gap-1 shrink-0">
+            Assign <ArrowRight className="w-4 h-4" />
+          </span>
+        </Link>
+      )}
 
       {/* Latest announcements */}
       <AnnouncementsCard href="/mentor/announcements" />

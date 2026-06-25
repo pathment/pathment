@@ -24,7 +24,7 @@ export type {
 } from './useMenteeProfile';
 
 export { useMentorApprovals } from './useMentorApprovals';
-export type { UseMentorApprovalsReturn, ApprovalItem, BulkReviewPayload } from './useMentorApprovals';
+export type { UseMentorApprovalsReturn, ApprovalItem, ChangesRequestedItem, BulkReviewPayload } from './useMentorApprovals';
 
 export { useMentorRoadmaps } from './useMentorRoadmaps';
 export type { UseMentorRoadmapsReturn, LinearRoadmap, RoadmapStep } from './useMentorRoadmaps';

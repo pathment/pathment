@@ -12,6 +12,7 @@ import { RoadmapStepsDrawer } from '@/components/mentor/RoadmapStepsDrawer';
 import { StepCustomizeModal } from '@/components/mentor/StepCustomizeModal';
 import RichTextEditor from '@/components/shared/RichTextEditor';
 import { cleanHtml } from '@/lib/utils/html';
+import { pointsForDifficulty } from '@/lib/config/points';
 
 type AssignSource = 'custom' | 'roadmap';
 
@@ -74,10 +75,10 @@ export function AssignTaskDrawer({
   const [type, setType] = useState<string>('assignment');
   const [description, setDescription] = useState('');
   const [difficulty, setDifficulty] = useState<string>('medium');
+  // Points are derived from difficulty (standard) — no manual entry.
   const [dueDays, setDueDays] = useState<number>(7);
   // An exact date (free picker) overrides the preset when set; presets clear it.
   const [dueExact, setDueExact] = useState<string>('');
-  const [points, setPoints] = useState<number>(10);
   const [deliverable, setDeliverable] = useState('');
   const [criteria, setCriteria] = useState<string[]>([]);
   const [resources, setResources] = useState<{ title: string; url: string }[]>([]);
@@ -220,7 +221,7 @@ export function AssignTaskDrawer({
         type,
         difficulty,
         dueDate: dueISO(),
-        pointsBase: points,
+        // Points are standard by difficulty (derived server-side).
         deliverable: deliverable.trim() || undefined,
         acceptanceCriteria: cleanCriteria,
         resources: cleanResources.length ? cleanResources : undefined,
@@ -347,8 +348,13 @@ export function AssignTaskDrawer({
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label htmlFor="assign-task-points" className="block text-sm font-medium text-slate-700 mb-1">Points</label>
-                  <input id="assign-task-points" type="number" min={0} value={points} onChange={(e) => setPoints(Number(e.target.value) || 0)} className={field} />
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Points</label>
+                  <div className="flex items-center h-[38px]">
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 text-sm font-medium tabular-nums">
+                      {pointsForDifficulty(difficulty)} pts
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-slate-400">Set by difficulty.</p>
                 </div>
                 {mode === 'single' && tracks.length > 0 && (
                   <div>
@@ -466,9 +472,8 @@ export function AssignTaskDrawer({
                                 <input type="checkbox" disabled={isActive} checked={checked} onChange={() => toggleStep(s.index)}
                                   className="w-4 h-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500" />
                                 <span className="flex-1 truncate text-slate-700">{s.index + 1}. {s.title}</span>
-                                {selectedRoadmap.steps[s.index]?.pointsBase != null && (
-                                  <span className="text-[10px] text-slate-400 shrink-0">{selectedRoadmap.steps[s.index]?.pointsBase} pts</span>
-                                )}
+                                <span className="text-[10px] text-slate-400 shrink-0">{pointsForDifficulty(selectedRoadmap.steps[s.index]?.difficulty)} pts</span>
+
                                 {!!stepOverrides[s.stepId] && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 shrink-0">customized</span>}
                                 {isActive && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-sky-100 text-sky-700 shrink-0">assigned</span>}
                                 {isDone && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 shrink-0">done</span>}

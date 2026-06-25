@@ -120,9 +120,8 @@ export default function LoginPage() {
     <div className="space-y-6">
       {/* Logo & Header */}
       <div className="text-center">
-        <div className="inline-flex items-center justify-center w-16 h-16 bg-brand-600 rounded-2xl mb-4">
-          <span className="text-white text-2xl">P</span>
-        </div>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/logo-tile.png" alt="Pathment" className="inline-block w-16 h-16 rounded-2xl shadow-sm mb-4" />
         <h1 className="text-brand-900 mb-2">Welcome back to Pathment</h1>
         <p className="text-slate-600">Sign in to continue your journey</p>
       </div>

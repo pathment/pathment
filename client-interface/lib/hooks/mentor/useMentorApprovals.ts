@@ -33,8 +33,26 @@ export interface ApprovalItem {
   menteeTimezone: string | null;
 }
 
+/** A task the mentor sent back for changes, awaiting the mentee's resubmission. */
+export interface ChangesRequestedItem {
+  taskId: string;
+  roadmapTaskId: string | null;
+  title: string;
+  type: string | null;
+  revisionCount: number;
+  /** 'changes' = changes requested, 'rejected' = rejected. Both await resubmission. */
+  decision: 'changes' | 'rejected';
+  revisionNotes: string | null;
+  feedbackText: string | null;
+  requestedAt: string;
+  dueDate: string | null;
+  isLate: boolean;
+  mentee: { id: string; name: string; avatar: string } | null;
+}
+
 export interface UseMentorApprovalsReturn {
   queue: ApprovalItem[];
+  changesRequested: ChangesRequestedItem[];
   loading: boolean;
   error: string | null;
   refetch: () => Promise<void>;
@@ -45,6 +63,7 @@ export interface UseMentorApprovalsReturn {
 
 export function useMentorApprovals(): UseMentorApprovalsReturn {
   const [queue, setQueue] = useState<ApprovalItem[]>([]);
+  const [changesRequested, setChangesRequested] = useState<ChangesRequestedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -52,8 +71,15 @@ export function useMentorApprovals(): UseMentorApprovalsReturn {
     try {
       setLoading(true);
       setError(null);
-      const res = await mentorApi.getApprovals();
+      // Load the review queue and the changes-requested list together. The
+      // changes-requested list is best-effort: a failure there must not blank
+      // the whole page.
+      const [res, changesRes] = await Promise.all([
+        mentorApi.getApprovals(),
+        mentorApi.getChangesRequested().catch(() => null),
+      ]);
       setQueue(res?.data?.queue ?? []);
+      setChangesRequested(changesRes?.data?.items ?? []);
     } catch {
       setError('Failed to load the approvals queue');
       setQueue([]);
@@ -81,5 +107,5 @@ export function useMentorApprovals(): UseMentorApprovalsReturn {
     fetchQueue();
   }, [fetchQueue]);
 
-  return { queue, loading, error, refetch: fetchQueue, bulkApprove, bulkReview, handleExtension };
+  return { queue, changesRequested, loading, error, refetch: fetchQueue, bulkApprove, bulkReview, handleExtension };
 }

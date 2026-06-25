@@ -161,24 +161,30 @@ export function useMentorTaskFeedback(taskId: string): UseMentorTaskFeedbackRetu
       }
 
       let hasError = false;
-      if (rating === 0) {
-        setRatingError('Please select a rating before submitting.');
-        hasError = true;
-      }
-      const plainText = feedbackText.replace(/<[^>]*>/g, '').trim();
-      if (!plainText) {
-        setFeedbackError('Feedback is required. Please describe your thoughts on the submission.');
-        hasError = true;
-      }
       if (!decision) {
         setDecisionError('Please select a decision (Approve or Request Revision).');
         hasError = true;
       }
-      if (decision === 'revision' && !revisionNotes.trim()) {
-        setRevisionError('Revision notes are required when requesting a revision.');
-        hasError = true;
+      // Requesting a revision: the Revision Notes ARE the description of what to
+      // fix, so that's the only required field — don't also force a rating or
+      // general feedback (those are for an approval). Approving: rating +
+      // feedback are required.
+      if (decision === 'revision') {
+        if (!revisionNotes.trim()) {
+          setRevisionError('Revision notes are required — tell the mentee what to fix.');
+          hasError = true;
+        }
       }
       if (decision === 'approve') {
+        if (rating === 0) {
+          setRatingError('Please select a rating before submitting.');
+          hasError = true;
+        }
+        const plainText = feedbackText.replace(/<[^>]*>/g, '').trim();
+        if (!plainText) {
+          setFeedbackError('Feedback is required. Please describe your thoughts on the submission.');
+          hasError = true;
+        }
         const maxPoints = task?.roadmapTask?.pointsBase ?? 10;
         if (pointsAwarded > maxPoints) {
           setPointsError(`Maximum points are ${maxPoints}.`);

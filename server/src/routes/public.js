@@ -20,6 +20,6 @@ router.post('/cohorts/:slug/apply', publicController.apply);
 // Applicant status + assessment (magic-link token)
 router.get('/applications/:token', publicController.getStatus);
 router.post('/applications/:token/assessment', publicController.submitAssessment);
-router.post('/applications/:token/upload', upload.single('file'), publicController.uploadFile);
+router.post('/applications/:token/upload', upload.singleSafe('file'), publicController.uploadFile);
 
 module.exports = router;

@@ -4,6 +4,7 @@ import { CheckCircle2, Clock, Award } from 'lucide-react';
 import { Drawer } from '@/components/shared/Drawer';
 import { ResourceLink } from '@/components/shared/ResourceLink';
 import type { LinearRoadmap } from '@/lib/hooks/mentor';
+import { pointsForDifficulty } from '@/lib/config/points';
 
 const TYPE_CLS = 'px-2 py-0.5 rounded bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-300 text-[11px] font-medium capitalize';
 const DIFF_CLS: Record<string, string> = {
@@ -35,13 +36,11 @@ export function RoadmapStepsDrawer({ roadmap, onClose }: { roadmap: LinearRoadma
                 ? <div className="prose prose-sm max-w-none dark:prose-invert text-slate-600 dark:text-slate-300 mt-2" dangerouslySetInnerHTML={{ __html: s.description }} />
                 : <p className="text-sm text-slate-600 mt-2 whitespace-pre-wrap">{s.description}</p>)}
 
-              {(s.effort || s.dueOffsetDays != null || s.pointsBase != null) && (
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs text-slate-500">
-                  {s.effort && <span className="inline-flex items-center gap-1"><Clock className="w-3.5 h-3.5" />effort {s.effort}</span>}
-                  {s.dueOffsetDays != null && <span>due +{s.dueOffsetDays}d</span>}
-                  {s.pointsBase != null && <span className="inline-flex items-center gap-1"><Award className="w-3.5 h-3.5" />{s.pointsBase} pts</span>}
-                </div>
-              )}
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs text-slate-500">
+                {s.effort && <span className="inline-flex items-center gap-1"><Clock className="w-3.5 h-3.5" />effort {s.effort}</span>}
+                {s.dueOffsetDays != null && <span>due +{s.dueOffsetDays}d</span>}
+                <span className="inline-flex items-center gap-1"><Award className="w-3.5 h-3.5" />{pointsForDifficulty(s.difficulty)} pts</span>
+              </div>
 
               {s.deliverable && (
                 <div className="mt-3 rounded-lg bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/30 px-3 py-2">

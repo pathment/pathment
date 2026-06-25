@@ -36,6 +36,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useMenteesList, MenteeListItem } from '@/lib/hooks/admin/useMenteesList';
+import { PausedMenteesPanel } from '@/components/mentor/PausedMenteesPanel';
 import { ReassignClanModal } from '@/components/admin/ReassignClanModal';
 import { EditUserDrawer } from '@/components/admin/EditUserDrawer';
 import { menteeApi } from '@/lib/services/mentee-api';
@@ -339,6 +340,9 @@ export default function AdminMenteesListPage() {
         backHref="/admin/dashboard"
         backLabel="Back to Dashboard"
       />
+
+      {/* Inactive mentees: suggested-to-pause queue + currently paused (org-wide). */}
+      <PausedMenteesPanel menteeBasePath="/admin/mentees" />
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

@@ -1,7 +1,7 @@
 'use client';
 
 import {
-  ClipboardCheck, Flag, Clock, TrendingUp, TrendingDown, Minus, ArrowUpRight, Users2, Trophy,
+ClipboardCheck, Flag, Clock, TrendingUp, TrendingDown, Minus, ArrowUpRight, Users2, Trophy, ListPlus, Inbox
 } from 'lucide-react';
 import { DualProgress } from '@/components/mentor/DualProgress';
 import { NudgeButton } from '@/components/mentor/NudgeButton';
@@ -62,8 +62,9 @@ function formatDateShort(timestamp: string | null | undefined): string {
 }
 
 // In-progress mentee card (existing rendering)
-function InProgressCard({ m, onOpen, showClan }: { m: CohortMentee; onOpen: () => void; showClan?: boolean }) {
+function InProgressCard({ m, onOpen, showClan, onAssign }: { m: CohortMentee; onOpen: () => void; showClan?: boolean; onAssign?: () => void }) {
   const risk = RISK_BADGE[m.risk];
+  const noTasks = m.taskCount === 0;
   return (
     <div
       role="button"
@@ -102,6 +103,11 @@ function InProgressCard({ m, onOpen, showClan }: { m: CohortMentee; onOpen: () =
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5">
+        {noTasks && (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-xs font-medium">
+            <Inbox className="w-3 h-3" />No tasks yet
+          </span>
+        )}
         {m.pendingApprovals > 0 && (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-brand-50 text-brand-700 text-xs font-medium">
             <ClipboardCheck className="w-3 h-3" />{m.pendingApprovals} to review
@@ -131,8 +137,23 @@ function InProgressCard({ m, onOpen, showClan }: { m: CohortMentee; onOpen: () =
         </div>
       )}
 
-      <div className="mt-3 flex items-center justify-end text-xs font-medium text-brand-600 opacity-0 group-hover:opacity-100 transition-opacity">
-        Open full story <ArrowUpRight className="ml-0.5 w-3.5 h-3.5" />
+      <div className="mt-3 flex items-center justify-between">
+        {onAssign ? (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onAssign(); }}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
+              noTasks
+                ? 'bg-brand-600 text-white hover:bg-brand-700'
+                : 'border border-slate-200 text-slate-600 hover:border-brand-300 hover:text-brand-700'
+            }`}
+          >
+            <ListPlus className="w-3.5 h-3.5" />Assign work
+          </button>
+        ) : <span />}
+        <span className="inline-flex items-center text-xs font-medium text-brand-600 opacity-0 group-hover:opacity-100 transition-opacity">
+          Open full story <ArrowUpRight className="ml-0.5 w-3.5 h-3.5" />
+        </span>
       </div>
     </div>
   );
@@ -270,12 +291,9 @@ function CompletionCard({
     </div>
   );
 }
-export function MenteeCard({ m, onOpen, showClan = false }: { m: CohortMentee; onOpen: () => void; showClan?: boolean }) {
-  // Render completion card variant if mentee has completed the program
+export function MenteeCard({ m, onOpen, showClan = false, onAssign }: { m: CohortMentee; onOpen: () => void; showClan?: boolean; onAssign?: () => void }) {
   if (m.isCompleted === true) {
     return <CompletionCard m={m} onOpen={onOpen} showClan={showClan} />;
   }
-
-  // Render standard in-progress card
-  return <InProgressCard m={m} onOpen={onOpen} showClan={showClan} />;
+  return <InProgressCard m={m} onOpen={onOpen} showClan={showClan} onAssign={onAssign} />;
 }

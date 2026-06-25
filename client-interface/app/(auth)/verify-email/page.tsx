@@ -79,9 +79,8 @@ export default function VerifyEmailPage() {
     <div className="space-y-6">
       {/* Logo */}
       <div className="text-center">
-        <div className="inline-flex items-center justify-center w-16 h-16 bg-brand-600 rounded-2xl mb-4">
-          <span className="text-white text-2xl">P</span>
-        </div>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/logo-tile.png" alt="Pathment" className="inline-block w-16 h-16 rounded-2xl shadow-sm mb-4" />
       </div>
 
       {/* Verification Card */}

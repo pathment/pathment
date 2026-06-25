@@ -120,6 +120,7 @@ class ClanService {
   }
 
   async getClanById(clanId) {
+    const { Op } = require('sequelize');
     const clan = await models.Clan.findByPk(clanId, {
       include: [
         { model: models.Program, as: 'program', attributes: ['id', 'name', 'status'] },
@@ -128,7 +129,9 @@ class ClanService {
           model: models.ClanMembership,
           as: 'memberships',
           required: false,
-          where: { status: 'active' },
+          // Include paused mentees too (they stay in the clan) so the admin can
+          // see and resume them here. The `status` field tells them apart.
+          where: { status: { [Op.in]: ['active', 'paused'] } },
           include: [{ model: models.User, as: 'user', attributes: ['id', 'firstName', 'lastName', 'email', 'profilePictureUrl', 'role'] }]
         }
       ]

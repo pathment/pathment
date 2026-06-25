@@ -6,6 +6,7 @@ const { NOTIFICATION_EVENTS } = require('../config/notificationMatrix');
 const { endOfDayInZone } = require('../utils/timezone');
 const authzService = require('./authzService');
 const { PERMISSIONS } = require('../config/permissions');
+const { pointsForDifficulty } = require('../config/points');
 
 /** Guess a resource's kind from its URL (mirrors the roadmap step normalizer). */
 function inferResourceType(url) {
@@ -65,7 +66,11 @@ function applyTaskOverrides(taskInstance) {
   const rmName = rt && rt.roadmap ? rt.roadmap.name : null;
   t.source = t.isCustomTask ? 'custom' : 'roadmap';
   t.roadmapName = t.isCustomTask ? null : rmName;
-  t.points = (t.pointsBase != null ? t.pointsBase : (rt ? rt.pointsBase : null)) ?? null;
+  // Effective points are STANDARD by difficulty (single source of truth). Fall
+  // back to a stored base only when difficulty isn't loaded.
+  t.points = rt?.difficulty != null
+    ? pointsForDifficulty(rt.difficulty)
+    : ((t.pointsBase != null ? t.pointsBase : (rt ? rt.pointsBase : null)) ?? null);
   return t;
 }
 
@@ -136,7 +141,8 @@ class TaskService {
         estimatedHours: 5,
         isMandatory: false,
         isCustomTask: true,
-        pointsBase: pointsBase || 10
+        // Standard points by difficulty (no hand-typed values).
+        pointsBase: pointsForDifficulty(difficulty || 'medium')
       });
 
       // Attach any learning resources (links) to the one-off task.
@@ -550,8 +556,8 @@ class TaskService {
 
     if (status === 'completed') {
       updateData.completedAt = new Date();
-      // Honour the per-assignment points first (custom / edited), then the step's.
-      updateData.pointsAwarded = pointsAwarded || task.pointsBase || task.roadmapTask?.pointsBase || 10;
+      // Standard points by difficulty (not chosen by the mentor).
+      updateData.pointsAwarded = pointsForDifficulty(task.roadmapTask?.difficulty);
     } else if (status === 'revision_needed') {
       updateData.revisionCount = task.revisionCount + 1;
     }
@@ -914,11 +920,8 @@ class TaskService {
         task[f] = (v === '' || v == null || (Array.isArray(v) && !v.length)) ? null : v;
       }
     }
-    // Editable points for this assignment.
-    if ('pointsBase' in data) {
-      const n = Number(data.pointsBase);
-      task.pointsBase = Number.isFinite(n) && n >= 0 ? Math.round(n) : null;
-    }
+    // Points are standardized by difficulty and not editable per assignment, so
+    // any incoming pointsBase is intentionally ignored here.
     if ('dueDate' in data && data.dueDate) {
       task.dueDate = await this._resolveDueDate(task.menteeId, data.dueDate);
     }

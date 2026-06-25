@@ -52,6 +52,8 @@ const getMenteeProfile = catchAsync(async (req, res) => {
   if (!profile) {
     return res.status(404).json({ success: false, message: 'Mentee not found', statusCode: 404 });
   }
+  // Pause state within the requester's clans (drives the Pause/Resume control).
+  try { profile.pauseState = await require('../services/mentorshipPauseService').menteeState(req.user, req.params.id); } catch { profile.pauseState = { paused: false, clanId: null }; }
   res.status(200).json(successResponse('Mentee profile retrieved', { profile }));
 });
 
@@ -62,6 +64,15 @@ const getMenteeProfile = catchAsync(async (req, res) => {
 const getApprovals = catchAsync(async (req, res) => {
   const queue = await submissionService.getMentorApprovalsQueue(req.user.id);
   res.status(200).json(successResponse('Approvals queue retrieved', { queue }));
+});
+
+/**
+ * GET /api/mentor/approvals/changes-requested
+ * Tasks the mentor sent back for changes that are awaiting a resubmission.
+ */
+const getChangesRequested = catchAsync(async (req, res) => {
+  const items = await submissionService.getMentorChangesRequestedQueue(req.user.id);
+  res.status(200).json(successResponse('Changes-requested queue retrieved', { items }));
 });
 
 /**
@@ -181,4 +192,4 @@ const getMenteeAttendanceHistory = catchAsync(async (req, res) => {
   res.status(200).json(successResponse('Attendance history', { history }));
 });
 
-module.exports = { getCohort, getCohortActivity, getCohortReportSummary, getMenteeProfile, getApprovals, bulkApprove, bulkReview, nudge, getMyProgress, updatePersonality, addInsight, logMeetingNote, addCollaborator, removeCollaborator, setAttendance, getReviewAttendance, getMenteeAttendanceHistory };
+module.exports = { getCohort, getCohortActivity, getCohortReportSummary, getMenteeProfile, getApprovals, getChangesRequested, bulkApprove, bulkReview, nudge, getMyProgress, updatePersonality, addInsight, logMeetingNote, addCollaborator, removeCollaborator, setAttendance, getReviewAttendance, getMenteeAttendanceHistory };

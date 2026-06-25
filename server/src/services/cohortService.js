@@ -72,6 +72,33 @@ class CohortService {
     return [...ids];
   }
 
+  /** Active mentee userIds in ONE clan (cohort-review is now clan-scoped). */
+  async resolveMenteeIdsForClan(clanId) {
+    if (!clanId) return [];
+    const memberships = await models.ClanMembership.findAll({
+      where: { clanId, status: 'active', role: 'mentee' },
+      attributes: ['userId'],
+    });
+    return [...new Set(memberships.map((m) => m.userId))];
+  }
+
+  /** Join date per mentee within ONE clan → Map(menteeId → Date). */
+  async menteeJoinDatesForClan(clanId) {
+    const map = new Map();
+    if (!clanId) return map;
+    const ms = await models.ClanMembership.findAll({
+      where: { clanId, role: 'mentee' },
+      attributes: ['userId', 'joinedAt'],
+    });
+    ms.forEach((m) => {
+      if (!m.userId || !m.joinedAt) return;
+      const dt = new Date(m.joinedAt);
+      const cur = map.get(m.userId);
+      if (!cur || dt < cur) map.set(m.userId, dt);
+    });
+    return map;
+  }
+
   /**
    * Earliest date each mentee entered THIS mentor's world (clan membership or a
    * 1:1 match). Cohort-review sessions dated before a mentee's join date should
@@ -311,7 +338,7 @@ class CohortService {
     const levelDisplay = currentLevel ? `Level ${currentLevel}` : '-';
     const tasksTotal = tasks.length;
     const tasksCompleted = tasks.filter((t) => t.status === 'completed').length;
-
+     const lastAttendance = await this._lastAttendance(menteeId);
     return {
       id: mentee.id,
       name: `${mentee.firstName} ${mentee.lastName}`.trim(),
@@ -334,6 +361,8 @@ class CohortService {
       avgRating: enrollment ? Number(enrollment.avgTaskRating) || 0 : 0,
       lastActive: lastActivityDate ? humanizeDays(lastActiveDays) : 'never',
       sentiment: 'neutral',
+      lastAttendance, // { status, date } | null — most recent review attendance
+      taskCount: tasks.length, // total assigned tasks — 0 = never been given work
       // Completion status fields (additive, safe for in-progress enrollments)
       enrollmentStatus,
       isCompleted,

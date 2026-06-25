@@ -21,7 +21,7 @@ router.get('/leaderboard', communityController.leaderboard);
 router.get('/feed', communityController.feed);
 
 // Attachments (images/files) for posts
-router.post('/upload', upload.array('files', 4), communityController.uploadAttachments);
+router.post('/upload', upload.arraySafe('files', 4), communityController.uploadAttachments);
 
 // Posts
 router.post('/posts', communityController.createPost);
