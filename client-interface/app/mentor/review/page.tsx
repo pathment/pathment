@@ -26,6 +26,7 @@ import { AssignTaskDrawer } from '@/components/mentor/AssignTaskDrawer';
 import { MenteeTaskDrawer } from '@/components/mentor/MenteeTaskDrawer';
 import { Drawer } from '@/components/shared/Drawer';
 import { useConfirm } from '@/lib/context/ConfirmContext';
+import { AttendanceSection } from '@/components/mentor/attendance/AttendanceSection';
 
 type Attendance = 'present' | 'absent' | 'excused';
 type EntryStatus = 'pending' | 'reviewed' | 'deferred';
@@ -104,6 +105,7 @@ export default function CohortReview() {
   // Extension request the mentor is reviewing (approve-with-adjust / decline).
   const [extReview, setExtReview] = useState<any>(null); // eslint-disable-line @typescript-eslint/no-explicit-any
   const [extDays, setExtDays] = useState(3);
+  const [isSavingAttendance, setIsSavingAttendance] = useState(false);
 
   const mentee: CohortMentee | undefined = cohort[idx];
   const menteeId = mentee?.id;
@@ -269,6 +271,43 @@ export default function CohortReview() {
       }
     } catch { toast.error('Could not save the review'); }
   }, [session, ensureSession]);
+
+  const patchMultipleEntries = useCallback(async (updates: Record<string, Attendance>) => {
+    if (!session) return;
+    setIsSavingAttendance(true);
+    try {
+      const changes = Object.entries(updates).filter(([mId, newAtt]) => {
+        const currentAtt = entriesByMentee[mId]?.attendance ?? null;
+        return currentAtt !== newAtt;
+      });
+
+      if (changes.length === 0) {
+        setIsSavingAttendance(false);
+        return;
+      }
+
+      const s = await ensureSession();
+      if (!s) throw new Error('Could not create session');
+
+      let newEntries = [...s.entries];
+      changes.forEach(([mId, newAtt]) => {
+        newEntries = upsert(newEntries, mId, { attendance: newAtt, status: 'reviewed' });
+      });
+      setSession({ ...s, entries: newEntries });
+
+      await Promise.all(
+        changes.map(([mId, newAtt]) =>
+          mentorApi.setReviewEntry(s.id, mId, { attendance: newAtt, status: 'reviewed' })
+        )
+      );
+
+      toast.success(`Attendance updated for ${changes.length} mentees`);
+    } catch (e) {
+      toast.error('Failed to save some attendance records');
+    } finally {
+      setIsSavingAttendance(false);
+    }
+  }, [session, entriesByMentee, ensureSession]);
 
   // Load open blockers + assigned tasks + the full profile (state/summary) for
   // the current mentee; reset state.
@@ -731,14 +770,15 @@ export default function CohortReview() {
         )}
       </div>
 
-      {/* Progress dots */}
-      <div className="flex flex-wrap items-center gap-1.5">
-        {cohort.map((m, i) => {
-          const a = attendance[m.id];
-          const cls = i === idx ? 'bg-slate-900' : a === 'present' ? 'bg-emerald-500' : a === 'absent' ? 'bg-red-500' : seen.has(m.id) ? 'bg-slate-400' : 'bg-slate-200';
-          return <button key={m.id} onClick={() => selectMentee(i)} title={m.name} className={`w-2.5 h-2.5 rounded-full ${cls}`} />;
-        })}
-      </div>
+      {/* Attendance Strip */}
+      <AttendanceSection
+        cohort={cohort}
+        attendance={attendance}
+        activeMenteeId={menteeId}
+        onSelectMentee={selectMentee}
+        onSaveAttendance={patchMultipleEntries}
+        isSaving={isSavingAttendance}
+      />
 
       {deferred.size > 0 && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 flex flex-wrap items-center gap-2 text-sm">
