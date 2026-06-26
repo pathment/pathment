@@ -10,6 +10,9 @@ const { authenticate, authorize } = require('../middlewares/auth');
 // Availability - mentor publishes / lists / removes bookable slots.
 router.post('/availability', authenticate, authorize(['mentor', 'admin']), schedulingController.publishSlot);
 router.get('/availability/mine', authenticate, authorize(['mentor', 'admin']), schedulingController.listMyAvailability);
+// Recurring weekly availability (set once, mentees book each week).
+router.get('/availability/rules', authenticate, authorize(['mentor', 'admin']), schedulingController.getRules);
+router.put('/availability/rules', authenticate, authorize(['mentor', 'admin']), schedulingController.saveRules);
 router.delete('/availability/:id', authenticate, authorize(['mentor', 'admin']), schedulingController.deleteSlot);
 
 // Open slots for a given mentor (mentee browsing to book).

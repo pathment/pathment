@@ -33,6 +33,11 @@ const resolveBlocker = catchAsync(async (req, res) => {
   res.status(200).json(successResponse('Blocker resolved', { blocker }));
 });
 
+const deleteBlocker = catchAsync(async (req, res) => {
+  const result = await frictionService.deleteBlocker(req.params.id, req.user);
+  res.status(200).json(successResponse('Blocker deleted', result));
+});
+
 // ── Delays ──────────────────────────────────────────────────────────────
 const listDelays = catchAsync(async (req, res) => {
   const delays = await frictionService.listDelays({ menteeId: resolveMenteeId(req) });
@@ -50,11 +55,18 @@ const acceptDelay = catchAsync(async (req, res) => {
   res.status(200).json(successResponse('Delay updated', { delay }));
 });
 
+const rejectDelay = catchAsync(async (req, res) => {
+  const result = await frictionService.rejectDelay(req.params.id);
+  res.status(200).json(successResponse('Delay rejected', result));
+});
+
 module.exports = {
   listBlockers,
   createBlocker,
   resolveBlocker,
+  deleteBlocker,
   listDelays,
   createDelay,
-  acceptDelay
+  acceptDelay,
+  rejectDelay
 };

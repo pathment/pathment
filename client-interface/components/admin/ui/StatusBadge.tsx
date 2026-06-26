@@ -70,9 +70,15 @@ export function StatusBadge({ status, config, noIcon = false }: StatusBadgeProps
   };
 
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium ${cfg.className}`}>
-      {!noIcon && cfg.icon}
-      {cfg.label}
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium shrink-0 max-w-full ${cfg.className}`}>
+      {!noIcon && cfg.icon && (
+        <span className="shrink-0 flex items-center">
+          {cfg.icon}
+        </span>
+      )}
+      <span className="truncate break-words whitespace-normal text-left">
+        {cfg.label}
+      </span>
     </span>
   );
 }

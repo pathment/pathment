@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { toast } from 'sonner';
-import { Bug, Lightbulb, MessageSquarePlus, Loader2, ExternalLink, Paperclip } from 'lucide-react';
+import { Bug, Lightbulb, MessageSquarePlus, Loader2, ExternalLink, Paperclip, Clipboard, ClipboardCheck } from 'lucide-react';
 import { PageHeader } from '@/components/admin/ui';
 import { Drawer } from '@/components/shared/Drawer';
 import { SelectMenu } from '@/components/shared/SelectMenu';
@@ -23,6 +23,37 @@ const STATUS_OPTS = [
 ];
 const TYPE_ICON: Record<string, typeof Bug> = { bug: Bug, suggestion: Lightbulb, other: MessageSquarePlus };
 
+/**
+ * Serialize every report into a clean, paste-friendly Markdown block — built so
+ * it can be handed to Claude for triage. Attachment URLs are emitted inline
+ * (they're public Cloudinary links), so screenshots/clips can be opened directly.
+ */
+function formatReportsForClipboard(reports: FeedbackReport[]): string {
+  const out: string[] = [
+    `# Pathment feedback export — ${reports.length} report${reports.length === 1 ? '' : 's'} (${new Date().toLocaleString()})`,
+    '',
+    '_Each "Attachment" is a public Cloudinary URL — open it to view the screenshot/clip._',
+    '',
+  ];
+  reports.forEach((r, i) => {
+    const who = r.reporter
+      ? `${r.reporter.name}${r.reporter.role ? ` (${r.reporter.role})` : ''}${r.reporter.email ? ` <${r.reporter.email}>` : ''}`
+      : 'Unknown';
+    out.push(`## ${i + 1}. [${(r.typeLabel || r.type).toUpperCase()}] ${r.title}`);
+    out.push(`- Status: ${r.statusLabel || r.status} · Priority: ${r.priority}`);
+    out.push(`- Reporter: ${who}`);
+    if (r.pageUrl) out.push(`- Page: ${r.pageUrl}`);
+    if (r.userAgent) out.push(`- Browser: ${r.userAgent}`);
+    out.push(`- Submitted: ${new Date(r.createdAt).toLocaleString()}`);
+    if (r.attachmentUrl) out.push(`- Attachment (${r.attachmentType || 'file'}): ${r.attachmentUrl}`);
+    out.push('- Description:');
+    out.push(r.description ? r.description.split('\n').map((l) => `  ${l}`).join('\n') : '  (none)');
+    if (r.resolutionNote) out.push(`- Admin reply so far: ${r.resolutionNote}`);
+    out.push('');
+  });
+  return out.join('\n').trim() + '\n';
+}
+
 export default function AdminFeedbackPage() {
   const [reports, setReports] = useState<FeedbackReport[]>([]);
   const [openCount, setOpenCount] = useState(0);
@@ -30,7 +61,26 @@ export default function AdminFeedbackPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
   const [selected, setSelected] = useState<FeedbackReport | null>(null);
+  const [copying, setCopying] = useState(false);
+  const [copied, setCopied] = useState(false);
   const pagination = usePagination({ initialPage: 1, initialLimit: 25 });
+
+  // Copy EVERY report (across all pages, ignoring the on-screen filters) as
+  // Markdown, so the full set can be pasted into Claude for triage in one go.
+  const copyAll = useCallback(async () => {
+    setCopying(true);
+    try {
+      const r = await feedbackApi.listAll({ page: 1, limit: 500 });
+      const all = r?.data?.reports ?? [];
+      if (all.length === 0) { toast.error('No feedback to copy'); return; }
+      await navigator.clipboard.writeText(formatReportsForClipboard(all));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+      toast.success(`Copied ${all.length} report${all.length === 1 ? '' : 's'} — paste it to Claude`);
+    } catch (e) {
+      toast.error(extractApiErrorMessage(e, 'Could not copy feedback'));
+    } finally { setCopying(false); }
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -59,6 +109,15 @@ export default function AdminFeedbackPage() {
           options={[{ value: 'all', label: 'All statuses' }, ...STATUS_OPTS]} />
         <SelectMenu value={typeFilter} onChange={setTypeFilter} ariaLabel="Filter by type" className="w-40"
           options={[{ value: 'all', label: 'All types' }, { value: 'bug', label: 'Bug' }, { value: 'suggestion', label: 'Suggestion' }, { value: 'other', label: 'Other' }]} />
+        <button
+          onClick={copyAll}
+          disabled={copying}
+          title="Copy all feedback (with attachment links) as Markdown to paste into Claude"
+          className="ml-auto inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-card px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-50"
+        >
+          {copying ? <Loader2 className="w-4 h-4 animate-spin" /> : copied ? <ClipboardCheck className="w-4 h-4 text-emerald-600" /> : <Clipboard className="w-4 h-4" />}
+          {copied ? 'Copied!' : 'Copy for review'}
+        </button>
       </div>
 
       {loading ? (

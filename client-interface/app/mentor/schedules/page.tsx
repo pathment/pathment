@@ -3,10 +3,10 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import {
-  CalendarClock, Plus, Trash2, Loader2, Check, X, Clock, User, LayoutGrid, Users, Route, Repeat, Download, Search, Pencil, FileJson,
+  CalendarClock, Plus, Trash2, Loader2, Check, X, Clock, User, LayoutGrid, Users, Route, Repeat, Download, Search, Pencil, FileJson, Copy, CalendarRange,
 } from 'lucide-react';
 import { useMentorSchedule, useScheduleTemplates, useMentorCohort, useMentorRoadmaps, type ScheduleTemplate } from '@/lib/hooks/mentor';
-import { meetingsApi } from '@/lib/services/meetings-api';
+import { meetingsApi, type AvailabilityRule } from '@/lib/services/meetings-api';
 import { scheduleApi, type ScheduleSlot } from '@/lib/services/schedule-api';
 import { Drawer } from '@/components/shared/Drawer';
 import { ScheduleJsonPanel } from '@/components/shared/ScheduleJsonPanel';
@@ -369,6 +369,131 @@ function FillTab() {
   );
 }
 
+// ───────────────────────── Weekly recurring availability ─────────────────────────
+// Monday-first display order, mapped to JS weekday numbers (0=Sun … 6=Sat).
+const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
+const DAY_LABEL: Record<number, string> = { 0: 'Sunday', 1: 'Monday', 2: 'Tuesday', 3: 'Wednesday', 4: 'Thursday', 5: 'Friday', 6: 'Saturday' };
+type TimeRange = { start: string; end: string };
+type DayHours = { enabled: boolean; ranges: TimeRange[] };
+const DEFAULT_RANGE = (): TimeRange => ({ start: '18:00', end: '21:00' });
+const emptyWeek = (): Record<number, DayHours> => {
+  const w: Record<number, DayHours> = {};
+  DAY_ORDER.forEach((d) => { w[d] = { enabled: false, ranges: [DEFAULT_RANGE()] }; });
+  return w;
+};
+
+function RecurringHoursEditor({ onSaved }: { onSaved: () => void }) {
+  const [week, setWeek] = useState<Record<number, DayHours>>(emptyWeek);
+  const [slotMins, setSlotMins] = useState(30);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    meetingsApi.getRules().then((r: any) => {
+      const rules: AvailabilityRule[] = r?.data?.rules ?? [];
+      const w = emptyWeek();
+      DAY_ORDER.forEach((d) => { w[d] = { enabled: false, ranges: [] }; });
+      rules.forEach((rule) => {
+        if (!w[rule.weekday]) w[rule.weekday] = { enabled: false, ranges: [] };
+        w[rule.weekday].enabled = true;
+        w[rule.weekday].ranges.push({ start: rule.startTime, end: rule.endTime });
+      });
+      DAY_ORDER.forEach((d) => { if (w[d].ranges.length === 0) w[d].ranges = [DEFAULT_RANGE()]; });
+      setWeek(w);
+      if (rules.length) setSlotMins(rules[0].slotMins || 30);
+    }).catch(() => {}).finally(() => setLoading(false));
+  }, []);
+
+  const toggle = (d: number) => setWeek((w) => ({ ...w, [d]: { ...w[d], enabled: !w[d].enabled } }));
+  const setRange = (d: number, i: number, key: keyof TimeRange, val: string) =>
+    setWeek((w) => ({ ...w, [d]: { ...w[d], ranges: w[d].ranges.map((r, idx) => (idx === i ? { ...r, [key]: val } : r)) } }));
+  const addRange = (d: number) => setWeek((w) => ({ ...w, [d]: { ...w[d], ranges: [...w[d].ranges, DEFAULT_RANGE()] } }));
+  const removeRange = (d: number, i: number) =>
+    setWeek((w) => { const ranges = w[d].ranges.filter((_, idx) => idx !== i); return { ...w, [d]: { ...w[d], ranges: ranges.length ? ranges : [DEFAULT_RANGE()] } }; });
+  const applyToAll = (d: number) =>
+    setWeek((w) => { const src = w[d].ranges; const next = { ...w }; DAY_ORDER.forEach((k) => { next[k] = { enabled: true, ranges: src.map((r) => ({ ...r })) }; }); return next; });
+
+  const save = async () => {
+    const rules: AvailabilityRule[] = [];
+    for (const d of DAY_ORDER) {
+      if (!week[d].enabled) continue;
+      for (const r of week[d].ranges) {
+        if (!r.start || !r.end) { toast.error(`Set both times on ${DAY_LABEL[d]}`); return; }
+        if (r.end <= r.start) { toast.error(`${DAY_LABEL[d]}: end time must be after start time`); return; }
+        rules.push({ weekday: d, startTime: r.start, endTime: r.end, slotMins });
+      }
+    }
+    try {
+      setSaving(true);
+      await meetingsApi.saveRules(rules, getBrowserTimeZone());
+      toast.success(rules.length ? 'Weekly hours saved — mentees can book these every week' : 'Weekly hours cleared');
+      onSaved();
+    } catch (e: any) { toast.error(e?.response?.data?.message || 'Could not save your weekly hours'); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <section className="bg-card rounded-2xl border border-slate-200 p-6 space-y-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-slate-900 font-medium flex items-center gap-2"><CalendarRange className="w-4 h-4 text-brand-500" />Weekly hours</h3>
+          <p className="text-sm text-slate-500 mt-0.5">Set the hours you&apos;re free each week once — they recur, and mentees can book a slot any week.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-slate-500">Slot length</label>
+          <select value={slotMins} onChange={(e) => setSlotMins(Number(e.target.value))} className={field}>
+            {DURATIONS.map((d) => <option key={d} value={d}>{d} min</option>)}
+          </select>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-brand-600" /></div>
+      ) : (
+        <div className="divide-y divide-slate-100">
+          {DAY_ORDER.map((d) => {
+            const day = week[d];
+            return (
+              <div key={d} className="py-3 flex flex-col sm:flex-row sm:items-start gap-3">
+                <label className="flex items-center gap-2.5 w-32 shrink-0 pt-1.5 cursor-pointer select-none">
+                  <input type="checkbox" checked={day.enabled} onChange={() => toggle(d)} className="w-4 h-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500" />
+                  <span className={`text-sm font-medium ${day.enabled ? 'text-slate-900' : 'text-slate-400'}`}>{DAY_LABEL[d]}</span>
+                </label>
+                {!day.enabled ? (
+                  <span className="text-sm text-slate-400 pt-1.5">Unavailable</span>
+                ) : (
+                  <div className="flex-1 space-y-2">
+                    {day.ranges.map((r, i) => (
+                      <div key={i} className="flex items-center gap-2 flex-wrap">
+                        <input type="time" value={r.start} onChange={(e) => setRange(d, i, 'start', e.target.value)} className={field} />
+                        <span className="text-slate-400 text-sm">–</span>
+                        <input type="time" value={r.end} onChange={(e) => setRange(d, i, 'end', e.target.value)} className={field} />
+                        <button onClick={() => addRange(d)} title="Add another range" className="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 text-slate-500 hover:border-brand-300 hover:text-brand-600"><Plus className="w-4 h-4" /></button>
+                        {day.ranges.length > 1 && (
+                          <button onClick={() => removeRange(d, i)} title="Remove this range" className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600"><X className="w-4 h-4" /></button>
+                        )}
+                        {i === 0 && (
+                          <button onClick={() => applyToAll(d)} title="Copy these hours to every day" className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium text-brand-600 hover:bg-brand-50"><Copy className="w-3.5 h-3.5" />Apply to all</button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="flex justify-end">
+        <button onClick={save} disabled={saving || loading} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium disabled:opacity-50">
+          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}Save weekly hours
+        </button>
+      </div>
+    </section>
+  );
+}
+
 // ───────────────────────── Availability tab (existing 1:1) ─────────────────────────
 function AvailabilityTab() {
   const { availability, meetings, loading, error, refetch } = useMentorSchedule();
@@ -409,8 +534,14 @@ function AvailabilityTab() {
 
   return (
     <div className="space-y-6">
+      {/* Recurring weekly hours — the primary way to set availability. */}
+      <RecurringHoursEditor onSaved={refetch} />
+
       <section className="bg-card rounded-2xl border border-slate-200 p-6 space-y-4">
-        <h3 className="text-slate-900 font-medium flex items-center gap-2"><CalendarClock className="w-4 h-4 text-brand-500" />My 1:1 availability</h3>
+        <div>
+          <h3 className="text-slate-900 font-medium flex items-center gap-2"><CalendarClock className="w-4 h-4 text-brand-500" />One-off slot</h3>
+          <p className="text-sm text-slate-500 mt-0.5">Need a single extra time outside your weekly hours? Add it here.</p>
+        </div>
         <div className="flex flex-wrap items-end gap-3">
           <div><label className="block text-xs text-slate-500 mb-1">Date</label><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={field} /></div>
           <div><label className="block text-xs text-slate-500 mb-1">Time</label><input value={time} onChange={(e) => setTime(e.target.value)} className={`${field} w-28`} /></div>

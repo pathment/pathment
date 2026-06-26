@@ -269,6 +269,18 @@ html[data-accent='graphite'] {
     text-wrap: balance;
   }
 
+  /* Hide the native scrollbar while keeping the element scrollable (touch /
+   * trackpad / arrow buttons still work). Tailwind v4 has no built-in for this,
+   * and the inline `scrollbar-width` style alone doesn't cover WebKit. Used by
+   * horizontal carousels (e.g. the cohort-review attendance strip). */
+  .scrollbar-hide {
+    scrollbar-width: none;          /* Firefox */
+    -ms-overflow-style: none;       /* old Edge / IE */
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;                  /* Chrome / Safari */
+  }
+
   /*
    * Frosted-glass surface for floating / elevated chrome — popovers, dropdown
    * menus, the ⌘K palette, drawers. Token-driven (uses --card / --border) so it

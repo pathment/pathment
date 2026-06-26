@@ -12,6 +12,7 @@ export const frictionApi = {
     assignedTaskId?: string;
   }) => apiClient.post('/blockers', data),
   resolveBlocker: (id: string) => apiClient.patch(`/blockers/${id}/resolve`, {}),
+  deleteBlocker: (id: string) => apiClient.delete(`/blockers/${id}`),
 
   listDelays: (menteeId?: string) => apiClient.get('/delays', { params: { menteeId } }),
   createDelay: (data: {
@@ -24,4 +25,6 @@ export const frictionApi = {
   }) => apiClient.post('/delays', data),
   acceptDelay: (id: string, accepted = true, category?: string) =>
     apiClient.patch(`/delays/${id}/accept`, { accepted, category }),
+  // Reject removes the delay (used to clear duplicate / bogus requests).
+  rejectDelay: (id: string) => apiClient.delete(`/delays/${id}`),
 };

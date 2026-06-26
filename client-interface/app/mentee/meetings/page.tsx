@@ -109,7 +109,7 @@ export default function MenteeMeetings() {
                           ) : open && (
                             <div className="mt-4 rounded-xl border border-slate-200 p-3">
                               <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-2">Pick a time {b.mentor.name.split(' ')[0]} is free</p>
-                              <div className="flex flex-wrap gap-2">
+                              <div className="flex flex-wrap gap-2 max-h-72 overflow-y-auto pr-1">
                                 {b.slots.map((s) => (
                                   <button key={s.id} onClick={() => { setBooking(s); setBookingMentor(b.mentor.name); setAgenda(''); }}
                                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-sm text-slate-700 hover:border-brand-400 hover:bg-brand-50 hover:text-brand-700 transition-colors">

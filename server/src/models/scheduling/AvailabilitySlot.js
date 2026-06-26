@@ -55,6 +55,14 @@ module.exports = (sequelize, DataTypes) => {
     timezone: {
       type: DataTypes.STRING(50),
       allowNull: true
+    },
+    // Set when this slot was generated from a recurring AvailabilityRule (vs a
+    // one-off slot the mentor published by hand). Lets us regenerate/clean up
+    // recurring slots without disturbing manual ones.
+    ruleId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      field: 'rule_id'
     }
   }, {
     tableName: 'availability_slots',

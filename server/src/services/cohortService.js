@@ -372,7 +372,8 @@ class CohortService {
       completedAt: isCompleted ? enrollment?.updatedAt : null,
       tasksTotal,
       tasksCompleted,
-      openBlockersCount: openBlockers
+      openBlockersCount: openBlockers,
+      sentiment: 'neutral',
     };
   }
 

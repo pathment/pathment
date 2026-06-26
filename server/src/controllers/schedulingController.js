@@ -18,6 +18,17 @@ const deleteSlot = catchAsync(async (req, res) => {
   res.status(200).json(successResponse('Slot removed', result));
 });
 
+// ── Recurring weekly availability (mentor) ─────────────────────────────────
+const getRules = catchAsync(async (req, res) => {
+  const rules = await schedulingService.getRules(req.user.id);
+  res.status(200).json(successResponse('Availability rules retrieved', { rules }));
+});
+
+const saveRules = catchAsync(async (req, res) => {
+  const rules = await schedulingService.setRules(req.user.id, req.body.rules, req.body.timezone);
+  res.status(200).json(successResponse('Weekly availability saved', { rules }));
+});
+
 // ── Booking (mentee) ──────────────────────────────────────────────────────
 const listOpenForMentor = catchAsync(async (req, res) => {
   const slots = await schedulingService.listOpenForMentor(req.query.mentorId);
@@ -47,5 +58,6 @@ const updateMeetingStatus = catchAsync(async (req, res) => {
 
 module.exports = {
   publishSlot, listMyAvailability, deleteSlot,
+  getRules, saveRules,
   listOpenForMentor, getBookable, bookSlot, listMeetings, updateMeetingStatus
 };

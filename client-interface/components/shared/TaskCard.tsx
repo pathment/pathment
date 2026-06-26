@@ -74,29 +74,31 @@ export function TaskCard({
       <div className="bg-card rounded-2xl border border-slate-200 p-6 hover:shadow-lg hover:shadow-slate-200/50 transition-shadow">
         {/* Header */}
         <div className="flex items-start justify-between gap-4 mb-4">
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap mb-2">
-              <h3 className="text-slate-900 font-medium">{title}</h3>
+              <h3 className="text-slate-900 font-medium break-words min-w-0 flex-1">{title}</h3>
               {isCustomTask ? (
-                <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-xs font-medium flex items-center gap-1">
-                  <Sparkles className="w-3 h-3" /> Custom
+                <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-xs font-medium flex items-center gap-1 shrink-0">
+                  <Sparkles className="w-3 h-3 shrink-0" /> Custom
                 </span>
               ) : (
-                <span className="px-2 py-0.5 bg-brand-100 text-brand-700 rounded text-xs font-medium flex items-center gap-1">
-                  <BookOpen className="w-3 h-3" /> Roadmap
+                <span className="px-2 py-0.5 bg-brand-100 text-brand-700 rounded text-xs font-medium flex items-center gap-1 shrink-0">
+                  <BookOpen className="w-3 h-3 shrink-0" /> Roadmap
                 </span>
               )}
               {priority && priorityStyle && (
-                <span className={`px-2 py-0.5 rounded text-xs font-medium ${priorityStyle.color}`}>
+                <span className={`px-2 py-0.5 rounded text-xs font-medium shrink-0 ${priorityStyle.color}`}>
                   {priorityStyle.label}
                 </span>
               )}
             </div>
             {description && (
-              <p className="text-slate-600 text-sm line-clamp-2 mb-3">{description}</p>
+              <p className="text-slate-600 text-sm line-clamp-2 mb-3 break-words">{description}</p>
             )}
           </div>
-          <StatusBadge status={status} />
+          <div className="shrink-0 max-w-full overflow-hidden">
+            <StatusBadge status={status} />
+          </div>
         </div>
 
         {/* Mentee/Mentor Info */}

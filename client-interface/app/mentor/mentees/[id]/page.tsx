@@ -7,10 +7,18 @@ import { toast } from 'sonner';
 import {
   BookOpen, Calendar, CalendarCheck, CheckCircle2, Clock, Mail, MessageSquare, Plus, PauseCircle, PlayCircle,
   Target, TrendingUp, TrendingDown, Minus, Flag, Check, User, Loader2,
-  Star, ThumbsUp, ThumbsDown, AlertCircle, ChevronLeft, Trophy, Users2,
+Star,
+ThumbsUp,
+ThumbsDown,
+AlertCircle,
+ChevronLeft,
+Trophy,
+Users2,
+Trash2,
 } from 'lucide-react';
 import { useMenteeDetailPage, useMenteeProfile, type CohortRisk, type CohortMomentum } from '@/lib/hooks/mentor';
 import { useAuth } from '@/lib/context/AuthContext';
+import { useConfirm } from '@/lib/context/ConfirmContext';
 import { useMenteeActivity } from '@/lib/hooks/mentor/useMenteeActivity';
 import { frictionApi } from '@/lib/services/friction-api';
 import { mentorApi } from '@/lib/services/mentor-api';
@@ -149,6 +157,7 @@ export default function MenteeDetail() {
 
   const { profile: insights, refetch: refetchProfile } = useMenteeProfile(menteeId);
   const { user } = useAuth();
+  const confirm = useConfirm();
   const selfName = `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || 'You';
   const [frictionBusy, setFrictionBusy] = useState<string | null>(null);
 
@@ -159,6 +168,23 @@ export default function MenteeDetail() {
       await refetchProfile();
       toast.success('Delay accepted - counted in their favour');
     } catch { toast.error('Could not update the delay'); }
+    finally { setFrictionBusy(null); }
+  };
+
+  const onRejectDelay = async (id: string) => {
+    const ok = await confirm({
+      title: 'Reject this delay?',
+      description: 'It will be removed from the list and earn no fairness credit. Use this to clear duplicate or invalid requests.',
+      confirmLabel: 'Reject',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    try {
+      setFrictionBusy(id);
+      await frictionApi.rejectDelay(id);
+      await refetchProfile();
+      toast.success('Delay rejected and removed');
+    } catch { toast.error('Could not reject the delay'); }
     finally { setFrictionBusy(null); }
   };
 
@@ -634,16 +660,26 @@ export default function MenteeDetail() {
                         </div>
                         {d.aiRationale && <p className="text-xs text-slate-400 mt-1">{d.aiRationale}</p>}
                       </div>
-                      {d.accepted ? (
-                        <span className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-emerald-700 bg-emerald-50 rounded-lg">
-                          <Check className="w-3 h-3" />Accepted
-                        </span>
-                      ) : (
-                        <button onClick={() => onAcceptDelay(d.id)} disabled={frictionBusy === d.id}
-                          className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-brand-700 bg-brand-50 hover:bg-brand-100 rounded-lg disabled:opacity-50">
-                          {frictionBusy === d.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}Accept
-                        </button>
-                      )}
+                      <div className="shrink-0 flex items-center gap-1.5">
+                        {d.accepted ? (
+                          // Accepted = credited toward fair progress, so it's locked (no reject).
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-emerald-700 bg-emerald-50 rounded-lg">
+                            <Check className="w-3 h-3" />Accepted
+                          </span>
+                        ) : (
+                          <>
+                            <button onClick={() => onAcceptDelay(d.id)} disabled={frictionBusy === d.id}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-brand-700 bg-brand-50 hover:bg-brand-100 rounded-lg disabled:opacity-50">
+                              {frictionBusy === d.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}Accept
+                            </button>
+                            <button onClick={() => onRejectDelay(d.id)} disabled={frictionBusy === d.id}
+                              title="Reject and remove this pending delay" aria-label="Reject delay"
+                              className="grid h-7 w-7 place-items-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
