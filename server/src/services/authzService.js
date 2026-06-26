@@ -358,22 +358,29 @@ class AuthzService {
     const MENTOR_CLAN_ROLES = ['lead_mentor', 'co_mentor', 'core_team'];
     const set = new Set();
 
-    const memberships = await models.ClanMembership.findAll({
-      where: { userId, status: 'active', role: { [Op.in]: MENTOR_CLAN_ROLES } }, attributes: ['clanId'],
-    });
-    memberships.forEach((m) => m.clanId && set.add(m.clanId));
-
-    const grants = await models.RoleAssignment.findAll({
-      where: { userId, scopeType: 'clan', role: { [Op.in]: MENTOR_CLAN_ROLES } }, attributes: ['scopeId'],
-    });
-    grants.forEach((g) => g.scopeId && set.add(g.scopeId));
+    const tasks = [
+      models.ClanMembership.findAll({
+        where: { userId, status: 'active', role: { [Op.in]: MENTOR_CLAN_ROLES } }, attributes: ['clanId'],
+      }),
+      models.RoleAssignment.findAll({
+        where: { userId, scopeType: 'clan', role: { [Op.in]: MENTOR_CLAN_ROLES } }, attributes: ['scopeId'],
+      })
+    ];
 
     if (models.CrossClanAssignment) {
-      const cover = await models.CrossClanAssignment.findAll({
-        where: { userId, status: 'active' }, attributes: ['toClanId'],
-      });
-      cover.forEach((c) => c.toClanId && set.add(c.toClanId));
+      tasks.push(
+        models.CrossClanAssignment.findAll({
+          where: { userId, status: 'active' }, attributes: ['toClanId'],
+        })
+      );
     }
+
+    const [memberships, grants, cover] = await Promise.all(tasks);
+
+    memberships.forEach((m) => m.clanId && set.add(m.clanId));
+    grants.forEach((g) => g.scopeId && set.add(g.scopeId));
+    if (cover) cover.forEach((c) => c.toClanId && set.add(c.toClanId));
+
     return [...set];
   }
 
