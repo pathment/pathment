@@ -10,6 +10,7 @@ import {
 import { useMentorApprovals, type ApprovalItem } from '@/lib/hooks/mentor';
 import { ReviewDrawer } from '@/components/mentor/ReviewDrawer';
 import { BulkReviewDrawer } from '@/components/mentor/BulkReviewDrawer';
+import { Avatar } from '@/components/shared/Avatar';
 import { TablePagination } from '@/components/shared/TablePagination';
 import { usePagination } from '@/lib/hooks/shared/usePagination';
 import { todayInZone, dateInZone, addDaysToDateStr, zoneLabel } from '@/lib/utils/datetime';
@@ -625,12 +626,13 @@ export default function MentorApprovals() {
                 <div className="bg-card rounded-2xl border border-slate-200 divide-y divide-slate-100">
                   {pagedReviewed.map((item) => (
                     <div key={item.taskId} className="flex items-start gap-4 px-5 py-4">
-                      <div className="w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center shrink-0 overflow-hidden">
-                        {item.mentee?.profilePictureUrl
-                          // eslint-disable-next-line @next/next/no-img-element
-                          ? <img src={item.mentee.profilePictureUrl} alt={item.mentee.name} className="w-9 h-9 object-cover" />
-                          : <span className="text-emerald-700 text-xs font-medium">{item.mentee?.avatar}</span>}
-                      </div>
+                      <Avatar
+                        name={item.mentee?.name}
+                        src={item.mentee?.profilePictureUrl}
+                        initials={item.mentee?.avatar}
+                        size="md"
+                        href={item.mentee?.id ? `/mentor/mentees/${item.mentee.id}` : undefined}
+                      />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
                           <p className="text-sm font-medium text-slate-900 truncate">{item.title}</p>
