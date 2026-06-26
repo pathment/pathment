@@ -69,6 +69,8 @@ const columns: DataTableColumn<MenteeListItem>[] = [
           firstName={row.firstName}
           lastName={row.lastName}
           email={row.email}
+          src={row.profilePictureUrl}
+          href={`/admin/mentees/${row.id}`}
           colorClass="bg-brand-100 text-brand-700"
         />
         {row.status === 'suspended' && (

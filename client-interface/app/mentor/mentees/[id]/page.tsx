@@ -26,6 +26,7 @@ import { NudgeButton } from '@/components/mentor/NudgeButton';
 import { CollaboratorsCard } from '@/components/mentor/CollaboratorsCard';
 import { TracksPanel } from '@/components/mentor/TracksPanel';
 import { Drawer } from '@/components/shared/Drawer';
+import { Avatar } from '@/components/shared/Avatar';
 
 // ── Small presentational helpers (current indigo/slate design system) ────────
 const RISK_PILL: Record<CohortRisk, { label: string; className: string; dot: string }> = {
@@ -253,11 +254,11 @@ export default function MenteeDetail() {
         </Link>
         <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
           <div className="flex items-start gap-4">
-            <div className="w-16 h-16 bg-brand-100 rounded-full flex items-center justify-center shrink-0">
-              <span className="text-brand-700 text-xl font-semibold">
-                {mentee?.firstName?.[0]}{mentee?.lastName?.[0]}
-              </span>
-            </div>
+            <Avatar
+              name={`${mentee?.firstName ?? ''} ${mentee?.lastName ?? ''}`.trim()}
+              src={(mentee as { profilePictureUrl?: string | null })?.profilePictureUrl}
+              size="lg"
+            />
             <div>
               <div className="flex items-center gap-3 flex-wrap">
                 <h1 className="text-slate-900">{mentee?.firstName} {mentee?.lastName}</h1>

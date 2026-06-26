@@ -29,7 +29,7 @@ export interface CommunityPost {
   resolved: boolean;
   acceptedCommentId: string | null;
   commentCount: number;
-  author: { id: string; name: string; avatar: string };
+  author: { id: string; name: string; avatar: string; avatarUrl?: string | null };
   recipient: { id: string; name: string } | null;
   reactions: Record<ReactionType, number>;
   myReactions: ReactionType[];
@@ -44,14 +44,14 @@ export interface CommunityComment {
   at: string;
   editedAt: string | null;
   accepted: boolean;
-  author: { id: string; name: string; avatar: string };
+  author: { id: string; name: string; avatar: string; avatarUrl?: string | null };
   mine: boolean;
 }
 
 export interface CommunityStats { given: number; cheersReceived: number; posts: number; openQuestions: number }
 export interface CommunityPerson { id: string; name: string }
-export interface CommunityMember { id: string; name: string; avatar: string; role: string }
-export interface LeaderboardEntry { rank: number; userId: string; name: string; avatar?: string; points: number; tier: string; mine?: boolean }
+export interface CommunityMember { id: string; name: string; avatar: string; avatarUrl?: string | null; role: string }
+export interface LeaderboardEntry { rank: number; userId: string; name: string; avatar?: string; avatarUrl?: string | null; points: number; tier: string; mine?: boolean }
 export interface LeaderboardSelf { rank: number | null; userId: string; name: string; points: number; tier: string }
 
 export function useCommunityHub() {

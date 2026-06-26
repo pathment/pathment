@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useMenteeProfile } from '@/lib/hooks/admin';
 import { StatsCard, PageHeader } from '@/components/admin/ui';
+import { Avatar } from '@/components/shared/Avatar';
 import { MenteePauseButton } from '@/components/mentor/MenteePauseButton';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -84,7 +85,6 @@ export default function AdminMenteeProfilePage() {
   }
 
   const mp = mentee.menteeProfile;
-  const initials = initialsOf(mentee.firstName, mentee.lastName);
   const overallProgress = stats?.overallProgress ?? 0;
   const points = stats?.points ?? mp?.totalPoints ?? 0;
   const tasksCompleted = stats?.tasksCompleted ?? mp?.totalTasksCompleted ?? 0;
@@ -107,8 +107,8 @@ export default function AdminMenteeProfilePage() {
           {/* Identity card */}
           <div className="bg-card rounded-2xl border border-slate-200 p-6">
             <div className="flex flex-col items-center text-center mb-5">
-              <div className="w-20 h-20 bg-brand-100 text-brand-700 rounded-full flex items-center justify-center text-2xl font-bold mb-4">
-                {initials}
+              <div className="mb-4">
+                <Avatar name={`${mentee.firstName} ${mentee.lastName}`} src={(mentee as { profilePictureUrl?: string | null }).profilePictureUrl} size="xl" />
               </div>
               <p className="text-xl font-bold text-slate-900">{mentee.firstName} {mentee.lastName}</p>
               {(mp?.currentOccupation || mp?.currentEducation) && (
@@ -159,9 +159,7 @@ export default function AdminMenteeProfilePage() {
                 href={`/admin/mentors/${assignedMentor.id}`}
                 className="flex items-center gap-3 group"
               >
-                <div className="w-10 h-10 bg-purple-100 text-purple-700 rounded-full flex items-center justify-center text-sm font-semibold shrink-0">
-                  {initialsOf(assignedMentor.firstName, assignedMentor.lastName)}
-                </div>
+                <Avatar name={`${assignedMentor.firstName} ${assignedMentor.lastName}`} src={assignedMentor.profilePictureUrl} size="md" />
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-slate-900 group-hover:text-brand-600 truncate">
                     {assignedMentor.firstName} {assignedMentor.lastName}
@@ -183,9 +181,7 @@ export default function AdminMenteeProfilePage() {
                       href={`/admin/mentors/${cm.id}`}
                       className="flex items-center gap-2 text-sm text-slate-600 hover:text-brand-600"
                     >
-                      <div className="w-7 h-7 bg-slate-200 text-slate-600 rounded-full flex items-center justify-center text-[11px] font-semibold shrink-0">
-                        {initialsOf(cm.firstName, cm.lastName)}
-                      </div>
+                      <Avatar name={`${cm.firstName} ${cm.lastName}`} src={cm.profilePictureUrl} size="sm" />
                       <span className="truncate">{cm.firstName} {cm.lastName}</span>
                     </Link>
                   ))}

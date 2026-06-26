@@ -152,7 +152,7 @@ const columns: DataTableColumn<Enrollment>[] = [
     key: 'mentee',
     label: 'Mentee',
     render: (_, row) => (
-      <AvatarWithInitials firstName={row.mentee?.firstName} lastName={row.mentee?.lastName} email={row.mentee?.email} />
+      <AvatarWithInitials firstName={row.mentee?.firstName} lastName={row.mentee?.lastName} email={row.mentee?.email} src={row.mentee?.profilePictureUrl} href={row.mentee?.id ? `/admin/mentees/${row.mentee.id}` : undefined} />
     ),
   },
   {
@@ -161,7 +161,7 @@ const columns: DataTableColumn<Enrollment>[] = [
     render: (_, row) => {
       const mentor = row.matches?.[0]?.mentor;
       return mentor ? (
-        <AvatarWithInitials firstName={mentor.firstName} lastName={mentor.lastName} email={mentor.email} colorClass="bg-purple-100 text-purple-700" />
+        <AvatarWithInitials firstName={mentor.firstName} lastName={mentor.lastName} email={mentor.email} src={mentor.profilePictureUrl} href={mentor.id ? `/admin/mentors/${mentor.id}` : undefined} colorClass="bg-purple-100 text-purple-700" />
       ) : (
         <span className="text-slate-400 text-sm">Not assigned</span>
       );

@@ -15,6 +15,7 @@ import { PageHeader, TabBar } from '@/components/admin/ui';
 import SecurityTab from '@/components/shared/SecurityTab';
 import { LocationDetailsFields } from '@/components/settings/LocationDetailsFields';
 import { SkillsTab } from '@/components/settings/SkillsTab';
+import { ProfilePhotoField } from '@/components/settings/ProfilePhotoField';
 import { AppearanceTab } from '@/components/settings/AppearanceTab';
 import { NotificationPreferencesTab } from '@/components/settings/NotificationPreferencesTab';
 import type { Tab } from '@/components/admin/ui';
@@ -74,6 +75,7 @@ export default function MenteeSettings() {
           {/* Profile Tab */}
           {activeTab === 'profile' && (
             <div className="space-y-6">
+              <ProfilePhotoField />
               <h2 className="text-slate-900">Personal Information</h2>
               
               <div className="grid md:grid-cols-2 gap-6">

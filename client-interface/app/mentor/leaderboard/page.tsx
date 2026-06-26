@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import Link from 'next/link';
 import { Trophy, Loader2, Award, TrendingUp, TrendingDown, Minus, Crown, Info } from 'lucide-react';
 import { useMentorCohort, type CohortMentee, type CohortMomentum } from '@/lib/hooks/mentor';
 
@@ -137,7 +138,7 @@ export default function MentorLeaderboard() {
               return (
                 <div key={m.id} className={`flex items-center gap-3 px-4 py-3 ${i < 3 ? 'bg-slate-50/40' : ''}`}>
                   <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold tabular-nums shrink-0 ${rs.ring}`}>{i + 1}</span>
-                  <Avatar m={m} />
+                  <Link href={`/mentor/mentees/${m.id}`} className="shrink-0 rounded-full transition-opacity hover:opacity-90"><Avatar m={m} /></Link>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-sm font-medium text-slate-900 truncate">{m.name}</p>

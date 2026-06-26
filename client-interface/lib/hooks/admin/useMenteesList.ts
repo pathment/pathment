@@ -14,6 +14,7 @@ export interface MenteeListItem {
   email: string;
   status: string;
   createdAt: string;
+  profilePictureUrl?: string | null;
   /** The mentee's current clan placement (for the "move clan" action). */
   currentClan?: { id: string; name: string; programId: string } | null;
   menteeProfile?: {

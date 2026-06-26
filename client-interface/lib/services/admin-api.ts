@@ -6,6 +6,7 @@ export interface AdminPromotionCandidate {
   stage: 'nominated' | 'interview' | 'approved' | 'promoted' | 'rejected';
   name: string;
   avatar: string;
+  avatarUrl?: string | null;
   program: string | null;
   level: string | null;
   absoluteProgress: number;

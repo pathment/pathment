@@ -64,6 +64,8 @@ const columns: DataTableColumn<MentorListItem>[] = [
           firstName={row.firstName}
           lastName={row.lastName}
           email={row.email}
+          src={row.profilePictureUrl}
+          href={`/admin/mentors/${row.id}`}
           colorClass="bg-purple-100 text-purple-700"
         />
         {row.status === 'suspended' && (

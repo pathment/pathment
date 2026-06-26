@@ -34,7 +34,7 @@ export interface MentorSkill {
 
 export interface MentorActiveMatch {
   id: string;
-  mentee?: { id: string; firstName: string; lastName: string; email: string };
+  mentee?: { id: string; firstName: string; lastName: string; email: string; profilePictureUrl?: string | null };
   enrollment?: {
     id: string;
     status: string;

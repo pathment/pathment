@@ -13,6 +13,8 @@ export interface User {
   clanMemberships?: ClanMembership[];
   firstName: string;
   lastName: string;
+  /** Profile photo URL (Cloudinary). Required for mentors/mentees via the gate. */
+  profilePictureUrl?: string | null;
   isVerified: boolean;
   /** Onboarding state (mirrors the server User model). */
   profileCompleted?: boolean;

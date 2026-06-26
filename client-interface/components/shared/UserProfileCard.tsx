@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/context/AuthContext';
 import { Shield, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import securityService, { TwoFactorStatus } from '@/lib/services/security-api';
+import { Avatar } from '@/components/shared/Avatar';
 
 export function UserProfileCard() {
   const { user, requiresTwoFactor } = useAuth();
@@ -43,14 +44,21 @@ export function UserProfileCard() {
       <div className="p-4 bg-gradient-to-br from-slate-50 to-slate-100 rounded-lg border border-slate-200 hover:border-slate-300 hover:shadow-sm transition-all cursor-pointer group">
         {/* User Info */}
         <div className="flex items-start justify-between gap-3">
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-slate-900 truncate">
-              {user.firstName && user.lastName 
-                ? `${user.firstName} ${user.lastName}`
-                : user.email}
-            </p>
-            <p className="text-xs text-slate-600 truncate">{user.email}</p>
-            <p className="text-xs text-slate-500 mt-1 capitalize">{user.role}</p>
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            <Avatar
+              name={`${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || user.email}
+              src={user.profilePictureUrl}
+              size="md"
+            />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-slate-900 truncate">
+                {user.firstName && user.lastName
+                  ? `${user.firstName} ${user.lastName}`
+                  : user.email}
+              </p>
+              <p className="text-xs text-slate-600 truncate">{user.email}</p>
+              <p className="text-xs text-slate-500 mt-0.5 capitalize">{user.role}</p>
+            </div>
           </div>
           
           {/* 2FA Badge */}
