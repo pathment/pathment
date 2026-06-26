@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { toast } from 'sonner';
 import {
   ClipboardCheck, CheckCircle2, Clock, Loader2, ChevronRight, CalendarClock, Check, X,
-  Search, ArrowDownUp, Layers, RotateCcw, ArrowUpRight, XCircle,
+  Search, ArrowDownUp, Layers, RotateCcw, ArrowUpRight, XCircle, Star,
 } from 'lucide-react';
 import { useMentorApprovals, type ApprovalItem } from '@/lib/hooks/mentor';
 import { ReviewDrawer } from '@/components/mentor/ReviewDrawer';
@@ -30,10 +30,10 @@ function waitingDays(iso: string): number {
   return Math.floor((Date.now() - d) / 86400000);
 }
 
-type Tab = 'review' | 'changes' | 'extensions';
+type Tab = 'review' | 'changes' | 'extensions' | 'reviewed';
 
 export default function MentorApprovals() {
-  const { queue, changesRequested, loading, error, refetch, bulkReview, handleExtension } = useMentorApprovals();
+  const { queue, changesRequested, reviewed, loading, error, refetch, bulkReview, handleExtension } = useMentorApprovals();
   const [tab, setTab] = useState<Tab>('review');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [reviewing, setReviewing] = useState<ApprovalItem | null>(null);
@@ -186,6 +186,7 @@ export default function MentorApprovals() {
     { key: 'review', label: 'To review', count: reviewItems.length },
     { key: 'changes', label: 'Sent back', count: changesRequested.length },
     { key: 'extensions', label: 'Extension requests', count: extensionItems.length },
+    { key: 'reviewed', label: 'Reviewed', count: reviewed.length },
   ];
 
   // A single waiting-age badge, amber once a submission has waited >= 3 days.
@@ -535,6 +536,58 @@ export default function MentorApprovals() {
             </div>
           )}
         </>
+      ) : tab === 'reviewed' ? (
+        /* ── Reviewed (approved history, with the score you gave) ─── */
+        reviewed.length === 0 ? (
+          <div className="bg-card rounded-2xl border border-slate-200 py-16 text-center">
+            <CheckCircle2 className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+            <p className="text-slate-600">Nothing reviewed yet.</p>
+            <p className="text-slate-400 text-sm mt-1">Tasks you approve show up here with the points and rating you gave.</p>
+          </div>
+        ) : (
+          <div className="bg-card rounded-2xl border border-slate-200 divide-y divide-slate-100">
+            {reviewed.map((item) => (
+              <div key={item.taskId} className="flex items-start gap-4 px-5 py-4">
+                <div className="w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center shrink-0 overflow-hidden">
+                  {item.mentee?.profilePictureUrl
+                    // eslint-disable-next-line @next/next/no-img-element
+                    ? <img src={item.mentee.profilePictureUrl} alt={item.mentee.name} className="w-9 h-9 object-cover" />
+                    : <span className="text-emerald-700 text-xs font-medium">{item.mentee?.avatar}</span>}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="text-sm font-medium text-slate-900 truncate">{item.title}</p>
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[11px]"><Check className="w-3 h-3" />approved</span>
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[11px] tabular-nums">{item.pointsAwarded}/{item.maxPoints} pts</span>
+                    {item.rating != null && (
+                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[11px]"><Star className="w-3 h-3 fill-amber-400 text-amber-400" />{item.rating}/5</span>
+                    )}
+                    {item.isLate && (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-red-50 text-red-700 text-[11px]"><Clock className="w-3 h-3" />late</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 mt-0.5 text-xs text-slate-500 flex-wrap">
+                    <span>{item.mentee?.name}</span>
+                    {item.type && (<><span className="text-slate-300">·</span><span className="capitalize">{item.type}</span></>)}
+                    <span className="text-slate-300">·</span>
+                    <span>approved {timeAgo(item.reviewedAt)}</span>
+                  </div>
+                  {item.feedbackText && (
+                    <p className="mt-2 text-sm text-slate-600 bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">
+                      <span className="text-slate-400">Your note: </span>{item.feedbackText}
+                    </p>
+                  )}
+                </div>
+                <Link
+                  href={`/mentor/tasks/${item.taskId}`}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 text-sm text-slate-700 hover:border-brand-300 hover:text-brand-700 shrink-0"
+                >
+                  View task <ArrowUpRight className="w-3.5 h-3.5" />
+                </Link>
+              </div>
+            ))}
+          </div>
+        )
       ) : (
         /* ── Extension requests ──────────────────────────────────── */
         extensionItems.length === 0 ? (
