@@ -217,6 +217,10 @@ function IntakePanel({ cohortId, cohort, onChange }: { cohortId: string; cohort:
   const [builderTarget, setBuilderTarget] = useState<string | null>(null);
 
   const tz = getBrowserTimeZone();
+  // Today (local) as YYYY-MM-DD — the floor for the apply window. You can't open
+  // applications in the past, and close must be today-or-later and on/after open.
+  const todayStr = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
+  const closesMin = [opensDate, todayStr].filter(Boolean).sort().pop() as string;
   const levelOptions = normLevels(levelLabels);
   const publishedAssessments = assessments.filter((a) => a.status === 'published');
   const titleById = (id: string) => assessments.find((a) => a.id === id)?.title || 'assessment';
@@ -261,6 +265,11 @@ function IntakePanel({ cohortId, cohort, onChange }: { cohortId: string; cohort:
     setPool((prev) => prev.map((row, idx) => (idx === i ? { ...row, ...patch } : row)));
 
   const saveSettings = async () => {
+    // Apply window must be today-or-later, and close on/after open (the date
+    // inputs also enforce this, but a typed value could slip past the picker).
+    if (opensDate && opensDate < todayStr) { toast.error('Apply opens can’t be in the past'); return; }
+    if (closesDate && closesDate < todayStr) { toast.error('Apply closes can’t be in the past'); return; }
+    if (opensDate && closesDate && closesDate < opensDate) { toast.error('Apply closes must be on or after Apply opens'); return; }
     setBusy(true);
     try {
       await cohortApi.update(cohortId, {
@@ -372,11 +381,11 @@ function IntakePanel({ cohortId, cohort, onChange }: { cohortId: string; cohort:
         <div className="grid sm:grid-cols-2 gap-4 pt-3">
           <div>
             <label className="block text-xs font-medium text-slate-500 mb-1">Apply opens</label>
-            <input type="date" value={opensDate} onChange={(e) => setOpensDate(e.target.value)} className={`${field} [color-scheme:light] dark:[color-scheme:dark]`} />
+            <input type="date" min={todayStr} value={opensDate} onChange={(e) => setOpensDate(e.target.value)} className={`${field} [color-scheme:light] dark:[color-scheme:dark]`} />
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-500 mb-1">Apply closes</label>
-            <input type="date" value={closesDate} onChange={(e) => setClosesDate(e.target.value)} className={`${field} [color-scheme:light] dark:[color-scheme:dark]`} />
+            <input type="date" min={closesMin} value={closesDate} onChange={(e) => setClosesDate(e.target.value)} className={`${field} [color-scheme:light] dark:[color-scheme:dark]`} />
           </div>
         </div>
         <p className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-slate-400"><CalendarRange className="w-3 h-3" /> Closes at end-of-day in <strong className="font-medium">{tz}</strong>.</p>
