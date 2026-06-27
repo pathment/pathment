@@ -7,6 +7,7 @@ import { ArrowLeft, CheckCircle2, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { publicApi, type ApplyInfo } from '@/lib/services/public-api';
+import { validateIntakeValue } from '@/lib/config/intakeFields';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 
 const CLOSED_COPY: Record<string, string> = {
@@ -29,6 +30,23 @@ export default function ApplyPage() {
   const [done, setDone] = useState<{ statusToken: string; requiresAssessment: boolean } | null>(null);
 
   const [form, setForm] = useState<Record<string, string>>({ firstName: '', lastName: '', email: '', phone: '' });
+  const [level, setLevel] = useState('');
+
+  // "Already applied? Continue" — re-issue the magic link by email.
+  const [resumeOpen, setResumeOpen] = useState(false);
+  const [resumeEmail, setResumeEmail] = useState('');
+  const [resumeMsg, setResumeMsg] = useState('');
+  const [resumeBusy, setResumeBusy] = useState(false);
+  const submitResume = async () => {
+    if (!resumeEmail.trim()) { toast.error('Enter your email'); return; }
+    setResumeBusy(true);
+    try {
+      const r = await publicApi.resume(slug, resumeEmail.trim());
+      setResumeMsg(r?.message || 'If an application exists for that email, we\'ve sent a link to continue.');
+    } catch {
+      setResumeMsg('If an application exists for that email, we\'ve sent a link to continue.');
+    } finally { setResumeBusy(false); }
+  };
 
   useEffect(() => {
     if (!slug) return;
@@ -43,8 +61,16 @@ export default function ApplyPage() {
 
   const handleSubmit = async () => {
     if (!info) return;
+    if (!form.firstName.trim() || !form.lastName.trim()) {
+      toast.error('Please enter your first and last name');
+      return;
+    }
     if (!form.email.trim()) {
       toast.error('Please enter your email');
+      return;
+    }
+    if ((info.levels?.length ?? 0) > 0 && !level) {
+      toast.error('Please select your level');
       return;
     }
     // Collect configurable fields into `responses`.
@@ -53,6 +79,11 @@ export default function ApplyPage() {
       responses[field.key] = form[field.key] || '';
       if (field.required && !responses[field.key].trim()) {
         toast.error(`Please complete: ${field.label}`);
+        return;
+      }
+      const formatError = validateIntakeValue(field, responses[field.key]);
+      if (formatError) {
+        toast.error(`${field.label}: ${formatError}`);
         return;
       }
     }
@@ -64,6 +95,7 @@ export default function ApplyPage() {
         firstName: form.firstName.trim(),
         lastName: form.lastName.trim(),
         phone: form.phone.trim(),
+        level: level || undefined,
         responses,
       });
       setDone({ statusToken: result.accessToken, requiresAssessment: result.requiresAssessment });
@@ -132,16 +164,44 @@ export default function ApplyPage() {
       <p className="mt-1 text-slate-600">{info.cohort.name}</p>
       {info.assessment && (
         <p className="mt-3 text-sm rounded-lg bg-brand-50 dark:bg-brand-500/15 text-brand-800 px-3 py-2">
-          This application includes a {info.assessment.required ? 'required' : 'short'} assessment: <strong>{info.assessment.title}</strong>.
+          This application includes a {info.assessment.required ? 'required' : 'short'} assessment after you submit.
         </p>
       )}
 
+      {/* Already applied? Re-issue the magic link by email. */}
+      <div className="mt-3 text-sm">
+        {!resumeOpen ? (
+          <button onClick={() => setResumeOpen(true)} className="text-brand-700 hover:text-brand-800 font-medium">Already applied? Continue where you left off</button>
+        ) : resumeMsg ? (
+          <p className="rounded-lg bg-emerald-50 text-emerald-800 px-3 py-2">{resumeMsg}</p>
+        ) : (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-card p-3">
+            <input type="email" value={resumeEmail} onChange={(e) => setResumeEmail(e.target.value)} placeholder="The email you applied with" className="flex-1 min-w-48 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-card" />
+            <button onClick={submitResume} disabled={resumeBusy} className="px-3 py-2 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700 disabled:opacity-50 inline-flex items-center gap-1.5">
+              {resumeBusy && <Loader2 className="w-4 h-4 animate-spin" />} Email me a link
+            </button>
+            <button onClick={() => setResumeOpen(false)} className="px-2 py-2 text-slate-400 hover:text-slate-600 text-sm">Cancel</button>
+          </div>
+        )}
+      </div>
+
       <div className="mt-6 space-y-4 rounded-2xl border border-slate-200 bg-card p-6">
         <div className="grid grid-cols-2 gap-4">
-          <Field label="First name" value={form.firstName} onChange={(v) => setField('firstName', v)} />
-          <Field label="Last name" value={form.lastName} onChange={(v) => setField('lastName', v)} />
+          <Field label="First name" required value={form.firstName} onChange={(v) => setField('firstName', v)} />
+          <Field label="Last name" required value={form.lastName} onChange={(v) => setField('lastName', v)} />
         </div>
         <Field label="Email" type="email" required value={form.email} onChange={(v) => setField('email', v)} />
+
+        {(info.levels?.length ?? 0) > 0 && (
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Your level <span className="text-rose-500">*</span></label>
+            <select value={level} onChange={(e) => setLevel(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-card">
+              <option value="">Select your level…</option>
+              {info.levels.map((l) => <option key={l.key} value={l.key}>{l.label}</option>)}
+            </select>
+            <p className="mt-1 text-xs text-slate-400">This tailors your assessment to the right level.</p>
+          </div>
+        )}
 
         {(info.formSchema || []).map((field) => {
           const val = form[field.key] || '';
@@ -182,7 +242,11 @@ export default function ApplyPage() {
                   ))}
                 </div>
               ) : (
-                <input type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'} value={val} onChange={(e) => setField(field.key, e.target.value)} className={inputCls} />
+                <input
+                  type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : field.type === 'email' ? 'email' : field.type === 'url' ? 'url' : field.type === 'phone' ? 'tel' : 'text'}
+                  inputMode={field.type === 'phone' ? 'tel' : undefined}
+                  placeholder={field.type === 'url' ? 'https://…' : undefined}
+                  value={val} onChange={(e) => setField(field.key, e.target.value)} className={inputCls} />
               )}
             </div>
           );

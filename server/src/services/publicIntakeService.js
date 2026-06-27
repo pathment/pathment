@@ -6,6 +6,7 @@ const { generateRandomToken, hashToken } = require('../utils/jwt');
 const cohortIntakeService = require('./cohortIntakeService');
 const assessmentService = require('./assessmentService');
 const emailService = require('./emailService');
+const { validateIntakeValue } = require('../config/intakeProfileFields');
 const { uploadToCloudinary } = require('../utils/cloudinaryUpload');
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -70,10 +71,11 @@ class PublicIntakeService {
     if (!resolved) throw new NotFoundError('This application link is not valid');
     const { cohort, open, reasons } = resolved;
 
-    let assessment = null;
-    if (cohort.assessment) {
-      assessment = { title: cohort.assessment.title, required: cohort.assessmentRequired };
-    }
+    // Which exact assessment an applicant gets depends on their level + a random
+    // draw, so the form only advertises THAT an assessment is involved, not which.
+    const poolCount = await models.CohortAssessment.count({ where: { cohortId: cohort.id } });
+    const hasAssessment = poolCount > 0 || !!cohort.assessmentId;
+    const assessment = hasAssessment ? { required: !!cohort.assessmentRequired } : null;
 
     return {
       open,
@@ -89,6 +91,8 @@ class PublicIntakeService {
       },
       program: cohort.program ? { id: cohort.program.id, name: cohort.program.name, description: cohort.program.description, type: cohort.program.type } : null,
       formSchema: cohort.intakeFormSchema || [],
+      // Applicant-selectable levels (empty = no level question).
+      levels: Array.isArray(cohort.levels) ? cohort.levels : [],
       assessment
     };
   }
@@ -105,6 +109,9 @@ class PublicIntakeService {
 
     const cohort = resolved.cohort;
     const email = String(data.email || '').trim().toLowerCase();
+    if (!String(data.firstName || '').trim() || !String(data.lastName || '').trim()) {
+      throw new ValidationError('Your first and last name are required');
+    }
     if (!EMAIL_RE.test(email)) throw new ValidationError('A valid email is required');
 
     // Enforce required intake fields server-side (the client checks too, but a
@@ -112,27 +119,40 @@ class PublicIntakeService {
     const schema = Array.isArray(cohort.intakeFormSchema) ? cohort.intakeFormSchema : [];
     const responses = data.responses && typeof data.responses === 'object' ? data.responses : {};
     for (const field of schema) {
-      if (!field || !field.required) continue;
+      if (!field) continue;
       const top = { firstName: data.firstName, lastName: data.lastName, phone: data.phone };
       const raw = responses[field.key] ?? top[field.key];
       const answered = Array.isArray(raw) ? raw.length > 0 : String(raw ?? '').trim().length > 0;
-      if (!answered) throw new ValidationError(`Please complete: ${field.label || field.key}`);
+      if (field.required && !answered) throw new ValidationError(`Please complete: ${field.label || field.key}`);
+      // Type-aware format check (URL/email/phone/number/date) — applies whether or
+      // not the field is required, so a bad value can't slip through optional fields.
+      const formatError = validateIntakeValue(field, Array.isArray(raw) ? raw.join(', ') : raw);
+      if (formatError) throw new ValidationError(`${field.label || field.key}: ${formatError}`);
     }
 
     // If they already have a real account, they should log in, not apply.
     const existingUser = await models.User.findOne({ where: { email } });
     if (existingUser) throw new ConflictError('An account already exists for this email - please log in instead');
 
+    // Level: required only when the cohort defines levels, and must be one of them.
+    const levels = Array.isArray(cohort.levels) ? cohort.levels : [];
+    let level = data.level != null ? String(data.level).trim() : null;
+    if (levels.length) {
+      if (!level) throw new ValidationError('Please select your level');
+      if (!levels.some((l) => l.key === level)) throw new ValidationError('Please select a valid level');
+    } else {
+      level = null;
+    }
+
     const rawToken = generateRandomToken();
     const accessTokenHash = hashToken(rawToken);
     const accessTokenExpiresAt = new Date(Date.now() + ACCESS_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);
-    const requiresAssessment = Boolean(cohort.assessmentId && cohort.assessmentRequired);
-    const initialStatus = requiresAssessment ? 'assessment_sent' : 'pending';
 
     const fields = {
       firstName: data.firstName || null,
       lastName: data.lastName || null,
       phone: data.phone || null,
+      level,
       programPreference: data.programPreference || cohort.program?.name || null,
       source: 'public_link',
       responses: data.responses && typeof data.responses === 'object' ? data.responses : {},
@@ -141,17 +161,38 @@ class PublicIntakeService {
     };
 
     let application = await models.Application.findOne({ where: { cohortId: cohort.id, email } });
+    const isNew = !application;
     if (application) {
       if (['accepted', 'rejected'].includes(application.status)) {
         throw new ConflictError('An application with this email has already been processed');
       }
+      // Changing level invalidates a previously-assigned assessment (re-pick).
+      if (level !== (application.level || null)) fields.assignedAssessmentId = null;
       await application.update(fields);
     } else {
-      application = await models.Application.create({ cohortId: cohort.id, email, status: initialStatus, ...fields });
+      application = await models.Application.create({ cohortId: cohort.id, email, status: 'pending', ...fields });
+    }
+
+    // Assign this applicant's assessment (level-aware, random from the pool) and
+    // gate the status on it only when the cohort marks the assessment required.
+    const assignedAssessmentId = await assessmentService.ensureAssignedAssessment(application, cohort);
+    const requiresAssessment = Boolean(assignedAssessmentId && cohort.assessmentRequired);
+    if (requiresAssessment && application.status === 'pending') {
+      await application.update({ status: 'assessment_sent' });
     }
 
     const statusUrl = this.buildStatusUrl(rawToken);
-    await this._sendApplicationEmail(email, cohort, statusUrl, requiresAssessment).catch(() => {});
+    await this._sendApplicationEmail(email, cohort, statusUrl, requiresAssessment, !!assignedAssessmentId).catch(() => {});
+
+    // Admin alerts: a new applicant landed, and (separately) the cohort may have
+    // just hit its application cap — both best-effort, never block the applicant.
+    if (isNew) {
+      cohortIntakeService.notifyApplicationReceived(cohort, application).catch(() => {});
+      if (cohort.maxApplications != null) {
+        const count = await models.Application.count({ where: { cohortId: cohort.id } });
+        if (count >= cohort.maxApplications) cohortIntakeService.notifyCapacityReached(cohort, count).catch(() => {});
+      }
+    }
 
     return {
       accessToken: rawToken,
@@ -181,13 +222,17 @@ class PublicIntakeService {
     const application = await this._findByAccessToken(rawToken);
     const cohort = application.cohort;
 
+    // The applicant's OWN assigned assessment (level-aware, randomly drawn at
+    // apply time and stored, so it's stable across visits). Assign lazily if an
+    // older application predates assignment.
     let assessment = null;
     let submission = null;
-    if (cohort?.assessmentId) {
-      const full = await assessmentService.getAssessment(cohort.assessmentId);
-      assessment = { ...assessmentService.sanitizeForApplicant(full), required: cohort.assessmentRequired };
+    const assignedId = cohort ? await assessmentService.ensureAssignedAssessment(application, cohort) : application.assignedAssessmentId;
+    if (assignedId) {
+      const full = await assessmentService.getAssessment(assignedId);
+      assessment = { ...assessmentService.sanitizeForApplicant(full), required: cohort?.assessmentRequired };
       const existing = await models.AssessmentSubmission.findOne({
-        where: { assessmentId: cohort.assessmentId, applicationId: application.id }
+        where: { assessmentId: assignedId, applicationId: application.id }
       });
       if (existing) submission = { status: existing.status, submittedAt: existing.submittedAt };
     }
@@ -213,9 +258,10 @@ class PublicIntakeService {
   async submitAssessment(rawToken, answers) {
     const application = await this._findByAccessToken(rawToken);
     const cohort = application.cohort;
-    if (!cohort?.assessmentId) throw new ValidationError('No assessment is attached to this application');
+    const assignedId = await assessmentService.ensureAssignedAssessment(application, cohort);
+    if (!assignedId) throw new ValidationError('No assessment is attached to this application');
 
-    const full = await assessmentService.getAssessment(cohort.assessmentId);
+    const full = await assessmentService.getAssessment(assignedId);
     const questions = full.questions || [];
     const clean = answers && typeof answers === 'object' ? answers : {};
 
@@ -224,14 +270,14 @@ class PublicIntakeService {
 
     const now = new Date();
     const existing = await models.AssessmentSubmission.findOne({
-      where: { assessmentId: cohort.assessmentId, applicationId: application.id }
+      where: { assessmentId: assignedId, applicationId: application.id }
     });
     if (existing && existing.status !== 'in_progress') {
       throw new ConflictError('You have already submitted this assessment');
     }
 
     const payload = {
-      assessmentId: cohort.assessmentId,
+      assessmentId: assignedId,
       applicationId: application.id,
       answers: clean,
       autoScore,
@@ -268,30 +314,63 @@ class PublicIntakeService {
     return `${base}/apply/status/${encodeURIComponent(rawToken)}`;
   }
 
-  async _sendApplicationEmail(email, cohort, statusUrl, requiresAssessment) {
+  async _sendApplicationEmail(email, cohort, statusUrl, requiresAssessment, hasAssessment = false) {
     const programName = cohort.program?.name || 'the program';
     const action = requiresAssessment
-      ? 'Your next step is to complete a short assessment.'
-      : "We've received your application and will be in touch.";
+      ? 'Your next step is to complete a short assessment — your application moves to review once it&apos;s in.'
+      : hasAssessment
+        ? 'You can complete an optional assessment to strengthen your application, or just track its status.'
+        : "We've received your application and will be in touch.";
+    const cta = requiresAssessment ? 'Start assessment / track status' : hasAssessment ? 'Take assessment / track status' : 'Track your application';
     const html = `
       <div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto">
         <h2 style="color:#0052D6">Application received</h2>
         <p>Thanks for applying to <strong>${programName}</strong> (${cohort.name}).</p>
         <p>${action}</p>
         <p style="margin:24px 0">
-          <a href="${statusUrl}" style="background:#0066FF;color:#fff;padding:12px 20px;border-radius:6px;text-decoration:none">
-            ${requiresAssessment ? 'Start assessment / track status' : 'Track your application'}
-          </a>
+          <a href="${statusUrl}" style="background:#0066FF;color:#fff;padding:12px 20px;border-radius:6px;text-decoration:none">${cta}</a>
         </p>
-        <p style="color:#64748b;font-size:13px">Keep this link private - it's your personal access to this application.</p>
+        <p style="color:#64748b;font-size:13px">Keep this link private - it's your personal access to this application. Return any time to finish where you left off.</p>
       </div>`;
     return emailService.sendEmail({
       to: email,
       subject: `Application received - ${programName}`,
       html,
-      text: `Thanks for applying to ${programName} (${cohort.name}). ${action} Track it here: ${statusUrl}`,
+      text: `Thanks for applying to ${programName} (${cohort.name}). ${action.replace(/&apos;/g, "'")} Open it here: ${statusUrl}`,
       emailType: 'intake_application'
     });
+  }
+
+  /**
+   * "Already applied? Continue" — re-issue a fresh magic link to a returning
+   * applicant by email, so they never lose their progress (profile / assessment).
+   * Privacy-safe: the response is identical whether or not an application exists,
+   * and we only ever email the link to the address on file (no data leaked inline).
+   */
+  async resumeByEmail(slug, rawEmail) {
+    const email = String(rawEmail || '').trim().toLowerCase();
+    if (!EMAIL_RE.test(email)) throw new ValidationError('A valid email is required');
+
+    const generic = { ok: true, message: 'If an application exists for that email, we\'ve sent a link to continue.' };
+    const resolved = await cohortIntakeService.getOpenCohortBySlug(slug);
+    // Resume must work even when the window/cap closed — they already applied.
+    const cohort = resolved?.cohort || await models.Cohort.findOne({
+      where: { publicSlug: slug },
+      include: [{ model: models.Program, as: 'program', attributes: ['id', 'name'] }]
+    });
+    if (!cohort) return generic;
+
+    const application = await models.Application.findOne({ where: { cohortId: cohort.id, email } });
+    if (!application || ['accepted', 'rejected'].includes(application.status)) return generic;
+
+    const rawToken = generateRandomToken();
+    await application.update({
+      accessTokenHash: hashToken(rawToken),
+      accessTokenExpiresAt: new Date(Date.now() + ACCESS_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000)
+    });
+    const requiresAssessment = Boolean(application.assignedAssessmentId && cohort.assessmentRequired);
+    await this._sendApplicationEmail(email, cohort, this.buildStatusUrl(rawToken), requiresAssessment, !!application.assignedAssessmentId).catch(() => {});
+    return generic;
   }
 }
 

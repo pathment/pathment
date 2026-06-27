@@ -42,14 +42,15 @@ export function IntakeFormBuilder({
     onChange(next);
   };
 
+  // Fields are required by default — the admin unchecks "req" to make one optional.
   const addProfile = (key: string) => {
     const def = PROFILE_FIELD_CATALOG.find((p) => p.key === key);
     if (!def) return;
-    onChange([...fields, { key: def.key, label: def.label, type: def.type, required: false, options: def.options, profileKey: def.key }]);
+    onChange([...fields, { key: def.key, label: def.label, type: def.type, required: true, options: def.options, profileKey: def.key }]);
   };
   const addCustom = (type: IntakeFieldType) => {
     const key = customKeyFromLabel('question', fields.map((f) => f.key));
-    onChange([...fields, { key, label: '', type, required: false, options: HAS_OPTIONS.includes(type) ? ['Option 1'] : undefined }]);
+    onChange([...fields, { key, label: '', type, required: true, options: HAS_OPTIONS.includes(type) ? ['Option 1'] : undefined }]);
   };
 
   return (

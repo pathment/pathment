@@ -12,6 +12,17 @@ export interface Cohort {
   capacity?: number | null;
   startDate?: string | null;
   endDate?: string | null;
+  // Intake configuration (present on the cohort detail fetch).
+  levels?: { key: string; label: string }[];
+  timezone?: string | null;
+  maxApplications?: number | null;
+  applyOpensAt?: string | null;
+  applyClosesAt?: string | null;
+  publicEnabled?: boolean;
+  publicSlug?: string | null;
+  assessmentId?: string | null;
+  assessmentRequired?: boolean;
+  intakeFormSchema?: unknown[];
   program?: { id: string; name: string } | null;
   applicationCount?: number;
   applicationsByStatus?: Record<string, number>;

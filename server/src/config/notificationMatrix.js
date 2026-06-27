@@ -34,10 +34,25 @@ EXTENSION_HANDLED: 'extension_handled',
   MENTEE_REENGAGE: 'mentee_reengage',
   MENTEE_RETURNED: 'mentee_returned',
   FEEDBACK_SUBMITTED: 'feedback_submitted',
-  FEEDBACK_STATUS_UPDATED: 'feedback_status_updated'
+  FEEDBACK_STATUS_UPDATED: 'feedback_status_updated',
+  // Admissions intake (admin-facing)
+  APPLICATION_RECEIVED: 'application_received',
+  APPLICATION_CAPACITY_REACHED: 'application_capacity_reached'
 };
 
 const NOTIFICATION_MATRIX = {
+  // New applicant landed — in-app only (can be frequent; no email spam).
+  [NOTIFICATION_EVENTS.APPLICATION_RECEIVED]: {
+    type: 'intake',
+    preferenceKey: 'application_received',
+    channels: { inApp: true, email: false, chat: false }
+  },
+  // Cohort hit its application cap — admins should decide to raise it or close.
+  [NOTIFICATION_EVENTS.APPLICATION_CAPACITY_REACHED]: {
+    type: 'intake',
+    preferenceKey: 'application_capacity_reached',
+    channels: { inApp: true, email: true, chat: false }
+  },
   [NOTIFICATION_EVENTS.TASK_SUBMITTED]: {
     type: 'task',
     preferenceKey: 'task_submitted',

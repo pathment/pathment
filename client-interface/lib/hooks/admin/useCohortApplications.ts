@@ -17,6 +17,9 @@ export interface Application {
   programPreference?: string | null;
   source: string;
   status: ApplicationStatus;
+  /** The level the applicant selected (null when the cohort has no levels). */
+  level?: string | null;
+  assignedAssessmentId?: string | null;
   assessmentScore?: number | null;
   reviewerNotes?: string | null;
   decidedAt?: string | null;
@@ -31,6 +34,8 @@ export interface ImportReport {
   created: number;
   updated: number;
   skipped: { email: string; reason: string }[];
+  /** True when the cohort is now at/over its application cap. */
+  capReached?: boolean;
 }
 
 export function useCohortApplications(cohortId: string) {
@@ -68,9 +73,9 @@ export function useCohortApplications(cohortId: string) {
     await Promise.all([fetchCohort(), fetchApplications()]);
   }, [fetchCohort, fetchApplications]);
 
-  const importRows = useCallback(async (rows: Record<string, string>[]): Promise<ImportReport | null> => {
+  const importRows = useCallback(async (rows: Record<string, string>[], allowExceed = false): Promise<ImportReport | null> => {
     try {
-      const res = await applicationApi.import(cohortId, rows);
+      const res = await applicationApi.import(cohortId, rows, allowExceed);
       const report: ImportReport = res?.data?.report;
       toast.success(`${report.created} added, ${report.updated} updated, ${report.skipped.length} skipped`);
       await refetch();

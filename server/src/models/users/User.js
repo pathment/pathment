@@ -65,6 +65,10 @@ module.exports = (sequelize, DataTypes) => {
     phone: {
       type: DataTypes.STRING(20)
     },
+    // Self-reported on the intake form; optional everywhere else.
+    gender: {
+      type: DataTypes.STRING(20)
+    },
     city: {
       type: DataTypes.STRING(120)
     },

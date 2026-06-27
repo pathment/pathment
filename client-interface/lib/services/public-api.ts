@@ -1,4 +1,5 @@
 import { apiClient } from './api-client';
+import type { IntakeFieldType } from '@/lib/config/intakeFields';
 
 /**
  * The public, unauthenticated intake surface: program catalog, cohort apply
@@ -24,7 +25,7 @@ export interface PublicProgram {
 export interface IntakeFormField {
   key: string;
   label: string;
-  type: 'text' | 'textarea' | 'select' | 'checkboxes' | 'number' | 'date' | 'yes_no';
+  type: IntakeFieldType;
   required?: boolean;
   options?: string[];
   profileKey?: string;
@@ -36,7 +37,10 @@ export interface ApplyInfo {
   cohort: { id: string; name: string; description?: string; slug: string; startDate?: string; endDate?: string; applyClosesAt?: string };
   program: { id: string; name: string; description?: string; type: string } | null;
   formSchema: IntakeFormField[];
-  assessment: { title: string; required: boolean } | null;
+  /** Applicant-selectable levels (empty = no level question). */
+  levels: { key: string; label: string }[];
+  /** Which exact assessment depends on level + a random draw, so only `required` is exposed. */
+  assessment: { required: boolean } | null;
 }
 
 export interface PublicAssessmentQuestion {
@@ -73,6 +77,11 @@ export const publicApi = {
       requiresAssessment: boolean;
       application: { id: string; status: string; email: string };
     }),
+
+  /** "Already applied? Continue" — re-issue the magic link by email (privacy-safe;
+   *  the response is generic whether or not an application exists). */
+  resume: (slug: string, email: string) =>
+    apiClient.post<any>(`/public/cohorts/${encodeURIComponent(slug)}/resume`, { email }).then((r) => r.data as { ok: boolean; message: string }),
 
   getStatus: (token: string) =>
     apiClient.get<any>(`/public/applications/${encodeURIComponent(token)}`).then((r) => r.data),

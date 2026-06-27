@@ -19,7 +19,7 @@ const STATUS_META: Record<CohortStatus, { label: string; cls: string }> = {
 
 function CreateCohortDrawer({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const [programs, setPrograms] = useState<{ id: string; name: string }[]>([]);
-  const [form, setForm] = useState({ programId: '', name: '', status: 'planning', startDate: '', endDate: '', capacity: '' });
+  const [form, setForm] = useState({ programId: '', name: '', status: 'planning' });
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -35,21 +35,12 @@ function CreateCohortDrawer({ onClose, onCreated }: { onClose: () => void; onCre
 
   const submit = async () => {
     if (!form.programId || !form.name.trim()) { toast.error('Pick a program and name the cohort'); return; }
-    if (form.startDate && form.endDate && new Date(form.startDate) > new Date(form.endDate)) {
-      toast.error('Start date must be on or before the end date'); return;
-    }
-    if (form.capacity !== '' && (!Number.isInteger(Number(form.capacity)) || Number(form.capacity) < 1)) {
-      toast.error('Capacity must be a whole number ≥ 1'); return;
-    }
     try {
       setSaving(true);
       await cohortApi.create({
         programId: form.programId,
         name: form.name.trim(),
         status: form.status,
-        startDate: form.startDate || undefined,
-        endDate: form.endDate || undefined,
-        capacity: form.capacity === '' ? null : Number(form.capacity),
       });
       toast.success('Cohort created');
       onCreated();
@@ -90,20 +81,9 @@ function CreateCohortDrawer({ onClose, onCreated }: { onClose: () => void; onCre
               <option value="completed">Completed</option>
             </select>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Start date</label>
-              <input type="date" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} className={field} />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">End date</label>
-              <input type="date" value={form.endDate} onChange={(e) => setForm({ ...form, endDate: e.target.value })} className={field} />
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Capacity <span className="text-slate-400 font-normal">(optional)</span></label>
-            <input type="number" min={1} value={form.capacity} onChange={(e) => setForm({ ...form, capacity: e.target.value })} className={field} />
-          </div>
+          <p className="text-xs text-slate-400">
+            Dates, capacity, the application window and assessments are set in the cohort&apos;s <span className="font-medium text-slate-500">Admissions settings</span> after you create it.
+          </p>
         </div>
         <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-2">
           <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-lg">Cancel</button>
