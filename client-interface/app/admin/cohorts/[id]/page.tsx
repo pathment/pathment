@@ -205,8 +205,6 @@ function IntakePanel({ cohortId, cohort, onChange }: { cohortId: string; cohort:
   const [required, setRequired] = useState<boolean>(Boolean(cohort?.assessmentRequired));
   const [seats, setSeats] = useState<string>(cohort?.capacity != null ? String(cohort.capacity) : '');
   const [maxApps, setMaxApps] = useState<string>(cohort?.maxApplications != null ? String(cohort.maxApplications) : '');
-  const [startDate, setStartDate] = useState<string>(cohort?.startDate ? String(cohort.startDate).slice(0, 10) : '');
-  const [endDate, setEndDate] = useState<string>(cohort?.endDate ? String(cohort.endDate).slice(0, 10) : '');
   const [opensDate, setOpensDate] = useState<string>(cohort?.applyOpensAt ? String(cohort.applyOpensAt).slice(0, 10) : '');
   const [closesDate, setClosesDate] = useState<string>(cohort?.applyClosesAt ? String(cohort.applyClosesAt).slice(0, 10) : '');
   const [levelLabels, setLevelLabels] = useState<string[]>((cohort?.levels || []).map((l: any) => l.label));
@@ -239,13 +237,11 @@ function IntakePanel({ cohortId, cohort, onChange }: { cohortId: string; cohort:
     setRequired(Boolean(cohort?.assessmentRequired));
     setSeats(cohort?.capacity != null ? String(cohort.capacity) : '');
     setMaxApps(cohort?.maxApplications != null ? String(cohort.maxApplications) : '');
-    setStartDate(cohort?.startDate ? String(cohort.startDate).slice(0, 10) : '');
-    setEndDate(cohort?.endDate ? String(cohort.endDate).slice(0, 10) : '');
     setOpensDate(cohort?.applyOpensAt ? String(cohort.applyOpensAt).slice(0, 10) : '');
     setClosesDate(cohort?.applyClosesAt ? String(cohort.applyClosesAt).slice(0, 10) : '');
     setLevelLabels((cohort?.levels || []).map((l: any) => l.label));
     setFormFields(cohort?.intakeFormSchema || []);
-  }, [cohort?.assessmentRequired, cohort?.capacity, cohort?.maxApplications, cohort?.startDate, cohort?.endDate, cohort?.applyOpensAt, cohort?.applyClosesAt, cohort?.levels, cohort?.intakeFormSchema]);
+  }, [cohort?.assessmentRequired, cohort?.capacity, cohort?.maxApplications, cohort?.applyOpensAt, cohort?.applyClosesAt, cohort?.levels, cohort?.intakeFormSchema]);
 
   const enabled = Boolean(cohort?.publicEnabled && cohort?.publicSlug);
   const applyUrl = cohort?.publicSlug && typeof window !== 'undefined' ? `${window.location.origin}/apply/${cohort.publicSlug}` : '';
@@ -270,8 +266,6 @@ function IntakePanel({ cohortId, cohort, onChange }: { cohortId: string; cohort:
       await cohortApi.update(cohortId, {
         capacity: seats === '' ? null : Number(seats),
         maxApplications: maxApps === '' ? null : Number(maxApps),
-        startDate: startDate || null,
-        endDate: endDate || null,
         timezone: tz,
         // Send the calendar dates + zone; the server stores start/end-of-day instants.
         applyOpensDate: opensDate || null,
@@ -332,16 +326,8 @@ function IntakePanel({ cohortId, cohort, onChange }: { cohortId: string; cohort:
         <h2 className="font-medium text-slate-900">Admissions settings</h2>
       </div>
 
-      {/* Schedule + capacity (moved here from cohort creation) */}
-      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div>
-          <label className="block text-xs font-medium text-slate-500 mb-1">Start date</label>
-          <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className={`${field} [color-scheme:light] dark:[color-scheme:dark]`} />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-slate-500 mb-1">End date</label>
-          <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className={`${field} [color-scheme:light] dark:[color-scheme:dark]`} />
-        </div>
+      {/* Capacity (the application window itself is set below) */}
+      <div className="grid sm:grid-cols-2 gap-4">
         <div>
           <label className="block text-xs font-medium text-slate-500 mb-1">Seats <span className="text-slate-400 font-normal">— how many you&apos;ll enroll</span></label>
           <input type="number" min={1} value={seats} onChange={(e) => setSeats(e.target.value)} placeholder="Unlimited" className={field} />
