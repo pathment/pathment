@@ -27,6 +27,7 @@ import { CollaboratorsCard } from '@/components/mentor/CollaboratorsCard';
 import { TracksPanel } from '@/components/mentor/TracksPanel';
 import { Drawer } from '@/components/shared/Drawer';
 import { Avatar } from '@/components/shared/Avatar';
+import { MenteeScheduleView } from '@/components/shared/MenteeScheduleView';
 
 // ── Small presentational helpers (current indigo/slate design system) ────────
 const RISK_PILL: Record<CohortRisk, { label: string; className: string; dot: string }> = {
@@ -371,6 +372,9 @@ export default function MenteeDetail() {
           </div>
         </div>
       )}
+
+      {/* ── Weekly schedule (read-only; mentor fills it in Schedules) ─── */}
+      <MenteeScheduleView menteeId={menteeId} />
 
       {/* ── Work history ─────────────────────────────────────────────── */}
       <div className="bg-card rounded-2xl border border-slate-200">

@@ -11,6 +11,7 @@ import { useMenteeProfile } from '@/lib/hooks/admin';
 import { StatsCard, PageHeader } from '@/components/admin/ui';
 import { Avatar } from '@/components/shared/Avatar';
 import { MenteePauseButton } from '@/components/mentor/MenteePauseButton';
+import { MenteeScheduleView } from '@/components/shared/MenteeScheduleView';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -227,6 +228,9 @@ export default function AdminMenteeProfilePage() {
             <StatsCard icon={Trophy}       label="Points"           value={points.toLocaleString()}                        colorClass="text-amber-600 bg-amber-50" />
             <StatsCard icon={Users2}       label="Clan"             value={stats?.currentClanName ?? currentClan?.name ?? '-'} colorClass="text-purple-600 bg-purple-50" />
           </div>
+
+          {/* Weekly schedule (read-only; the mentor fills it in Schedules) */}
+          <MenteeScheduleView menteeId={mentee.id} />
 
           {/* Learning goals / interests */}
           {((mp?.learningGoals?.length ?? 0) > 0 || (mp?.interests?.length ?? 0) > 0) && (

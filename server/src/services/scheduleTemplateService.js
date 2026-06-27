@@ -102,13 +102,22 @@ class ScheduleTemplateService {
 
   _normalizeBlocks(blocks) {
     if (!Array.isArray(blocks)) return [];
-    return blocks.map((b, i) => ({
-      id: b.id || slug(b.label) || `block-${i}`,
-      label: b.label || `Block ${i + 1}`,
-      time: b.time || 'Flexible',
-      days: ['everyday', 'weekdays', 'weekends'].includes(b.days) ? b.days : 'everyday',
-      bookable: !!b.bookable
-    }));
+    // Ids must be UNIQUE within a template: two blocks labelled the same slug to
+    // the same id, which collides as a React key AND makes the mentee's daily-log
+    // check-off toggle both at once. Suffix repeats to keep each block distinct.
+    const seen = new Set();
+    return blocks.map((b, i) => {
+      let id = b.id || slug(b.label) || `block-${i}`;
+      if (seen.has(id)) { let n = 2; while (seen.has(`${id}-${n}`)) n += 1; id = `${id}-${n}`; }
+      seen.add(id);
+      return {
+        id,
+        label: b.label || `Block ${i + 1}`,
+        time: b.time || 'Flexible',
+        days: ['everyday', 'weekdays', 'weekends'].includes(b.days) ? b.days : 'everyday',
+        bookable: !!b.bookable
+      };
+    });
   }
 
   // ── Assignment + per-mentee schedule ───────────────────────────────────────
@@ -152,7 +161,49 @@ class ScheduleTemplateService {
       include: [{ model: models.ScheduleTemplate, as: 'template', attributes: ['id', 'name'] }]
     });
     if (!ms) return null;
-    return { templateId: ms.templateId, templateName: ms.template?.name || null, schedule: ms.schedule || [] };
+    const schedule = await this._enrichSchedule(menteeId, Array.isArray(ms.schedule) ? ms.schedule : []);
+    return { templateId: ms.templateId, templateName: ms.template?.name || null, schedule };
+  }
+
+  /**
+   * Attach live roadmap info to each roadmap slot: every roadmap in the chain
+   * gets its name + this mentee's actual progress (started? how many steps done?).
+   * This is what powers the read-only "this mentee's week" views (mentor + admin)
+   * AND lets the Fill editor warn "already started" instead of silently no-op'ing.
+   * Read-only enrichment under `chainDetails` — the editor's own fields are untouched.
+   */
+  async _enrichSchedule(menteeId, schedule) {
+    const ids = new Set();
+    schedule.forEach((s) => { if (s.kind === 'roadmap') (s.roadmapChain || []).forEach((r) => r && ids.add(r)); });
+    if (!ids.size) return schedule.map((s) => ({ ...s }));
+
+    const idList = [...ids];
+    const [roadmaps, progresses] = await Promise.all([
+      models.Roadmap.findAll({ where: { id: { [Op.in]: idList } }, attributes: ['id', 'name', 'totalTasks'] }),
+      models.RoadmapProgress.findAll({ where: { roadmapId: { [Op.in]: idList }, menteeId } }),
+    ]);
+    const nameById = new Map(roadmaps.map((r) => [r.id, r.name]));
+    const totalById = new Map(roadmaps.map((r) => [r.id, r.totalTasks || 0]));
+    const progById = new Map(progresses.map((p) => [p.roadmapId, p]));
+
+    return schedule.map((s) => {
+      if (s.kind !== 'roadmap' || !Array.isArray(s.roadmapChain) || !s.roadmapChain.length) return { ...s };
+      const chainDetails = s.roadmapChain.map((rid) => {
+        const p = progById.get(rid);
+        const total = totalById.get(rid) || 0;
+        const current = p ? Math.min(p.currentStep || 0, total) : 0;
+        return {
+          id: rid,
+          name: nameById.get(rid) || 'Roadmap',
+          started: !!p,
+          completed: !!(p && p.completed),
+          currentStep: current,
+          totalSteps: total,
+          percent: total > 0 ? Math.round((current / total) * 100) : 0,
+        };
+      });
+      return { ...s, chainDetails };
+    });
   }
 
   /** Fill/clear one slot: kind 'roadmap' (roadmapChain) | 'recurring' (recurring) | 'empty'. */

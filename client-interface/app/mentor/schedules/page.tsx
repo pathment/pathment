@@ -8,6 +8,7 @@ import {
 import { useMentorSchedule, useScheduleTemplates, useMentorCohort, useMentorRoadmaps, type ScheduleTemplate } from '@/lib/hooks/mentor';
 import { meetingsApi, type AvailabilityRule } from '@/lib/services/meetings-api';
 import { scheduleApi, type ScheduleSlot } from '@/lib/services/schedule-api';
+import { mentorApi } from '@/lib/services/mentor-api';
 import { Drawer } from '@/components/shared/Drawer';
 import { ScheduleJsonPanel } from '@/components/shared/ScheduleJsonPanel';
 import { downloadScheduleTemplateJson } from '@/lib/utils/schedule-json';
@@ -226,6 +227,96 @@ function AssignModal({ template, cohort, onClose }: { template: ScheduleTemplate
   );
 }
 
+// ───────────────────────── Roadmap slot editor (progress-aware) ─────────────────────────
+const STEP_DONE = ['completed'];
+const STEP_ACTIVE = ['assigned', 'not_started', 'in_progress', 'revision_needed', 'submitted'];
+
+/**
+ * The roadmap part of a slot. Crucially, it loads THIS mentee's real progress on
+ * the chain's first roadmap, so the mentor isn't picking a start step blind:
+ *  - if the roadmap is already started for them, we say so (and that saving won't
+ *    re-assign or reset it) instead of silently no-op'ing — the old confusion;
+ *  - otherwise the step picker marks already-done steps and defaults to the first
+ *    step they haven't done yet.
+ */
+function RoadmapSlotEditor({ slot, menteeId, roadmaps, onPatch, refreshTick }: {
+  slot: ScheduleSlot; menteeId: string; roadmaps: any[]; onPatch: (p: Partial<ScheduleSlot>) => void; refreshTick: number; // eslint-disable-line @typescript-eslint/no-explicit-any
+}) {
+  const head = roadmaps.find((r) => r.id === (slot.roadmapChain || [])[0]);
+  const steps: { id: string; title: string }[] = head?.steps || [];
+  const headId: string | undefined = head?.id;
+  const [stepStatus, setStepStatus] = useState<{ index: number; status: string | null }[]>([]);
+  const [statusLoading, setStatusLoading] = useState(false);
+
+  useEffect(() => {
+    if (!headId || !menteeId) { setStepStatus([]); return; }
+    let active = true;
+    setStatusLoading(true);
+    mentorApi.getRoadmapMenteeSteps(headId, menteeId)
+      .then((r: any) => { if (active) setStepStatus((r?.data?.steps ?? []).map((s: any) => ({ index: s.index, status: s.status }))); }) // eslint-disable-line @typescript-eslint/no-explicit-any
+      .catch(() => { if (active) setStepStatus([]); })
+      .finally(() => { if (active) setStatusLoading(false); });
+    return () => { active = false; };
+  }, [headId, menteeId, refreshTick]);
+
+  const statusByIndex = new Map(stepStatus.map((s) => [s.index, s.status]));
+  const isDone = (i: number) => STEP_DONE.includes(statusByIndex.get(i) || '');
+  const assignedCount = stepStatus.filter((s) => s.status).length;
+  const doneCount = stepStatus.filter((s) => STEP_DONE.includes(s.status || '')).length;
+  const activeCount = stepStatus.filter((s) => STEP_ACTIVE.includes(s.status || '')).length;
+  const started = assignedCount > 0;
+  let firstUndone = 0;
+  for (let i = 0; i < steps.length; i++) { if (!isDone(i)) { firstUndone = i; break; } }
+  const nextTitle = steps[firstUndone]?.title;
+
+  // Once progress loads, never leave the start step pointing at a finished step.
+  useEffect(() => {
+    if (!steps.length || !stepStatus.length) return;
+    if (isDone(slot.startStep ?? 0)) onPatch({ startStep: firstUndone });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stepStatus]);
+
+  return (
+    <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 space-y-2">
+      <div className="flex items-center gap-2"><Route className="w-4 h-4 text-brand-500" /><span className="text-xs font-medium text-slate-600">Roadmap chain (in order)</span></div>
+      <div className="flex flex-wrap gap-1.5">
+        {(slot.roadmapChain || []).map((rid, i) => {
+          const rm = roadmaps.find((r) => r.id === rid);
+          return <span key={rid} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-brand-100 text-brand-700 text-xs">{i + 1}. {rm?.name || 'Roadmap'}<button onClick={() => onPatch({ roadmapChain: slot.roadmapChain.filter((x) => x !== rid) })}><X className="w-3 h-3" /></button></span>;
+        })}
+      </div>
+      <select value="" onChange={(e) => { if (e.target.value) onPatch({ roadmapChain: [...(slot.roadmapChain || []), e.target.value] }); }} className={`${field} w-full`}>
+        <option value="">+ Add roadmap to chain</option>
+        {roadmaps.filter((r) => !(slot.roadmapChain || []).includes(r.id)).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+      </select>
+
+      {/* Progress-aware: where to start the FIRST roadmap, given what they've done. */}
+      {!headId ? null : statusLoading ? (
+        <div className="flex items-center gap-2 text-xs text-slate-400"><Loader2 className="w-3.5 h-3.5 animate-spin" />Checking this mentee&apos;s progress…</div>
+      ) : started ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800">
+          <p className="font-medium">Already started for this mentee</p>
+          <p className="mt-0.5">
+            {doneCount}/{steps.length} steps done{activeCount > 0 ? `, ${activeCount} in progress` : ''}
+            {doneCount < steps.length && nextTitle ? ` · next: ${nextTitle}` : ''}.
+            Saving this slot won&apos;t re-assign or reset it — manage progress from the mentee&apos;s roadmap.
+          </p>
+        </div>
+      ) : steps.length > 1 ? (
+        <div>
+          <label className="block text-xs font-medium text-slate-500 mb-1">Start &ldquo;{head?.name}&rdquo; at step</label>
+          <select value={String(slot.startStep ?? firstUndone)} onChange={(e) => onPatch({ startStep: Number(e.target.value) })} className={`${field} w-full`}>
+            {steps.map((st, i) => <option key={st.id || i} value={i} disabled={isDone(i)}>{isDone(i) ? '✓ ' : ''}{i + 1}. {st.title}{isDone(i) ? ' (done)' : ''}</option>)}
+          </select>
+          <p className="text-xs text-slate-400 mt-1">Skip steps they already know — applies to the first roadmap in the chain. Saving starts it for this mentee.</p>
+        </div>
+      ) : (
+        <p className="text-xs text-slate-400">Saving starts this roadmap for the mentee.</p>
+      )}
+    </div>
+  );
+}
+
 // ───────────────────────── Fill schedules tab ─────────────────────────
 function FillTab() {
   const { cohort } = useMentorCohort();
@@ -235,6 +326,9 @@ function FillTab() {
   const [slots, setSlots] = useState<ScheduleSlot[]>([]);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  // Bumped after a slot save so each roadmap editor re-checks the mentee's
+  // progress (e.g. shows "already started" once a save kicks the roadmap off).
+  const [refreshTick, setRefreshTick] = useState(0);
 
   const selectedMentee = cohort.find((m: any) => m.id === menteeId);
   const filteredCohort = cohort.filter((m: any) => m.name.toLowerCase().includes(q.trim().toLowerCase()));
@@ -269,6 +363,7 @@ function FillTab() {
       } else {
         toast.success('Slot saved');
       }
+      setRefreshTick((t) => t + 1); // re-check progress so the editor reflects the new state
     } catch { toast.error('Could not save'); } finally { setBusy(null); }
   };
 
@@ -313,34 +408,7 @@ function FillTab() {
                 </div>
 
                 {s.kind === 'roadmap' && (
-                  <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 space-y-2">
-                    <div className="flex items-center gap-2"><Route className="w-4 h-4 text-brand-500" /><span className="text-xs font-medium text-slate-600">Roadmap chain (in order)</span></div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {(s.roadmapChain || []).map((rid, i) => {
-                        const rm = local.find((r) => r.id === rid);
-                        return <span key={rid} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-brand-100 text-brand-700 text-xs">{i + 1}. {rm?.name || 'Roadmap'}<button onClick={() => patchSlot(s.id, { roadmapChain: s.roadmapChain.filter((x) => x !== rid) })}><X className="w-3 h-3" /></button></span>;
-                      })}
-                    </div>
-                    <select value="" onChange={(e) => { if (e.target.value) patchSlot(s.id, { roadmapChain: [...(s.roadmapChain || []), e.target.value] }); }} className={`${field} w-full`}>
-                      <option value="">+ Add roadmap to chain</option>
-                      {local.filter((r) => !(s.roadmapChain || []).includes(r.id)).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-                    </select>
-                    {/* Starting step of the FIRST roadmap in the chain (skip steps they know). */}
-                    {(() => {
-                      const head = local.find((r) => r.id === (s.roadmapChain || [])[0]);
-                      const steps = head?.steps || [];
-                      if (steps.length <= 1) return null;
-                      return (
-                        <div>
-                          <label className="block text-xs font-medium text-slate-500 mb-1">Start &ldquo;{head?.name}&rdquo; at step</label>
-                          <select value={String(s.startStep ?? 0)} onChange={(e) => patchSlot(s.id, { startStep: Number(e.target.value) })} className={`${field} w-full`}>
-                            {steps.map((st, i) => <option key={st.id || i} value={i}>{i + 1}. {st.title}</option>)}
-                          </select>
-                          <p className="text-xs text-slate-400 mt-1">Skip steps they already know — applies to the first roadmap in the chain.</p>
-                        </div>
-                      );
-                    })()}
-                  </div>
+                  <RoadmapSlotEditor slot={s} menteeId={menteeId} roadmaps={local} onPatch={(p) => patchSlot(s.id, p)} refreshTick={refreshTick} />
                 )}
 
                 {s.kind === 'recurring' && (

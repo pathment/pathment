@@ -1,6 +1,11 @@
 import { apiClient } from './api-client';
 
 export interface ScheduleBlock { id: string; label: string; time: string; days: string; bookable: boolean }
+/** Live per-roadmap progress the server attaches to a roadmap slot (read-only). */
+export interface ChainRoadmapDetail {
+  id: string; name: string; started: boolean; completed: boolean;
+  currentStep: number; totalSteps: number; percent: number;
+}
 export interface ScheduleSlot {
   id: string; label: string; time: string; days: string;
   kind: 'roadmap' | 'recurring' | 'empty';
@@ -9,6 +14,15 @@ export interface ScheduleSlot {
   startStep?: number;
   recurring: { title: string; type: string; recurrence: string } | null;
   bookable: boolean;
+  /** Server-enriched: each chained roadmap's name + this mentee's live progress. */
+  chainDetails?: ChainRoadmapDetail[];
+}
+
+/** One slot of a mentee's filled schedule (what the read-only views render). */
+export interface MenteeScheduleResult {
+  templateId: string | null;
+  templateName: string | null;
+  schedule: ScheduleSlot[];
 }
 
 /** Schedule engine: reusable templates + per-mentee filled slot schedules. */
@@ -30,8 +44,9 @@ export const scheduleApi = {
     apiClient.patch(`/schedules/org/${id}`, data),
   deleteOrgTemplate: (id: string) => apiClient.delete(`/schedules/org/${id}`),
 
-  getMenteeSchedule: (menteeId: string) => apiClient.get(`/schedules/mentee/${menteeId}`),
-  getMySchedule: () => apiClient.get('/schedules/me'),
+  getMenteeSchedule: (menteeId: string) =>
+    apiClient.get<{ data: { schedule: MenteeScheduleResult | null } }>(`/schedules/mentee/${menteeId}`),
+  getMySchedule: () => apiClient.get<{ data: { schedule: MenteeScheduleResult | null } }>('/schedules/me'),
   updateSlot: (menteeId: string, slotId: string, patch: {
     kind?: string; roadmapChain?: string[]; startStep?: number; recurring?: { title: string; type: string; recurrence: string } | null; bookable?: boolean;
   }) => apiClient.patch(`/schedules/mentee/${menteeId}/slot/${slotId}`, patch),
