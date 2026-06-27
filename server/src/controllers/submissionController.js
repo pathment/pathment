@@ -94,11 +94,13 @@ exports.reviewSubmission = catchAsync(async (req, res) => {
   const { submissionId } = req.params;
   const mentorId = req.user.id;
 
+  console.time(`[API] reviewSubmission ${submissionId}`);
   const submission = await submissionService.reviewSubmission(
     submissionId,
     mentorId,
     req.body
   );
+  console.timeEnd(`[API] reviewSubmission ${submissionId}`);
 
   res.status(200).json(
     successResponse('Review submitted successfully', { submission })

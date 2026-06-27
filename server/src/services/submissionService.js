@@ -407,8 +407,6 @@ class SubmissionService {
 
     await task.update(updateData);
 
-    const reviewedSubmission = await this.getSubmissionById(submissionId);
-
     // BACKGROUND TASK BEGIN
     // Push all heavy side-effects (roadmap advance, stats, gamification, notifications)
     // to the background so the mentor's API response is immediate.
@@ -469,7 +467,7 @@ class SubmissionService {
           console.error('Mentor stats update failed:', err.message);
         }
 
-        const reviewedTitle = reviewedSubmission.assignedTask?.roadmapTask?.title || 'your task';
+        const reviewedTitle = task.roadmapTask?.title || 'your task';
         const ratingNum = Number(rating);
         const ratingStr = Number.isFinite(ratingNum) && ratingNum > 0 ? `${ratingNum % 1 === 0 ? ratingNum : ratingNum.toFixed(1)}★` : null;
 
@@ -519,7 +517,7 @@ class SubmissionService {
       }
     })();
 
-    return reviewedSubmission;
+    return submission;
   }
 
   /**
