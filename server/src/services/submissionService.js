@@ -407,106 +407,117 @@ class SubmissionService {
 
     await task.update(updateData);
 
-    // Auto-advance a roadmap chain FIRST (assign the next step) so the stats
-    // recompute below counts it - otherwise approving the last-assigned step
-    // would momentarily read 100% and flag the enrollment ready-to-complete
-    // before the next step appears.
-    if (isApproved) {
-      try {
-        const linearRoadmapService = require('./linearRoadmapService');
-        await linearRoadmapService.advanceOnApproval(task.menteeId, task.roadmapTaskId);
-      } catch (err) {
-        console.error('Roadmap auto-advance failed (non-fatal):', err.message);
-      }
-    }
-
-    // Update enrollment task stats so tasksCompleted/tasksTotal/overallProgressPercentage stay current
-    const taskService = require('./taskService');
-    await taskService.updateEnrollmentTaskStats(task.enrollmentId);
-
-    // Keep gamification and mentee-profile progress in sync when a task is approved.
-    if (isApproved) {
-      await this.updateMenteeGamificationProgress(task.menteeId);
-
-      const gamificationService = require('./gamificationService');
-      const pointsToAward = updateData.pointsAwarded;
-
-      try {
-        if (pointsToAward > 0) {
-          await gamificationService.awardPoints(
-            task.menteeId,
-            pointsToAward,
-            'task_completed',
-            task.id,
-            `Task completed: "${task.roadmapTask?.title || task.id}"`
-          );
-        }
-
-        await gamificationService.updateStreak(task.menteeId);
-
-        // Re-check task-based badges after profile counters are refreshed.
-        await gamificationService.checkAndAwardBadges(task.menteeId);
-      } catch (gamificationError) {
-        // Do not fail review flow if gamification side-effects fail.
-        console.error('[Gamification] reviewSubmission side-effect failed:', {
-          submissionId,
-          taskId: task.id,
-          menteeId: task.menteeId,
-          error: gamificationError.message
-        });
-      }
-    }
-
-    // Update mentor stats
-    await this.updateMentorReviewStats(mentorId);
-
     const reviewedSubmission = await this.getSubmissionById(submissionId);
 
-    const reviewedTitle = reviewedSubmission.assignedTask?.roadmapTask?.title || 'your task';
-    const ratingNum = Number(rating);
-    const ratingStr = Number.isFinite(ratingNum) && ratingNum > 0 ? `${ratingNum % 1 === 0 ? ratingNum : ratingNum.toFixed(1)}★` : null;
+    // BACKGROUND TASK BEGIN
+    // Push all heavy side-effects (roadmap advance, stats, gamification, notifications)
+    // to the background so the mentor's API response is immediate.
+    (async () => {
+      // Yield the database for 100ms so the frontend's immediate GET requests can finish first!
+      await new Promise(resolve => setTimeout(resolve, 100));
 
-    await notificationOrchestrator.dispatch({
-      eventKey: NOTIFICATION_EVENTS.SUBMISSION_REVIEWED,
-      recipients: [{ userId: task.menteeId }],
-      payload: {
-        title: isApproved ? `“${reviewedTitle}” approved 🎉` : `Changes requested on “${reviewedTitle}”`,
-        message: isApproved
-          ? `Your mentor approved “${reviewedTitle}”${ratingStr ? ` · ${ratingStr}` : ''}. Nice work - keep the momentum going.`
-          : `Your mentor asked for another pass on “${reviewedTitle}”. Read their notes and resubmit when ready.`,
-        actionUrl: `/mentee/tasks/${task.id}`,
-        actionLabel: isApproved ? 'See review' : 'View notes & resubmit',
-        relatedEntityType: 'task_submission',
-        relatedEntityId: submission.id,
-        emailSubject: isApproved ? `Approved: “${reviewedTitle}”` : `Revision requested: “${reviewedTitle}”`
-      },
-      dedupe: {
-        relatedEntityType: 'submission_reviewed',
-        relatedEntityId: submission.id
-      }
-    });
-
-    if (feedbackText && String(feedbackText).trim()) {
-      const reviewer = await models.User.findByPk(mentorId, { attributes: ['firstName', 'lastName'] });
-      const reviewerName = reviewer ? `${reviewer.firstName} ${reviewer.lastName}`.trim() : 'Your mentor';
-      await notificationOrchestrator.dispatch({
-        eventKey: NOTIFICATION_EVENTS.FEEDBACK_SENT,
-        recipients: [{ userId: task.menteeId }],
-        payload: {
-          title: `${reviewerName} left you feedback`,
-          message: `New feedback on “${reviewedTitle}”. Take a look when you get a moment.`,
-          actionUrl: `/mentee/tasks/${task.id}`,
-          actionLabel: 'Read feedback',
-          relatedEntityType: 'task_feedback',
-          relatedEntityId: submission.id,
-          emailSubject: `${reviewerName} left feedback on “${reviewedTitle}”`
-        },
-        dedupe: {
-          relatedEntityType: 'feedback_sent',
-          relatedEntityId: submission.id
+      try {
+        if (isApproved) {
+          try {
+            const linearRoadmapService = require('./linearRoadmapService');
+            await linearRoadmapService.advanceOnApproval(task.menteeId, task.roadmapTaskId);
+          } catch (err) {
+            console.error('Roadmap auto-advance failed (non-fatal):', err.message);
+          }
         }
-      });
-    }
+
+        try {
+          const taskService = require('./taskService');
+          await taskService.updateEnrollmentTaskStats(task.enrollmentId);
+        } catch (err) {
+          console.error('Task stats update failed:', err.message);
+        }
+
+        if (isApproved) {
+          try {
+            await this.updateMenteeGamificationProgress(task.menteeId);
+
+            const gamificationService = require('./gamificationService');
+            const pointsToAward = updateData.pointsAwarded;
+
+            if (pointsToAward > 0) {
+              await gamificationService.awardPoints(
+                task.menteeId,
+                pointsToAward,
+                'task_completed',
+                task.id,
+                `Task completed: "${task.roadmapTask?.title || task.id}"`
+              );
+            }
+
+            await gamificationService.updateStreak(task.menteeId);
+            await gamificationService.checkAndAwardBadges(task.menteeId);
+          } catch (gamificationError) {
+            // Do not fail review flow if gamification side-effects fail.
+            console.error('[Gamification] reviewSubmission side-effect failed:', {
+              submissionId,
+              taskId: task.id,
+              menteeId: task.menteeId,
+              error: gamificationError.message
+            });
+          }
+        }
+
+        try {
+          await this.updateMentorReviewStats(mentorId);
+        } catch (err) {
+          console.error('Mentor stats update failed:', err.message);
+        }
+
+        const reviewedTitle = reviewedSubmission.assignedTask?.roadmapTask?.title || 'your task';
+        const ratingNum = Number(rating);
+        const ratingStr = Number.isFinite(ratingNum) && ratingNum > 0 ? `${ratingNum % 1 === 0 ? ratingNum : ratingNum.toFixed(1)}★` : null;
+
+        await notificationOrchestrator.dispatch({
+          eventKey: NOTIFICATION_EVENTS.SUBMISSION_REVIEWED,
+          recipients: [{ userId: task.menteeId }],
+          payload: {
+            title: isApproved ? `“${reviewedTitle}” approved 🎉` : `Changes requested on “${reviewedTitle}”`,
+            message: isApproved
+              ? `Your mentor approved “${reviewedTitle}”${ratingStr ? ` · ${ratingStr}` : ''}. Nice work - keep the momentum going.`
+              : `Your mentor asked for another pass on “${reviewedTitle}”. Read their notes and resubmit when ready.`,
+            actionUrl: `/mentee/tasks/${task.id}`,
+            actionLabel: isApproved ? 'See review' : 'View notes & resubmit',
+            relatedEntityType: 'task_submission',
+            relatedEntityId: submission.id,
+            emailSubject: isApproved ? `Approved: “${reviewedTitle}”` : `Revision requested: “${reviewedTitle}”`
+          },
+          dedupe: {
+            relatedEntityType: 'submission_reviewed',
+            relatedEntityId: submission.id
+          }
+        });
+
+        if (feedbackText && String(feedbackText).trim()) {
+          const reviewer = await models.User.findByPk(mentorId, { attributes: ['firstName', 'lastName'] });
+          const reviewerName = reviewer ? `${reviewer.firstName} ${reviewer.lastName}`.trim() : 'Your mentor';
+          await notificationOrchestrator.dispatch({
+            eventKey: NOTIFICATION_EVENTS.FEEDBACK_SENT,
+            recipients: [{ userId: task.menteeId }],
+            payload: {
+              title: `${reviewerName} left you feedback`,
+              message: `New feedback on “${reviewedTitle}”. Take a look when you get a moment.`,
+              actionUrl: `/mentee/tasks/${task.id}`,
+              actionLabel: 'Read feedback',
+              relatedEntityType: 'task_feedback',
+              relatedEntityId: submission.id,
+              emailSubject: `${reviewerName} left feedback on “${reviewedTitle}”`
+            },
+            dedupe: {
+              relatedEntityType: 'feedback_sent',
+              relatedEntityId: submission.id
+            }
+          });
+        }
+      } catch (err) {
+        console.error('Background side-effects failed:', err.message);
+      }
+    })();
 
     return reviewedSubmission;
   }
