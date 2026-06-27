@@ -3,19 +3,22 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, CheckCircle2, Loader2 } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Loader2, Lock, Clock, Users, CalendarX2, type LucideIcon } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { publicApi, type ApplyInfo } from '@/lib/services/public-api';
 import { validateIntakeValue } from '@/lib/config/intakeFields';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 
-const CLOSED_COPY: Record<string, string> = {
-  disabled: 'This application link is currently turned off.',
-  not_open: 'This cohort is not open for applications.',
-  not_yet_open: 'Applications for this cohort haven’t opened yet.',
-  closed: 'Applications for this cohort have closed.',
-  full: 'This cohort has reached its application limit.',
+// Each "can't apply" reason gets its own icon, badge label, copy and accent so the
+// state reads as intentional and designed — not a bare error line.
+type ClosedMeta = { label: string; copy: string; Icon: LucideIcon; tile: string; icon: string; badge: string };
+const CLOSED_META: Record<string, ClosedMeta> = {
+  disabled:     { label: 'Closed',              copy: 'This application link is currently turned off.',        Icon: Lock,       tile: 'bg-slate-100 dark:bg-slate-800', icon: 'text-slate-500', badge: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300' },
+  not_open:     { label: 'Not open',            copy: 'This cohort is not open for applications.',             Icon: Lock,       tile: 'bg-slate-100 dark:bg-slate-800', icon: 'text-slate-500', badge: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300' },
+  not_yet_open: { label: 'Opening soon',        copy: 'Applications for this cohort haven’t opened yet — check back shortly.', Icon: Clock, tile: 'bg-brand-50 dark:bg-brand-500/15', icon: 'text-brand-600', badge: 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300' },
+  closed:       { label: 'Applications closed', copy: 'Applications for this cohort have closed.',             Icon: CalendarX2, tile: 'bg-slate-100 dark:bg-slate-800', icon: 'text-slate-500', badge: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300' },
+  full:         { label: 'Cohort full',         copy: 'This cohort has reached its application limit.',        Icon: Users,      tile: 'bg-amber-50 dark:bg-amber-500/15', icon: 'text-amber-600', badge: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300' },
 };
 
 export default function ApplyPage() {
@@ -141,15 +144,30 @@ export default function ApplyPage() {
   }
 
   if (!info.open) {
+    const reason = (info.reasons || []).find((r) => CLOSED_META[r]) || 'closed';
+    const meta = CLOSED_META[reason];
+    const Icon = meta.Icon;
     return (
-      <div className="max-w-xl mx-auto px-4 py-20 text-center">
-        <h1 className="text-2xl font-semibold text-slate-900">{info.program?.name || 'This program'}</h1>
-        <p className="mt-3 text-slate-600">
-          {(info.reasons || []).map((r) => CLOSED_COPY[r]).filter(Boolean)[0] || 'Applications are closed right now.'}
-        </p>
-        <Link href="/programs" className="mt-6 inline-flex items-center gap-1 text-brand-700 font-medium">
-          <ArrowLeft className="w-4 h-4" /> Browse other programs
-        </Link>
+      <div className="min-h-[70vh] flex items-center justify-center px-4">
+        <div className="w-full max-w-md text-center">
+          <div className={`mx-auto grid h-20 w-20 place-items-center rounded-2xl ${meta.tile}`}>
+            <Icon className={`h-10 w-10 ${meta.icon}`} strokeWidth={1.75} />
+          </div>
+          <span className={`mt-6 inline-flex items-center rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wider ${meta.badge}`}>
+            {meta.label}
+          </span>
+          {info.cohort?.name && <p className="mt-4 text-sm font-medium text-slate-400">{info.cohort.name}</p>}
+          <h1 className="mt-1 text-3xl sm:text-4xl font-bold tracking-tight text-slate-900">
+            {info.program?.name || 'This program'}
+          </h1>
+          <p className="mt-3 text-base text-slate-500">{meta.copy}</p>
+          <Link
+            href="/programs"
+            className="mt-8 inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-6 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-700"
+          >
+            <ArrowLeft className="h-4 w-4" /> Browse other programs
+          </Link>
+        </div>
       </div>
     );
   }
