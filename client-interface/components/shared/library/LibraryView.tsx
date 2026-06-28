@@ -12,6 +12,7 @@ import { Drawer } from '@/components/shared/Drawer';
 import RichTextEditor from '@/components/shared/RichTextEditor';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { useConfirm } from '@/lib/context/ConfirmContext';
+import { toExternalHref } from '@/lib/utils/url';
 
 const CATEGORIES = ['guidance', 'reading', 'template', 'policy'] as const;
 const CAT_META: Record<string, { icon: typeof BookOpen; cls: string; label: string }> = {
@@ -193,7 +194,7 @@ function ReaderDrawer({ docId, canCurate, onClose, onEdit }: { docId: string; ca
       footer={showFooter && doc ? (
         <div className="flex justify-between gap-2">
           {doc.url ? (
-            <a href={doc.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm hover:bg-slate-50">
+            <a href={toExternalHref(doc.url)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm hover:bg-slate-50">
               <ExternalLink className="w-4 h-4" /> Open original
             </a>
           ) : <span />}

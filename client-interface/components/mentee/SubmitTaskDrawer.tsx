@@ -5,8 +5,10 @@ import { toast } from 'sonner';
 import { Send, Loader2, Link as LinkIcon, ShieldCheck, CheckCircle2 } from 'lucide-react';
 import { Drawer } from '@/components/shared/Drawer';
 import FileUploader from '@/components/shared/FileUploader';
+import RichTextEditor from '@/components/shared/RichTextEditor';
 import { submissionService } from '@/lib/services/submissionService';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
+import { cleanHtml, isBlankHtml } from '@/lib/utils/html';
 
 export interface SubmitTaskTarget {
   id: string;
@@ -46,7 +48,7 @@ export function SubmitTaskDrawer({
   const optional = criteria.slice(reqCount);
 
   const validLinks = links.map((l) => l.trim()).filter(Boolean);
-  const canSubmit = !!description.trim() || validLinks.length > 0 || files.length > 0;
+  const canSubmit = !isBlankHtml(description) || validLinks.length > 0 || files.length > 0;
   const isResubmit = task?.status === 'revision_needed';
 
   const submit = async () => {
@@ -55,7 +57,7 @@ export function SubmitTaskDrawer({
     try {
       setSaving(true);
       await submissionService.submitTask(task.id, {
-        submissionText: description.trim(),
+        submissionText: cleanHtml(description),
         submissionUrls: validLinks,
         files,
         extensionRequested: false,
@@ -115,8 +117,7 @@ export function SubmitTaskDrawer({
 
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1">Notes <span className="text-slate-400 font-normal">(what you did, challenges, learnings)</span></label>
-          <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={4}
-            placeholder="Describe your work…" className={`${field} resize-none`} autoFocus />
+          <RichTextEditor content={description} onChange={setDescription} placeholder="Describe your work, challenges, and what you learned…" minHeight="150px" />
         </div>
 
         <div>

@@ -12,6 +12,7 @@ import { useCommunityHub, type CommunityPost, type CommunityComment, type Commun
 import { communityApi, type PostType, type ReactionType } from '@/lib/services/community-api';
 import FileUploader from '@/components/shared/FileUploader';
 import { MenuPanel } from '@/components/shared/MenuPanel';
+import { toExternalHref } from '@/lib/utils/url';
 
 /* ── Mention picker ─────────────────────────────────────────────────────── */
 function MentionPicker({ people, value, onChange }: { people: CommunityPerson[]; value: string[]; onChange: (ids: string[]) => void }) {
@@ -238,7 +239,7 @@ function PostCard({ post, canModerate, hub }: { post: CommunityPost; canModerate
       <p className={`mt-2 text-slate-700 ${post.type === 'meme' ? 'text-base' : 'text-sm'} whitespace-pre-wrap`}>{post.body}</p>
 
       {post.linkUrl && (
-        <a href={post.linkUrl} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1.5 text-sm text-brand-600 hover:underline break-all">
+        <a href={toExternalHref(post.linkUrl)} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1.5 text-sm text-brand-600 hover:underline break-all">
           <Link2 className="w-3.5 h-3.5 shrink-0" />{post.linkUrl}
         </a>
       )}

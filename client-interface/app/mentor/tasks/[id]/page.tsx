@@ -30,6 +30,8 @@ import { ResourceLink } from '@/components/shared/ResourceLink';
 import { useMentorTaskDetail } from '@/lib/hooks/mentor';
 import taskApi from '@/lib/services/task-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
+import { toExternalHref } from '@/lib/utils/url';
+import { RichContent } from '@/components/shared/RichContent';
 import { PageHeader, StatusBadge } from '@/components/admin/ui';
 import { TaskEditDrawer } from '@/components/mentor/TaskEditDrawer';
 import { useConfirm } from '@/lib/context/ConfirmContext';
@@ -376,9 +378,9 @@ export default function MentorTaskDetailsPage({ params }: PageProps) {
               {latestSubmission.submissionText && (
                 <div>
                   <p className="text-xs text-slate-500 mb-2">Submission Description</p>
-                  <div
-                    className="prose prose-sm max-w-none text-slate-700 bg-slate-50 rounded-lg p-4 border border-slate-100"
-                    dangerouslySetInnerHTML={{ __html: latestSubmission.submissionText }}
+                  <RichContent
+                    html={latestSubmission.submissionText}
+                    className="text-slate-700 bg-slate-50 dark:bg-slate-800/50 rounded-lg p-4 border border-slate-100 dark:border-slate-700"
                   />
                 </div>
               )}
@@ -390,7 +392,7 @@ export default function MentorTaskDetailsPage({ params }: PageProps) {
                     {latestSubmission.submissionUrls.map((url: string, i: number) => (
                       <li key={i}>
                         <a
-                          href={url}
+                          href={toExternalHref(url)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-sm text-brand-600 hover:underline flex items-center gap-2"

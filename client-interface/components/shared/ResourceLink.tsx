@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { Link as LinkIcon, ExternalLink, Copy, Check } from 'lucide-react';
+import { toExternalHref } from '@/lib/utils/url';
 
 /**
  * A resource link rendered as an external anchor + an inline "copy link" button.
@@ -25,7 +26,7 @@ export function ResourceLink({ url, title, className }: { url: string; title?: s
 
   return (
     <li className={`flex items-center gap-2 group ${className || ''}`}>
-      <a href={url} target="_blank" rel="noopener noreferrer" className="text-sm text-brand-600 hover:text-brand-800 hover:underline inline-flex items-center gap-1.5 min-w-0">
+      <a href={toExternalHref(url)} target="_blank" rel="noopener noreferrer" className="text-sm text-brand-600 hover:text-brand-800 hover:underline inline-flex items-center gap-1.5 min-w-0">
         <LinkIcon className="w-3.5 h-3.5 shrink-0" /><span className="truncate">{title || url}</span><ExternalLink className="w-3 h-3 shrink-0" />
       </a>
       <button

@@ -7,6 +7,8 @@ import { submissionService } from '@/lib/services/submissionService';
 import { Drawer } from '@/components/shared/Drawer';
 import { FeedbackAssist } from '@/components/mentor/FeedbackAssist';
 import { looksLikeHtml } from '@/lib/utils/html';
+import { toExternalHref } from '@/lib/utils/url';
+import { RichContent } from '@/components/shared/RichContent';
 import type { ApprovalItem } from '@/lib/hooks/mentor';
 
 type Decision = 'approved' | 'approved_notes' | 'changes' | 'rejected';
@@ -163,14 +165,14 @@ export function ReviewDrawer({
         {/* Submission */}
         <div>
           <h3 className="text-sm font-medium text-slate-700 mb-2">Submission</h3>
-          <div
-            className="prose prose-sm max-w-none rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700"
-            dangerouslySetInnerHTML={{ __html: item.submissionText || '<p class="text-slate-400">No description provided.</p>' }}
+          <RichContent
+            html={item.submissionText}
+            className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-4 text-slate-700 dark:text-slate-300"
           />
           {item.submissionUrls.length > 0 && (
             <div className="mt-2 space-y-1">
               {item.submissionUrls.map((u, i) => (
-                <a key={i} href={u} target="_blank" rel="noopener noreferrer"
+                <a key={i} href={toExternalHref(u)} target="_blank" rel="noopener noreferrer"
                   className="inline-flex items-center gap-1 text-sm text-brand-600 hover:text-brand-700 break-all">
                   <ExternalLink className="w-3.5 h-3.5 shrink-0" />{u}
                 </a>
