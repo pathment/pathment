@@ -198,13 +198,16 @@ export function AssignTaskDrawer({
         const res: any = await mentorApi.assignRoadmap(roadmapId, { menteeIds: targetIds, stepIndexes: [...selectedSteps], dueDate: dueExact || undefined, stepOverrides: Object.keys(stepOverrides).length ? stepOverrides : undefined });
         const assigned = res?.data?.assigned ?? targetIds.length;
         const failed = res?.data?.failed ?? 0;
+        // Each ticked step becomes a task — report tasks, not "a roadmap".
+        const taskCount = selectedSteps.size;
+        const taskLabel = taskCount === 1 ? 'Task' : `${taskCount} tasks`;
         if (assigned === 0) {
-          toast.error(res?.data?.results?.find((r: any) => !r.ok)?.error || 'Could not assign the roadmap');
+          toast.error(res?.data?.results?.find((r: any) => !r.ok)?.error || (taskCount === 1 ? 'Could not assign the task' : 'Could not assign the tasks'));
           setSaving(false);
           return;
         }
         if (failed) toast.error(`${failed} mentee${failed > 1 ? 's' : ''} couldn't be assigned`);
-        toast.success(`Roadmap assigned to ${assigned} mentee${assigned > 1 ? 's' : ''}`);
+        toast.success(mode === 'bulk' ? `${taskLabel} assigned to ${assigned} mentee${assigned > 1 ? 's' : ''}` : `${taskLabel} assigned to ${mentee?.name || 'the mentee'}`);
         setDone(assigned);
         onAssigned?.();
         return;
@@ -547,7 +550,7 @@ export function AssignTaskDrawer({
               <button onClick={submit} disabled={!canSubmit || saving} className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-sm inline-flex items-center gap-2 disabled:opacity-50">
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                 {source === 'roadmap'
-                  ? (mode === 'bulk' ? `Assign roadmap to ${targetCount}` : 'Assign roadmap')
+                  ? (mode === 'bulk' ? `Assign to ${targetCount}` : (selectedSteps.size > 1 ? `Assign ${selectedSteps.size} tasks` : 'Assign task'))
                   : (mode === 'bulk' ? `Assign to ${selected.size}` : 'Assign task')}
               </button>
             </div>
