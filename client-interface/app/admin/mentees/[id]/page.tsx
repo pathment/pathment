@@ -127,7 +127,9 @@ export default function AdminMenteeProfilePage() {
             <div className="space-y-3">
               <a href={`mailto:${mentee.email}`} className="flex items-center gap-3 text-sm text-slate-600 hover:text-brand-600 transition-colors">
                 <Mail className="w-4 h-4 text-slate-400 shrink-0" />
-                {mentee.email}
+                 <span className="truncate">
+                   {mentee.email}
+                 </span>
               </a>
               {mp?.currentEducation && (
                 <div className="flex items-center gap-3 text-sm text-slate-600">
@@ -222,11 +224,11 @@ export default function AdminMenteeProfilePage() {
         <div className="lg:col-span-2 space-y-6">
 
           {/* Stats grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4 gap-4">
             <StatsCard icon={TrendingUp}   label="Progress"        value={`${overallProgress}%`}                           colorClass="text-brand-600 bg-brand-50" />
             <StatsCard icon={CheckCircle2} label="Tasks Completed"  value={`${tasksCompleted}/${stats?.tasksTotal ?? tasksCompleted}`} colorClass="text-green-600 bg-green-50" />
             <StatsCard icon={Trophy}       label="Points"           value={points.toLocaleString()}                        colorClass="text-amber-600 bg-amber-50" />
-            <StatsCard icon={Users2}       label="Clan"             value={stats?.currentClanName ?? currentClan?.name ?? '-'} colorClass="text-purple-600 bg-purple-50" />
+            <StatsCard icon={Users2}       label="Clan"             value={stats?.currentClanName ?? currentClan?.name ?? '-'} colorClass="text-purple-600 bg-purple-50"   />
           </div>
 
           {/* Weekly schedule (read-only; the mentor fills it in Schedules) */}
