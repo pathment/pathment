@@ -54,6 +54,7 @@ const STATUS_TABS: { key: ApplicationStatus | 'all'; label: string }[] = [
   { key: 'accepted', label: 'Accepted' },
   { key: 'rejected', label: 'Rejected' },
   { key: 'waitlisted', label: 'Waitlisted' },
+  { key: 'withdrawn', label: 'Withdrawn' },
 ];
 
 const STATUS_CHIP: Record<ApplicationStatus, string> = {
@@ -63,6 +64,7 @@ const STATUS_CHIP: Record<ApplicationStatus, string> = {
   accepted:        'bg-emerald-50 text-emerald-700',
   rejected:        'bg-rose-50 text-rose-700',
   waitlisted:      'bg-purple-50 text-purple-700',
+  withdrawn:       'bg-slate-200 text-slate-500',
 };
 
 /** Minimal CSV → array of header→value objects (parses every column). */
@@ -607,7 +609,12 @@ function AssessmentSubmissionView({ assessment, submission }: { assessment: any;
   return (
     <div className="rounded-xl border border-slate-200 p-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm font-medium text-slate-700">Assessment submission</p>
+        <div>
+          <p className="text-sm font-medium text-slate-700">Assessment submission</p>
+          {(submission.submissionCount ?? 1) > 1 && (
+            <p className="text-[11px] text-slate-400">Final version · applicant updated it {submission.submissionCount} times</p>
+          )}
+        </div>
         <span className="text-xs text-slate-500">
           Auto {submission.autoScore ?? 0}/{submission.maxScore ?? 0}
           {submission.totalScore != null ? ` · Final ${submission.totalScore}` : ''}

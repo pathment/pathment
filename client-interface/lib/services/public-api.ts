@@ -89,6 +89,13 @@ export const publicApi = {
   submitAssessment: (token: string, answers: Record<string, AssessmentAnswer>) =>
     apiClient.post<any>(`/public/applications/${encodeURIComponent(token)}/assessment`, { answers }).then((r) => r.data),
 
+  // Applicant self-serve, before the deadline: edit submitted info, or withdraw.
+  updateInfo: (token: string, data: Record<string, unknown>) =>
+    apiClient.patch<any>(`/public/applications/${encodeURIComponent(token)}`, data).then((r) => r.data as { ok: boolean }),
+
+  withdraw: (token: string) =>
+    apiClient.post<any>(`/public/applications/${encodeURIComponent(token)}/withdraw`, {}).then((r) => r.data as { ok: boolean }),
+
   uploadFile: (token: string, file: File) => {
     const fd = new FormData();
     fd.append('file', file);

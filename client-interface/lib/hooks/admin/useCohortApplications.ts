@@ -5,7 +5,7 @@ import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import type { Cohort } from './useCohorts';
 
 export type ApplicationStatus =
-  | 'pending' | 'assessment_sent' | 'under_review' | 'accepted' | 'rejected' | 'waitlisted';
+  | 'pending' | 'assessment_sent' | 'under_review' | 'accepted' | 'rejected' | 'waitlisted' | 'withdrawn';
 
 export interface Application {
   id: string;

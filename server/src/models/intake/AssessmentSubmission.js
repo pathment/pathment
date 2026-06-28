@@ -54,6 +54,14 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.DATE,
       field: 'submitted_at'
     },
+    // How many times the applicant (re)submitted. The stored row is always the
+    // LATEST answers — this just tells the reviewer it's the final of N.
+    submissionCount: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 1,
+      field: 'submission_count'
+    },
     gradedAt: {
       type: DataTypes.DATE,
       field: 'graded_at'

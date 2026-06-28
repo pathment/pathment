@@ -12,6 +12,7 @@ import { AppearanceTab } from '@/components/settings/AppearanceTab';
 import AIConnectionsTab from '@/components/settings/AIConnectionsTab';
 import { NotificationPreferencesTab } from '@/components/settings/NotificationPreferencesTab';
 import ReviewLockTab from '@/components/settings/ReviewLockTab';
+import { PhoneField } from '@/components/shared/PhoneField';
 
 const TABS = [
   { id: 'profile', label: 'Profile', icon: User },
@@ -97,12 +98,7 @@ function AdminSettingsInner() {
                 </div>
                 <div>
                   <label className="block text-slate-700 mb-2 text-sm font-medium">Phone</label>
-                  <input
-                    type="tel"
-                    value={profileData.phone}
-                    onChange={(e) => setProfileData({ ...profileData, phone: e.target.value })}
-                    className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500"
-                  />
+                  <PhoneField value={profileData.phone} onChange={(v) => setProfileData({ ...profileData, phone: v })} />
                 </div>
               </div>
 

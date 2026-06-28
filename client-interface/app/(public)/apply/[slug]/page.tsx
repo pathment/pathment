@@ -8,6 +8,8 @@ import { toast } from 'sonner';
 
 import { publicApi, type ApplyInfo } from '@/lib/services/public-api';
 import { validateIntakeValue } from '@/lib/config/intakeFields';
+import { IntakeFormFields } from '@/components/shared/IntakeFormFields';
+import { isValidPhoneNumber } from 'react-phone-number-input';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 
 // Each "can't apply" reason gets its own icon, badge label, copy and accent so the
@@ -87,6 +89,11 @@ export default function ApplyPage() {
       const formatError = validateIntakeValue(field, responses[field.key]);
       if (formatError) {
         toast.error(`${field.label}: ${formatError}`);
+        return;
+      }
+      // Strict per-country phone check (libphonenumber) on top of the format rule.
+      if (field.type === 'phone' && responses[field.key].trim() && !isValidPhoneNumber(responses[field.key])) {
+        toast.error(`${field.label}: Enter a valid phone number`);
         return;
       }
     }
@@ -221,54 +228,7 @@ export default function ApplyPage() {
           </div>
         )}
 
-        {(info.formSchema || []).map((field) => {
-          const val = form[field.key] || '';
-          const inputCls = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-card';
-          const selected = val ? val.split(',').map((s) => s.trim()).filter(Boolean) : [];
-          const toggleCheckbox = (opt: string) => {
-            const next = selected.includes(opt) ? selected.filter((s) => s !== opt) : [...selected, opt];
-            setField(field.key, next.join(', '));
-          };
-          return (
-            <div key={field.key}>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
-                {field.label}{field.required && <span className="text-rose-500"> *</span>}
-              </label>
-              {field.type === 'textarea' ? (
-                <textarea rows={3} value={val} onChange={(e) => setField(field.key, e.target.value)} className={inputCls} />
-              ) : field.type === 'select' ? (
-                <select value={val} onChange={(e) => setField(field.key, e.target.value)} className={inputCls}>
-                  <option value="">Select…</option>
-                  {(field.options || []).map((opt) => <option key={opt} value={opt}>{opt}</option>)}
-                </select>
-              ) : field.type === 'checkboxes' ? (
-                <div className="space-y-1.5">
-                  {(field.options || []).map((opt) => (
-                    <label key={opt} className="flex items-center gap-2 text-sm text-slate-700">
-                      <input type="checkbox" checked={selected.includes(opt)} onChange={() => toggleCheckbox(opt)} className="accent-brand-600" />
-                      {opt}
-                    </label>
-                  ))}
-                </div>
-              ) : field.type === 'yes_no' ? (
-                <div className="flex gap-4 text-sm text-slate-700">
-                  {['Yes', 'No'].map((opt) => (
-                    <label key={opt} className="inline-flex items-center gap-2">
-                      <input type="radio" name={field.key} checked={val === opt} onChange={() => setField(field.key, opt)} className="accent-brand-600" />
-                      {opt}
-                    </label>
-                  ))}
-                </div>
-              ) : (
-                <input
-                  type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : field.type === 'email' ? 'email' : field.type === 'url' ? 'url' : field.type === 'phone' ? 'tel' : 'text'}
-                  inputMode={field.type === 'phone' ? 'tel' : undefined}
-                  placeholder={field.type === 'url' ? 'https://…' : undefined}
-                  value={val} onChange={(e) => setField(field.key, e.target.value)} className={inputCls} />
-              )}
-            </div>
-          );
-        })}
+        <IntakeFormFields fields={info.formSchema || []} values={form} onChange={setField} />
 
         <button
           onClick={handleSubmit}

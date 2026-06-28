@@ -19,6 +19,7 @@ import { ProfilePhotoField } from '@/components/settings/ProfilePhotoField';
 import { AppearanceTab } from '@/components/settings/AppearanceTab';
 import { NotificationPreferencesTab } from '@/components/settings/NotificationPreferencesTab';
 import type { Tab } from '@/components/admin/ui';
+import { PhoneField } from '@/components/shared/PhoneField';
 
 export default function MenteeSettings() {
   const {
@@ -111,12 +112,7 @@ export default function MenteeSettings() {
 
                 <div>
                   <label className="block text-slate-700 mb-2 text-sm font-medium">Phone</label>
-                  <input
-                    type="tel"
-                    value={profileData.phone}
-                    onChange={(e) => setProfileData({ ...profileData, phone: e.target.value })}
-                    className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500"
-                  />
+                  <PhoneField value={profileData.phone} onChange={(v) => setProfileData({ ...profileData, phone: v })} />
                 </div>
               </div>
 

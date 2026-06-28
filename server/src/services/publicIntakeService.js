@@ -113,6 +113,10 @@ class PublicIntakeService {
       throw new ValidationError('Your first and last name are required');
     }
     if (!EMAIL_RE.test(email)) throw new ValidationError('A valid email is required');
+    // Phone is free-form text (never a number — it can have +, spaces, leading 0s),
+    // but it must look like a phone when given.
+    const phoneErr = data.phone ? validateIntakeValue({ key: 'phone', type: 'phone' }, data.phone) : null;
+    if (phoneErr) throw new ValidationError(`Phone: ${phoneErr}`);
 
     // Enforce required intake fields server-side (the client checks too, but a
     // direct API call must not be able to skip them).
@@ -222,6 +226,10 @@ class PublicIntakeService {
     const application = await this._findByAccessToken(rawToken);
     const cohort = application.cohort;
 
+    const deadline = cohort?.applyClosesAt || null;
+    const decided = ['accepted', 'rejected'].includes(application.status);
+    const pastDeadline = !!(deadline && new Date() > new Date(deadline));
+
     // The applicant's OWN assigned assessment (level-aware, randomly drawn at
     // apply time and stored, so it's stable across visits). Assign lazily if an
     // older application predates assignment.
@@ -234,8 +242,26 @@ class PublicIntakeService {
       const existing = await models.AssessmentSubmission.findOne({
         where: { assessmentId: assignedId, applicationId: application.id }
       });
-      if (existing) submission = { status: existing.status, submittedAt: existing.submittedAt };
+      if (existing) {
+        submission = {
+          status: existing.status,
+          submittedAt: existing.submittedAt,
+          updatedAt: existing.updatedAt,
+          submissionCount: existing.submissionCount || 1,
+          // The applicant's own answers, so the form can pre-fill for editing.
+          answers: existing.answers || {}
+        };
+      }
     }
+
+    const withdrawn = application.status === 'withdrawn';
+    // Whether they can still take/revise the assessment, edit their info, or withdraw.
+    const canEditAssessment = !!assignedId && !decided && !withdrawn && !pastDeadline && (!submission || submission.status !== 'graded');
+    const canEditInfo = !decided && !withdrawn && !pastDeadline;
+    const canWithdraw = !decided && !withdrawn;
+    // Level can only be changed while it's safe (no assessment submitted yet) —
+    // otherwise switching level would re-roll the assessment and discard their work.
+    const canChangeLevel = canEditInfo && !(submission && submission.status !== 'in_progress');
 
     return {
       application: {
@@ -243,21 +269,128 @@ class PublicIntakeService {
         email: application.email,
         firstName: application.firstName,
         lastName: application.lastName,
+        phone: application.phone,
+        level: application.level,
         status: application.status,
+        // Everything they filled in, so the status page can show "your information".
+        responses: application.responses || {},
         assessmentSubmittedAt: application.assessmentSubmittedAt,
         createdAt: application.createdAt
       },
       program: cohort?.program ? { id: cohort.program.id, name: cohort.program.name } : null,
       cohort: cohort ? { id: cohort.id, name: cohort.name } : null,
+      // The level labels so a stored level key can render as its friendly label.
+      levels: Array.isArray(cohort?.levels) ? cohort.levels : [],
+      // The intake form fields, so the portal can render an editable copy.
+      formSchema: Array.isArray(cohort?.intakeFormSchema) ? cohort.intakeFormSchema : [],
       assessment,
-      submission
+      submission,
+      deadline,
+      canEditAssessment,
+      canEditInfo,
+      canChangeLevel,
+      canWithdraw
     };
   }
 
+  /**
+   * Update an applicant's submitted info before the deadline. Name/phone/answers
+   * are freely editable; LEVEL is special — changing it re-rolls the assessment,
+   * so it's only allowed while no assessment has been submitted (we clear the
+   * in-progress one and re-assign). Locked once decided, withdrawn, or past close.
+   */
+  async updateApplicationInfo(rawToken, data) {
+    const application = await this._findByAccessToken(rawToken);
+    const cohort = application.cohort;
+
+    if (['accepted', 'rejected'].includes(application.status)) throw new ConflictError('Your application has already been decided and can no longer be edited.');
+    if (application.status === 'withdrawn') throw new ConflictError('This application has been withdrawn.');
+    if (cohort?.applyClosesAt && new Date() > new Date(cohort.applyClosesAt)) throw new ValidationError('The deadline to edit your application has passed.');
+
+    if (!String(data.firstName || '').trim() || !String(data.lastName || '').trim()) {
+      throw new ValidationError('Your first and last name are required');
+    }
+    const phoneErr = data.phone ? validateIntakeValue({ key: 'phone', type: 'phone' }, data.phone) : null;
+    if (phoneErr) throw new ValidationError(`Phone: ${phoneErr}`);
+
+    // Validate intake fields (required + format) — same rules as applying.
+    const schema = Array.isArray(cohort.intakeFormSchema) ? cohort.intakeFormSchema : [];
+    const responses = data.responses && typeof data.responses === 'object' ? data.responses : {};
+    for (const field of schema) {
+      if (!field) continue;
+      const top = { firstName: data.firstName, lastName: data.lastName, phone: data.phone };
+      const raw = responses[field.key] ?? top[field.key];
+      const answered = Array.isArray(raw) ? raw.length > 0 : String(raw ?? '').trim().length > 0;
+      if (field.required && !answered) throw new ValidationError(`Please complete: ${field.label || field.key}`);
+      const formatError = validateIntakeValue(field, Array.isArray(raw) ? raw.join(', ') : raw);
+      if (formatError) throw new ValidationError(`${field.label || field.key}: ${formatError}`);
+    }
+
+    // Level handling.
+    const levels = Array.isArray(cohort.levels) ? cohort.levels : [];
+    let level = data.level != null ? String(data.level).trim() : (application.level || null);
+    if (levels.length) {
+      if (!level) throw new ValidationError('Please select your level');
+      if (!levels.some((l) => l.key === level)) throw new ValidationError('Please select a valid level');
+    } else {
+      level = null;
+    }
+    const levelChanged = level !== (application.level || null);
+    if (levelChanged) {
+      const sub = await models.AssessmentSubmission.findOne({ where: { applicationId: application.id } });
+      if (sub && sub.status !== 'in_progress') {
+        throw new ValidationError('You can’t change your level after submitting the assessment.');
+      }
+      if (sub) await sub.destroy();          // discard the untouched/in-progress one
+      await application.update({ assignedAssessmentId: null, assessmentSubmittedAt: null });
+    }
+
+    await application.update({
+      firstName: data.firstName || null,
+      lastName: data.lastName || null,
+      phone: data.phone || null,
+      level,
+      responses
+    });
+
+    // Re-assign the assessment for the new level and re-gate the status.
+    if (levelChanged) {
+      const assignedId = await assessmentService.ensureAssignedAssessment(application, cohort);
+      const requiresAssessment = Boolean(assignedId && cohort.assessmentRequired);
+      await application.update({ status: requiresAssessment ? 'assessment_sent' : 'pending' });
+    }
+
+    return { ok: true };
+  }
+
+  /** Withdraw an application (self-serve). Allowed any time before a decision. */
+  async withdrawApplication(rawToken) {
+    const application = await this._findByAccessToken(rawToken);
+    if (['accepted', 'rejected'].includes(application.status)) {
+      throw new ConflictError('Your application has already been decided and can no longer be withdrawn.');
+    }
+    if (application.status !== 'withdrawn') await application.update({ status: 'withdrawn' });
+    return { ok: true };
+  }
+
   /** Submit assessment answers; auto-grade the answerable items. */
+  /**
+   * Submit OR update assessment answers. An applicant may revise as many times as
+   * they like UNTIL the deadline (the cohort's apply-closes date) — the stored row
+   * is always their latest answers, so the admin reviews the final version. Locked
+   * once decided, graded, or past the deadline.
+   */
   async submitAssessment(rawToken, answers) {
     const application = await this._findByAccessToken(rawToken);
     const cohort = application.cohort;
+
+    if (['accepted', 'rejected'].includes(application.status)) {
+      throw new ConflictError('Your application has already been decided — the assessment can no longer be changed.');
+    }
+    if (cohort?.applyClosesAt && new Date() > new Date(cohort.applyClosesAt)) {
+      throw new ValidationError('The deadline to submit or update this assessment has passed.');
+    }
+
     const assignedId = await assessmentService.ensureAssignedAssessment(application, cohort);
     if (!assignedId) throw new ValidationError('No assessment is attached to this application');
 
@@ -272,10 +405,12 @@ class PublicIntakeService {
     const existing = await models.AssessmentSubmission.findOne({
       where: { assessmentId: assignedId, applicationId: application.id }
     });
-    if (existing && existing.status !== 'in_progress') {
-      throw new ConflictError('You have already submitted this assessment');
+    // Once an admin has graded it, the applicant can't overwrite their work.
+    if (existing && existing.status === 'graded') {
+      throw new ConflictError('This assessment has already been graded and can no longer be changed.');
     }
 
+    const submissionCount = existing ? (existing.submissionCount || 0) + 1 : 1;
     const payload = {
       assessmentId: assignedId,
       applicationId: application.id,
@@ -285,7 +420,8 @@ class PublicIntakeService {
       // If nothing needs a human, the auto score is final.
       totalScore: hasManual ? null : autoScore,
       status: 'submitted',
-      submittedAt: now
+      submittedAt: now,
+      submissionCount
     };
     if (existing) await existing.update(payload);
     else await models.AssessmentSubmission.create(payload);
@@ -297,7 +433,7 @@ class PublicIntakeService {
       assessmentScore: hasManual ? application.assessmentScore : autoScore
     });
 
-    return { autoScore, maxScore, pendingManualGrading: hasManual };
+    return { autoScore, maxScore, pendingManualGrading: hasManual, submissionCount };
   }
 
   /** Upload a file for a file_upload answer (gated by the applicant's token). */

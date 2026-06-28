@@ -41,6 +41,17 @@ const submitAssessment = catchAsync(async (req, res) => {
   res.status(200).json(successResponse('Assessment submitted', result));
 });
 
+// Applicant self-serve: edit submitted info, or withdraw — both before the deadline.
+const updateInfo = catchAsync(async (req, res) => {
+  const result = await publicIntakeService.updateApplicationInfo(req.params.token, req.body || {});
+  res.status(200).json(successResponse('Application updated', result));
+});
+
+const withdraw = catchAsync(async (req, res) => {
+  const result = await publicIntakeService.withdrawApplication(req.params.token);
+  res.status(200).json(successResponse('Application withdrawn', result));
+});
+
 const uploadFile = catchAsync(async (req, res) => {
   const result = await publicIntakeService.uploadAssessmentFile(req.params.token, req.file);
   res.status(201).json(successResponse('File uploaded', result, 201));
@@ -54,5 +65,7 @@ module.exports = {
   resume,
   getStatus,
   submitAssessment,
+  updateInfo,
+  withdraw,
   uploadFile
 };

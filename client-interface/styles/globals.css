@@ -518,6 +518,33 @@ input[type="number"].points-input-enabled {
 }
 
 /* Disable browser-native password reveal/clear controls */
+/* react-phone-number-input — themed to match our inputs (token-driven, dark-mode aware). */
+.pf-wrap .PhoneInput {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 0.5rem;
+  background: var(--card, #ffffff);
+}
+.pf-wrap .PhoneInput:focus-within {
+  border-color: transparent;
+  box-shadow: 0 0 0 2px var(--brand-500);
+}
+.pf-wrap.pf-invalid .PhoneInput { border-color: #f43f5e; }
+.pf-wrap .PhoneInputInput {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: inherit;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+}
+.pf-wrap .PhoneInputCountryIcon { width: 1.4em; height: 1em; box-shadow: none; }
+.pf-wrap .PhoneInputCountryIconImg { display: block; }
+
 input::-ms-reveal,
 input::-ms-clear,
 input::-webkit-contacts-auto-fill-button,
