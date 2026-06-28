@@ -325,7 +325,7 @@ export default function MenteeDetail() {
             <div>
               <p className="text-amber-900 font-medium text-sm">
                 {enrollment.completionRequestedByRole === 'system'
-                  ? `${mentee?.firstName} ${mentee?.lastName} has finished every task - ready for your sign-off`
+                  ? `${mentee?.firstName} ${mentee?.lastName} has finished their roadmap - ready for your sign-off`
                   : `${mentee?.firstName} ${mentee?.lastName} has requested completion`}
               </p>
               <p className="text-amber-700 text-xs mt-1">

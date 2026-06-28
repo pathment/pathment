@@ -606,10 +606,43 @@ class TaskService {
   }
 
   /**
+   * Has the mentee finished the program's ROADMAP(s)? This — not "every assigned
+   * task is done" — is what makes an enrollment ready for completion sign-off.
+   *
+   * A mentee is auto-nominated for completion when the linear roadmap they're
+   * working through is finished. RoadmapProgress.completed flips true the moment
+   * the LAST roadmap step is approved (see linearRoadmapService.advanceOnApproval),
+   * which is the same thing as "all roadmap tasks completed" — so it covers both
+   * nomination scenarios. We require at least one tracked program roadmap and that
+   * ALL of them are completed, so a mid-chain roadmap (a next one auto-assigned)
+   * keeps the enrollment active.
+   *
+   * Custom one-off tasks have no roadmap (roadmapId is null) and therefore never
+   * trigger this. That's the fix for the bug where assigning a single custom task
+   * and approving it read 100% and prematurely flagged the whole program complete.
+   * A mentor signs off a custom-only / ahead-of-schedule path manually instead
+   * (the "Complete level" button → requestCompletion / approveCompletion).
+   */
+  async _isProgramRoadmapComplete(enrollment) {
+    if (!enrollment) return false;
+    const progresses = await models.RoadmapProgress.findAll({
+      where: { menteeId: enrollment.menteeId },
+      include: [{ model: models.Roadmap, as: 'roadmap', attributes: ['programId'], required: true }]
+    });
+    const programProgresses = progresses.filter(
+      (p) => p.roadmap && p.roadmap.programId === enrollment.programId
+    );
+    if (!programProgresses.length) return false;
+    return programProgresses.every((p) => p.completed === true);
+  }
+
+  /**
    * Update enrollment task statistics.
-   * tasksTotal is the FULL program roadmap task count (not just assigned tasks)
-   * so the percentage reflects true progress through the whole program from day 1.
-   * Also auto-advances week/level and marks program_completed when all done.
+   * tasksCompleted/tasksTotal/overallProgressPercentage track the mentee's
+   * assigned workload (the progress bar). Completion sign-off, however, is gated
+   * on finishing the program ROADMAP (see _isProgramRoadmapComplete) — NOT on the
+   * assigned-task ratio — so a lone custom task can't prematurely flag the program
+   * as complete. Flags the enrollment ready for the mentor's sign-off when done.
    */
   async updateEnrollmentTaskStats(enrollmentId) {
     // Load enrollment to know which program we're in
@@ -647,16 +680,19 @@ class TaskService {
       ? Math.round((tasksCompleted / tasksTotal) * 100)
       : 0;
 
-    // Completion is the MENTOR's call. When every program task (roadmap + custom)
-    // is done we don't silently complete - we flag the enrollment as ready for
-    // sign-off ('pending_completion', marked system-requested) so the mentor is
-    // prompted to confirm. If work reopens, only the system-flagged ones revert.
-    const allProgramTasksDone = tasksTotal > 0 && tasksCompleted >= tasksTotal;
+    // Completion is the MENTOR's call, and it's gated on finishing the program
+    // ROADMAP — not on "every assigned task is done". When the roadmap is complete
+    // (its last step approved, or all steps completed) we don't silently complete:
+    // we flag the enrollment as ready for sign-off ('pending_completion', marked
+    // system-requested) so the mentor is prompted to confirm. If the roadmap is no
+    // longer complete (e.g. a next roadmap got chained in), only the system-flagged
+    // ones revert — a mentor's own manual nomination is left untouched.
+    const roadmapComplete = await this._isProgramRoadmapComplete(enrollment);
     const currentEnrollment = await models.Enrollment.findByPk(enrollmentId);
     const current = currentEnrollment?.status;
 
     let statusUpdate = {};
-    if (allProgramTasksDone) {
+    if (roadmapComplete) {
       if (current === 'active' || current === 'matched') {
         statusUpdate = {
           status: 'pending_completion',
@@ -667,7 +703,7 @@ class TaskService {
         };
       }
     } else if (current === 'pending_completion' && currentEnrollment?.completionRequestedByRole === 'system') {
-      // Auto-flagged as ready, but new work appeared - send it back to active.
+      // Auto-flagged as ready, but the roadmap is no longer complete - send it back.
       statusUpdate = {
         status: 'active',
         completionRequestedAt: null,
@@ -697,7 +733,7 @@ class TaskService {
     }
 
     // Auto-advance week / level when the current week's tasks are all done
-    if (!allProgramTasksDone) {
+    if (!roadmapComplete) {
       await this._checkAndAdvanceProgress(enrollment, assignedTasks);
     }
 
