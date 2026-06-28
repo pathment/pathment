@@ -98,6 +98,11 @@ module.exports = (sequelize, DataTypes) => {
       defaultValue: false,
       field: 'assessment_required'
     },
+    // Optional separate deadline for the assessment. Null = use applyClosesAt.
+    assessmentDeadline: {
+      type: DataTypes.DATE,
+      field: 'assessment_deadline'
+    },
     createdBy: {
       type: DataTypes.UUID,
       field: 'created_by'

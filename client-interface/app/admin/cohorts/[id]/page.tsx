@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import {
   ArrowLeft, Upload, Loader2, X, CheckCircle2, XCircle, FileSpreadsheet,
   Mail, Phone, Check, Link2, Copy, Power, ClipboardCheck, Pencil, Eye, CopyPlus, FormInput, Plus,
-  Trash2, CalendarRange, Layers,
+  Trash2, CalendarRange, Layers, RefreshCw,
 } from 'lucide-react';
 import {
   useCohortApplications,
@@ -91,13 +91,16 @@ function ApplicationDrawer({
 }: {
   app: Application;
   onClose: () => void;
-  onUpdate: (id: string, data: { status?: string; assessmentScore?: number; reviewerNotes?: string }) => Promise<void>;
+  onUpdate: (id: string, data: { status?: string; assessmentScore?: number; reviewerNotes?: string; decisionReason?: string }) => Promise<void>;
   onAccept: (id: string) => Promise<void>;
   onReject: (id: string, reason?: string) => Promise<void>;
 }) {
   const [score, setScore] = useState(app.assessmentScore != null ? String(app.assessmentScore) : '');
   const [notes, setNotes] = useState(app.reviewerNotes ?? '');
   const [busy, setBusy] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
+  const [rejectReason, setRejectReason] = useState('');
+  const [decReason, setDecReason] = useState(app.decisionReason ?? '');
   const decided = app.status === 'accepted' || app.status === 'rejected';
 
   // Load the assessment submission (if any) for this application.
@@ -137,6 +140,17 @@ function ApplicationDrawer({
             {app.programPreference && <span className="text-xs text-slate-500">wants: {app.programPreference}</span>}
             {app.user && <span className="text-xs text-emerald-600">· registered</span>}
           </div>
+
+          {/* Rejection reason — editable after a decision; shown to the applicant. */}
+          {app.status === 'rejected' && (
+            <div className="rounded-xl border border-rose-200 bg-rose-50/60 dark:bg-rose-500/10 p-4">
+              <label className="block text-sm font-medium text-slate-700 mb-1">Rejection reason <span className="text-slate-400 font-normal">(shown to the applicant)</span></label>
+              <textarea value={decReason} onChange={(e) => setDecReason(e.target.value)} rows={3} placeholder="Add or edit the note the applicant sees." className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-rose-500 bg-card" />
+              <div className="mt-2 flex justify-end">
+                <button onClick={() => run(() => onUpdate(app.id, { decisionReason: decReason.trim() }))} disabled={busy} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-rose-600 hover:bg-rose-700 text-white rounded-lg disabled:opacity-50">{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}Save reason</button>
+              </div>
+            </div>
+          )}
 
           {/* Review */}
           {!decided && (
@@ -194,13 +208,28 @@ function ApplicationDrawer({
         </div>
 
         {!decided && (
-          <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-2">
-            <button onClick={() => run(() => onReject(app.id))} disabled={busy} className="inline-flex items-center gap-1.5 px-4 py-2 text-sm border border-rose-200 text-rose-700 hover:bg-rose-50 rounded-lg">
-              <XCircle className="w-4 h-4" /> Reject
-            </button>
-            <button onClick={() => run(() => onAccept(app.id))} disabled={busy} className="inline-flex items-center gap-1.5 px-4 py-2 text-sm bg-brand-600 hover:bg-brand-700 text-white rounded-lg">
-              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />} Accept & invite
-            </button>
+          <div className="px-6 py-4 border-t border-slate-200">
+            {rejecting ? (
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-slate-700">Reason for rejection <span className="text-slate-400 font-normal">(shown to the applicant)</span></label>
+                <textarea value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} rows={3} placeholder="e.g. A strong application, but we filled every spot at this level for this round." className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-rose-500" />
+                <div className="flex justify-end gap-2">
+                  <button onClick={() => setRejecting(false)} disabled={busy} className="px-4 py-2 text-sm border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50">Cancel</button>
+                  <button onClick={() => run(() => onReject(app.id, rejectReason.trim() || undefined))} disabled={busy} className="inline-flex items-center gap-1.5 px-4 py-2 text-sm bg-rose-600 hover:bg-rose-700 text-white rounded-lg disabled:opacity-50">
+                    {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />} Confirm rejection
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex justify-end gap-2">
+                <button onClick={() => setRejecting(true)} disabled={busy} className="inline-flex items-center gap-1.5 px-4 py-2 text-sm border border-rose-200 text-rose-700 hover:bg-rose-50 rounded-lg">
+                  <XCircle className="w-4 h-4" /> Reject
+                </button>
+                <button onClick={() => run(() => onAccept(app.id))} disabled={busy} className="inline-flex items-center gap-1.5 px-4 py-2 text-sm bg-brand-600 hover:bg-brand-700 text-white rounded-lg">
+                  {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />} Accept & invite
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -220,6 +249,8 @@ function IntakePanel({ cohortId, cohort, onChange }: { cohortId: string; cohort:
   const [opensTime, setOpensTime] = useState<string>(splitLocal(cohort?.applyOpensAt).time);
   const [closesDate, setClosesDate] = useState<string>(splitLocal(cohort?.applyClosesAt).date);
   const [closesTime, setClosesTime] = useState<string>(splitLocal(cohort?.applyClosesAt).time);
+  const [assessDeadlineDate, setAssessDeadlineDate] = useState<string>(splitLocal(cohort?.assessmentDeadline).date);
+  const [assessDeadlineTime, setAssessDeadlineTime] = useState<string>(splitLocal(cohort?.assessmentDeadline).time);
   const [levelLabels, setLevelLabels] = useState<string[]>((cohort?.levels || []).map((l: any) => l.label));
   const [pool, setPool] = useState<{ assessmentId: string; level: string | null }[]>([]);
   const [formFields, setFormFields] = useState<IntakeFormField[]>(cohort?.intakeFormSchema || []);
@@ -256,9 +287,10 @@ function IntakePanel({ cohortId, cohort, onChange }: { cohortId: string; cohort:
     setMaxApps(cohort?.maxApplications != null ? String(cohort.maxApplications) : '');
     setOpensDate(splitLocal(cohort?.applyOpensAt).date); setOpensTime(splitLocal(cohort?.applyOpensAt).time);
     setClosesDate(splitLocal(cohort?.applyClosesAt).date); setClosesTime(splitLocal(cohort?.applyClosesAt).time);
+    setAssessDeadlineDate(splitLocal(cohort?.assessmentDeadline).date); setAssessDeadlineTime(splitLocal(cohort?.assessmentDeadline).time);
     setLevelLabels((cohort?.levels || []).map((l: any) => l.label));
     setFormFields(cohort?.intakeFormSchema || []);
-  }, [cohort?.assessmentRequired, cohort?.capacity, cohort?.maxApplications, cohort?.applyOpensAt, cohort?.applyClosesAt, cohort?.levels, cohort?.intakeFormSchema]);
+  }, [cohort?.assessmentRequired, cohort?.capacity, cohort?.maxApplications, cohort?.applyOpensAt, cohort?.applyClosesAt, cohort?.assessmentDeadline, cohort?.levels, cohort?.intakeFormSchema]);
 
   const enabled = Boolean(cohort?.publicEnabled && cohort?.publicSlug);
   const applyUrl = cohort?.publicSlug && typeof window !== 'undefined' ? `${window.location.origin}/apply/${cohort.publicSlug}` : '';
@@ -285,6 +317,7 @@ function IntakePanel({ cohortId, cohort, onChange }: { cohortId: string; cohort:
     const openAt = opensDate ? `${opensDate}T${opensTime || '00:00'}` : '';
     const closeAt = closesDate ? `${closesDate}T${closesTime || '23:59'}` : '';
     if (openAt && closeAt && closeAt < openAt) { toast.error('Apply closes must be after Apply opens'); return; }
+    if (assessDeadlineDate && assessDeadlineDate < todayStr) { toast.error('Assessment deadline can’t be in the past'); return; }
     setBusy(true);
     try {
       await cohortApi.update(cohortId, {
@@ -297,6 +330,8 @@ function IntakePanel({ cohortId, cohort, onChange }: { cohortId: string; cohort:
         applyOpensTime: opensTime || null,
         applyClosesDate: closesDate || null,
         applyClosesTime: closesTime || null,
+        assessmentDeadlineDate: assessDeadlineDate || null,
+        assessmentDeadlineTime: assessDeadlineTime || null,
         assessmentRequired: required,
         levels: levelLabels.map((l) => ({ label: l })).filter((l) => l.label.trim()),
         // Drop blank options so empty choices never reach the apply form.
@@ -497,7 +532,18 @@ function IntakePanel({ cohortId, cohort, onChange }: { cohortId: string; cohort:
           <input type="checkbox" checked={required} onChange={(e) => setRequired(e.target.checked)} disabled={pool.length === 0} className="accent-brand-600" />
           Required before review
         </label>
-        <p className="mt-1 text-xs text-slate-400">Build reusable assessments in the <Link href="/admin/assessments" className="text-brand-600">Assessments library</Link>.</p>
+
+        {/* Optional separate assessment deadline (defaults to the apply-closes date). */}
+        <div className="mt-3 max-w-md">
+          <label className="block text-xs font-medium text-slate-500 mb-1">Assessment deadline <span className="text-slate-400 font-normal">(optional — defaults to Apply closes)</span></label>
+          <div className="flex gap-2">
+            <input type="date" min={todayStr} value={assessDeadlineDate} onChange={(e) => setAssessDeadlineDate(e.target.value)} className={`${field} flex-1 [color-scheme:light] dark:[color-scheme:dark]`} />
+            <input type="time" value={assessDeadlineTime} onChange={(e) => setAssessDeadlineTime(e.target.value)} title="Time (default end of day)" className={`${field} w-28 [color-scheme:light] dark:[color-scheme:dark]`} />
+          </div>
+          <p className="mt-1 text-[11px] text-slate-400">Applicants can take / update the assessment until this time (in <strong className="font-medium">{tz}</strong>). Leave blank to use the apply-closes date.</p>
+        </div>
+
+        <p className="mt-3 text-xs text-slate-400">Build reusable assessments in the <Link href="/admin/assessments" className="text-brand-600">Assessments library</Link>.</p>
       </div>
 
       <div className="flex justify-end">
@@ -739,6 +785,14 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
             {t.label}
           </button>
         ))}
+        <button
+          onClick={() => refetch()}
+          disabled={loading}
+          title="Refresh applicants"
+          className="ml-auto mb-1 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:border-brand-300 hover:text-brand-700 disabled:opacity-50"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Refresh
+        </button>
       </div>
 
       {loading ? (

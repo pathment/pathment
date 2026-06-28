@@ -53,7 +53,7 @@ export const applicationApi = {
     apiClient.post(`/intake/cohorts/${cohortId}/applications/import`, { rows, allowExceed }),
   create: (cohortId: string, data: Record<string, unknown>) =>
     apiClient.post(`/intake/cohorts/${cohortId}/applications`, data),
-  update: (id: string, data: { status?: string; assessmentScore?: number; reviewerNotes?: string }) =>
+  update: (id: string, data: { status?: string; assessmentScore?: number; reviewerNotes?: string; decisionReason?: string }) =>
     apiClient.patch(`/intake/applications/${id}`, data),
   accept: (id: string, clanId?: string) =>
     apiClient.post(`/intake/applications/${id}/accept`, { clanId }),

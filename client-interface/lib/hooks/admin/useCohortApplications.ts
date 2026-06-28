@@ -22,6 +22,7 @@ export interface Application {
   assignedAssessmentId?: string | null;
   assessmentScore?: number | null;
   reviewerNotes?: string | null;
+  decisionReason?: string | null;
   decidedAt?: string | null;
   inviteId?: string | null;
   responses?: Record<string, unknown>;
@@ -86,7 +87,7 @@ export function useCohortApplications(cohortId: string) {
     }
   }, [cohortId, refetch]);
 
-  const updateApplication = useCallback(async (id: string, data: { status?: string; assessmentScore?: number; reviewerNotes?: string }) => {
+  const updateApplication = useCallback(async (id: string, data: { status?: string; assessmentScore?: number; reviewerNotes?: string; decisionReason?: string }) => {
     try {
       await applicationApi.update(id, data);
       await refetch();

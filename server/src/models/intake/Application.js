@@ -69,6 +69,12 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.TEXT,
       field: 'reviewer_notes'
     },
+    // The reason surfaced to the APPLICANT on a decision (e.g. why rejected).
+    // Separate from reviewer_notes, which stays internal.
+    decisionReason: {
+      type: DataTypes.TEXT,
+      field: 'decision_reason'
+    },
     reviewedBy: {
       type: DataTypes.UUID,
       field: 'reviewed_by'

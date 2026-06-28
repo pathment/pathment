@@ -16,6 +16,7 @@ interface StatusData {
     id: string; email: string; firstName?: string; lastName?: string; phone?: string;
     level?: string | null; status: string;
     responses?: Record<string, unknown>;
+    decisionReason?: string | null;
     assessmentSubmittedAt?: string; createdAt: string;
   };
   program: { id: string; name: string } | null;
@@ -25,6 +26,7 @@ interface StatusData {
   assessment: { id: string; title: string; description?: string; instructions?: string; timeLimitMins?: number | null; required: boolean; questions: PublicAssessmentQuestion[] } | null;
   submission: { status: string; submittedAt?: string; updatedAt?: string; submissionCount?: number; answers?: Record<string, AssessmentAnswer> } | null;
   deadline?: string | null;
+  assessmentDeadline?: string | null;
   canEditAssessment?: boolean;
   canEditInfo?: boolean;
   canChangeLevel?: boolean;
@@ -196,6 +198,7 @@ export default function ApplicationStatusPage() {
   }
 
   const { application, program, assessment, submission, deadline } = data;
+  const assessDeadline = data.assessmentDeadline ?? deadline; // the assessment's own deadline
   const meta = STATUS_META[application.status] || STATUS_META.pending;
   const submitted = Boolean(submission && submission.status !== 'in_progress');
   const showRunner = Boolean(assessment && data.canEditAssessment && (!submitted || editing));
@@ -304,7 +307,7 @@ export default function ApplicationStatusPage() {
             {assessment.required && <span className="text-xs rounded-full bg-amber-100 text-amber-800 px-2 py-0.5">Required</span>}
           </div>
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
-            {deadline && <span className="inline-flex items-center gap-1"><CalendarClock className="w-3.5 h-3.5" />Closes {fmt(deadline)}</span>}
+            {assessDeadline && <span className="inline-flex items-center gap-1"><CalendarClock className="w-3.5 h-3.5" />Due {fmt(assessDeadline)}</span>}
             {assessment.timeLimitMins ? <span className="inline-flex items-center gap-1"><Timer className="w-3.5 h-3.5" />Suggested time {assessment.timeLimitMins} min</span> : null}
           </div>
 
@@ -362,7 +365,7 @@ export default function ApplicationStatusPage() {
                 <button onClick={handleSubmitAssessment} disabled={submitting} className="flex-1 h-11 bg-brand-600 hover:bg-brand-700 text-white rounded-lg font-medium disabled:opacity-50 inline-flex items-center justify-center gap-2">{submitting && <Loader2 className="w-4 h-4 animate-spin" />}{submitted ? 'Save changes' : 'Submit assessment'}</button>
                 {submitted && <button onClick={() => { setEditing(false); load(); }} className="px-4 h-11 rounded-lg border border-slate-200 text-slate-600 text-sm hover:bg-slate-50">Cancel</button>}
               </div>
-              <p className="mt-2 text-center text-xs text-slate-400">{deadline ? <>You can update your answers as many times as you like until <span className="font-medium">{fmt(deadline)}</span>. We review your latest version.</> : 'You can update your answers until applications close. We review your latest version.'}</p>
+              <p className="mt-2 text-center text-xs text-slate-400">{assessDeadline ? <>You can update your answers as many times as you like until <span className="font-medium">{fmt(assessDeadline)}</span>. We review your latest version.</> : 'You can update your answers until applications close. We review your latest version.'}</p>
             </>
           )}
         </div>
@@ -377,6 +380,12 @@ export default function ApplicationStatusPage() {
               : application.status === 'rejected' ? 'Thanks for applying — this time it wasn’t a match. We wish you the best.'
               : <>We review applications{deadline ? <> after they close on <span className="font-medium">{fmt(deadline)}</span></> : ' once they close'}. You&apos;ll hear from us by email — keep this link to check back any time.</>}
           </p>
+          {application.status === 'rejected' && application.decisionReason && (
+            <div className="mt-3 rounded-lg border border-slate-200 bg-card p-3">
+              <p className="text-xs font-medium text-slate-500">A note from the team</p>
+              <p className="mt-0.5 text-sm text-slate-700 whitespace-pre-wrap">{application.decisionReason}</p>
+            </div>
+          )}
         </div>
       )}
 

@@ -190,6 +190,8 @@ class ApplicationService {
     if (data.status !== undefined) patch.status = data.status;
     if (data.assessmentScore !== undefined) patch.assessmentScore = data.assessmentScore;
     if (data.reviewerNotes !== undefined) patch.reviewerNotes = data.reviewerNotes;
+    // The applicant-facing decision reason (editable after a decision).
+    if (data.decisionReason !== undefined) patch.decisionReason = data.decisionReason;
     if (Object.keys(patch).length) {
       patch.reviewedBy = reviewerId;
     }
@@ -238,7 +240,8 @@ class ApplicationService {
       status: 'rejected',
       decidedAt: new Date(),
       reviewedBy: reviewerId,
-      reviewerNotes: reason || app.reviewerNotes
+      // Shown to the applicant on their status page.
+      decisionReason: reason || app.decisionReason
     });
     return app;
   }

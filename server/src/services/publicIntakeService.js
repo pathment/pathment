@@ -226,9 +226,14 @@ class PublicIntakeService {
     const application = await this._findByAccessToken(rawToken);
     const cohort = application.cohort;
 
-    const deadline = cohort?.applyClosesAt || null;
+    const now = new Date();
+    // Editing info closes with the apply window; the assessment can have its OWN
+    // (later/earlier) deadline, falling back to the apply-closes date.
+    const infoDeadline = cohort?.applyClosesAt || null;
+    const assessmentDeadline = cohort?.assessmentDeadline || cohort?.applyClosesAt || null;
     const decided = ['accepted', 'rejected'].includes(application.status);
-    const pastDeadline = !!(deadline && new Date() > new Date(deadline));
+    const pastInfoDeadline = !!(infoDeadline && now > new Date(infoDeadline));
+    const pastAssessmentDeadline = !!(assessmentDeadline && now > new Date(assessmentDeadline));
 
     // The applicant's OWN assigned assessment (level-aware, randomly drawn at
     // apply time and stored, so it's stable across visits). Assign lazily if an
@@ -256,8 +261,8 @@ class PublicIntakeService {
 
     const withdrawn = application.status === 'withdrawn';
     // Whether they can still take/revise the assessment, edit their info, or withdraw.
-    const canEditAssessment = !!assignedId && !decided && !withdrawn && !pastDeadline && (!submission || submission.status !== 'graded');
-    const canEditInfo = !decided && !withdrawn && !pastDeadline;
+    const canEditAssessment = !!assignedId && !decided && !withdrawn && !pastAssessmentDeadline && (!submission || submission.status !== 'graded');
+    const canEditInfo = !decided && !withdrawn && !pastInfoDeadline;
     const canWithdraw = !decided && !withdrawn;
     // Level can only be changed while it's safe (no assessment submitted yet) —
     // otherwise switching level would re-roll the assessment and discard their work.
@@ -274,6 +279,8 @@ class PublicIntakeService {
         status: application.status,
         // Everything they filled in, so the status page can show "your information".
         responses: application.responses || {},
+        // The reason shown on a decision (e.g. why they were rejected).
+        decisionReason: application.decisionReason || null,
         assessmentSubmittedAt: application.assessmentSubmittedAt,
         createdAt: application.createdAt
       },
@@ -285,7 +292,8 @@ class PublicIntakeService {
       formSchema: Array.isArray(cohort?.intakeFormSchema) ? cohort.intakeFormSchema : [],
       assessment,
       submission,
-      deadline,
+      deadline: infoDeadline,
+      assessmentDeadline,
       canEditAssessment,
       canEditInfo,
       canChangeLevel,
@@ -387,7 +395,8 @@ class PublicIntakeService {
     if (['accepted', 'rejected'].includes(application.status)) {
       throw new ConflictError('Your application has already been decided — the assessment can no longer be changed.');
     }
-    if (cohort?.applyClosesAt && new Date() > new Date(cohort.applyClosesAt)) {
+    const assessmentDeadline = cohort?.assessmentDeadline || cohort?.applyClosesAt;
+    if (assessmentDeadline && new Date() > new Date(assessmentDeadline)) {
       throw new ValidationError('The deadline to submit or update this assessment has passed.');
     }
 

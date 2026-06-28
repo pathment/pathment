@@ -125,7 +125,7 @@ class CohortIntakeService {
       'name', 'description', 'status', 'capacity', 'startDate', 'endDate',
       // public intake link + assessment configuration
       'applyOpensAt', 'applyClosesAt', 'maxApplications', 'intakeFormSchema',
-      'assessmentId', 'assessmentRequired', 'timezone'
+      'assessmentId', 'assessmentRequired', 'assessmentDeadline', 'timezone'
     ];
     const patch = {};
     for (const key of allowed) {
@@ -152,6 +152,12 @@ class CohortIntakeService {
     if (data.applyOpensDate !== undefined) {
       patch.applyOpensAt = data.applyOpensDate
         ? zonedWallClockToUtc(data.applyOpensDate, data.applyOpensTime || '00:00', tz)
+        : null;
+    }
+    // Optional separate assessment deadline (blank time → end-of-day).
+    if (data.assessmentDeadlineDate !== undefined) {
+      patch.assessmentDeadline = data.assessmentDeadlineDate
+        ? (data.assessmentDeadlineTime ? zonedWallClockToUtc(data.assessmentDeadlineDate, data.assessmentDeadlineTime, tz) : endOfDayInZone(data.assessmentDeadlineDate, tz))
         : null;
     }
 

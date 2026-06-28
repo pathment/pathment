@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, CheckCircle2, Loader2, Lock, Clock, Users, CalendarX2, type LucideIcon } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CheckCircle2, Loader2, Lock, Clock, Users, CalendarX2, type LucideIcon } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { publicApi, type ApplyInfo } from '@/lib/services/public-api';
@@ -33,6 +33,9 @@ export default function ApplyPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState<{ statusToken: string; requiresAssessment: boolean } | null>(null);
+  // If THIS browser already applied, we remember the magic-link token so we can
+  // offer a direct "View your application" — no email round-trip needed.
+  const [priorToken, setPriorToken] = useState<string | null>(null);
 
   const [form, setForm] = useState<Record<string, string>>({ firstName: '', lastName: '', email: '', phone: '' });
   const [level, setLevel] = useState('');
@@ -60,6 +63,7 @@ export default function ApplyPage() {
       .then(setInfo)
       .catch(() => setError('This application link is not valid.'))
       .finally(() => setLoading(false));
+    try { const t = localStorage.getItem(`pathment-application:${slug}`); if (t) setPriorToken(t); } catch { /* no storage */ }
   }, [slug]);
 
   const setField = (key: string, value: string) => setForm((prev) => ({ ...prev, [key]: value }));
@@ -109,6 +113,8 @@ export default function ApplyPage() {
         responses,
       });
       setDone({ statusToken: result.accessToken, requiresAssessment: result.requiresAssessment });
+      try { localStorage.setItem(`pathment-application:${slug}`, result.accessToken); } catch { /* no storage */ }
+      setPriorToken(result.accessToken);
     } catch (e) {
       toast.error(extractApiErrorMessage(e, 'Could not submit your application'));
     } finally {
@@ -168,12 +174,33 @@ export default function ApplyPage() {
             {info.program?.name || 'This program'}
           </h1>
           <p className="mt-3 text-base text-slate-500">{meta.copy}</p>
-          <Link
-            href="/programs"
-            className="mt-8 inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-6 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-700"
-          >
-            <ArrowLeft className="h-4 w-4" /> Browse other programs
-          </Link>
+
+          {/* Already applied? Let them reach their application even when closed/full. */}
+          {priorToken ? (
+            <button onClick={() => router.push(`/apply/status/${encodeURIComponent(priorToken)}`)} className="mt-8 inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-brand-700">
+              View your application <ArrowRight className="h-4 w-4" />
+            </button>
+          ) : !resumeOpen ? (
+            <button onClick={() => setResumeOpen(true)} className="mt-8 inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-brand-700">
+              Already applied? View your application
+            </button>
+          ) : resumeMsg ? (
+            <p className="mt-8 rounded-lg bg-emerald-50 text-emerald-800 px-4 py-3 text-sm">{resumeMsg}</p>
+          ) : (
+            <div className="mt-8 flex flex-col gap-2 text-left">
+              <p className="text-sm text-slate-500">Enter the email you applied with and we&apos;ll send you a link to your application.</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <input type="email" value={resumeEmail} onChange={(e) => setResumeEmail(e.target.value)} placeholder="you@email.com" className="flex-1 min-w-48 border border-slate-200 rounded-lg px-3 py-2 text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                <button onClick={submitResume} disabled={resumeBusy} className="px-4 py-2 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700 disabled:opacity-50 inline-flex items-center gap-1.5">{resumeBusy && <Loader2 className="w-4 h-4 animate-spin" />}Email me my link</button>
+              </div>
+            </div>
+          )}
+
+          <div className="mt-4">
+            <Link href="/programs" className="inline-flex items-center justify-center gap-1.5 text-sm text-slate-500 hover:text-slate-700">
+              <ArrowLeft className="h-4 w-4" /> Browse other programs
+            </Link>
+          </div>
         </div>
       </div>
     );
@@ -193,10 +220,20 @@ export default function ApplyPage() {
         </p>
       )}
 
-      {/* Already applied? Re-issue the magic link by email. */}
+      {/* Same browser already applied → jump straight to their application. */}
+      {priorToken && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-brand-200 bg-brand-50 dark:bg-brand-500/10 px-4 py-3">
+          <span className="text-sm font-medium text-brand-900 dark:text-brand-200">You&apos;ve already applied to this cohort.</span>
+          <button onClick={() => router.push(`/apply/status/${encodeURIComponent(priorToken)}`)} className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700">
+            View your application <ArrowRight className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Already applied on another device? Re-issue the magic link by email. */}
       <div className="mt-3 text-sm">
         {!resumeOpen ? (
-          <button onClick={() => setResumeOpen(true)} className="text-brand-700 hover:text-brand-800 font-medium">Already applied? Continue where you left off</button>
+          <button onClick={() => setResumeOpen(true)} className="text-brand-700 hover:text-brand-800 font-medium">{priorToken ? 'On another device? Email me my link' : 'Already applied? Continue where you left off'}</button>
         ) : resumeMsg ? (
           <p className="rounded-lg bg-emerald-50 text-emerald-800 px-3 py-2">{resumeMsg}</p>
         ) : (
