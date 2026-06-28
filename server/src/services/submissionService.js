@@ -117,7 +117,7 @@ class SubmissionService {
     });
 
     // Re-engagement: a paused mentee who submits work has come back → resume.
-    require('./mentorshipPauseService').autoResumeIfPaused(task.menteeId, 'submitted work').catch(() => {});
+    require('./mentorshipPauseService').autoResumeIfPaused(task.menteeId, 'submitted work').catch(() => { });
 
     // Return complete submission with files
     const fullSubmission = await this.getSubmissionById(submission.id);
@@ -284,7 +284,7 @@ class SubmissionService {
 
     //  ADD: Send notification to mentee
     const updatedSubmission = await this.getSubmissionById(submissionId);
-    
+
     await notificationOrchestrator.dispatch({
       eventKey: NOTIFICATION_EVENTS.EXTENSION_HANDLED,
       recipients: [{ userId: submission.assignedTask.menteeId }],
@@ -364,7 +364,7 @@ class SubmissionService {
 
     // Create feedback
     const feedbackType = inlineFeedback && inlineFeedback.length > 0 ? 'both' : 'general';
-    
+
     await models.TaskFeedback.create({
       assignedTaskId: task.id,
       submissionId: submission.id,
@@ -394,7 +394,13 @@ class SubmissionService {
 
     if (isApproved) {
       updateData.completedAt = new Date();
-      updateData.pointsAwarded = standardPoints;
+      // The mentor may award up to the task's standard max (never more, so the
+      // leaderboard stays ungameable) and down to 0 when the work fell short.
+      // Defaults to full when no value is sent.
+      const requested = Number(pointsAwarded);
+      updateData.pointsAwarded = Number.isFinite(requested)
+        ? Math.max(0, Math.min(standardPoints, Math.round(requested)))
+        : standardPoints;
     } else {
       updateData.revisionCount = task.revisionCount + 1;
     }
@@ -432,7 +438,7 @@ class SubmissionService {
             pointsToAward,
             'task_completed',
             task.id,
-            `Task completed: "${task.title || task.id}"`
+            `Task completed: "${task.roadmapTask?.title || task.id}"`
           );
         }
 
@@ -747,7 +753,7 @@ class SubmissionService {
       const publicId = publicIdWithExt.replace(/\.[^/.]+$/, '');
       const cloudinaryResourceType = (file.fileType || '').startsWith('video/') ? 'video'
         : (file.fileType || '').startsWith('image/') ? 'image'
-        : 'raw';
+          : 'raw';
       await deleteFromCloudinary(publicId, cloudinaryResourceType);
     } catch (error) {
       console.error('Error deleting from Cloudinary:', error);
@@ -960,6 +966,55 @@ class SubmissionService {
           id: m.id,
           name: `${m.firstName} ${m.lastName}`.trim(),
           avatar: `${(m.firstName || '').charAt(0)}${(m.lastName || '').charAt(0)}`.toUpperCase(),
+        } : null,
+      };
+    });
+  }
+
+  /**
+   * Tasks this mentor has APPROVED (status 'completed') — the "Reviewed" history,
+   * newest first, with the points awarded + quality rating they gave. Lets a
+   * mentor see what they've already signed off (and what they scored it).
+   */
+  async getMentorReviewedQueue(mentorId, limit = 500) {
+    const tasks = await models.AssignedTask.findAll({
+      where: { mentorId, status: 'completed' },
+      include: [
+        { model: models.RoadmapTask, as: 'roadmapTask', attributes: ['title', 'type', 'difficulty'] },
+        { model: models.User, as: 'mentee', attributes: ['id', 'firstName', 'lastName', 'profilePictureUrl'] },
+        {
+          model: models.TaskFeedback,
+          as: 'feedback',
+          required: false,
+          attributes: ['id', 'feedbackText', 'decision', 'rating', 'isApproved', 'createdAt'],
+        },
+      ],
+      order: [['completedAt', 'DESC'], ['updatedAt', 'DESC']],
+      limit,
+    });
+
+    return tasks.map((t) => {
+      const m = t.mentee;
+      const latestFb = (t.feedback || [])
+        .filter((f) => f.decision === 'approved' || f.decision === 'approved_notes' || f.isApproved === true)
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0] || null;
+      return {
+        taskId: t.id,
+        roadmapTaskId: t.roadmapTaskId || null,
+        title: t.titleOverride || t.roadmapTask?.title || 'Task',
+        type: t.roadmapTask?.type || null,
+        decision: latestFb?.decision === 'approved_notes' ? 'approved_notes' : 'approved',
+        rating: t.finalRating ?? latestFb?.rating ?? null,
+        pointsAwarded: t.pointsAwarded ?? 0,
+        maxPoints: pointsForDifficulty(t.roadmapTask?.difficulty),
+        feedbackText: latestFb?.feedbackText || null,
+        reviewedAt: t.completedAt || latestFb?.createdAt || t.updatedAt,
+        isLate: t.isLate,
+        mentee: m ? {
+          id: m.id,
+          name: `${m.firstName} ${m.lastName}`.trim(),
+          avatar: `${(m.firstName || '').charAt(0)}${(m.lastName || '').charAt(0)}`.toUpperCase(),
+          profilePictureUrl: m.profilePictureUrl || null,
         } : null,
       };
     });

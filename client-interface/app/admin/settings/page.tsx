@@ -7,6 +7,7 @@ import { useAdminSettings } from '@/lib/hooks/admin';
 import { PageHeader, TabBar } from '@/components/admin/ui';
 import SecurityTab from '@/components/shared/SecurityTab';
 import { LocationDetailsFields } from '@/components/settings/LocationDetailsFields';
+import { ProfilePhotoField } from '@/components/settings/ProfilePhotoField';
 import { AppearanceTab } from '@/components/settings/AppearanceTab';
 import AIConnectionsTab from '@/components/settings/AIConnectionsTab';
 import { NotificationPreferencesTab } from '@/components/settings/NotificationPreferencesTab';
@@ -63,6 +64,7 @@ function AdminSettingsInner() {
         <div className="p-8">
           {activeTab === 'profile' && (
             <div className="space-y-6">
+              <ProfilePhotoField />
               <h2 className="text-slate-900">Personal Information</h2>
 
               <div className="grid md:grid-cols-2 gap-6">

@@ -65,6 +65,17 @@ const ensureCohortAssessment = catchAsync(async (req, res) => {
   res.status(201).json(successResponse('Assessment created', { assessment }, 201));
 });
 
+// The cohort's assessment pool (level-aware, randomly assigned per applicant).
+const getCohortAssessments = catchAsync(async (req, res) => {
+  const pool = await assessmentService.getCohortPool(req.params.id);
+  res.status(200).json(successResponse('Assessment pool retrieved', { pool }));
+});
+
+const setCohortAssessments = catchAsync(async (req, res) => {
+  const pool = await assessmentService.setCohortPool(req.params.id, req.body?.items || []);
+  res.status(200).json(successResponse('Assessment pool saved', { pool }));
+});
+
 // ─── Applications ──────────────────────────────────────────────────────────────
 
 const listApplications = catchAsync(async (req, res) => {
@@ -87,8 +98,8 @@ const gradeAssessmentSubmission = catchAsync(async (req, res) => {
 });
 
 const importApplications = catchAsync(async (req, res) => {
-  const { rows } = req.body;
-  const report = await applicationService.importApplications(req.params.id, rows, req.user.id);
+  const { rows, allowExceed } = req.body;
+  const report = await applicationService.importApplications(req.params.id, rows, req.user.id, { allowExceed: !!allowExceed });
   res.status(200).json(successResponse('Applications imported', { report }));
 });
 
@@ -121,6 +132,8 @@ module.exports = {
   disablePublicLink,
   cloneIntake,
   ensureCohortAssessment,
+  getCohortAssessments,
+  setCohortAssessments,
   listApplications,
   getApplication,
   gradeAssessmentSubmission,

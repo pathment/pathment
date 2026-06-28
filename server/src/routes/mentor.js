@@ -66,6 +66,7 @@ router.delete('/mentee/:id/collaborators/:collaboratorId', mentorOnly, cohortCon
 // Approvals queue + bulk approve.
 router.get('/approvals', authenticate, authorize(['mentor', 'admin']), cohortController.getApprovals);
 router.get('/approvals/changes-requested', authenticate, authorize(['mentor', 'admin']), cohortController.getChangesRequested);
+router.get('/approvals/reviewed', authenticate, authorize(['mentor', 'admin']), cohortController.getReviewed);
 router.post('/approvals/bulk', authenticate, authorize(['mentor', 'admin']), cohortController.bulkApprove);
 router.post('/approvals/bulk-review', authenticate, authorize(['mentor', 'admin']), cohortController.bulkReview);
 

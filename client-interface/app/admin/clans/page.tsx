@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { Users2, Plus, X, Loader2, Trash2, UserPlus, Crown, GraduationCap, Search, ArrowRightLeft, SlidersHorizontal, PauseCircle, PlayCircle } from 'lucide-react';
 import { SelectMenu, type SelectOption } from '@/components/shared/SelectMenu';
 import { TablePagination } from '@/components/shared/TablePagination';
+import { Avatar } from '@/components/shared/Avatar';
 import { CoMentorPermissionsDrawer } from '@/components/shared/CoMentorPermissionsDrawer';
 import { ReassignClanModal } from '@/components/admin/ReassignClanModal';
 import { useAdminClans, type Clan } from '@/lib/hooks/admin';
@@ -234,11 +235,12 @@ function ClanDrawer({ clanId, mentors, mentees, onClose, onChanged }: {
                   <div className="space-y-2">
                     {members.map((m) => (
                       <div key={m.id} className="flex items-center gap-3 p-3 rounded-xl border border-slate-200">
-                        <div className="w-9 h-9 bg-brand-100 rounded-full flex items-center justify-center shrink-0">
-                          <span className="text-brand-700 text-xs font-medium">
-                            {m.user?.firstName?.[0]}{m.user?.lastName?.[0]}
-                          </span>
-                        </div>
+                        <Avatar
+                          name={`${m.user?.firstName ?? ''} ${m.user?.lastName ?? ''}`.trim()}
+                          src={m.user?.profilePictureUrl}
+                          size="md"
+                          href={m.user?.id ? `/admin/${String(m.role).includes('mentor') ? 'mentors' : 'mentees'}/${m.user.id}` : undefined}
+                        />
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium text-slate-900 truncate">{m.user?.firstName} {m.user?.lastName}</p>
                           <span className="inline-flex items-center gap-1 text-xs text-slate-500">

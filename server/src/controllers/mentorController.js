@@ -44,7 +44,7 @@ const getAllMentors = catchAsync(async (req, res) => {
 
   const { count, rows: mentors } = await models.User.findAndCountAll({
     where: { ...where, ...searchConditions },
-    attributes: ['id', 'firstName', 'lastName', 'email', 'status', 'createdAt', 'lastLoginAt'],
+    attributes: ['id', 'firstName', 'lastName', 'email', 'status', 'createdAt', 'lastLoginAt', 'profilePictureUrl'],
     include: [mentorProfileInclude],
     order: [['firstName', 'ASC']],
     limit: limitNum,
@@ -159,7 +159,7 @@ const getMentorById = catchAsync(async (req, res) => {
         include: [{
           model: models.User,
           as: 'user',
-          attributes: ['id', 'firstName', 'lastName', 'email'],
+          attributes: ['id', 'firstName', 'lastName', 'email', 'profilePictureUrl'],
         }],
       }).catch(() => [])
     : [];

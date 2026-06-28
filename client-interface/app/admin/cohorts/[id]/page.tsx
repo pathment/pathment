@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import {
   ArrowLeft, Upload, Loader2, X, CheckCircle2, XCircle, FileSpreadsheet,
   Mail, Phone, Check, Link2, Copy, Power, ClipboardCheck, Pencil, Eye, CopyPlus, FormInput, Plus,
+  Trash2, CalendarRange, Layers,
 } from 'lucide-react';
 import {
   useCohortApplications,
@@ -17,7 +18,34 @@ import { assessmentApi, type Assessment } from '@/lib/services/assessment-api';
 import { IntakeFormBuilder } from '@/components/admin/IntakeFormBuilder';
 import { AssessmentDrawer } from '@/components/admin/AssessmentDrawer';
 import { Drawer } from '@/components/shared/Drawer';
+import { getBrowserTimeZone } from '@/lib/utils/datetime';
+import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import type { IntakeFormField } from '@/lib/config/intakeFields';
+
+/** Same level-key normalization the server uses, so locally-derived keys match
+ *  what the server stores (and the assessment pool's level tags line up). */
+/** Split a stored UTC instant into local date + time (HH:MM) for the date/time inputs. */
+function splitLocal(iso?: string | null): { date: string; time: string } {
+  if (!iso) return { date: '', time: '' };
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return { date: '', time: '' };
+  const p = (n: number) => String(n).padStart(2, '0');
+  return { date: `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`, time: `${p(d.getHours())}:${p(d.getMinutes())}` };
+}
+
+function normLevels(labels: string[]): { key: string; label: string }[] {
+  const seen = new Set<string>();
+  const out: { key: string; label: string }[] = [];
+  for (const raw of labels) {
+    const label = String(raw || '').trim();
+    if (!label) continue;
+    let key = label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || `level-${out.length + 1}`;
+    if (seen.has(key)) { let n = 2; while (seen.has(`${key}-${n}`)) n += 1; key = `${key}-${n}`; }
+    seen.add(key);
+    out.push({ key, label });
+  }
+  return out;
+}
 
 const STATUS_TABS: { key: ApplicationStatus | 'all'; label: string }[] = [
   { key: 'all', label: 'All' },
@@ -103,6 +131,7 @@ function ApplicationDrawer({
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
           <div className="flex items-center gap-2">
             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_CHIP[app.status]}`}>{app.status.replace(/_/g, ' ')}</span>
+            {app.level && <span className="inline-flex items-center gap-1 text-xs text-slate-500"><Layers className="w-3 h-3" />{app.level.replace(/-/g, ' ')}</span>}
             {app.programPreference && <span className="text-xs text-slate-500">wants: {app.programPreference}</span>}
             {app.user && <span className="text-xs text-emerald-600">· registered</span>}
           </div>
@@ -177,21 +206,42 @@ function ApplicationDrawer({
   );
 }
 
-/** Public self-serve intake link + attached assessment configuration. */
+/** Admissions settings: program schedule + capacity, the public link + apply
+ *  window, applicant levels, the form, and the level-aware assessment pool. */
 function IntakePanel({ cohortId, cohort, onChange }: { cohortId: string; cohort: any; onChange: () => void }) {
   const [assessments, setAssessments] = useState<Assessment[]>([]);
   const [otherCohorts, setOtherCohorts] = useState<{ id: string; name: string }[]>([]);
-  const [assessmentId, setAssessmentId] = useState<string>(cohort?.assessmentId || '');
   const [required, setRequired] = useState<boolean>(Boolean(cohort?.assessmentRequired));
-  const [closesAt, setClosesAt] = useState<string>(cohort?.applyClosesAt ? String(cohort.applyClosesAt).slice(0, 10) : '');
+  const [seats, setSeats] = useState<string>(cohort?.capacity != null ? String(cohort.capacity) : '');
   const [maxApps, setMaxApps] = useState<string>(cohort?.maxApplications != null ? String(cohort.maxApplications) : '');
+  const [opensDate, setOpensDate] = useState<string>(splitLocal(cohort?.applyOpensAt).date);
+  const [opensTime, setOpensTime] = useState<string>(splitLocal(cohort?.applyOpensAt).time);
+  const [closesDate, setClosesDate] = useState<string>(splitLocal(cohort?.applyClosesAt).date);
+  const [closesTime, setClosesTime] = useState<string>(splitLocal(cohort?.applyClosesAt).time);
+  const [levelLabels, setLevelLabels] = useState<string[]>((cohort?.levels || []).map((l: any) => l.label));
+  const [pool, setPool] = useState<{ assessmentId: string; level: string | null }[]>([]);
   const [formFields, setFormFields] = useState<IntakeFormField[]>(cohort?.intakeFormSchema || []);
   const [showPreview, setShowPreview] = useState(false);
   const [cloneFrom, setCloneFrom] = useState('');
   const [busy, setBusy] = useState(false);
   const [builderOpen, setBuilderOpen] = useState(false);
+  const [builderTarget, setBuilderTarget] = useState<string | null>(null);
+
+  const tz = getBrowserTimeZone();
+  // Today (local) as YYYY-MM-DD — the floor for the apply window. You can't open
+  // applications in the past, and close must be today-or-later and on/after open.
+  const todayStr = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
+  const closesMin = [opensDate, todayStr].filter(Boolean).sort().pop() as string;
+  const levelOptions = normLevels(levelLabels);
+  const publishedAssessments = assessments.filter((a) => a.status === 'published');
+  const titleById = (id: string) => assessments.find((a) => a.id === id)?.title || 'assessment';
+
+  const reloadPool = () => cohortApi.getAssessments(cohortId)
+    .then((res) => setPool((res?.data?.pool || []).map((p) => ({ assessmentId: p.assessmentId, level: p.level }))))
+    .catch(() => {});
 
   useEffect(() => { assessmentApi.list().then(setAssessments).catch(() => {}); }, []);
+  useEffect(() => { reloadPool(); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [cohortId]);
   useEffect(() => {
     cohortApi.list().then((res: any) => {
       const list = (res?.data?.cohorts || []).filter((c: any) => c.id !== cohortId).map((c: any) => ({ id: c.id, name: c.name }));
@@ -199,12 +249,14 @@ function IntakePanel({ cohortId, cohort, onChange }: { cohortId: string; cohort:
     }).catch(() => {});
   }, [cohortId]);
   useEffect(() => {
-    setAssessmentId(cohort?.assessmentId || '');
     setRequired(Boolean(cohort?.assessmentRequired));
-    setClosesAt(cohort?.applyClosesAt ? String(cohort.applyClosesAt).slice(0, 10) : '');
+    setSeats(cohort?.capacity != null ? String(cohort.capacity) : '');
     setMaxApps(cohort?.maxApplications != null ? String(cohort.maxApplications) : '');
+    setOpensDate(splitLocal(cohort?.applyOpensAt).date); setOpensTime(splitLocal(cohort?.applyOpensAt).time);
+    setClosesDate(splitLocal(cohort?.applyClosesAt).date); setClosesTime(splitLocal(cohort?.applyClosesAt).time);
+    setLevelLabels((cohort?.levels || []).map((l: any) => l.label));
     setFormFields(cohort?.intakeFormSchema || []);
-  }, [cohort?.assessmentId, cohort?.assessmentRequired, cohort?.applyClosesAt, cohort?.maxApplications, cohort?.intakeFormSchema]);
+  }, [cohort?.assessmentRequired, cohort?.capacity, cohort?.maxApplications, cohort?.applyOpensAt, cohort?.applyClosesAt, cohort?.levels, cohort?.intakeFormSchema]);
 
   const enabled = Boolean(cohort?.publicEnabled && cohort?.publicSlug);
   const applyUrl = cohort?.publicSlug && typeof window !== 'undefined' ? `${window.location.origin}/apply/${cohort.publicSlug}` : '';
@@ -220,40 +272,62 @@ function IntakePanel({ cohortId, cohort, onChange }: { cohortId: string; cohort:
     finally { setBusy(false); }
   };
 
+  const updatePool = (i: number, patch: Partial<{ assessmentId: string; level: string | null }>) =>
+    setPool((prev) => prev.map((row, idx) => (idx === i ? { ...row, ...patch } : row)));
+
   const saveSettings = async () => {
+    // Apply window must be today-or-later, and close on/after open (the date
+    // inputs also enforce this, but a typed value could slip past the picker).
+    if (opensDate && opensDate < todayStr) { toast.error('Apply opens can’t be in the past'); return; }
+    if (closesDate && closesDate < todayStr) { toast.error('Apply closes can’t be in the past'); return; }
+    const openAt = opensDate ? `${opensDate}T${opensTime || '00:00'}` : '';
+    const closeAt = closesDate ? `${closesDate}T${closesTime || '23:59'}` : '';
+    if (openAt && closeAt && closeAt < openAt) { toast.error('Apply closes must be after Apply opens'); return; }
     setBusy(true);
     try {
       await cohortApi.update(cohortId, {
-        assessmentId: assessmentId || null,
-        assessmentRequired: required,
-        applyClosesAt: closesAt ? new Date(closesAt).toISOString() : null,
+        capacity: seats === '' ? null : Number(seats),
         maxApplications: maxApps === '' ? null : Number(maxApps),
+        timezone: tz,
+        // Send the calendar dates (+ optional times) + zone; the server stores the
+        // precise instants. No time → opens at start-of-day, closes at end-of-day.
+        applyOpensDate: opensDate || null,
+        applyOpensTime: opensTime || null,
+        applyClosesDate: closesDate || null,
+        applyClosesTime: closesTime || null,
+        assessmentRequired: required,
+        levels: levelLabels.map((l) => ({ label: l })).filter((l) => l.label.trim()),
         // Drop blank options so empty choices never reach the apply form.
         intakeFormSchema: formFields.map((f) => (
           f.options ? { ...f, options: f.options.map((o) => o.trim()).filter(Boolean) } : f
         )),
       });
-      toast.success('Intake settings saved');
+      // Save the assessment pool (level tags dropped if their level no longer exists).
+      const validKeys = new Set(levelOptions.map((o) => o.key));
+      const items = pool
+        .filter((p) => p.assessmentId)
+        .map((p) => ({ assessmentId: p.assessmentId, level: p.level && validKeys.has(p.level) ? p.level : null }));
+      await cohortApi.setAssessments(cohortId, items);
+      toast.success('Admissions settings saved');
       onChange();
-    } catch { toast.error('Could not save settings'); }
+      reloadPool();
+    } catch (e) { toast.error(extractApiErrorMessage(e, 'Could not save settings')); }
     finally { setBusy(false); }
   };
 
-  // Build/edit the assessment right here in a drawer — no navigating away.
-  // Edit the attached one, or create a fresh one (auto-attached on save).
-  const openBuilder = () => setBuilderOpen(true);
+  // Build a brand-new assessment (added to the pool) or edit one in the pool.
+  const openNewBuilder = () => { setBuilderTarget(null); setBuilderOpen(true); };
+  const openEditBuilder = (id: string) => { setBuilderTarget(id); setBuilderOpen(true); };
 
   const onAssessmentSaved = async (a: Assessment) => {
     await assessmentApi.list().then(setAssessments).catch(() => {});
-    setAssessmentId(a.id);
-    // Persist the attachment so a freshly-built assessment sticks to this cohort.
-    try { await cohortApi.update(cohortId, { assessmentId: a.id }); onChange(); } catch { /* user can still Save intake settings */ }
+    // A freshly-built assessment joins the pool (level-less) so it's not lost.
+    setPool((prev) => prev.some((p) => p.assessmentId === a.id) ? prev : [...prev, { assessmentId: a.id, level: null }]);
   };
 
   const onAssessmentDeleted = async () => {
-    setAssessmentId('');
+    if (builderTarget) setPool((prev) => prev.filter((p) => p.assessmentId !== builderTarget));
     await assessmentApi.list().then(setAssessments).catch(() => {});
-    try { await cohortApi.update(cohortId, { assessmentId: null }); onChange(); } catch { /* noop */ }
   };
 
   const doClone = async () => {
@@ -268,46 +342,75 @@ function IntakePanel({ cohortId, cohort, onChange }: { cohortId: string; cohort:
     finally { setBusy(false); }
   };
 
+  const field = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500';
+
   return (
     <div className="rounded-2xl border border-slate-200 bg-card p-5 space-y-5">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Link2 className="w-4 h-4 text-brand-600" />
-          <h2 className="font-medium text-slate-900">Public application link</h2>
-        </div>
-        <button
-          onClick={toggleLink}
-          disabled={busy}
-          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium ${enabled ? 'border border-slate-200 text-slate-700 hover:bg-slate-100' : 'bg-brand-600 text-white hover:bg-brand-700'}`}
-        >
-          <Power className="w-4 h-4" /> {enabled ? 'Disable' : 'Enable link'}
-        </button>
+      <div className="flex items-center gap-2">
+        <ClipboardCheck className="w-4 h-4 text-brand-600" />
+        <h2 className="font-medium text-slate-900">Admissions settings</h2>
       </div>
 
-      {enabled ? (
-        <div className="flex items-center gap-2">
-          <code className="flex-1 truncate rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-700">{applyUrl}</code>
-          <button onClick={() => { navigator.clipboard?.writeText(applyUrl); toast.success('Link copied'); }} className="p-2 rounded-lg border border-slate-200 hover:bg-slate-100" aria-label="Copy link"><Copy className="w-4 h-4" /></button>
-        </div>
-      ) : (
-        <p className="text-sm text-slate-500">Enable to mint a shareable link anyone can apply through.</p>
-      )}
-
-      {enabled && !isOpen && (
-        <p className="text-xs rounded-lg bg-amber-50 text-amber-800 px-3 py-2">
-          The link only accepts applications while the cohort status is <strong>Open</strong> (currently {cohort?.status}).
-        </p>
-      )}
-
-      <div className="grid sm:grid-cols-2 gap-4 pt-1">
+      {/* Capacity (the application window itself is set below) */}
+      <div className="grid sm:grid-cols-2 gap-4">
         <div>
-          <label className="block text-xs font-medium text-slate-500 mb-1">Apply closes</label>
-          <input type="date" value={closesAt} onChange={(e) => setClosesAt(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500 [color-scheme:light] dark:[color-scheme:dark]" />
+          <label className="block text-xs font-medium text-slate-500 mb-1">Seats <span className="text-slate-400 font-normal">— how many you&apos;ll enroll</span></label>
+          <input type="number" min={1} value={seats} onChange={(e) => setSeats(e.target.value)} placeholder="Unlimited" className={field} />
         </div>
         <div>
-          <label className="block text-xs font-medium text-slate-500 mb-1">Max applications</label>
-          <input type="number" min={0} value={maxApps} onChange={(e) => setMaxApps(e.target.value)} placeholder="Unlimited" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500" />
+          <label className="block text-xs font-medium text-slate-500 mb-1">Application limit <span className="text-slate-400 font-normal">— blank = unlimited</span></label>
+          <input type="number" min={1} value={maxApps} onChange={(e) => setMaxApps(e.target.value)} placeholder="Unlimited" className={field} />
         </div>
+      </div>
+
+      {/* Public link */}
+      <div className="border-t border-slate-100 pt-4">
+        <div className="flex items-center justify-between gap-3 mb-2">
+          <div className="flex items-center gap-2">
+            <Link2 className="w-4 h-4 text-brand-600" />
+            <h3 className="text-sm font-medium text-slate-900">Public application link</h3>
+          </div>
+          <button
+            onClick={toggleLink}
+            disabled={busy}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium ${enabled ? 'border border-slate-200 text-slate-700 hover:bg-slate-100' : 'bg-brand-600 text-white hover:bg-brand-700'}`}
+          >
+            <Power className="w-4 h-4" /> {enabled ? 'Disable' : 'Enable link'}
+          </button>
+        </div>
+
+        {enabled ? (
+          <div className="flex items-center gap-2">
+            <code className="flex-1 truncate rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-700">{applyUrl}</code>
+            <button onClick={() => { navigator.clipboard?.writeText(applyUrl); toast.success('Link copied'); }} className="p-2 rounded-lg border border-slate-200 hover:bg-slate-100" aria-label="Copy link"><Copy className="w-4 h-4" /></button>
+          </div>
+        ) : (
+          <p className="text-sm text-slate-500">Enable to mint a shareable link anyone can apply through.</p>
+        )}
+
+        {enabled && !isOpen && (
+          <p className="mt-2 text-xs rounded-lg bg-amber-50 text-amber-800 px-3 py-2">
+            The link only accepts applications while the cohort status is <strong>Open</strong> (currently {cohort?.status}).
+          </p>
+        )}
+
+        <div className="grid sm:grid-cols-2 gap-4 pt-3">
+          <div>
+            <label className="block text-xs font-medium text-slate-500 mb-1">Apply opens</label>
+            <div className="flex gap-2">
+              <input type="date" min={todayStr} value={opensDate} onChange={(e) => setOpensDate(e.target.value)} className={`${field} flex-1 [color-scheme:light] dark:[color-scheme:dark]`} />
+              <input type="time" value={opensTime} onChange={(e) => setOpensTime(e.target.value)} title="Time (default start of day)" className={`${field} w-28 [color-scheme:light] dark:[color-scheme:dark]`} />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-500 mb-1">Apply closes</label>
+            <div className="flex gap-2">
+              <input type="date" min={closesMin} value={closesDate} onChange={(e) => setClosesDate(e.target.value)} className={`${field} flex-1 [color-scheme:light] dark:[color-scheme:dark]`} />
+              <input type="time" value={closesTime} onChange={(e) => setClosesTime(e.target.value)} title="Time (default end of day)" className={`${field} w-28 [color-scheme:light] dark:[color-scheme:dark]`} />
+            </div>
+          </div>
+        </div>
+        <p className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-slate-400"><CalendarRange className="w-3 h-3" /> Times are in <strong className="font-medium">{tz}</strong>. Leave a time blank to default to start-of-day (opens) / end-of-day 11:59&nbsp;PM (closes).</p>
       </div>
 
       {/* Clone from another cohort */}
@@ -323,6 +426,24 @@ function IntakePanel({ cohortId, cohort, onChange }: { cohortId: string; cohort:
         </div>
       )}
 
+      {/* Levels */}
+      <div className="border-t border-slate-100 pt-4">
+        <div className="flex items-center gap-2 mb-2">
+          <Layers className="w-4 h-4 text-brand-600" />
+          <h3 className="text-sm font-medium text-slate-900">Applicant levels <span className="text-slate-400 font-normal">(optional)</span></h3>
+        </div>
+        <p className="text-xs text-slate-500 mb-2">Add levels (e.g. Beginner, Level 1) and the apply form asks applicants to pick one — used to give the right assessment. Leave empty for no level question.</p>
+        <div className="space-y-2">
+          {levelLabels.map((label, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <input value={label} onChange={(e) => setLevelLabels((prev) => prev.map((l, idx) => (idx === i ? e.target.value : l)))} placeholder={`Level ${i + 1}`} className={field} />
+              <button onClick={() => setLevelLabels((prev) => prev.filter((_, idx) => idx !== i))} aria-label="Remove level" className="p-2 text-slate-400 hover:text-rose-500"><Trash2 className="w-4 h-4" /></button>
+            </div>
+          ))}
+          <button onClick={() => setLevelLabels((prev) => [...prev, ''])} className="inline-flex items-center gap-1.5 text-xs font-medium text-brand-700 hover:text-brand-800"><Plus className="w-3.5 h-3.5" /> Add level</button>
+        </div>
+      </div>
+
       {/* Application form builder */}
       <div className="border-t border-slate-100 pt-4">
         <div className="flex items-center justify-between mb-2">
@@ -337,42 +458,55 @@ function IntakePanel({ cohortId, cohort, onChange }: { cohortId: string; cohort:
         <IntakeFormBuilder value={formFields} onChange={setFormFields} />
       </div>
 
-      {/* Assessment */}
+      {/* Assessment pool */}
       <div className="border-t border-slate-100 pt-4">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
             <ClipboardCheck className="w-4 h-4 text-brand-600" />
-            <h3 className="text-sm font-medium text-slate-900">Assessment</h3>
+            <h3 className="text-sm font-medium text-slate-900">Assessments</h3>
           </div>
-          <button onClick={openBuilder} disabled={busy} className="inline-flex items-center gap-1.5 text-xs font-medium text-brand-700 hover:text-brand-800">
-            {assessmentId ? <><Pencil className="w-3.5 h-3.5" /> Edit assessment</> : <><Plus className="w-3.5 h-3.5" /> Create &amp; build</>}
+          <button onClick={openNewBuilder} disabled={busy} className="inline-flex items-center gap-1.5 text-xs font-medium text-brand-700 hover:text-brand-800">
+            <Plus className="w-3.5 h-3.5" /> Create &amp; build
           </button>
         </div>
-        <div className="grid sm:grid-cols-2 gap-4 items-end">
-          <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1">Attached assessment</label>
-            <select value={assessmentId} onChange={(e) => setAssessmentId(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500">
-              <option value="">None</option>
-              {assessments.map((a) => <option key={a.id} value={a.id}>{a.title}{a.status !== 'published' ? ` (${a.status})` : ''}</option>)}
-            </select>
-          </div>
-          <label className="inline-flex items-center gap-2 text-sm text-slate-600 pb-2">
-            <input type="checkbox" checked={required} onChange={(e) => setRequired(e.target.checked)} disabled={!assessmentId} className="accent-brand-600" />
-            Required before review
-          </label>
+        <p className="text-xs text-slate-500 mb-2">Attach one or more <em>published</em> assessments. Applicants get <strong>one at random</strong> from the pool matching their level (or the “Everyone” pool when they have no level).</p>
+        <div className="space-y-2">
+          {pool.map((row, i) => (
+            <div key={i} className="flex flex-wrap items-center gap-2">
+              <select value={row.assessmentId} onChange={(e) => updatePool(i, { assessmentId: e.target.value })} className={`${field} flex-1 min-w-48`}>
+                <option value="">Pick an assessment…</option>
+                {publishedAssessments.map((a) => <option key={a.id} value={a.id}>{a.title}</option>)}
+                {/* Keep an already-selected, now-unpublished one visible. */}
+                {row.assessmentId && !publishedAssessments.some((a) => a.id === row.assessmentId) && <option value={row.assessmentId}>{titleById(row.assessmentId)} (unpublished)</option>}
+              </select>
+              {levelOptions.length > 0 && (
+                <select value={row.level ?? ''} onChange={(e) => updatePool(i, { level: e.target.value || null })} className={`${field} w-40`}>
+                  <option value="">Everyone</option>
+                  {levelOptions.map((l) => <option key={l.key} value={l.key}>{l.label}</option>)}
+                </select>
+              )}
+              {row.assessmentId && <button onClick={() => openEditBuilder(row.assessmentId)} aria-label="Edit assessment" className="p-2 text-slate-400 hover:text-brand-600"><Pencil className="w-4 h-4" /></button>}
+              <button onClick={() => setPool((prev) => prev.filter((_, idx) => idx !== i))} aria-label="Remove" className="p-2 text-slate-400 hover:text-rose-500"><Trash2 className="w-4 h-4" /></button>
+            </div>
+          ))}
+          <button onClick={() => setPool((prev) => [...prev, { assessmentId: '', level: null }])} className="inline-flex items-center gap-1.5 text-xs font-medium text-brand-700 hover:text-brand-800"><Plus className="w-3.5 h-3.5" /> Add assessment</button>
         </div>
-        <p className="mt-2 text-xs text-slate-400">Build reusable assessments in the <Link href="/admin/assessments" className="text-brand-600">Assessments library</Link>, or create one for this cohort with “Create &amp; build”.</p>
+        <label className="mt-3 inline-flex items-center gap-2 text-sm text-slate-600">
+          <input type="checkbox" checked={required} onChange={(e) => setRequired(e.target.checked)} disabled={pool.length === 0} className="accent-brand-600" />
+          Required before review
+        </label>
+        <p className="mt-1 text-xs text-slate-400">Build reusable assessments in the <Link href="/admin/assessments" className="text-brand-600">Assessments library</Link>.</p>
       </div>
 
       <div className="flex justify-end">
         <button onClick={saveSettings} disabled={busy} className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50">
-          {busy && <Loader2 className="w-4 h-4 animate-spin" />} Save intake settings
+          {busy && <Loader2 className="w-4 h-4 animate-spin" />} Save admissions settings
         </button>
       </div>
 
       <AssessmentDrawer
         open={builderOpen}
-        assessmentId={assessmentId || null}
+        assessmentId={builderTarget}
         onClose={() => setBuilderOpen(false)}
         onSaved={onAssessmentSaved}
         onDeleted={onAssessmentDeleted}
@@ -387,7 +521,8 @@ function IntakePanel({ cohortId, cohort, onChange }: { cohortId: string; cohort:
       >
         <ApplyFormPreview
           fields={formFields}
-          assessment={assessmentId ? assessments.find((a) => a.id === assessmentId) : undefined}
+          levels={levelOptions}
+          hasAssessment={pool.some((p) => p.assessmentId)}
           required={required}
         />
       </Drawer>
@@ -396,7 +531,7 @@ function IntakePanel({ cohortId, cohort, onChange }: { cohortId: string; cohort:
 }
 
 /** Read-only mock of exactly what an applicant will see on the apply page. */
-function ApplyFormPreview({ fields, assessment, required }: { fields: IntakeFormField[]; assessment?: Assessment; required: boolean }) {
+function ApplyFormPreview({ fields, levels, hasAssessment, required }: { fields: IntakeFormField[]; levels: { key: string; label: string }[]; hasAssessment: boolean; required: boolean }) {
   const Row = ({ label, req, children }: { label: string; req?: boolean; children: React.ReactNode }) => (
     <div>
       <label className="block text-xs font-medium text-slate-600 mb-1">{label}{req && <span className="text-rose-500"> *</span>}</label>
@@ -413,6 +548,11 @@ function ApplyFormPreview({ fields, assessment, required }: { fields: IntakeForm
         <Row label="Last name"><Box /></Row>
       </div>
       <Row label="Email" req><Box /></Row>
+      {levels.length > 0 && (
+        <Row label="Your level" req>
+          <div className="h-8 rounded-lg border border-slate-200 bg-slate-50 flex items-center px-2 text-xs text-slate-400">{levels.map((l) => l.label).join(' / ')}</div>
+        </Row>
+      )}
       {fields.map((f) => (
         <Row key={f.key} label={f.label || '(untitled)'} req={f.required}>
           {f.type === 'textarea' ? <div className="h-14 rounded-lg border border-slate-200 bg-slate-50" />
@@ -422,9 +562,9 @@ function ApplyFormPreview({ fields, assessment, required }: { fields: IntakeForm
             : <Box />}
         </Row>
       ))}
-      {assessment && (
+      {hasAssessment && (
         <p className="text-xs rounded-lg bg-brand-50 dark:bg-brand-500/15 text-brand-800 px-3 py-2">
-          + {required ? 'Required' : 'Optional'} assessment: <strong>{assessment.title}</strong> (after submitting)
+          + {required ? 'Required' : 'Optional'} assessment (one assigned at random after submitting)
         </p>
       )}
     </div>
@@ -503,7 +643,18 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
 
   const [open, setOpen] = useState<Application | null>(null);
   const [importing, setImporting] = useState(false);
+  // Rows held back by the application cap — offer a one-click "import anyway".
+  const [capHeld, setCapHeld] = useState<{ rows: Record<string, string>[]; skipped: number } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const runImport = async (rows: Record<string, string>[], allowExceed = false) => {
+    setImporting(true);
+    const report = await importRows(rows, allowExceed);
+    setImporting(false);
+    const capSkips = (report?.skipped || []).filter((s) => /application cap/i.test(s.reason)).length;
+    if (!allowExceed && capSkips > 0) setCapHeld({ rows, skipped: capSkips });
+    else setCapHeld(null);
+  };
 
   const handleFile = (file: File) => {
     if (!file.name.endsWith('.csv')) { toast.error('Please upload a .csv file'); return; }
@@ -511,12 +662,13 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
     reader.onload = async (e) => {
       const rows = parseCsvToRows(e.target?.result as string);
       if (rows.length === 0) { toast.error('No rows found. Ensure the CSV has a header row with an "email" column.'); return; }
-      setImporting(true);
-      await importRows(rows);
-      setImporting(false);
+      await runImport(rows);
     };
     reader.readAsText(file);
   };
+
+  // Level key → label, for the applications table.
+  const levelLabel = (key?: string | null) => (cohort?.levels || []).find((l) => l.key === key)?.label || key || '—';
 
   // Keep the open drawer in sync with refetched data.
   const liveOpen = open ? applications.find((a) => a.id === open.id) ?? open : null;
@@ -557,6 +709,18 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
       {/* Public intake link + assessment */}
       {cohort && <IntakePanel cohortId={id} cohort={cohort} onChange={refetch} />}
 
+      {capHeld && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm">
+          <span className="text-amber-800">{capHeld.skipped} row{capHeld.skipped === 1 ? '' : 's'} skipped — the cohort is at its application cap.</span>
+          <div className="ml-auto flex items-center gap-2">
+            <button onClick={() => setCapHeld(null)} className="px-3 py-1.5 rounded-lg text-amber-800 hover:bg-amber-100 text-xs font-medium">Dismiss</button>
+            <button onClick={() => runImport(capHeld.rows, true)} disabled={importing} className="px-3 py-1.5 rounded-lg bg-amber-600 text-white hover:bg-amber-700 text-xs font-medium disabled:opacity-50 inline-flex items-center gap-1.5">
+              {importing && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Import anyway (exceed cap)
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Filter tabs */}
       <div className="flex flex-wrap items-center gap-0 border-b border-slate-200">
         {STATUS_TABS.map((t) => (
@@ -584,6 +748,7 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
               <tr>
                 <th className="text-left font-medium px-4 py-3">Applicant</th>
                 <th className="text-left font-medium px-4 py-3 hidden md:table-cell">Wants</th>
+                {(cohort?.levels?.length ?? 0) > 0 && <th className="text-left font-medium px-4 py-3 hidden lg:table-cell">Level</th>}
                 <th className="text-left font-medium px-4 py-3">Status</th>
                 <th className="text-left font-medium px-4 py-3 hidden sm:table-cell">Score</th>
                 <th className="px-4 py-3"></th>
@@ -597,6 +762,7 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
                     <p className="text-xs text-slate-500">{a.email}</p>
                   </td>
                   <td className="px-4 py-3 hidden md:table-cell text-slate-600">{a.programPreference || '-'}</td>
+                  {(cohort?.levels?.length ?? 0) > 0 && <td className="px-4 py-3 hidden lg:table-cell text-slate-600">{a.level ? levelLabel(a.level) : '—'}</td>}
                   <td className="px-4 py-3">
                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_CHIP[a.status]}`}>{a.status.replace(/_/g, ' ')}</span>
                   </td>

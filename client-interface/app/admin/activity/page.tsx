@@ -1,6 +1,7 @@
 'use client';
 
 import { Search, Loader2, Users, Clock, CalendarCheck, Flame } from 'lucide-react';
+import { Avatar } from '@/components/shared/Avatar';
 import { useEffect } from 'react';
 import { useAdminActivity } from '@/lib/hooks/admin';
 import { usePagination } from '@/lib/hooks/shared/usePagination';
@@ -157,9 +158,7 @@ export default function AdminActivityPage() {
                       <tr key={m.user.id} className="hover:bg-slate-50 transition-colors">
                         <td className="px-5 py-3">
                           <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-brand-100 flex items-center justify-center text-brand-700 font-semibold text-xs shrink-0">
-                              {m.user.firstName[0]}{m.user.lastName[0]}
-                            </div>
+                            <Avatar name={`${m.user.firstName} ${m.user.lastName}`} src={m.user.profilePictureUrl} size="sm" href={`/admin/mentees/${m.user.id}`} />
                             <div>
                               <p className="font-medium text-slate-900">
                                 {m.user.firstName} {m.user.lastName}

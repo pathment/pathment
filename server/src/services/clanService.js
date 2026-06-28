@@ -138,7 +138,47 @@ class ClanService {
     });
 
     if (!clan) throw new NotFoundError('Clan not found');
-    return clan;
+
+    // Co-mentors / core-team can also be granted via the scoped-RBAC RoleAssignment
+    // table (Admin → Roles & Access) WITHOUT a clan_memberships row. The permission
+    // layer reads both, but the roster here historically only read clan_memberships,
+    // so an IAM-granted co-mentor was invisible on the Clan Team page even though
+    // their access worked. Merge those grants in so the displayed team matches the
+    // people who actually mentor the clan. (Membership rows win on conflict.)
+    const out = clan.toJSON();
+    const memberships = out.memberships || [];
+    const seenUserIds = new Set(memberships.map((m) => m.userId));
+
+    const MENTOR_ROLES = ['lead_mentor', 'co_mentor', 'core_team'];
+    const grants = await models.RoleAssignment.findAll({
+      where: { scopeType: 'clan', scopeId: clanId, role: { [Op.in]: MENTOR_ROLES } },
+      attributes: ['id', 'userId', 'role'],
+    });
+    const missing = grants.filter((g) => g.userId && !seenUserIds.has(g.userId));
+    if (missing.length) {
+      const users = await models.User.findAll({
+        where: { id: { [Op.in]: [...new Set(missing.map((g) => g.userId))] } },
+        attributes: ['id', 'firstName', 'lastName', 'email', 'profilePictureUrl', 'role'],
+      });
+      const userById = new Map(users.map((u) => [u.id, u.toJSON()]));
+      for (const g of missing) {
+        if (seenUserIds.has(g.userId)) continue; // de-dupe across multiple grants
+        const u = userById.get(g.userId);
+        if (!u) continue;
+        seenUserIds.add(g.userId);
+        memberships.push({
+          id: `ra-${g.id}`,        // synthetic — there's no clan_memberships row
+          clanId,
+          userId: g.userId,
+          role: g.role,
+          status: 'active',
+          source: 'role_assignment', // lets the UI/remove path know it's IAM-granted
+          user: u,
+        });
+      }
+    }
+    out.memberships = memberships;
+    return out;
   }
 
   async createClan(data, createdBy) {
@@ -284,12 +324,24 @@ class ClanService {
   }
 
   async removeMember(clanId, userId) {
+    const { Op } = require('sequelize');
     const membership = await models.ClanMembership.findOne({ where: { clanId, userId } });
-    if (!membership) throw new NotFoundError('Membership not found');
-    membership.status = 'removed';
-    membership.leftAt = new Date();
-    await membership.save();
-    return membership;
+
+    // A co-mentor / core-team member may instead (or also) be granted via the
+    // scoped-RBAC RoleAssignment table. Revoke that here too — otherwise the IAM
+    // grant keeps them a co-mentor and they'd reappear on the team after "remove".
+    const revoked = await models.RoleAssignment.destroy({
+      where: { userId, scopeType: 'clan', scopeId: clanId, role: { [Op.in]: ['co_mentor', 'core_team'] } }
+    });
+
+    if (!membership && !revoked) throw new NotFoundError('Membership not found');
+
+    if (membership) {
+      membership.status = 'removed';
+      membership.leftAt = new Date();
+      await membership.save();
+    }
+    return membership || { clanId, userId, status: 'removed', source: 'role_assignment' };
   }
 
   /** The permission keys a lead/admin may toggle for a co-mentor (the defaults). */
@@ -535,11 +587,38 @@ class ClanService {
   }
 
   async getMembershipsForUser(userId) {
-    return models.ClanMembership.findAll({
+    const { Op } = require('sequelize');
+    const direct = await models.ClanMembership.findAll({
       where: { userId, status: 'active' },
       include: [{ model: models.Clan, as: 'clan', attributes: ['id', 'name', 'programId', 'status'] }],
       order: [['joinedAt', 'DESC']]
     });
+    const out = direct.map((m) => m.toJSON());
+    const seen = new Set(out.map((m) => m.clanId));
+
+    // Clans the user mentors via a scoped-RBAC grant (Roles & Access) but has no
+    // clan_memberships row for — so an IAM-granted co-mentor still sees their clan
+    // on the Clan Team page, matching the permissions they actually hold.
+    const grants = await models.RoleAssignment.findAll({
+      where: { userId, scopeType: 'clan', role: { [Op.in]: ['lead_mentor', 'co_mentor', 'core_team'] } },
+      attributes: ['id', 'role', 'scopeId'],
+    });
+    const missingClanIds = [...new Set(grants.filter((g) => g.scopeId && !seen.has(g.scopeId)).map((g) => g.scopeId))];
+    if (missingClanIds.length) {
+      const clans = await models.Clan.findAll({
+        where: { id: { [Op.in]: missingClanIds } },
+        attributes: ['id', 'name', 'programId', 'status'],
+      });
+      const clanById = new Map(clans.map((c) => [c.id, c.toJSON()]));
+      for (const g of grants) {
+        if (!g.scopeId || seen.has(g.scopeId)) continue;
+        const clan = clanById.get(g.scopeId);
+        if (!clan) continue;
+        seen.add(g.scopeId);
+        out.push({ id: `ra-${g.id}`, userId, clanId: g.scopeId, role: g.role, status: 'active', source: 'role_assignment', clan });
+      }
+    }
+    return out;
   }
 
   /**

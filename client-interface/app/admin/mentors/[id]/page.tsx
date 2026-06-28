@@ -11,6 +11,7 @@ import { useMentorProfile } from '@/lib/hooks/admin';
 import type { MentorSkill, MentorActiveMatch } from '@/lib/hooks/admin';
 import { StatsCard, PageHeader } from '@/components/admin/ui';
 import { MentorFeedbackAdminPanel } from '@/components/admin/MentorFeedbackAdminPanel';
+import { Avatar } from '@/components/shared/Avatar';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -74,7 +75,6 @@ export default function AdminMentorProfilePage() {
   }
 
   const mp = mentor.mentorProfile;
-  const initials = `${mentor.firstName?.[0] ?? ''}${mentor.lastName?.[0] ?? ''}`;
   const capacityPct = mp?.maxMentees ? Math.round(((mp.currentMenteeCount ?? 0) / mp.maxMentees) * 100) : 0;
 
   // Deduplicate specializations - filter out any value that is just the org name
@@ -99,8 +99,8 @@ export default function AdminMentorProfilePage() {
           {/* Identity card */}
           <div className="bg-card rounded-2xl border border-slate-200 p-6">
             <div className="flex flex-col items-center text-center mb-5">
-              <div className="w-20 h-20 bg-purple-100 text-purple-700 rounded-full flex items-center justify-center text-2xl font-bold mb-4">
-                {initials}
+              <div className="mb-4">
+                <Avatar name={`${mentor.firstName} ${mentor.lastName}`} src={(mentor as { profilePictureUrl?: string | null }).profilePictureUrl} size="xl" />
               </div>
               <p className="text-xl font-bold text-slate-900">{mentor.firstName} {mentor.lastName}</p>
               {mp?.title && <p className="text-slate-600 text-sm mt-1">{mp.title}</p>}
@@ -265,9 +265,7 @@ export default function AdminMentorProfilePage() {
                   const pct = parseFloat(String(match.enrollment?.overallProgressPercentage ?? 0));
                   return (
                     <div key={match.id} className="flex items-center gap-4 px-6 py-4">
-                      <div className="w-9 h-9 bg-slate-200 text-slate-600 rounded-full flex items-center justify-center text-xs font-semibold shrink-0">
-                        {match.mentee?.firstName?.[0]}{match.mentee?.lastName?.[0]}
-                      </div>
+                      <Avatar name={`${match.mentee?.firstName ?? ''} ${match.mentee?.lastName ?? ''}`.trim()} src={match.mentee?.profilePictureUrl} size="md" href={match.mentee?.id ? `/admin/mentees/${match.mentee.id}` : undefined} />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-slate-900 truncate">
                           {match.mentee?.firstName} {match.mentee?.lastName}

@@ -296,7 +296,7 @@ const getAdminOverview = catchAsync(async (req, res) => {
         model: models.User,
         as: 'user',
         where: { role: 'mentee', status: 'active' },
-        attributes: ['id', 'firstName', 'lastName', 'email'],
+        attributes: ['id', 'firstName', 'lastName', 'email', 'profilePictureUrl'],
         required: true,
       },
     ],

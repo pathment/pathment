@@ -8,7 +8,7 @@ export interface ClanMembershipRow {
   userId: string;
   role: 'lead_mentor' | 'co_mentor' | 'mentee' | 'core_team';
   status: string;
-  user?: { id: string; firstName: string; lastName: string; email: string; role: string };
+  user?: { id: string; firstName: string; lastName: string; email: string; role: string; profilePictureUrl?: string | null };
 }
 
 export interface Clan {

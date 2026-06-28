@@ -35,6 +35,7 @@ export interface Enrollment {
     firstName: string;
     lastName: string;
     email: string;
+    profilePictureUrl?: string | null;
   };
   program: {
     id: string;
@@ -51,6 +52,7 @@ export interface Enrollment {
       firstName: string;
       lastName: string;
       email: string;
+      profilePictureUrl?: string | null;
     };
   }>;
 }

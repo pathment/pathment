@@ -22,6 +22,9 @@ router.delete('/cohorts/:id/public-link', ...adminOnly, intakeController.disable
 router.post('/cohorts/:id/clone-intake', ...adminOnly, intakeController.cloneIntake);
 // Get-or-create this cohort's assessment (inline builder)
 router.post('/cohorts/:id/assessment', ...adminOnly, intakeController.ensureCohortAssessment);
+// The cohort's assessment pool (multiple, optionally per-level, randomly assigned)
+router.get('/cohorts/:id/assessments', ...adminOnly, intakeController.getCohortAssessments);
+router.put('/cohorts/:id/assessments', ...adminOnly, intakeController.setCohortAssessments);
 
 // ─── Applications (scoped to a cohort) ─────────────────────────────────────────
 router.get('/cohorts/:id/applications', ...adminOnly, intakeController.listApplications);

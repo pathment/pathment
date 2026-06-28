@@ -178,6 +178,7 @@ class ClanHealthService {
         id: r.id,
         name: r.name,
         avatar: r.avatar,
+        avatarUrl: r.profilePictureUrl || null,
         program: r.program,
         risk: r.risk,
         riskReason: r.riskReason,

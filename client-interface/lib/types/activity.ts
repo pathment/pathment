@@ -63,7 +63,7 @@ export interface MenteeActivityResponse {
 // ─── Admin overview ───────────────────────────────────────────────────────────
 
 export interface MenteeActivityStat {
-  user: { id: string; firstName: string; lastName: string; email: string };
+  user: { id: string; firstName: string; lastName: string; email: string; profilePictureUrl?: string | null };
   totalActiveMinutes: number;
   activeDays: number;
   avgDailyMinutes: number;

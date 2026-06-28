@@ -38,6 +38,20 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.DATEONLY,
       field: 'end_date'
     },
+    // Optional applicant levels (e.g. Beginner/L1/L2) the apply form offers.
+    // [] = no level question. Shape: [{ key, label }].
+    levels: {
+      type: DataTypes.JSONB,
+      allowNull: false,
+      defaultValue: [],
+      field: 'levels'
+    },
+    // The zone "apply closes <date>" is interpreted in, so the stored close
+    // instant is end-of-day in the org's region (correct across timezones).
+    timezone: {
+      type: DataTypes.STRING(64),
+      field: 'timezone'
+    },
     // ── Public self-serve intake link ──────────────────────────────────────
     // Shareable slug (`/apply/<slug>`). Only resolves while the cohort is open,
     // public_enabled, and within the optional window/cap below.
@@ -102,6 +116,7 @@ module.exports = (sequelize, DataTypes) => {
     Cohort.belongsTo(models.User, { foreignKey: 'created_by', as: 'creator' });
     Cohort.belongsTo(models.Assessment, { foreignKey: 'assessment_id', as: 'assessment' });
     Cohort.hasMany(models.Application, { foreignKey: 'cohort_id', as: 'applications' });
+    Cohort.hasMany(models.CohortAssessment, { foreignKey: 'cohort_id', as: 'assessmentPool' });
   };
 
   return Cohort;

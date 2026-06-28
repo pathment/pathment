@@ -146,11 +146,91 @@ class AssessmentService {
     const assessment = await models.Assessment.findByPk(assessmentId);
     if (!assessment) throw new NotFoundError('Assessment not found');
     // Refuse to delete an assessment that's wired to a cohort - detach first.
-    const inUse = await models.Cohort.count({ where: { assessmentId } });
-    if (inUse > 0) throw new ValidationError('Detach this assessment from its cohort(s) before deleting');
+    // It can be attached the legacy way (cohorts.assessment_id) or via a pool.
+    const [legacy, pooled] = await Promise.all([
+      models.Cohort.count({ where: { assessmentId } }),
+      models.CohortAssessment.count({ where: { assessmentId } })
+    ]);
+    if (legacy + pooled > 0) throw new ValidationError('Detach this assessment from its cohort(s) before deleting');
     await models.AssessmentQuestion.destroy({ where: { assessmentId } });
     await assessment.destroy();
     return { deleted: true };
+  }
+
+  // ── Cohort assessment pool (level-aware, randomly assigned) ──────────────────
+  /** A cohort's assessment pool with each assessment's title/status, in order. */
+  async getCohortPool(cohortId) {
+    const rows = await models.CohortAssessment.findAll({
+      where: { cohortId },
+      include: [{ model: models.Assessment, as: 'assessment', attributes: ['id', 'title', 'status'] }],
+      order: [['position', 'ASC']]
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      assessmentId: r.assessmentId,
+      level: r.level || null,
+      position: r.position,
+      assessment: r.assessment ? { id: r.assessment.id, title: r.assessment.title, status: r.assessment.status } : null
+    }));
+  }
+
+  /**
+   * Replace a cohort's whole assessment pool in one call. `items` is
+   * [{ assessmentId, level? }] — level null/empty = the "everyone" pool. Validates
+   * each assessment exists (and is published, so applicants never hit a draft).
+   */
+  async setCohortPool(cohortId, items = []) {
+    if (!Array.isArray(items)) throw new ValidationError('items must be an array');
+    const clean = [];
+    for (let i = 0; i < items.length; i += 1) {
+      const it = items[i] || {};
+      if (!it.assessmentId) continue;
+      const a = await models.Assessment.findByPk(it.assessmentId, { attributes: ['id', 'status'] });
+      if (!a) throw new ValidationError('One of the selected assessments no longer exists');
+      if (a.status !== 'published') throw new ValidationError('Only published assessments can be attached to a cohort');
+      clean.push({ cohortId, assessmentId: it.assessmentId, level: it.level ? String(it.level).slice(0, 40) : null, position: i });
+    }
+    await models.CohortAssessment.destroy({ where: { cohortId } });
+    if (clean.length) await models.CohortAssessment.bulkCreate(clean);
+    return this.getCohortPool(cohortId);
+  }
+
+  /**
+   * Pick the assessment id an applicant should take. Prefers the pool matching
+   * their `level`; falls back to the level-less ("everyone") pool; then the legacy
+   * single cohort.assessmentId. One is chosen at random when a pool has several.
+   * Returns an assessmentId or null (no assessment for this applicant).
+   */
+  async pickAssessmentId(cohort, level, randomFn = Math.random) {
+    const rows = await models.CohortAssessment.findAll({ where: { cohortId: cohort.id }, attributes: ['assessmentId', 'level'] });
+    let pool = [];
+    if (rows.length) {
+      const hasLevels = Array.isArray(cohort.levels) && cohort.levels.length > 0;
+      if (hasLevels && level) pool = rows.filter((r) => r.level === level);
+      if (!pool.length) pool = rows.filter((r) => !r.level);   // level-less / everyone
+      if (!pool.length) pool = rows;                            // safety net
+    }
+    let ids = pool.map((r) => r.assessmentId);
+    if (!ids.length && cohort.assessmentId) ids = [cohort.assessmentId]; // legacy single
+    if (!ids.length) return null;
+    return ids[Math.floor(randomFn() * ids.length) % ids.length];
+  }
+
+  /**
+   * Ensure an applicant has a stable assigned assessment. Keeps an already-set,
+   * still-valid one (so a returning applicant always sees the same assessment);
+   * otherwise picks from the pool and persists it. Returns the assessmentId or null.
+   */
+  async ensureAssignedAssessment(application, cohort) {
+    if (application.assignedAssessmentId) {
+      const still = await models.Assessment.findByPk(application.assignedAssessmentId, { attributes: ['id'] });
+      if (still) return application.assignedAssessmentId;
+    }
+    const picked = await this.pickAssessmentId(cohort, application.level);
+    if (picked !== (application.assignedAssessmentId || null)) {
+      await application.update({ assignedAssessmentId: picked || null });
+    }
+    return picked || null;
   }
 
   // ── Applicant-facing (sanitized) ─────────────────────────────────────────────

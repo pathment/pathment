@@ -8,6 +8,7 @@ const { NOTIFICATION_EVENTS } = require('../config/notificationMatrix');
 
 const fullName = (u) => (u ? `${u.firstName} ${u.lastName}`.trim() : null);
 const initials = (u) => (u ? `${(u.firstName || '').charAt(0)}${(u.lastName || '').charAt(0)}`.toUpperCase() : '?');
+const photo = (u) => (u && u.profilePictureUrl) || null;
 
 const POST_TYPES = ['kudos', 'win', 'question', 'discussion', 'resource', 'meme', 'standup'];
 const REACTION_TYPES = ['cheers', 'celebrate', 'helpful', 'insightful'];
@@ -98,7 +99,7 @@ class CommunityService {
       resolved: Boolean(p.resolved),
       acceptedCommentId: p.acceptedCommentId || null,
       commentCount: p.commentCount || 0,
-      author: { id: p.author?.id, name: fullName(p.author), avatar: initials(p.author) },
+      author: { id: p.author?.id, name: fullName(p.author), avatar: initials(p.author), avatarUrl: photo(p.author) },
       recipient: p.recipient ? { id: p.recipient.id, name: fullName(p.recipient) } : null,
       reactions: counts,
       myReactions: reactions.filter((r) => r.userId === userId).map((r) => r.type),
@@ -118,7 +119,7 @@ class CommunityService {
     const ids = await spaceService.getMemberIds(scopeType, scopeId);
     if (!ids.length) return [];
     const [users, memberships] = await Promise.all([
-      models.User.findAll({ where: { id: { [Op.in]: ids } }, attributes: ['id', 'firstName', 'lastName', 'role'] }),
+      models.User.findAll({ where: { id: { [Op.in]: ids } }, attributes: ['id', 'firstName', 'lastName', 'role', 'profilePictureUrl'] }),
       scopeType === 'clan'
         ? models.ClanMembership.findAll({ where: { clanId: scopeId, status: 'active' }, attributes: ['userId', 'role'] })
         : Promise.resolve([])
@@ -128,6 +129,7 @@ class CommunityService {
       id: u.id,
       name: fullName(u),
       avatar: initials(u),
+      avatarUrl: photo(u),
       role: clanRole.get(u.id) || u.role
     }));
   }
@@ -186,13 +188,14 @@ class CommunityService {
       return { userId: id, points, breakdown: s };
     }).filter((r) => r.points > 0).sort((a, b) => b.points - a.points);
 
-    const users = await models.User.findAll({ where: { id: { [Op.in]: rows.map((r) => r.userId) } }, attributes: ['id', 'firstName', 'lastName'] });
+    const users = await models.User.findAll({ where: { id: { [Op.in]: rows.map((r) => r.userId) } }, attributes: ['id', 'firstName', 'lastName', 'profilePictureUrl'] });
     const byId = new Map(users.map((u) => [u.id, u]));
     const ranked = rows.map((r, i) => ({
       rank: i + 1,
       userId: r.userId,
       name: fullName(byId.get(r.userId)) || 'Member',
       avatar: initials(byId.get(r.userId)),
+      avatarUrl: photo(byId.get(r.userId)),
       points: r.points,
       tier: tierFor(r.points),
       mine: r.userId === user.id
@@ -220,7 +223,7 @@ class CommunityService {
       order: [['created_at', 'DESC']],
       limit: 80,
       include: [
-        { model: models.User, as: 'author', attributes: ['id', 'firstName', 'lastName'] },
+        { model: models.User, as: 'author', attributes: ['id', 'firstName', 'lastName', 'profilePictureUrl'] },
         { model: models.User, as: 'recipient', attributes: ['id', 'firstName', 'lastName'] },
         { model: models.CommunityReaction, as: 'reactions', attributes: ['userId', 'type'] }
       ]
@@ -340,7 +343,7 @@ class CommunityService {
     const comments = await models.CommunityComment.findAll({
       where: { postId, deletedAt: null },
       order: [['created_at', 'ASC']],
-      include: [{ model: models.User, as: 'author', attributes: ['id', 'firstName', 'lastName'] }]
+      include: [{ model: models.User, as: 'author', attributes: ['id', 'firstName', 'lastName', 'profilePictureUrl'] }]
     });
     return comments.map((c) => ({
       id: c.id,
@@ -350,7 +353,7 @@ class CommunityService {
       at: c.createdAt,
       editedAt: c.editedAt || null,
       accepted: post.acceptedCommentId === c.id,
-      author: { id: c.author?.id, name: fullName(c.author), avatar: initials(c.author) },
+      author: { id: c.author?.id, name: fullName(c.author), avatar: initials(c.author), avatarUrl: photo(c.author) },
       mine: c.authorId === user.id
     }));
   }

@@ -50,9 +50,27 @@ export interface ChangesRequestedItem {
   mentee: { id: string; name: string; avatar: string } | null;
 }
 
+/** A task the mentor has already approved — the "Reviewed" history. */
+export interface ReviewedItem {
+  taskId: string;
+  roadmapTaskId: string | null;
+  title: string;
+  type: string | null;
+  /** 'approved' or 'approved_notes'. */
+  decision: 'approved' | 'approved_notes';
+  rating: number | null;
+  pointsAwarded: number;
+  maxPoints: number;
+  feedbackText: string | null;
+  reviewedAt: string;
+  isLate: boolean;
+  mentee: { id: string; name: string; avatar: string; profilePictureUrl?: string | null } | null;
+}
+
 export interface UseMentorApprovalsReturn {
   queue: ApprovalItem[];
   changesRequested: ChangesRequestedItem[];
+  reviewed: ReviewedItem[];
   loading: boolean;
   error: string | null;
   refetch: () => Promise<void>;
@@ -64,6 +82,7 @@ export interface UseMentorApprovalsReturn {
 export function useMentorApprovals(): UseMentorApprovalsReturn {
   const [queue, setQueue] = useState<ApprovalItem[]>([]);
   const [changesRequested, setChangesRequested] = useState<ChangesRequestedItem[]>([]);
+  const [reviewed, setReviewed] = useState<ReviewedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -71,15 +90,17 @@ export function useMentorApprovals(): UseMentorApprovalsReturn {
     try {
       setLoading(true);
       setError(null);
-      // Load the review queue and the changes-requested list together. The
-      // changes-requested list is best-effort: a failure there must not blank
-      // the whole page.
-      const [res, changesRes] = await Promise.all([
+      // Load the review queue, the changes-requested list, and the reviewed
+      // history together. The latter two are best-effort: a failure there must
+      // not blank the whole page.
+      const [res, changesRes, reviewedRes] = await Promise.all([
         mentorApi.getApprovals(),
         mentorApi.getChangesRequested().catch(() => null),
+        mentorApi.getReviewed().catch(() => null),
       ]);
       setQueue(res?.data?.queue ?? []);
       setChangesRequested(changesRes?.data?.items ?? []);
+      setReviewed(reviewedRes?.data?.items ?? []);
     } catch {
       setError('Failed to load the approvals queue');
       setQueue([]);
@@ -107,5 +128,5 @@ export function useMentorApprovals(): UseMentorApprovalsReturn {
     fetchQueue();
   }, [fetchQueue]);
 
-  return { queue, changesRequested, loading, error, refetch: fetchQueue, bulkApprove, bulkReview, handleExtension };
+  return { queue, changesRequested, reviewed, loading, error, refetch: fetchQueue, bulkApprove, bulkReview, handleExtension };
 }

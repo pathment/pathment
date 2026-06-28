@@ -114,15 +114,32 @@ export default function MenteeDailyLog() {
             <div>
               <div className="flex items-center gap-2 mb-2"><Sun className="w-4 h-4 text-amber-500" /><h2 className="text-slate-900">Today&apos;s rituals</h2></div>
               <div className="space-y-1.5">
-                {daySlots.map((s) => (
-                  <label key={s.id} className="flex items-center gap-2.5 p-2 rounded-lg hover:bg-slate-50 cursor-pointer">
-                    <input type="checkbox" checked={slotsDone.has(s.id)} onChange={() => toggleSlot(s.id)} className="w-4 h-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500" />
-                    <span className="text-slate-400 text-xs w-20 shrink-0">{s.time}</span>
-                    <span className="text-sm text-slate-700">{s.recurring?.title || s.label}</span>
-                    {s.kind === 'roadmap' && <Route className="w-3.5 h-3.5 text-brand-400" />}
-                    {s.kind === 'recurring' && <Repeat className="w-3.5 h-3.5 text-emerald-400" />}
-                  </label>
-                ))}
+                {daySlots.map((s, i) => {
+                  // For a roadmap slot, surface the chain's first roadmap + this
+                  // mentee's live progress (same as the mentor/admin view).
+                  const det = s.kind === 'roadmap' ? s.chainDetails?.[0] : undefined;
+                  return (
+                    <label key={s.id || `slot-${i}`} className="flex items-start gap-2.5 p-2 rounded-lg hover:bg-slate-50 cursor-pointer">
+                      <input type="checkbox" checked={slotsDone.has(s.id)} onChange={() => toggleSlot(s.id)} className="mt-0.5 w-4 h-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500" />
+                      <span className="text-slate-400 text-xs w-20 shrink-0 pt-0.5">{s.time}</span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-sm text-slate-700">{s.recurring?.title || s.label}</span>
+                          {s.kind === 'roadmap' && <Route className="w-3.5 h-3.5 text-brand-400" />}
+                          {s.kind === 'recurring' && <Repeat className="w-3.5 h-3.5 text-emerald-400" />}
+                        </div>
+                        {det && det.totalSteps > 0 && (
+                          <div className="mt-1 flex items-center gap-2">
+                            <div className="h-1.5 w-28 rounded-full bg-slate-100 overflow-hidden">
+                              <div className={`h-full rounded-full ${det.completed ? 'bg-emerald-500' : 'bg-brand-500'}`} style={{ width: `${det.percent}%` }} />
+                            </div>
+                            <span className="text-[11px] text-slate-400 truncate">{det.name} · {det.completed ? 'Completed' : `${det.currentStep}/${det.totalSteps} steps`}</span>
+                          </div>
+                        )}
+                      </div>
+                    </label>
+                  );
+                })}
               </div>
             </div>
           )}

@@ -2,6 +2,7 @@ const { models } = require('../db');
 const { NotFoundError, ValidationError, ConflictError } = require('../utils/errors/errorTypes');
 const { createAuditLog } = require('../utils/auditContext');
 const adminService = require('./adminService');
+const cohortIntakeService = require('./cohortIntakeService');
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DECIDED = ['accepted', 'rejected'];
@@ -42,13 +43,21 @@ class ApplicationService {
    * Idempotent: upsert by (cohortId, email). Already-decided applications are
    * left untouched. Unknown columns are preserved in `responses`.
    */
-  async importApplications(cohortId, rows, importedBy) {
-    const cohort = await models.Cohort.findByPk(cohortId);
+  async importApplications(cohortId, rows, importedBy, { allowExceed = false } = {}) {
+    const cohort = await models.Cohort.findByPk(cohortId, {
+      include: [{ model: models.Program, as: 'program', attributes: ['id', 'name'] }]
+    });
     if (!cohort) throw new NotFoundError('Cohort not found');
     if (!Array.isArray(rows) || rows.length === 0) throw new ValidationError('No rows to import');
 
     const report = { created: 0, updated: 0, skipped: [] };
     const seen = new Set();
+
+    // Respect the application cap: new rows beyond it are skipped (an admin can
+    // re-run with allowExceed to override). Updates to existing rows never count.
+    const cap = cohort.maxApplications != null ? Number(cohort.maxApplications) : null;
+    let count = cap != null ? await models.Application.count({ where: { cohortId } }) : 0;
+    let hitCap = false;
 
     for (const raw of rows) {
       const row = raw || {};
@@ -89,10 +98,22 @@ class ApplicationService {
         await existing.update(fields);
         report.updated += 1;
       } else {
+        if (cap != null && !allowExceed && count >= cap) {
+          hitCap = true;
+          report.skipped.push({ email, reason: `Cohort at its application cap (${cap})` });
+          continue;
+        }
         await models.Application.create({ cohortId, ...fields });
         report.created += 1;
+        count += 1;
       }
     }
+
+    // Alert admins if this import filled the cohort (or tried to exceed it).
+    if (cap != null && (hitCap || count >= cap)) {
+      cohortIntakeService.notifyCapacityReached(cohort, count).catch(() => {});
+    }
+    report.capReached = cap != null && count >= cap;
 
     if (report.created > 0 || report.updated > 0) {
       await createAuditLog({
@@ -120,12 +141,15 @@ class ApplicationService {
     let assessment = null;
     let submission = null;
     const cohort = app.cohort;
-    if (cohort?.assessmentId) {
-      assessment = await models.Assessment.findByPk(cohort.assessmentId, {
+    // Show the assessment the applicant was ACTUALLY assigned (pool/level aware),
+    // falling back to the cohort's legacy single assessment.
+    const assessmentId = app.assignedAssessmentId || cohort?.assessmentId;
+    if (assessmentId) {
+      assessment = await models.Assessment.findByPk(assessmentId, {
         include: [{ model: models.AssessmentQuestion, as: 'questions' }]
       });
       submission = await models.AssessmentSubmission.findOne({
-        where: { assessmentId: cohort.assessmentId, applicationId: app.id }
+        where: { assessmentId, applicationId: app.id }
       });
     }
 

@@ -32,6 +32,17 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING(255),
       field: 'program_preference'
     },
+    // The level the applicant selected (key into the cohort's `levels`). Drives
+    // which assessment pool they're assigned from. null when the cohort has no levels.
+    level: {
+      type: DataTypes.STRING(40)
+    },
+    // The assessment randomly assigned to this applicant from the matching pool.
+    // Stored so a returning applicant always sees the SAME assessment (stable).
+    assignedAssessmentId: {
+      type: DataTypes.UUID,
+      field: 'assigned_assessment_id'
+    },
     // Where this record came from. Importer sets 'import'; manual add 'manual'.
     source: {
       type: DataTypes.STRING(20),
@@ -117,6 +128,7 @@ module.exports = (sequelize, DataTypes) => {
     Application.belongsTo(models.User, { foreignKey: 'reviewed_by', as: 'reviewer' });
     Application.belongsTo(models.User, { foreignKey: 'user_id', as: 'user' });
     Application.belongsTo(models.RegistrationInvite, { foreignKey: 'invite_id', as: 'invite' });
+    Application.belongsTo(models.Assessment, { foreignKey: 'assigned_assessment_id', as: 'assignedAssessment' });
     Application.hasMany(models.AssessmentSubmission, { foreignKey: 'application_id', as: 'assessmentSubmissions' });
   };
 

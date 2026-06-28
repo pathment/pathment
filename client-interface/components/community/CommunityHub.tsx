@@ -88,10 +88,15 @@ function timeAgo(iso: string) {
   return new Date(iso).toLocaleDateString();
 }
 
-const Avatar = ({ text }: { text: string }) => (
-  <div className="w-9 h-9 bg-brand-100 rounded-full flex items-center justify-center shrink-0">
-    <span className="text-brand-700 text-xs font-medium">{text}</span>
-  </div>
+const Avatar = ({ text, url }: { text: string; url?: string | null }) => (
+  url
+    // eslint-disable-next-line @next/next/no-img-element
+    ? <img src={url} alt={text} className="w-9 h-9 rounded-full object-cover shrink-0" />
+    : (
+      <div className="w-9 h-9 bg-brand-100 rounded-full flex items-center justify-center shrink-0">
+        <span className="text-brand-700 text-xs font-medium">{text}</span>
+      </div>
+    )
 );
 
 /* ── Comment thread ─────────────────────────────────────────────────────── */
@@ -137,7 +142,7 @@ function Thread({ post, canModerate, people, onChanged }: { post: CommunityPost;
         comments.map((c) => (
           <div key={c.id} className={`flex gap-2.5 ${c.parentId ? 'ml-7' : ''}`}>
             {c.parentId && <CornerDownRight className="w-3.5 h-3.5 text-slate-300 mt-2.5 shrink-0" />}
-            <Avatar text={c.author.avatar} />
+            <Avatar text={c.author.avatar} url={c.author.avatarUrl} />
             <div className="min-w-0 flex-1">
               <div className={`rounded-xl px-3 py-2 ${c.accepted ? 'bg-emerald-50 border border-emerald-200' : 'bg-slate-50'}`}>
                 <div className="flex items-center gap-2">
@@ -186,7 +191,7 @@ function PostCard({ post, canModerate, hub }: { post: CommunityPost; canModerate
     <div className={`bg-card rounded-2xl border p-5 ${post.pinned ? 'border-brand-200 ring-1 ring-brand-100' : 'border-slate-200'}`}>
       {post.pinned && <div className="flex items-center gap-1 text-xs font-medium text-brand-600 mb-2"><Pin className="w-3.5 h-3.5" />Pinned</div>}
       <div className="flex items-center gap-2.5">
-        <Avatar text={post.author.avatar} />
+        <Avatar text={post.author.avatar} url={post.author.avatarUrl} />
         <div className="min-w-0">
           <p className="text-sm font-medium text-slate-900">
             {post.author.name}
@@ -526,7 +531,10 @@ export default function CommunityHub() {
                 {hub.leaderboard.map((r) => (
                   <div key={r.userId} className={`flex items-center gap-2.5 px-1.5 py-1.5 rounded-lg ${r.mine ? 'bg-brand-50 dark:bg-brand-500/15' : ''}`}>
                     <span className={`w-5 text-center text-xs font-semibold tabular-nums shrink-0 ${r.rank <= 3 ? 'text-amber-500' : 'text-slate-400'}`}>{r.rank}</span>
-                    <div className="w-7 h-7 rounded-full bg-brand-100 flex items-center justify-center shrink-0"><span className="text-brand-700 text-[11px] font-medium">{r.avatar}</span></div>
+                    {r.avatarUrl
+                      // eslint-disable-next-line @next/next/no-img-element
+                      ? <img src={r.avatarUrl} alt={r.name} className="w-7 h-7 rounded-full object-cover shrink-0" />
+                      : <div className="w-7 h-7 rounded-full bg-brand-100 flex items-center justify-center shrink-0"><span className="text-brand-700 text-[11px] font-medium">{r.avatar}</span></div>}
                     <div className="min-w-0 flex-1">
                       <p className="text-sm text-slate-800 truncate">{r.name}{r.mine && <span className="text-brand-500"> · you</span>}</p>
                       <p className="text-[11px] text-slate-400">{r.tier}</p>
@@ -552,7 +560,7 @@ export default function CommunityHub() {
               <div className="mt-3 space-y-2">
                 {hub.members.map((m) => (
                   <div key={m.id} className="flex items-center gap-2.5">
-                    <Avatar text={m.avatar} />
+                    <Avatar text={m.avatar} url={m.avatarUrl} />
                     <div className="min-w-0">
                       <p className="text-sm text-slate-800 truncate">{m.name}</p>
                       <p className="text-[11px] text-slate-400 capitalize">{m.role.replace('_', ' ')}</p>

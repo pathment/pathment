@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { StatsCard } from '@/components/admin/ui';
 import { AnnouncementsCard } from '@/components/shared/AnnouncementsCard';
+import { Avatar } from '@/components/shared/Avatar';
 import {
   useClanHealth,
   type ClanHealthCard,
@@ -152,9 +153,7 @@ export default function AdminDashboardPage() {
           <div className="divide-y divide-slate-100">
             {atRiskMentees.map((m) => (
               <div key={m.id} className="flex items-center gap-3 px-6 py-3">
-                <div className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
-                  <span className="text-xs font-medium text-slate-600">{m.avatar}</span>
-                </div>
+                <Avatar name={m.name} src={m.avatarUrl} initials={m.avatar} size="md" href={`/admin/mentees/${m.id}`} />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium text-slate-900 truncate">{m.name}</p>
                   <p className="text-xs text-slate-500 truncate">{m.program} · {m.riskReason}</p>

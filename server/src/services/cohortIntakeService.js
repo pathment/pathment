@@ -2,6 +2,28 @@ const crypto = require('crypto');
 const { Op } = require('sequelize');
 const { models, sequelize } = require('../db');
 const { NotFoundError, ValidationError } = require('../utils/errors/errorTypes');
+const { endOfDayInZone, zonedWallClockToUtc } = require('../utils/timezone');
+const notificationOrchestrator = require('./notificationOrchestrator');
+const { NOTIFICATION_EVENTS } = require('../config/notificationMatrix');
+const { normalizeFormSchema } = require('../config/intakeProfileFields');
+
+const slug = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+
+/** Normalize a levels array → [{ key, label }] with unique, stable keys. */
+function normalizeLevels(levels) {
+  if (!Array.isArray(levels)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const raw of levels) {
+    const label = String((raw && (raw.label ?? raw)) || '').trim();
+    if (!label) continue;
+    let key = (raw && raw.key ? slug(raw.key) : slug(label)) || `level-${out.length + 1}`;
+    if (seen.has(key)) { let n = 2; while (seen.has(`${key}-${n}`)) n += 1; key = `${key}-${n}`; }
+    seen.add(key);
+    out.push({ key, label });
+  }
+  return out;
+}
 
 /**
  * Cohort (intake batch) management. A cohort is a program's season of intake;
@@ -103,11 +125,34 @@ class CohortIntakeService {
       'name', 'description', 'status', 'capacity', 'startDate', 'endDate',
       // public intake link + assessment configuration
       'applyOpensAt', 'applyClosesAt', 'maxApplications', 'intakeFormSchema',
-      'assessmentId', 'assessmentRequired'
+      'assessmentId', 'assessmentRequired', 'timezone'
     ];
     const patch = {};
     for (const key of allowed) {
       if (data[key] !== undefined) patch[key] = data[key];
+    }
+
+    if (data.levels !== undefined) patch.levels = normalizeLevels(data.levels);
+    // Profile fields adopt their catalog type (url/phone/select) on save, healing
+    // legacy schemas stored as plain `text` before typed validation existed.
+    if (patch.intakeFormSchema !== undefined) patch.intakeFormSchema = normalizeFormSchema(patch.intakeFormSchema);
+
+    // Apply window as a calendar date + zone → a precise UTC instant. "Closes
+    // June 30" = end-of-day June 30 in the cohort's timezone (correct everywhere);
+    // "Opens June 1" = start-of-day. A full ISO `applyClosesAt`/`applyOpensAt`
+    // still wins if sent directly (back-compat).
+    const tz = patch.timezone ?? cohort.timezone ?? 'UTC';
+    // A specific time wins; otherwise the window defaults to the whole day —
+    // opens at start-of-day (00:00), closes at end-of-day (23:59) in the org zone.
+    if (data.applyClosesDate !== undefined) {
+      patch.applyClosesAt = data.applyClosesDate
+        ? (data.applyClosesTime ? zonedWallClockToUtc(data.applyClosesDate, data.applyClosesTime, tz) : endOfDayInZone(data.applyClosesDate, tz))
+        : null;
+    }
+    if (data.applyOpensDate !== undefined) {
+      patch.applyOpensAt = data.applyOpensDate
+        ? zonedWallClockToUtc(data.applyOpensDate, data.applyOpensTime || '00:00', tz)
+        : null;
     }
 
     // Validate ordering/capacity against the MERGED config (so updating one date
@@ -231,6 +276,62 @@ class CohortIntakeService {
     }
 
     return { cohort, open: reasons.length === 0, reasons };
+  }
+
+  // ── Admin notifications ──────────────────────────────────────────────────────
+  /** Admins to alert about a cohort's intake: its creator + all active admins. */
+  async _adminRecipientIds(cohort) {
+    const admins = await models.User.findAll({ where: { role: 'admin', status: 'active' }, attributes: ['id'] });
+    const ids = new Set(admins.map((a) => a.id));
+    if (cohort.createdBy) ids.add(cohort.createdBy);
+    return [...ids];
+  }
+
+  /** Tell admins a new applicant landed (in-app only — these can be frequent). */
+  async notifyApplicationReceived(cohort, application) {
+    try {
+      const recipientIds = await this._adminRecipientIds(cohort);
+      if (!recipientIds.length) return;
+      const who = `${application.firstName || ''} ${application.lastName || ''}`.trim() || application.email;
+      const programName = cohort.program?.name || 'a program';
+      await notificationOrchestrator.dispatch({
+        eventKey: NOTIFICATION_EVENTS.APPLICATION_RECEIVED,
+        recipients: recipientIds.map((userId) => ({ userId })),
+        payload: {
+          title: 'New application',
+          message: `${who} applied to ${programName} (${cohort.name}).`,
+          actionUrl: `/admin/cohorts/${cohort.id}`,
+          actionLabel: 'Review applicants',
+          relatedEntityType: 'application',
+          relatedEntityId: application.id
+        },
+        dedupe: { relatedEntityType: 'application_received', relatedEntityId: application.id }
+      });
+    } catch (e) { console.warn('[intake] application-received notify failed:', e.message); }
+  }
+
+  /** Alert admins the cohort hit its application cap — raise it or close the link. */
+  async notifyCapacityReached(cohort, count) {
+    try {
+      const recipientIds = await this._adminRecipientIds(cohort);
+      if (!recipientIds.length) return;
+      const programName = cohort.program?.name || 'a program';
+      await notificationOrchestrator.dispatch({
+        eventKey: NOTIFICATION_EVENTS.APPLICATION_CAPACITY_REACHED,
+        recipients: recipientIds.map((userId) => ({ userId })),
+        payload: {
+          title: 'Cohort reached its application cap',
+          message: `${programName} — ${cohort.name} hit its limit of ${cohort.maxApplications} applications (${count} received). Raise the cap to accept more, or leave it to stop new applicants.`,
+          actionUrl: `/admin/cohorts/${cohort.id}`,
+          actionLabel: 'Open admissions settings',
+          relatedEntityType: 'cohort',
+          relatedEntityId: cohort.id,
+          emailSubject: `Application cap reached — ${cohort.name}`
+        },
+        // One alert per cap value, so raising the cap can fire a fresh one later.
+        dedupe: { relatedEntityType: 'capacity_reached', relatedEntityId: `${cohort.id}:${cohort.maxApplications}` }
+      });
+    } catch (e) { console.warn('[intake] capacity-reached notify failed:', e.message); }
   }
 }
 

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Check, X, Minus, HelpCircle } from 'lucide-react';
 import { getInitials } from '@/lib/utils/formatting';
 
@@ -48,8 +48,22 @@ export function MenteeAttendanceCard({ mentee, attendance, isActive, onClick }: 
   const initials = mentee.avatar || getInitials(mentee.name);
   const firstName = mentee.name.split(' ')[0];
 
+  // A broken / unreachable photo URL otherwise renders as an empty black circle
+  // — fall back to the initials so the chip is always legible.
+  const [imgFailed, setImgFailed] = useState(false);
+  useEffect(() => { setImgFailed(false); }, [mentee.profilePictureUrl]);
+  const showPhoto = !!mentee.profilePictureUrl && !imgFailed;
+
+  // When this becomes the active mentee (e.g. via the Prev/Next/Skip buttons),
+  // bring the chip into view so the mentor can see where they are in the rail.
+  const ref = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (isActive) ref.current?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+  }, [isActive]);
+
   return (
     <button
+      ref={ref}
       onClick={onClick}
       title={`${mentee.name} — ${attendance ?? 'not marked'}`}
       aria-pressed={isActive}
@@ -63,12 +77,13 @@ export function MenteeAttendanceCard({ mentee, attendance, isActive, onClick }: 
           }`}
         >
           <div className="rounded-full bg-card p-[2px]">
-            {mentee.profilePictureUrl ? (
+            {showPhoto ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={mentee.profilePictureUrl}
+                src={mentee.profilePictureUrl as string}
                 alt={mentee.name}
-                className="w-14 h-14 rounded-full object-cover"
+                onError={() => setImgFailed(true)}
+                className="w-14 h-14 rounded-full object-cover bg-brand-50"
               />
             ) : (
               <div className="w-14 h-14 rounded-full bg-brand-50 flex items-center justify-center text-brand-700 font-semibold text-base">

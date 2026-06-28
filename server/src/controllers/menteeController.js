@@ -43,7 +43,7 @@ const getAllMentees = catchAsync(async (req, res) => {
 
   const { count, rows: mentees } = await models.User.findAndCountAll({
     where: { ...where, ...searchConditions },
-    attributes: ['id', 'firstName', 'lastName', 'email', 'status', 'createdAt'],
+    attributes: ['id', 'firstName', 'lastName', 'email', 'status', 'createdAt', 'profilePictureUrl'],
     include: [
       {
         model: models.MenteeProfile,
@@ -185,7 +185,7 @@ const getMenteeById = catchAsync(async (req, res) => {
   const mentorUsers = mentorUserIds.length
     ? await models.User.findAll({
         where: { id: { [Op.in]: mentorUserIds } },
-        attributes: ['id', 'firstName', 'lastName', 'email'],
+        attributes: ['id', 'firstName', 'lastName', 'email', 'profilePictureUrl'],
       }).catch(() => [])
     : [];
   const mentorById = new Map(mentorUsers.map((u) => [u.id, u]));

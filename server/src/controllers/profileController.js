@@ -3,6 +3,11 @@ const { NotFoundError, ValidationError, ForbiddenError } = require('../utils/err
 const { successResponse } = require('../utils/responses');
 const { PROFILE_MESSAGES } = require('../utils/responses/messages');
 const { catchAsync } = require('../middlewares/errorHandler');
+const { uploadToCloudinary, deleteFromCloudinary, extractPublicId } = require('../utils/cloudinaryUpload');
+
+// Profile photos are strictly PNG / JPG (the cropper exports one of these).
+const ALLOWED_IMAGE_MIME = ['image/png', 'image/jpeg', 'image/jpg'];
+const PROFILE_FOLDER = 'pathment/profiles';
 
 class ProfileController {
   /**
@@ -301,6 +306,37 @@ await user.update({
     }
 
     res.json(successResponse(PROFILE_MESSAGES.PROFILE_UPDATED, user));
+  });
+
+  /**
+   * Upload (or replace) the user's profile photo.
+   * POST /api/profile/picture  (multipart: `image`)
+   *
+   * The client crops/zooms to a square and exports a PNG/JPG, which we push to
+   * Cloudinary and store on the user. The previous photo (if it was one of ours)
+   * is best-effort deleted so we don't leak orphaned uploads.
+   */
+  uploadProfilePicture = catchAsync(async (req, res) => {
+    if (!req.file) throw new ValidationError('Please choose an image to upload');
+    if (!ALLOWED_IMAGE_MIME.includes(req.file.mimetype)) {
+      throw new ValidationError('Your profile photo must be a PNG or JPG image');
+    }
+
+    const result = await uploadToCloudinary(req.file.buffer, PROFILE_FOLDER, 'image');
+    const url = result.secure_url || result.url;
+
+    const user = await models.User.findByPk(req.user.id);
+    if (!user) throw new NotFoundError('User not found');
+    const previous = user.profilePictureUrl;
+    user.profilePictureUrl = url;
+    await user.save();
+
+    // Clean up the old Cloudinary asset (only ours), best-effort.
+    if (previous && previous.includes('res.cloudinary.com') && previous.includes(PROFILE_FOLDER)) {
+      deleteFromCloudinary(extractPublicId(previous), 'image').catch(() => {});
+    }
+
+    res.json(successResponse('Profile photo updated', { profilePictureUrl: url }));
   });
 
   /**

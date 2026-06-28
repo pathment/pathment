@@ -227,6 +227,7 @@ class MatchingService {
           firstName: mentor.firstName,
           lastName: mentor.lastName,
           email: mentor.email,
+          profilePictureUrl: mentor.profilePictureUrl || null,
           mentorProfile: mentor.mentorProfile
         },
         program: enrollment.program,

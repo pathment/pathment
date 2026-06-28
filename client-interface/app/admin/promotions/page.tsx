@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { toast } from 'sonner';
 import { Crown, Loader2, TrendingUp, X, UserCheck } from 'lucide-react';
 
@@ -126,9 +127,14 @@ export default function AdminPromotions() {
   const Card = ({ c, history }: { c: AdminPromotionCandidate; history?: boolean }) => (
     <div className="bg-card rounded-2xl border border-slate-200 p-5">
       <div className="flex items-start gap-3">
-        <div className="w-10 h-10 bg-brand-100 rounded-full flex items-center justify-center shrink-0">
-          <span className="text-brand-700 text-xs font-medium">{c.avatar}</span>
-        </div>
+        {c.avatarUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <Link href={`/admin/mentees/${c.menteeId}`} className="shrink-0"><img src={c.avatarUrl} alt={c.name} className="w-10 h-10 rounded-full object-cover" /></Link>
+        ) : (
+          <Link href={`/admin/mentees/${c.menteeId}`} className="w-10 h-10 bg-brand-100 rounded-full flex items-center justify-center shrink-0">
+            <span className="text-brand-700 text-xs font-medium">{c.avatar}</span>
+          </Link>
+        )}
         <div className="min-w-0 flex-1">
           <p className="font-medium text-slate-900 truncate">{c.name}</p>
           <p className="text-xs text-slate-500 truncate">

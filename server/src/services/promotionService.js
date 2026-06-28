@@ -60,6 +60,7 @@ class PromotionService {
       createdAt: candidate.createdAt,
       name: row?.name || 'Mentee',
       avatar: row?.avatar || '?',
+      avatarUrl: row?.profilePictureUrl || null,
       program: row?.program || null,
       level: row?.level || null,
       absoluteProgress: row?.absoluteProgress ?? 0,

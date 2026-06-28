@@ -15,6 +15,7 @@ export interface MentorListItem {
   status: string;
   createdAt: string;
   lastLoginAt?: string | null;
+  profilePictureUrl?: string | null;
   activeMentees?: number;
   clans?: { id: string; name: string; role: string }[];
   specializations?: string[];

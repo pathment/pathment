@@ -25,6 +25,7 @@ import { ReviewDrawer } from '@/components/mentor/ReviewDrawer';
 import { AssignTaskDrawer } from '@/components/mentor/AssignTaskDrawer';
 import { MenteeTaskDrawer } from '@/components/mentor/MenteeTaskDrawer';
 import { Drawer } from '@/components/shared/Drawer';
+import { Avatar } from '@/components/shared/Avatar';
 import { useConfirm } from '@/lib/context/ConfirmContext';
 import { AttendanceSection } from '@/components/mentor/attendance/AttendanceSection';
 
@@ -822,7 +823,8 @@ export default function CohortReview() {
           {/* Mentee card */}
           <div className="bg-card rounded-2xl border border-slate-200 p-5">
             <div className="flex items-start gap-3">
-              <div className="w-12 h-12 bg-brand-100 rounded-full flex items-center justify-center shrink-0"><span className="text-brand-700 font-semibold">{mentee!.avatar}</span></div>
+              <Avatar name={mentee!.name} src={mentee!.profilePictureUrl} initials={mentee!.avatar} size="lg" href={`/mentor/mentees/${mentee!.id}`} />
+
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <h2 className="font-semibold text-slate-900 truncate">{mentee!.name}</h2>

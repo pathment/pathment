@@ -18,6 +18,10 @@ const FEEDBACK_TEMPLATES = [
   'Please address the points below and resubmit.',
 ];
 
+// Default penalty for a LATE submission: knock 20% off the points and drop the
+// quality rating to 4/5. The mentor can override both, but must give a reason.
+const LATE_PENALTY_PCT = 0.2;
+
 export function ReviewDrawer({
   item,
   onClose,
@@ -28,10 +32,15 @@ export function ReviewDrawer({
   onReviewed: () => void;
 }) {
   const [checked, setChecked] = useState<Set<string>>(new Set());
-  // Points are STANDARD by difficulty — fixed, not chosen by the mentor.
+  // `total` is the task's max (set by difficulty). A late task is pre-penalized:
+  // points drop by LATE_PENALTY_PCT and the rating defaults to 4 (vs 5 on time).
+  // The mentor can change either, but a late approval requires a reason note.
   const total = Math.max(0, item.maxPoints ?? 10);
-  const [rating, setRating] = useState(4);
-  const [notes, setNotes] = useState('');
+  const isLate = !!item.isLate;
+  const latePenalty = isLate ? Math.min(total, Math.round(total * LATE_PENALTY_PCT)) : 0;
+  const [points, setPoints] = useState(total - latePenalty);
+  const [rating, setRating] = useState(isLate ? 4 : 5);
+  const [notes, setNotes] = useState(isLate ? 'Submitted late — points and rating reduced accordingly.' : '');
   const [busy, setBusy] = useState<Decision | null>(null);
 
   // Split criteria into hard gates (~60%) + soft checks (the rest), like the
@@ -60,6 +69,12 @@ export function ReviewDrawer({
       toast.error('Tick the required criteria before approving');
       return;
     }
+    // Late submissions are penalized by default — make the mentor justify it
+    // (whether they keep the penalty, soften it, or waive it).
+    if ((decision === 'approved' || decision === 'approved_notes') && isLate && !notes.trim()) {
+      toast.error('This task was late — add a brief reason for the points/rating.');
+      return;
+    }
     const isApproved = decision === 'approved' || decision === 'approved_notes';
     try {
       setBusy(decision);
@@ -70,7 +85,9 @@ export function ReviewDrawer({
         revisionNotes: isApproved ? undefined : notes.trim(),
         decision,
         checkedCriteria: [...checked],
-        // Points are standardized by difficulty server-side; nothing to send.
+        // Mentor-awarded points (capped server-side at the task's max). Only
+        // applied when the task is approved.
+        pointsAwarded: points,
       });
       toast.success(isApproved ? 'Approved' : decision === 'changes' ? 'Changes requested' : 'Rejected');
       onReviewed();
@@ -188,7 +205,10 @@ export function ReviewDrawer({
 
         {/* Rating */}
         <div>
-          <h3 className="text-sm font-medium text-slate-700 mb-2">Quality rating</h3>
+          <h3 className="text-sm font-medium text-slate-700 mb-2 flex items-center gap-2">
+            Quality rating
+            {isLate && <span className="text-[11px] font-normal text-red-600">defaulted to 4/5 (late)</span>}
+          </h3>
           <div className="flex items-center gap-1" role="radiogroup" aria-label="Quality rating">
             {[1, 2, 3, 4, 5].map((n) => (
               <button key={n} onClick={() => setRating(n)} className="p-0.5" aria-label={`${n} star${n > 1 ? 's' : ''}`} aria-pressed={n === rating}>
@@ -198,18 +218,59 @@ export function ReviewDrawer({
           </div>
         </div>
 
-        {/* Points — standard for this task's difficulty (not editable). */}
+        {/* Points — full by default; the mentor can award less if work fell short. */}
         <div>
-          <h3 className="text-sm font-medium text-slate-700 mb-2">Points</h3>
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 text-sm font-medium tabular-nums">
-            {total} pts
-          </span>
-          <p className="mt-1 text-xs text-slate-400">Set by task difficulty. Awarded in full on approval.</p>
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-medium text-slate-700 flex items-center gap-2">
+              Points awarded
+              {isLate && latePenalty > 0 && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-red-50 text-red-700 text-[11px] font-medium"><Clock className="w-3 h-3" />Late −{latePenalty}</span>
+              )}
+            </h3>
+            {points !== total && (
+              <button type="button" onClick={() => setPoints(total)} className="text-xs font-medium text-brand-600 hover:text-brand-700">Award full</button>
+            )}
+          </div>
+          <div className="flex items-center gap-3">
+            <input
+              type="number"
+              min={0}
+              max={total}
+              value={points}
+              onChange={(e) => {
+                const v = Math.round(Number(e.target.value));
+                setPoints(Number.isFinite(v) ? Math.max(0, Math.min(total, v)) : 0);
+              }}
+              className="w-20 border border-slate-300 rounded-lg px-3 py-2 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-brand-500"
+              aria-label="Points awarded"
+            />
+            <span className="text-sm text-slate-500 tabular-nums">/ {total} pts</span>
+            {total > 0 && (
+              <input
+                type="range"
+                min={0}
+                max={total}
+                step={1}
+                value={points}
+                onChange={(e) => setPoints(Number(e.target.value))}
+                className="flex-1 accent-brand-600"
+                aria-label="Points awarded slider"
+              />
+            )}
+          </div>
+          <p className="mt-1 text-xs text-slate-400">
+            {isLate
+              ? `Late submission — pre-set to ${total - latePenalty}/${total} (−${latePenalty}). Adjust if needed; can't exceed ${total}.`
+              : `Defaults to full (${total}). Lower it if the work fell short — e.g. ${Math.max(0, total - 2)}/${total}. Can't exceed ${total}.`}
+          </p>
         </div>
 
         {/* Notes + feedback assist (AI draft, templates, saved snippets) */}
         <div>
-          <h3 className="text-sm font-medium text-slate-700 mb-2">Notes to the mentee</h3>
+          <h3 className="text-sm font-medium text-slate-700 mb-2">
+            Notes to the mentee
+            {isLate && <span className="ml-1.5 text-[10px] uppercase tracking-wide text-rose-500 font-semibold">reason required</span>}
+          </h3>
           <FeedbackAssist
             templates={FEEDBACK_TEMPLATES}
             getCurrentText={() => notes}

@@ -1,15 +1,18 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import {
   ClipboardCheck, CheckCircle2, Clock, Loader2, ChevronRight, CalendarClock, Check, X,
-  Search, ArrowDownUp, Layers, RotateCcw, ArrowUpRight, XCircle,
+  Search, ArrowDownUp, Layers, RotateCcw, ArrowUpRight, XCircle, Star,
 } from 'lucide-react';
 import { useMentorApprovals, type ApprovalItem } from '@/lib/hooks/mentor';
 import { ReviewDrawer } from '@/components/mentor/ReviewDrawer';
 import { BulkReviewDrawer } from '@/components/mentor/BulkReviewDrawer';
+import { Avatar } from '@/components/shared/Avatar';
+import { TablePagination } from '@/components/shared/TablePagination';
+import { usePagination } from '@/lib/hooks/shared/usePagination';
 import { todayInZone, dateInZone, addDaysToDateStr, zoneLabel } from '@/lib/utils/datetime';
 
 function timeAgo(iso: string): string {
@@ -30,10 +33,10 @@ function waitingDays(iso: string): number {
   return Math.floor((Date.now() - d) / 86400000);
 }
 
-type Tab = 'review' | 'changes' | 'extensions';
+type Tab = 'review' | 'changes' | 'extensions' | 'reviewed';
 
 export default function MentorApprovals() {
-  const { queue, changesRequested, loading, error, refetch, bulkReview, handleExtension } = useMentorApprovals();
+  const { queue, changesRequested, reviewed, loading, error, refetch, bulkReview, handleExtension } = useMentorApprovals();
   const [tab, setTab] = useState<Tab>('review');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [reviewing, setReviewing] = useState<ApprovalItem | null>(null);
@@ -52,6 +55,12 @@ export default function MentorApprovals() {
   const [changesSearch, setChangesSearch] = useState('');
   const [changesNewestFirst, setChangesNewestFirst] = useState(true);
   const [decisionFilter, setDecisionFilter] = useState<'all' | 'changes' | 'rejected'>('all');
+
+  // Reviewed (approved history) controls: search + sort + filter + pagination.
+  const [reviewedSearch, setReviewedSearch] = useState('');
+  const [reviewedNewestFirst, setReviewedNewestFirst] = useState(true);
+  const [reviewedFilter, setReviewedFilter] = useState<'all' | 'on_time' | 'late' | 'top' | 'low'>('all');
+  const reviewedPg = usePagination({ initialPage: 1, initialLimit: 10 });
 
   // A deadline is the MENTEE's calendar day — compute "today" and the current
   // due date in THEIR timezone (not UTC / the mentor's browser) so the date the
@@ -125,6 +134,35 @@ export default function MentorApprovals() {
     return changesNewestFirst ? sorted.reverse() : sorted;
   }, [changesRequested, changesSearch, changesNewestFirst, decisionFilter]);
 
+  // Reviewed: counts per filter (for the chips), then filter + search + sort.
+  const reviewedCounts = useMemo(() => ({
+    all: reviewed.length,
+    on_time: reviewed.filter((it) => !it.isLate).length,
+    late: reviewed.filter((it) => it.isLate).length,
+    top: reviewed.filter((it) => (it.rating ?? 0) >= 5).length,
+    low: reviewed.filter((it) => (it.rating ?? 0) > 0 && (it.rating ?? 0) <= 3).length,
+  }), [reviewed]);
+
+  const filteredReviewed = useMemo(() => {
+    const q = reviewedSearch.trim().toLowerCase();
+    let list = reviewed;
+    if (reviewedFilter === 'on_time') list = list.filter((it) => !it.isLate);
+    else if (reviewedFilter === 'late') list = list.filter((it) => it.isLate);
+    else if (reviewedFilter === 'top') list = list.filter((it) => (it.rating ?? 0) >= 5);
+    else if (reviewedFilter === 'low') list = list.filter((it) => (it.rating ?? 0) > 0 && (it.rating ?? 0) <= 3);
+    if (q) list = list.filter((it) => it.title.toLowerCase().includes(q) || (it.mentee?.name || '').toLowerCase().includes(q));
+    const sorted = [...list].sort((a, b) => new Date(a.reviewedAt).getTime() - new Date(b.reviewedAt).getTime());
+    return reviewedNewestFirst ? sorted.reverse() : sorted;
+  }, [reviewed, reviewedSearch, reviewedFilter, reviewedNewestFirst]);
+
+  // Keep pagination total in sync, and snap back to page 1 when filters change.
+  useEffect(() => { reviewedPg.setTotal(filteredReviewed.length); }, [filteredReviewed.length, reviewedPg.setTotal]);
+  useEffect(() => { reviewedPg.reset(); }, [reviewedSearch, reviewedFilter, reviewedNewestFirst, reviewedPg.reset]);
+  const pagedReviewed = useMemo(
+    () => filteredReviewed.slice(reviewedPg.offset, reviewedPg.offset + reviewedPg.limit),
+    [filteredReviewed, reviewedPg.offset, reviewedPg.limit]
+  );
+
   const selectedItems = useMemo(
     () => queue.filter((q) => selected.has(q.submissionId)),
     [queue, selected]
@@ -186,6 +224,7 @@ export default function MentorApprovals() {
     { key: 'review', label: 'To review', count: reviewItems.length },
     { key: 'changes', label: 'Sent back', count: changesRequested.length },
     { key: 'extensions', label: 'Extension requests', count: extensionItems.length },
+    { key: 'reviewed', label: 'Reviewed', count: reviewed.length },
   ];
 
   // A single waiting-age badge, amber once a submission has waited >= 3 days.
@@ -535,6 +574,105 @@ export default function MentorApprovals() {
             </div>
           )}
         </>
+      ) : tab === 'reviewed' ? (
+        /* ── Reviewed (approved history, with the score you gave) ─── */
+        reviewed.length === 0 ? (
+          <div className="bg-card rounded-2xl border border-slate-200 py-16 text-center">
+            <CheckCircle2 className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+            <p className="text-slate-600">Nothing reviewed yet.</p>
+            <p className="text-slate-400 text-sm mt-1">Tasks you approve show up here with the points and rating you gave.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {/* Filter chips */}
+            <div className="flex flex-wrap items-center gap-2">
+              {([
+                { key: 'all' as const, label: 'All', count: reviewedCounts.all, active: 'bg-slate-900 text-white border-slate-900' },
+                { key: 'on_time' as const, label: 'On time', count: reviewedCounts.on_time, active: 'bg-emerald-600 text-white border-emerald-600' },
+                { key: 'late' as const, label: 'Late', count: reviewedCounts.late, active: 'bg-red-600 text-white border-red-600' },
+                { key: 'top' as const, label: 'Top rated (5★)', count: reviewedCounts.top, active: 'bg-amber-500 text-white border-amber-500' },
+                { key: 'low' as const, label: 'Low (≤3★)', count: reviewedCounts.low, active: 'bg-slate-700 text-white border-slate-700' },
+              ]).map((chip) => {
+                const isActive = reviewedFilter === chip.key;
+                return (
+                  <button key={chip.key} onClick={() => setReviewedFilter(chip.key)}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm transition-colors ${isActive ? chip.active : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}>
+                    {chip.label}
+                    <span className={`text-xs ${isActive ? 'text-white/80' : 'text-slate-400'}`}>{chip.count}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Search + sort */}
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative flex-1 min-w-[200px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input value={reviewedSearch} onChange={(e) => setReviewedSearch(e.target.value)} placeholder="Search mentee or task…"
+                  className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-500" />
+              </div>
+              <button onClick={() => setReviewedNewestFirst((v) => !v)} title="Toggle sort order"
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 text-sm text-slate-600 hover:border-brand-300 hover:text-brand-700">
+                <ArrowDownUp className="w-4 h-4" />{reviewedNewestFirst ? 'Newest first' : 'Oldest first'}
+              </button>
+            </div>
+
+            {filteredReviewed.length === 0 ? (
+              <div className="bg-card rounded-2xl border border-slate-200 py-12 text-center">
+                <p className="text-slate-600">No reviewed tasks match these filters.</p>
+              </div>
+            ) : (
+              <>
+                <div className="bg-card rounded-2xl border border-slate-200 divide-y divide-slate-100">
+                  {pagedReviewed.map((item) => (
+                    <div key={item.taskId} className="flex items-start gap-4 px-5 py-4">
+                      <Avatar
+                        name={item.mentee?.name}
+                        src={item.mentee?.profilePictureUrl}
+                        initials={item.mentee?.avatar}
+                        size="md"
+                        href={item.mentee?.id ? `/mentor/mentees/${item.mentee.id}` : undefined}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-sm font-medium text-slate-900 truncate">{item.title}</p>
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[11px]"><Check className="w-3 h-3" />approved</span>
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[11px] tabular-nums">{item.pointsAwarded}/{item.maxPoints} pts</span>
+                          {item.rating != null && (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[11px]"><Star className="w-3 h-3 fill-amber-400 text-amber-400" />{item.rating}/5</span>
+                          )}
+                          {item.isLate && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-red-50 text-red-700 text-[11px]"><Clock className="w-3 h-3" />late</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5 text-xs text-slate-500 flex-wrap">
+                          <span>{item.mentee?.name}</span>
+                          {item.type && (<><span className="text-slate-300">·</span><span className="capitalize">{item.type}</span></>)}
+                          <span className="text-slate-300">·</span>
+                          <span>approved {timeAgo(item.reviewedAt)}</span>
+                        </div>
+                        {item.feedbackText && (
+                          <p className="mt-2 text-sm text-slate-600 bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">
+                            <span className="text-slate-400">Your note: </span>{item.feedbackText}
+                          </p>
+                        )}
+                      </div>
+                      <Link
+                        href={`/mentor/tasks/${item.taskId}`}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 text-sm text-slate-700 hover:border-brand-300 hover:text-brand-700 shrink-0"
+                      >
+                        View task <ArrowUpRight className="w-3.5 h-3.5" />
+                      </Link>
+                    </div>
+                  ))}
+                </div>
+                {filteredReviewed.length > reviewedPg.limit && (
+                  <TablePagination pagination={reviewedPg} />
+                )}
+              </>
+            )}
+          </div>
+        )
       ) : (
         /* ── Extension requests ──────────────────────────────────── */
         extensionItems.length === 0 ? (

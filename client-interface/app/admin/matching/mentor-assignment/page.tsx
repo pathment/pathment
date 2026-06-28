@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { Search, Sparkles, Star, Users, Loader2, ExternalLink, ChevronLeft, ChevronRight, ChevronDown, ChevronUp } from 'lucide-react';
 import { useMentorAssignment } from '@/lib/hooks/admin';
 import { PageHeader } from '@/components/admin/ui';
+import { Avatar } from '@/components/shared/Avatar';
 
 export default function MentorAssignment() {
   const [showAISuggestions, setShowAISuggestions] = useState(true);
@@ -160,11 +161,7 @@ export default function MentorAssignment() {
                   return (
                     <div key={enrollment.id} className="p-6">
                       <div className="flex items-start gap-4 mb-4">
-                        <div className="w-12 h-12 bg-slate-200 rounded-full flex items-center justify-center shrink-0">
-                          <span className="text-slate-600">
-                            {mentee?.firstName?.[0]}{mentee?.lastName?.[0]}
-                          </span>
-                        </div>
+                        <Avatar name={`${mentee?.firstName ?? ''} ${mentee?.lastName ?? ''}`.trim()} src={mentee?.profilePictureUrl} size="lg" href={mentee?.id ? `/admin/mentees/${mentee.id}` : undefined} />
                         <div className="flex-1 min-w-0">
                           <h3 className="text-slate-900 mb-1">{mentee?.firstName} {mentee?.lastName}</h3>
                           <p className="text-slate-600 text-sm mb-2">
@@ -193,11 +190,7 @@ export default function MentorAssignment() {
                           </div>
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 bg-brand-200 rounded-full flex items-center justify-center">
-                                <span className="text-brand-700 text-sm">
-                                  {topSuggestion.mentor?.firstName?.[0]}{topSuggestion.mentor?.lastName?.[0]}
-                                </span>
-                              </div>
+                              <Avatar name={`${topSuggestion.mentor?.firstName ?? ''} ${topSuggestion.mentor?.lastName ?? ''}`.trim()} src={topSuggestion.mentor?.profilePictureUrl} size="md" href={topSuggestion.mentor?.id ? `/admin/mentors/${topSuggestion.mentor.id}` : undefined} />
                               <div>
                                 <div className="text-slate-900 text-sm">
                                   {topSuggestion.mentor?.firstName} {topSuggestion.mentor?.lastName}
@@ -331,9 +324,7 @@ export default function MentorAssignment() {
                     return (
                       <div key={mentor.id} className="p-6">
                         <div className="flex items-start gap-4 mb-4">
-                          <div className="w-12 h-12 bg-purple-200 rounded-full flex items-center justify-center shrink-0">
-                            <span className="text-purple-700">{mentor.firstName?.[0]}{mentor.lastName?.[0]}</span>
-                          </div>
+                          <Avatar name={`${mentor.firstName ?? ''} ${mentor.lastName ?? ''}`.trim()} src={mentor.profilePictureUrl} size="lg" href={mentor.id ? `/admin/mentors/${mentor.id}` : undefined} />
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">
                               <h3 className="text-slate-900">{mentor.firstName} {mentor.lastName}</h3>
