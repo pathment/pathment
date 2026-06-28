@@ -4,6 +4,7 @@ import { useClan, ALL_CLANS } from '@/lib/context/ClanContext';
 
 export type CohortMomentum = 'up' | 'flat' | 'down';
 export type CohortRisk = 'low' | 'watch' | 'high';
+export type EnrollmentStatus = 'active' | 'matched' | 'pending_completion' | 'level_completed' | 'program_completed' | 'dropped' | 'rejected' | string | null;
 
 export interface CohortMentee {
   id: string;
@@ -33,6 +34,16 @@ export interface CohortMentee {
   tasksCompleted: number;
   sentiment: string;
   clan?: { id: string; name: string } | null;
+  // Completion status fields (Issue #340)
+  enrollmentStatus?: EnrollmentStatus;
+  isCompleted?: boolean;
+  currentLevel?: number | null;
+  programName?: string | null;
+  programDurationWeeks?: number | null;
+  completedAt?: string | null;
+  tasksTotal?: number;
+  tasksCompleted?: number;
+  openBlockersCount?: number;
 }
 
 export interface CohortTotals {

@@ -8,7 +8,7 @@ import { MenteeCard } from '@/components/mentor/MenteeCard';
 import { PausedMenteesPanel } from '@/components/mentor/PausedMenteesPanel';
 import { AssignTaskDrawer, type AssignDrawerMentee } from '@/components/mentor/AssignTaskDrawer';
 
-type Filter = 'all' | 'attention' | 'on_track' | 'no_tasks';
+type Filter = 'all' | 'attention' | 'on_track' | 'no_tasks' | 'completed';
 
 export default function MentorMentees() {
   const router = useRouter();
@@ -33,30 +33,70 @@ export default function MentorMentees() {
     return [...map.entries()].map(([id, name]) => ({ id, name }));
   }, [cohort]);
 
-  // How many of the (clan-scoped) mentees have never been given any work.
-  const noTaskCount = useMemo(
-    () => cohort.filter((m) => m.taskCount === 0 && (clan === 'all' || m.clan?.id === clan)).length,
-    [cohort, clan]
-  );
+// How many of the (clan-scoped) mentees have never been given any work.
+const noTaskCount = useMemo(
+  () => cohort.filter((m) => m.taskCount === 0 && (clan === 'all' || m.clan?.id === clan)).length,
+  [cohort, clan]
+);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return cohort.filter((m) => {
-      if (clan !== 'all' && m.clan?.id !== clan) return false;
-      if (filter === 'attention' && !(m.risk !== 'low' || m.openBlockers > 0 || m.pendingApprovals > 0)) return false;
-      if (filter === 'on_track' && !(m.risk === 'low' && m.momentum !== 'down')) return false;
-      if (filter === 'no_tasks' && m.taskCount !== 0) return false;
-      if (q && !(m.name.toLowerCase().includes(q) || m.email.toLowerCase().includes(q))) return false;
-      return true;
-    });
-  }, [cohort, search, clan, filter]);
+const filtered = useMemo(() => {
+  const q = search.trim().toLowerCase();
 
-  const FILTERS: { key: Filter; label: string; count?: number }[] = [
-    { key: 'all', label: 'Everyone' },
-    { key: 'attention', label: 'Needs attention' },
-    { key: 'on_track', label: 'On track' },
-    { key: 'no_tasks', label: 'No tasks yet', count: noTaskCount },
-  ];
+  return cohort.filter((m) => {
+    // Clan filter
+    if (clan !== 'all' && m.clan?.id !== clan) return false;
+
+    // Needs attention (exclude completed mentees)
+    if (
+      filter === 'attention' &&
+      !(
+        !m.isCompleted &&
+        (
+          m.risk !== 'low' ||
+          m.openBlockers > 0 ||
+          m.pendingApprovals > 0
+        )
+      )
+    ) {
+      return false;
+    }
+
+    // On track (exclude completed mentees)
+    if (
+      filter === 'on_track' &&
+      !(m.risk === 'low' && m.momentum !== 'down' && !m.isCompleted)
+    ) {
+      return false;
+    }
+
+    // No tasks yet
+    if (filter === 'no_tasks' && m.taskCount !== 0) return false;
+
+    // Completed
+    if (filter === 'completed' && m.isCompleted !== true) return false;
+
+    // Search
+    if (
+      q &&
+      !(
+        m.name.toLowerCase().includes(q) ||
+        m.email.toLowerCase().includes(q)
+      )
+    ) {
+      return false;
+    }
+
+    return true;
+  });
+}, [cohort, search, clan, filter]);
+
+const FILTERS: { key: Filter; label: string; count?: number }[] = [
+  { key: 'all', label: 'Everyone' },
+  { key: 'attention', label: 'Needs attention' },
+  { key: 'on_track', label: 'On track' },
+  { key: 'no_tasks', label: 'No tasks yet', count: noTaskCount },
+  { key: 'completed', label: 'Completed' },
+];
 
   // Targets for the "assign to everyone in view" bulk action.
   const bulkTargets: AssignDrawerMentee[] = filtered.map((m) => ({ id: m.id, name: m.name, risk: m.risk }));

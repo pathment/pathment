@@ -7,7 +7,14 @@ import { toast } from 'sonner';
 import {
   BookOpen, Calendar, CalendarCheck, CheckCircle2, Clock, Mail, MessageSquare, Plus, PauseCircle, PlayCircle,
   Target, TrendingUp, TrendingDown, Minus, Flag, Check, User, Loader2,
-  Star, ThumbsUp, ThumbsDown, AlertCircle, ChevronLeft, Trash2,
+Star,
+ThumbsUp,
+ThumbsDown,
+AlertCircle,
+ChevronLeft,
+Trophy,
+Users2,
+Trash2,
 } from 'lucide-react';
 import { useMenteeDetailPage, useMenteeProfile, type CohortRisk, type CohortMomentum } from '@/lib/hooks/mentor';
 import { useAuth } from '@/lib/context/AuthContext';
@@ -84,6 +91,54 @@ const STATUS_ORDER = [
   'submitted', 'under_review', 'revision_needed', 'changes_requested',
   'in_progress', 'assigned', 'not_started', 'completed', 'cancelled', 'rejected',
 ];
+
+// Generate completion-focused summary for completed mentees
+function generateCompletionSummary(insights: any, mentee: any): string {
+  const taskCount = insights.tasksCompleted && insights.tasksTotal ? `${insights.tasksCompleted}/${insights.tasksTotal}` : '';
+  const programName = insights.programName || 'the program';
+  const clanName = insights.clan?.name;
+  const onTime = insights.onTimeRate ?? 0;
+  
+  let summary = `${mentee?.firstName} has successfully completed ${programName}`;
+  if (clanName) summary += ` in the ${clanName}`;
+  summary += '.';
+  
+  if (taskCount) summary += ` They completed ${taskCount} tasks`;
+  if (onTime > 0) summary += ` with ${onTime}% on-time delivery`;
+  summary += '.';
+  
+  if (insights.openBlockersCount === 0) summary += ' They completed the program with no open blockers.';
+  
+  summary += ' Throughout the program they consistently progressed through milestones and successfully met graduation requirements.';
+  
+  return summary;
+}
+
+// Generate completion signals
+function generateCompletionSignals(insights: any): string[] {
+  const signals: string[] = [];
+  
+  if (insights.tasksCompleted && insights.tasksTotal) {
+    signals.push(`All tasks completed (${insights.tasksCompleted}/${insights.tasksTotal})`);
+  }
+  
+  signals.push(`${insights.onTimeRate ?? 0}% on-time delivery`);
+  
+  if (insights.openBlockersCount === 0) {
+    signals.push('No open blockers');
+  }
+  
+  if (insights.completedAt) {
+    const date = new Date(insights.completedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    signals.push(`Completed on ${date}`);
+  }
+  
+  if (insights.lastActive) {
+    signals.push(`Last active: ${insights.lastActive}`);
+  }
+  
+  return signals;
+}
 
 export default function MenteeDetail() {
   const params = useParams();
@@ -262,16 +317,32 @@ export default function MenteeDetail() {
             />
             <div>
               <div className="flex items-center gap-3 flex-wrap">
-                <h1 className="text-slate-900">{mentee?.firstName} {mentee?.lastName}</h1>
-                {insights && <MomentumPill momentum={insights.momentum} />}
-                {insights && <RiskPill risk={insights.risk} />}
+                               <h1 className="text-slate-900">{mentee?.firstName} {mentee?.lastName}</h1>
+                {insights?.isCompleted === true ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-100 text-purple-700 text-xs font-medium">
+                    <Trophy className="w-4 h-4" />Program Completed
+                  </span>
+                ) : (
+                  <>
+                    {insights && <MomentumPill momentum={insights.momentum} />}
+                    {insights && <RiskPill risk={insights.risk} />}
+                  </>
+                )}
               </div>
-              <div className="mt-1 flex items-center gap-2 text-sm text-slate-500 flex-wrap">
+                            <div className="mt-1 flex items-center gap-2 text-sm text-slate-500 flex-wrap">
                 <span>{insights?.program || enrollment?.program?.name || 'Program'}</span>
                 <span className="text-slate-300">·</span>
-                <span>{levelName}</span>
-                <span className="text-slate-300">·</span>
-                <span>Wk {week}/{totalWeeks || '-'}</span>
+                {insights?.isCompleted === true ? (
+                  <>
+                    <span className="text-slate-400 italic">Completed {insights.completedAt ? new Date(insights.completedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''}</span>
+                  </>
+                ) : (
+                  <>
+                    <span>{levelName}</span>
+                    <span className="text-slate-300">·</span>
+                    <span>Wk {week}/{totalWeeks || '-'}</span>
+                  </>
+                )}
                 <span className="text-slate-300">·</span>
                 <span className="inline-flex items-center gap-1"><Mail className="w-3.5 h-3.5" />{mentee?.email}</span>
               </div>
@@ -347,32 +418,133 @@ export default function MenteeDetail() {
         </div>
       )}
 
-      {/* ── Metric chips ─────────────────────────────────────────────── */}
+          {/* ── Metric chips ─────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <MetricChip label="On-time" value={insights ? `${insights.onTimeRate}%` : '-'} />
-        <MetricChip label="Awaiting review" value={insights?.pendingApprovals ?? 0} />
+        {insights?.isCompleted === true ? (
+          <MetricChip label="Completed tasks" value={insights?.tasksCompleted && insights?.tasksTotal ? `${insights.tasksCompleted}/${insights.tasksTotal}` : '-'} />
+        ) : (
+          <MetricChip label="Awaiting review" value={insights?.pendingApprovals ?? 0} />
+        )}
         <MetricChip label="Open blockers" value={insights?.openBlockers ?? 0} />
         <MetricChip label="Avg rating" value={insights && insights.avgRating > 0 ? insights.avgRating.toFixed(1) : '-'} />
       </div>
 
-      {/* ── AI summary + measured fairly ─────────────────────────────── */}
-      {insights && (
-        <div className="grid lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2">
-            <AISummaryPanel summary={insights.aiSummary} signals={insights.aiSignals} />
-          </div>
-          <div className="bg-card rounded-2xl border border-slate-200 p-6">
-            <h3 className="font-semibold text-slate-900 mb-4">Measured fairly</h3>
-            <DualProgress absolute={insights.absoluteProgress} relative={insights.relativeProgress} />
-            {insights.riskReason && (
-              <p className="mt-4 text-xs leading-relaxed text-slate-500 border-t border-slate-100 pt-3">
-                {insights.riskReason}
-              </p>
-            )}
-          </div>
-        </div>
-      )}
+      
+{/* ── Completion summary (if program completed - Issue #340) ────────── */}
+{/* ── AI summary + measured fairly ─────────────────────────────── */}
+{insights && (
+  
+  <div className="grid lg:grid-cols-3 gap-6">
+    
+    <div className={insights.isCompleted ? "lg:col-span-3" : "lg:col-span-2"}>
+      {insights.isCompleted ? (
+       <div className="bg-card rounded-2xl border border-purple-200/60 p-6 relative overflow-hidden">
+  <div className="absolute inset-0 bg-gradient-to-r from-purple-500/5 via-transparent to-transparent pointer-events-none" />
 
+  <div className="relative grid grid-cols-[120px_1fr] gap-8 items-center">
+    
+    {/* Achievement Icon */}
+    <div className="flex items-center justify-center">
+      <div className="relative">
+        <div className="absolute inset-0 bg-purple-500/20 blur-2xl rounded-full" />
+
+        <div className="relative h-24 w-24 rounded-2xl bg-gradient-to-br from-purple-500 via-violet-600 to-purple-700 flex items-center justify-center shadow-xl">
+          <Trophy className="h-12 w-12 text-white" />
+        </div>
+      </div>
+    </div>
+
+    {/* Content */}
+    <div className="min-w-0 pl-2">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h3 className="text-xl font-semibold text-slate-900">
+            Program Completed! 🎉
+          </h3>
+
+          <p className="text-sm text-slate-500 mt-1">
+            Completed on{" "}
+            {insights.completedAt
+              ? new Date(insights.completedAt).toLocaleDateString()
+              : "recently"}
+            {insights.lastActive ? ` • ${insights.lastActive}` : ""}
+          </p>
+        </div>
+
+        <span className="text-xs text-purple-500 whitespace-nowrap">
+          based on the signals below
+        </span>
+      </div>
+
+      <p className="mt-4 text-sm leading-relaxed text-slate-700">
+        {mentee?.firstName} has successfully completed
+        {insights.programName
+          ? ` the ${insights.programName}`
+          : " their program"}
+        {insights.clan
+          ? ` in the ${insights.clan.name}`
+          : ""}.
+        {" "}Outstanding work and consistent progress throughout the
+        program. Great job!
+      </p>
+
+      <div className="grid md:grid-cols-2 gap-x-12 gap-y-3 mt-5 text-sm">
+        {insights.tasksTotal && insights.tasksCompleted ? (
+          <div className="flex items-center gap-2 text-slate-700">
+            <span className="text-purple-600 text-base">•</span>
+            <span>
+              All tasks completed ({insights.tasksCompleted}/
+              {insights.tasksTotal})
+            </span>
+          </div>
+        ) : null}
+
+        <div className="flex items-center gap-2 text-slate-700">
+          <span className="text-purple-600 text-base">•</span>
+          <span>
+            {insights.onTimeRate ?? 0}% on-time across all tasks
+          </span>
+        </div>
+
+        {insights.openBlockersCount === 0 ? (
+          <div className="flex items-center gap-2 text-slate-700">
+            <span className="text-purple-600 text-base">•</span>
+            <span>No open blockers</span>
+          </div>
+        ) : null}
+
+        {insights.lastActive ? (
+          <div className="flex items-center gap-2 text-slate-700">
+            <span className="text-purple-600 text-base">•</span>
+            <span>Last active {insights.lastActive}</span>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  </div>
+</div>
+      ) : (
+        <AISummaryPanel
+          summary={insights.aiSummary}
+          signals={insights.aiSignals}
+        />
+      )}
+    </div>
+
+    {insights.isCompleted !== true && (
+      <div className="bg-card rounded-2xl border border-slate-200 p-6">
+        <h3 className="font-semibold text-slate-900 mb-4">Measured fairly</h3>
+        <DualProgress absolute={insights.absoluteProgress} relative={insights.relativeProgress} />
+        {insights.riskReason && (
+          <p className="mt-4 text-xs leading-relaxed text-slate-500 border-t border-slate-100 pt-3">
+            {insights.riskReason}
+          </p>
+        )}
+      </div>
+    )}
+  </div>
+)}
       {/* ── Weekly schedule (read-only; mentor fills it in Schedules) ─── */}
       <MenteeScheduleView menteeId={menteeId} />
 

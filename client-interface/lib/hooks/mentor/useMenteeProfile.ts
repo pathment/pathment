@@ -79,6 +79,7 @@ export interface MenteeProfile extends CohortMentee {
     isLate: boolean;
     finalRating: number | null;
   }>>;
+  // Completion status fields inherited from CohortMentee (Issue #340)
 }
 
 export interface UseMenteeProfileReturn {
