@@ -180,15 +180,13 @@ class GamificationService {
     if (!menteeProfile) return;
 
     const activeBadges = await models.Badge.findAll({ where: { isActive: true } });
+    const userBadges = await models.UserBadge.findAll({ where: { userId } });
+    const ownedBadgeIds = new Set(userBadges.map(ub => ub.badgeId));
 
     for (const badge of activeBadges) {
-      const alreadyHas = await models.UserBadge.findOne({
-        where: { userId, badgeId: badge.id }
-      });
+      if (ownedBadgeIds.has(badge.id)) continue;
 
-      if (alreadyHas) continue;
-
-      const isCriteriaMet = await this.checkBadgeCriteria(userId, badge);
+      const isCriteriaMet = await this.checkBadgeCriteria(userId, badge, menteeProfile);
       if (!isCriteriaMet) continue;
 
       await this.awardBadge(userId, badge.id, {
@@ -198,10 +196,12 @@ class GamificationService {
     }
   }
 
-  async checkBadgeCriteria(userId, badge) {
+  async checkBadgeCriteria(userId, badge, menteeProfile = null) {
     const { criteriaType, criteriaValue } = badge;
 
-    const menteeProfile = await models.MenteeProfile.findOne({ where: { userId } });
+    if (!menteeProfile) {
+      menteeProfile = await models.MenteeProfile.findOne({ where: { userId } });
+    }
     if (!menteeProfile) return false;
 
     switch (criteriaType) {
@@ -257,7 +257,7 @@ class GamificationService {
 
     const rank = higherRankedCount + 1;
 
-    for (const period of periods) {
+    await Promise.all(periods.map(async (period) => {
       const existing = await models.LeaderboardEntry.findOne({
         where: {
           userId,
@@ -286,7 +286,7 @@ class GamificationService {
           isVisible: true
         });
       }
-    }
+    }));
   }
 
   async checkLevelUp(userId) {
