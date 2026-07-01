@@ -5,6 +5,7 @@ const notificationOrchestrator = require('./notificationOrchestrator');
 const { NOTIFICATION_EVENTS } = require('../config/notificationMatrix');
 const { endOfDayInZone } = require('../utils/timezone');
 const authzService = require('./authzService');
+const taskService = require('./taskService');
 const { pointsForDifficulty } = require('../config/points');
 
 /**
@@ -657,6 +658,7 @@ class LinearRoadmapService {
         const ov = overridesById ? overridesById[steps[i].id] : null;
         await this._assignStep(steps[i], menteeId, mentorId, enrollment.id, resolvedDue, ov);
       }
+      await taskService.updateEnrollmentTaskStats(enrollment.id).catch(e => console.error('[Roadmap] progress update failed:', e.message));
       return progress;
     });
   }
