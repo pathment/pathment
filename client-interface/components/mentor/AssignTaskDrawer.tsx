@@ -90,7 +90,6 @@ export function AssignTaskDrawer({
   const [search, setSearch] = useState('');
 
   const [saving, setSaving] = useState(false);
-  const [done, setDone] = useState<number | null>(null);
 
   const drawerRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
@@ -205,8 +204,8 @@ export function AssignTaskDrawer({
         }
         if (failed) toast.error(`${failed} mentee${failed > 1 ? 's' : ''} couldn't be assigned`);
         toast.success(`Roadmap assigned to ${assigned} mentee${assigned > 1 ? 's' : ''}`);
-        setDone(assigned);
         onAssigned?.();
+        onClose();
         return;
       }
 
@@ -237,13 +236,12 @@ export function AssignTaskDrawer({
         }
         if (failed.length) toast.error(`${failed.length} mentee${failed.length > 1 ? 's' : ''} couldn't be assigned`);
         toast.success(`Task assigned to ${assigned} mentee${assigned > 1 ? 's' : ''}`);
-        setDone(assigned);
       } else {
         await taskApi.createCustomTask({ ...base, menteeId: mentee!.id, trackId: trackId || undefined });
         toast.success(`Task assigned to ${mentee?.name || 'the mentee'}`);
-        setDone(1);
       }
       onAssigned?.();
+      onClose();
     } catch (error: any) {
       toast.error(extractApiErrorMessage(error, 'Could not assign'));
     } finally {
@@ -277,19 +275,7 @@ export function AssignTaskDrawer({
           <button onClick={onClose} aria-label="Close" className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg"><X className="w-5 h-5" /></button>
         </div>
 
-        {done !== null ? (
-          <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
-            <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center mb-4">
-              <Check className="w-7 h-7 text-green-600" />
-            </div>
-            <p className="text-slate-900 font-semibold">Task assigned</p>
-            <p className="text-slate-500 text-sm mt-1">
-              {mode === 'bulk' ? `${done} mentee${done === 1 ? '' : 's'} notified.` : `${mentee?.name ?? 'Mentee'} has a new task.`}
-            </p>
-            <button onClick={onClose} className="mt-6 px-5 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-sm">Done</button>
-          </div>
-        ) : (
-          <>
+        <>
             {/* Source tabs - custom task vs assign from a roadmap */}
             <div className="px-6 pt-4">
               <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-xl">
@@ -552,7 +538,6 @@ export function AssignTaskDrawer({
               </button>
             </div>
           </>
-        )}
       </div>
       {viewSteps && selectedRoadmap && <RoadmapStepsDrawer roadmap={selectedRoadmap} onClose={() => setViewSteps(false)} />}
       {customizeStep && (
