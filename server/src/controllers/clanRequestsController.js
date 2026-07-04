@@ -8,8 +8,13 @@ const overview = catchAsync(async (req, res) => {
 });
 
 const createRequest = catchAsync(async (req, res) => {
-  const request = await clanRequestsService.createRequest(req.body, req.user.id);
+  const request = await clanRequestsService.createRequest({ ...req.body, menteeId: req.user.id }, req.user.id);
   res.status(201).json(successResponse('Request created', { request }, 201));
+});
+
+const listMyRequests = catchAsync(async (req, res) => {
+  const requests = await clanRequestsService.listMyRequests(req.user.id);
+  res.status(200).json(successResponse('My clan change requests', { requests }));
 });
 
 const resolveRequest = catchAsync(async (req, res) => {
@@ -41,4 +46,4 @@ const respondCrossClan = catchAsync(async (req, res) => {
   res.status(200).json(successResponse('Response recorded', result));
 });
 
-module.exports = { overview, createRequest, resolveRequest, listCrossClan, createCrossClan, removeCrossClan, listMyCrossClan, respondCrossClan };
+module.exports = { overview, createRequest, listMyRequests, resolveRequest, listCrossClan, createCrossClan, removeCrossClan, listMyCrossClan, respondCrossClan };

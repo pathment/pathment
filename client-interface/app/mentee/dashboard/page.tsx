@@ -7,6 +7,7 @@ import {
   BookOpen,
   CheckCircle2,
   Clock,
+  GitPullRequest,
   ListTodo,
   Loader2,
   TrendingUp,
@@ -121,6 +122,23 @@ function MenteeDashboardInner() {
 
       {/* Latest announcements */}
       <AnnouncementsCard href="/mentee/announcements" />
+
+      <div className="rounded-2xl border border-brand-200 bg-brand-50/70 p-5">
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 rounded-xl bg-white/80 flex items-center justify-center shrink-0">
+            <GitPullRequest className="w-5 h-5 text-brand-600" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-slate-900">Need to change clans?</p>
+            <p className="text-sm text-slate-600 mt-1">
+              Submit a request and the admin team will review it.
+            </p>
+            <Link href="/mentee/clan-request" className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-brand-700">
+              Open request form <ArrowRight className="w-4 h-4" />
+            </Link>
+          </div>
+        </div>
+      </div>
 
       {/* This week's tasks */}
       {weekTasks.length > 0 && (

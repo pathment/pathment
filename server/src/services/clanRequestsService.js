@@ -57,7 +57,35 @@ class ClanRequestsService {
 
   async createRequest({ menteeId, toClanId, fromClanId, reason }, createdBy) {
     if (!menteeId || !toClanId) throw new ValidationError('menteeId and toClanId are required');
-    return models.ClanChangeRequest.create({ menteeId, toClanId, fromClanId: fromClanId || null, reason: reason || null, createdBy });
+    const request = await models.ClanChangeRequest.create({ menteeId, toClanId, fromClanId: fromClanId || null, reason: reason || null, createdBy });
+
+    await this._notifyClanChangeRequested(request).catch((e) =>
+      console.error('[clanRequests] clan-change request notify failed:', e.message)
+    );
+
+    return request;
+  }
+
+  async listMyRequests(userId) {
+    if (!userId) return [];
+    const rows = await models.ClanChangeRequest.findAll({
+      where: { menteeId: userId },
+      order: [['created_at', 'DESC']],
+      include: [
+        { model: models.Clan, as: 'fromClan', attributes: ['name'] },
+        { model: models.Clan, as: 'toClan', attributes: ['name'] }
+      ]
+    });
+
+    return rows.map((r) => ({
+      id: r.id,
+      fromClan: r.fromClan?.name || null,
+      toClan: r.toClan?.name || null,
+      reason: r.reason,
+      status: r.status,
+      resolutionNote: r.resolutionNote,
+      at: r.createdAt
+    }));
   }
 
   async resolveRequest(id, { status, note }) {
@@ -82,7 +110,56 @@ class ClanRequestsService {
       if (status === 'approved') {
         await clanService.addMember(req.toClanId, { userId: req.menteeId, role: 'mentee' });
       }
+      await this._notifyClanChangeHandled(req, status, note).catch((e) =>
+        console.error('[clanRequests] clan-change handled notify failed:', e.message)
+      );
       return req;
+    });
+  }
+
+  async _notifyClanChangeRequested(request) {
+    const admins = await models.User.findAll({
+      where: { role: 'admin', status: 'active' },
+      attributes: ['id']
+    });
+
+    if (!admins.length) return;
+
+    await notificationOrchestrator.dispatch({
+      eventKey: NOTIFICATION_EVENTS.CLAN_CHANGE_REQUESTED,
+      recipients: admins.map((admin) => ({ userId: admin.id })),
+      payload: {
+        title: 'Clan change request submitted',
+        message: 'A mentee submitted a clan change request. Open Clan Requests to review it.',
+        actionUrl: '/admin/requests',
+        actionLabel: 'Review request',
+        relatedEntityType: 'clan_change_request',
+        relatedEntityId: request.id,
+        emailSubject: 'Pathment: clan change request submitted'
+      },
+      dedupe: { relatedEntityType: 'clan_change_request_admin', relatedEntityId: request.id }
+    });
+  }
+
+  async _notifyClanChangeHandled(request, status, note) {
+    const toClan = await models.Clan.findByPk(request.toClanId, { attributes: ['name'] });
+    const outcome = status === 'approved' ? 'approved' : 'rejected';
+
+    await notificationOrchestrator.dispatch({
+      eventKey: NOTIFICATION_EVENTS.CLAN_CHANGE_HANDLED,
+      recipients: [{ userId: request.menteeId }],
+      payload: {
+        title: `Your clan change request was ${outcome}`,
+        message: status === 'approved'
+          ? `Your request to move to ${toClan?.name || 'your target clan'} was approved. Open the request page to see the updated status.`
+          : `Your request to move to ${toClan?.name || 'your target clan'} was rejected.${note ? ` Admin note: ${note}` : ''}`,
+        actionUrl: '/mentee/clan-request',
+        actionLabel: 'View request',
+        relatedEntityType: 'clan_change_request',
+        relatedEntityId: request.id,
+        emailSubject: `Pathment: your clan change request was ${outcome}`
+      },
+      dedupe: { relatedEntityType: 'clan_change_request', relatedEntityId: request.id }
     });
   }
 

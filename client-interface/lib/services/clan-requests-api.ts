@@ -6,6 +6,9 @@ export const clanRequestsApi = {
   listCrossClan: (clanId: string) => apiClient.get('/clan-requests/cross-clan', { params: { clanId } }),
   resolveRequest: (id: string, status: 'approved' | 'denied', note?: string) =>
     apiClient.patch(`/clan-requests/requests/${id}/resolve`, { status, note }),
+  createRequest: (data: { toClanId: string; fromClanId?: string; reason?: string }) =>
+    apiClient.post('/clan-requests/requests', data),
+  listMyRequests: () => apiClient.get('/clan-requests/requests/mine'),
   createCrossClan: (data: { kind: string; userId: string; toClanId: string; fromClanId?: string; note?: string }) =>
     apiClient.post('/clan-requests/cross-clan', data),
   removeCrossClan: (id: string) => apiClient.delete(`/clan-requests/cross-clan/${id}`),

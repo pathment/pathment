@@ -25,6 +25,8 @@ EXTENSION_HANDLED: 'extension_handled',
   MENTOR_FEEDBACK_REQUESTED: 'mentor_feedback_requested',
   MEETING_CANCELLED: 'meeting_cancelled',
   MEETING_BOOKED: 'meeting_booked',
+  CLAN_CHANGE_REQUESTED: 'clan_change_requested',
+  CLAN_CHANGE_HANDLED: 'clan_change_handled',
   CROSS_CLAN_ASSIGNED: 'cross_clan_assigned',
   NEW_MENTEE_IN_CLAN: 'new_mentee_in_clan',
   PROMOTION_NOMINATED: 'promotion_nominated',
@@ -195,6 +197,16 @@ const NOTIFICATION_MATRIX = {
     preferenceKey: 'meeting_booked',
     channels: { inApp: true, email: true, chat: false }
   },
+  [NOTIFICATION_EVENTS.CLAN_CHANGE_REQUESTED]: {
+    type: 'system',
+    preferenceKey: 'clan_change_requested',
+    channels: { inApp: true, email: true, chat: false }
+  },
+  [NOTIFICATION_EVENTS.CLAN_CHANGE_HANDLED]: {
+    type: 'system',
+    preferenceKey: 'clan_change_handled',
+    channels: { inApp: true, email: true, chat: false }
+  },
   [NOTIFICATION_EVENTS.CROSS_CLAN_ASSIGNED]: {
     type: 'system',
     preferenceKey: 'cross_clan_assigned',
@@ -262,6 +274,8 @@ const EMAIL_PREFERENCE_CATEGORIES = [
   { group: 'Program', key: 'program_updates', label: 'Program updates' },
   { group: 'Program', key: 'meeting_booked', label: 'A 1:1 is booked' },
   { group: 'Program', key: 'meeting_cancelled', label: 'A 1:1 is cancelled' },
+  { group: 'Program', key: 'clan_change_requested', label: 'A clan change request is submitted' },
+  { group: 'Program', key: 'clan_change_handled', label: 'My clan change request is handled' },
   { group: 'Program', key: 'cross_clan_assigned', label: 'I\'m asked to cover or help another clan' },
   { group: 'Program', key: 'new_mentee_in_clan', label: 'A new mentee joins my clan' },
   { group: 'Program', key: 'promotion_nominated', label: 'A mentee is nominated for promotion (admins)' },

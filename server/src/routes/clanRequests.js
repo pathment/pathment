@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const c = require('../controllers/clanRequestsController');
-const { authenticate } = require('../middlewares/auth');
+const { authenticate, authorize } = require('../middlewares/auth');
 const { requirePermission, requirePermissionMinScope } = require('../middlewares/authz');
 const { PERMISSIONS } = require('../config/permissions');
 const authzService = require('../services/authzService');
@@ -17,7 +17,8 @@ const onTargetClan = (getClanId) => requirePermission(
 router.get('/', adminOnly, c.overview);
 
 // Change requests: a mentee may create one; admin resolves.
-router.post('/requests', authenticate, c.createRequest);
+router.post('/requests', authenticate, authorize(['mentee']), c.createRequest);
+router.get('/requests/mine', authenticate, authorize(['mentee']), c.listMyRequests);
 router.patch('/requests/:id/resolve', adminOnly, c.resolveRequest);
 
 // The covering person's own surface: see + accept/decline cover requests for them.

@@ -177,6 +177,7 @@ export const navigationConfig: Record<string, NavLink[]> = {
         { path: '/mentee/library', icon: BookOpen, label: 'Library' },
       ],
     },
+    { path: '/mentee/clan-request', icon: GitPullRequest, label: 'Change clan' },
     { path: '/mentee/settings', icon: Settings, label: 'Settings' },
   ],
 } as const;
