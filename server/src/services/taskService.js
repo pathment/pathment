@@ -8,6 +8,7 @@ const authzService = require('./authzService');
 const { PERMISSIONS } = require('../config/permissions');
 const { pointsForDifficulty } = require('../config/points');
 const interviewKitService = require('./interviewKitService');
+const quizKitService = require('./quizKitService');
 
 /** Guess a resource's kind from its URL (mirrors the roadmap step normalizer). */
 function inferResourceType(url) {
@@ -141,6 +142,20 @@ class TaskService {
       // INTEGER hours, floored at 1 so a short interview never reads "0h".
       interviewEstimateHours = Math.max(1, Math.round(seconds / 3600));
     }
+    // Quiz tasks carry a kit + options (evaluation mode / retake / timer…) under
+    // `data.quiz`. Same fail-fast + kit-derived estimate as interviews.
+    const quizOpts = type === 'quiz' ? (data.quiz || {}) : null;
+    let quizEstimateHours = null;
+    if (quizOpts) {
+      if (!quizOpts.kitId) throw new ValidationError('A quiz task needs a quiz kit');
+      const kit = await models.QuizKit.findByPk(quizOpts.kitId, {
+        include: [{ model: models.QuizQuestion, as: 'questions', attributes: ['id'] }],
+      });
+      const kitQuestions = kit?.questions || [];
+      if (!kit || kitQuestions.length === 0) throw new ValidationError('That quiz has no questions yet');
+      const seconds = Number(quizOpts.timeLimitSeconds || kit.timeLimitSeconds) || (kitQuestions.length * 45);
+      quizEstimateHours = Math.max(1, Math.round(seconds / 3600));
+    }
     // Sensible per-difficulty estimate for non-interview custom tasks (was a flat 5h).
     const EST_HOURS_BY_DIFFICULTY = { easy: 2, medium: 4, hard: 8, expert: 12 };
 
@@ -164,7 +179,9 @@ class TaskService {
         acceptanceCriteria: acceptanceCriteria || [],
         estimatedHours: type === 'interview'
           ? (interviewEstimateHours || 1)
-          : (EST_HOURS_BY_DIFFICULTY[difficulty || 'medium'] || 4),
+          : type === 'quiz'
+            ? (quizEstimateHours || 1)
+            : (EST_HOURS_BY_DIFFICULTY[difficulty || 'medium'] || 4),
         isMandatory: false,
         isCustomTask: true,
         // Standard points by difficulty (no hand-typed values).
@@ -202,6 +219,15 @@ class TaskService {
         assignedTaskId: assignedTask.id,
         kitId: interviewOpts.kitId,
         options: interviewOpts,
+      });
+    }
+
+    // Link the quiz kit + snapshot the per-assignment options (evaluation mode etc.).
+    if (quizOpts) {
+      await quizKitService.createAssignmentForTask({
+        assignedTaskId: assignedTask.id,
+        kitId: quizOpts.kitId,
+        options: quizOpts,
       });
     }
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { Loader2, Plus, Trash2, GripVertical, Mic, Code2, Type, ChevronUp, ChevronDown, Volume2, Play, Square, User } from 'lucide-react';
+import { Loader2, Plus, Trash2, GripVertical, Mic, Code2, Type, ChevronUp, ChevronDown, Volume2, Play, Square, User, FileJson, Copy, Download, Upload } from 'lucide-react';
 import { Drawer } from '@/components/shared/Drawer';
 import {
   interviewApi,
@@ -18,6 +18,56 @@ const KIND_META: { kind: InterviewQuestionKind; label: string; icon: typeof Mic 
   { kind: 'code', label: 'Code', icon: Code2 },
   { kind: 'text', label: 'Written', icon: Type },
 ];
+
+// Forgiving aliases so JSON prepared by hand (or by Claude) still maps to a valid kind.
+const KIND_ALIAS: Record<string, InterviewQuestionKind> = {
+  voice: 'voice', speaking: 'voice', audio: 'voice', spoken: 'voice',
+  code: 'code', coding: 'code', programming: 'code',
+  text: 'text', written: 'text', writing: 'text', essay: 'text',
+};
+
+// Copy-paste starter for the JSON import — hand this shape to Claude to generate a
+// full kit. kind ∈ voice | code | text. Recorded-voice prompts can't ride in JSON
+// (they're uploaded audio), so record those in the editor after loading.
+const JSON_TEMPLATE = `{
+  "title": "Frontend screen — React fundamentals",
+  "description": "What this interview covers (optional).",
+  "timingMode": "per_question",
+  "totalMinutes": 30,
+  "requireCamera": false,
+  "aiGrading": false,
+  "allowRetake": false,
+  "interviewer": { "name": "", "voiceName": "", "pitch": 1, "rate": 1 },
+  "questions": [
+    {
+      "kind": "voice",
+      "prompt": "Walk me through what happens when the browser renders a page.",
+      "points": 10,
+      "timeLimitSeconds": 120,
+      "required": true,
+      "referenceAnswer": "Only you and AI see this — the ideal answer / rubric."
+    },
+    {
+      "kind": "code",
+      "prompt": "Write a debounce function.",
+      "codeLanguage": "javascript",
+      "starterCode": "function debounce(fn, wait) {\\n  // ...\\n}",
+      "points": 20,
+      "timeLimitSeconds": 600,
+      "required": true,
+      "referenceAnswer": "Covers leading/trailing edge, clearTimeout, forwarding args."
+    },
+    {
+      "kind": "text",
+      "prompt": "Describe a hard bug you fixed and how you found it.",
+      "points": 10,
+      "timeLimitSeconds": 300,
+      "required": false
+    }
+  ]
+}`;
+
+const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
 
 const blankQuestion = (kind: InterviewQuestionKind = 'voice'): InterviewQuestionInput => ({
   kind,
@@ -138,6 +188,139 @@ export function InterviewKitDrawer({
   const previewVoice = () => {
     speak(`Hi, I'm ${ivName.trim() || 'your interviewer'}. This is how I'll sound during the interview.`,
       { pitch: ivPitch, rate: ivRate, voiceName: ivVoice || null });
+  };
+
+  // ── JSON import / export ───────────────────────────────────────────────────
+  const [jsonOpen, setJsonOpen] = useState(false);
+  const [jsonText, setJsonText] = useState('');
+  const [jsonError, setJsonError] = useState<string | null>(null);
+  const [jsonWarnings, setJsonWarnings] = useState<string[]>([]);
+
+  // Parse pasted JSON into the editor, coercing loose values to valid ones and
+  // collecting friendly notes for anything that had to be fixed or skipped.
+  const loadFromJson = () => {
+    setJsonError(null);
+    setJsonWarnings([]);
+    let parsed: unknown;
+    try { parsed = JSON.parse(jsonText); }
+    catch { setJsonError("That isn't valid JSON — check for missing commas, quotes, or a trailing comma."); return; }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const p = parsed as any;
+    const rawQ = Array.isArray(p) ? p : (Array.isArray(p?.questions) ? p.questions : null);
+    if (!rawQ) { setJsonError('Expected an object with a "questions" array (or an array of questions).'); return; }
+
+    const warnings: string[] = [];
+
+    // Kit meta (only when the top level is an object, not a bare array of questions).
+    if (!Array.isArray(p)) {
+      if (typeof p.title === 'string') setTitle(p.title);
+      if (typeof p.description === 'string') setDescription(p.description);
+      if (p.status === 'draft' || p.status === 'published' || p.status === 'archived') setStatus(p.status);
+      if (p.timingMode === 'total' || p.timingMode === 'per_question') setTimingMode(p.timingMode);
+      if (p.totalMinutes != null && Number.isFinite(Number(p.totalMinutes))) setTotalMinutes(Math.max(1, Math.round(Number(p.totalMinutes))));
+      else if (p.totalSeconds != null && Number.isFinite(Number(p.totalSeconds))) setTotalMinutes(Math.max(1, Math.round(Number(p.totalSeconds) / 60)));
+      if (typeof p.requireCamera === 'boolean') setCameraDefault(p.requireCamera);
+      else if (typeof p.cameraDefault === 'boolean') setCameraDefault(p.cameraDefault);
+      if (typeof p.aiGrading === 'boolean') setAiGradingDefault(p.aiGrading);
+      else if (typeof p.aiGradingDefault === 'boolean') setAiGradingDefault(p.aiGradingDefault);
+      if (typeof p.allowRetake === 'boolean') setAllowRetakeDefault(p.allowRetake);
+      else if (typeof p.allowRetakeDefault === 'boolean') setAllowRetakeDefault(p.allowRetakeDefault);
+      const iv = p.interviewer;
+      if (iv && typeof iv === 'object') {
+        if (typeof iv.name === 'string') setIvName(iv.name);
+        if (typeof iv.voiceName === 'string') setIvVoice(iv.voiceName);
+        if (Number.isFinite(Number(iv.pitch))) setIvPitch(clamp(Number(iv.pitch), 0, 2));
+        if (Number.isFinite(Number(iv.rate))) setIvRate(clamp(Number(iv.rate), 0.5, 2));
+      }
+    }
+
+    const drafts: InterviewQuestionInput[] = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    rawQ.forEach((raw: any, i: number) => {
+      const n = i + 1;
+      if (!raw || typeof raw !== 'object') { warnings.push(`Question ${n}: skipped — not an object.`); return; }
+      const prompt = typeof raw.prompt === 'string' ? raw.prompt.trim()
+        : (typeof raw.question === 'string' ? raw.question.trim() : '');
+      if (!prompt) { warnings.push(`Question ${n}: skipped — missing "prompt" text.`); return; }
+      const rawKind = String(raw.kind ?? raw.type ?? 'voice').toLowerCase();
+      let kind = KIND_ALIAS[rawKind];
+      if (!kind) { warnings.push(`Question ${n}: unknown kind "${raw.kind ?? raw.type}" — defaulted to Voice.`); kind = 'voice'; }
+      let points = 10;
+      if (raw.points != null) {
+        if (Number.isFinite(Number(raw.points))) points = Math.max(0, Math.round(Number(raw.points)));
+        else warnings.push(`Question ${n}: "points" wasn't a number — used 10.`);
+      }
+      const tl = raw.timeLimitSeconds ?? raw.timeLimit ?? null;
+      const timeLimitSeconds = tl != null && Number.isFinite(Number(tl))
+        ? Math.max(0, Math.round(Number(tl))) : (kind === 'code' ? 600 : 120);
+      drafts.push({
+        kind,
+        prompt,
+        points,
+        required: raw.required !== false,
+        timeLimitSeconds,
+        codeLanguage: kind === 'code' ? (typeof raw.codeLanguage === 'string' && raw.codeLanguage.trim() ? raw.codeLanguage.trim() : 'javascript') : undefined,
+        starterCode: kind === 'code' && typeof raw.starterCode === 'string' ? raw.starterCode : '',
+        referenceAnswer: typeof raw.referenceAnswer === 'string' ? raw.referenceAnswer
+          : (typeof raw.rubric === 'string' ? raw.rubric : ''),
+        promptAudioUrl: null,
+        promptAudioPublicId: null,
+      });
+    });
+
+    if (!drafts.length) { setJsonError('No questions with a "prompt" were found.'); return; }
+    setQuestions(drafts);
+    setJsonWarnings(warnings);
+    setJsonOpen(warnings.length > 0); // keep the panel open if there are notes to read
+    toast.success(`Loaded ${drafts.length} question${drafts.length === 1 ? '' : 's'} from JSON — review & save`);
+    if (warnings.length) toast.message(`${warnings.length} note${warnings.length === 1 ? '' : 's'} to review — see the import panel.`);
+  };
+
+  const currentAsJson = () => JSON.stringify({
+    title: title.trim() || 'Untitled interview',
+    description: description.trim() || undefined,
+    status,
+    timingMode,
+    totalMinutes: timingMode === 'total' ? totalMinutes : undefined,
+    requireCamera: cameraDefault || undefined,
+    aiGrading: aiGradingDefault || undefined,
+    allowRetake: allowRetakeDefault || undefined,
+    interviewer: { name: ivName.trim() || undefined, voiceName: ivVoice || undefined, pitch: ivPitch, rate: ivRate },
+    questions: questions.filter((q) => q.prompt.trim()).map((q) => ({
+      kind: q.kind,
+      prompt: q.prompt.trim(),
+      points: Number(q.points) || 10,
+      timeLimitSeconds: timingMode === 'per_question' ? (Number(q.timeLimitSeconds) || undefined) : undefined,
+      required: q.required !== false,
+      codeLanguage: q.kind === 'code' ? (q.codeLanguage || 'javascript') : undefined,
+      starterCode: q.kind === 'code' ? (q.starterCode || undefined) : undefined,
+      referenceAnswer: q.referenceAnswer?.trim() || undefined,
+    })),
+  }, null, 2);
+
+  const copyJson = async () => {
+    try { await navigator.clipboard.writeText(currentAsJson()); toast.success('Interview JSON copied'); }
+    catch { setJsonText(currentAsJson()); setJsonOpen(true); toast.message('Copied into the box below — select & copy'); }
+  };
+
+  const downloadJson = () => {
+    if (typeof window === 'undefined') return;
+    const blob = new Blob([currentAsJson()], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${(title.trim() || 'interview-kit').replace(/\s+/g, '-').toLowerCase()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const onUploadFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => { setJsonText(String(reader.result || '')); setJsonError(null); setJsonWarnings([]); };
+    reader.readAsText(file);
+    e.target.value = '';
   };
 
   const save = async () => {
@@ -305,6 +488,41 @@ export function InterviewKitDrawer({
               </button>
               <p className="text-[11px] text-slate-400">Applies to every question. Voice choice is best-effort on the candidate&apos;s device; name, pitch and speed always apply. Record a question below to use your <span className="font-medium">real</span> voice for it.</p>
             </div>
+          </div>
+
+          {/* Import / export JSON — prepare a whole kit elsewhere (e.g. with Claude) and paste it in. */}
+          <div className="rounded-xl border border-slate-200">
+            <button type="button" onClick={() => setJsonOpen((v) => !v)} className="w-full flex items-center justify-between px-3.5 py-2.5 text-sm font-medium text-slate-700">
+              <span className="inline-flex items-center gap-1.5"><FileJson className="w-4 h-4" />Import / export JSON</span>
+              <ChevronDown className={`w-4 h-4 transition-transform ${jsonOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {jsonOpen && (
+              <div className="px-3.5 pb-3.5 space-y-2 border-t border-slate-200 pt-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button type="button" onClick={() => { setJsonText(JSON_TEMPLATE); setJsonError(null); setJsonWarnings([]); }} className="text-xs font-medium text-slate-600 border border-slate-200 rounded-lg px-2.5 py-1.5 hover:bg-slate-50">Insert template</button>
+                  <label className="text-xs font-medium text-slate-600 border border-slate-200 rounded-lg px-2.5 py-1.5 hover:bg-slate-50 inline-flex items-center gap-1.5 cursor-pointer">
+                    <Upload className="w-3.5 h-3.5" />Upload .json
+                    <input type="file" accept="application/json,.json" onChange={onUploadFile} className="hidden" />
+                  </label>
+                  <button type="button" onClick={copyJson} className="ml-auto text-xs font-medium text-slate-600 border border-slate-200 rounded-lg px-2.5 py-1.5 hover:bg-slate-50 inline-flex items-center gap-1.5"><Copy className="w-3.5 h-3.5" />Copy current</button>
+                  <button type="button" onClick={downloadJson} className="text-xs font-medium text-slate-600 border border-slate-200 rounded-lg px-2.5 py-1.5 hover:bg-slate-50 inline-flex items-center gap-1.5"><Download className="w-3.5 h-3.5" />Download</button>
+                </div>
+                <textarea value={jsonText} onChange={(e) => { setJsonText(e.target.value); setJsonError(null); }} rows={6}
+                  placeholder='Paste interview JSON here, or click "Insert template" to see the format…'
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs font-mono resize-y focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                {jsonError && <p className="text-xs text-red-500">{jsonError}</p>}
+                {jsonWarnings.length > 0 && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2">
+                    <p className="text-[11px] font-medium text-amber-700 mb-1">Loaded, but check these:</p>
+                    <ul className="text-[11px] text-amber-700 space-y-0.5 list-disc list-inside">
+                      {jsonWarnings.map((w, i) => <li key={i}>{w}</li>)}
+                    </ul>
+                  </div>
+                )}
+                <button type="button" onClick={loadFromJson} disabled={!jsonText.trim()} className="w-full rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium py-2 disabled:opacity-50">Load into editor</button>
+                <p className="text-[11px] text-slate-400">Loading replaces the questions (and kit settings) above — review, then Save. Recorded-voice prompts can&apos;t come from JSON; record those in the editor after loading.</p>
+              </div>
+            )}
           </div>
 
           {/* Questions */}

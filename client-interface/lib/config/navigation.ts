@@ -31,6 +31,7 @@ import {
   Mail,
   PackageOpen,
   Mic,
+  ListChecks,
   type LucideIcon
 } from 'lucide-react';
 import { UserRole } from '@/lib/types';
@@ -136,6 +137,7 @@ export const navigationConfig: Record<string, NavLink[]> = {
       children: [
         { path: '/mentor/roadmaps', icon: Route, label: 'Roadmaps' },
         { path: '/mentor/interviews', icon: Mic, label: 'Interviews' },
+        { path: '/mentor/quizzes', icon: ListChecks, label: 'Quizzes' },
         { path: '/mentor/programs', icon: School, label: 'My Programs' },
         { path: '/mentor/schedules', icon: CalendarClock, label: 'Schedules' },
         { path: '/mentor/reports', icon: FileText, label: 'Reports' },

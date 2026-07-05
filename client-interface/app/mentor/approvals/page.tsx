@@ -9,6 +9,7 @@ import {
 import { useMentorApprovals, type ApprovalItem } from '@/lib/hooks/mentor';
 import { ReviewDrawer } from '@/components/mentor/ReviewDrawer';
 import { InterviewReviewDrawer } from '@/components/mentor/InterviewReviewDrawer';
+import { QuizReviewDrawer } from '@/components/mentor/QuizReviewDrawer';
 import { BulkReviewDrawer } from '@/components/mentor/BulkReviewDrawer';
 import { TaskDrawerById } from '@/components/mentor/TaskDrawerById';
 import { Avatar } from '@/components/shared/Avatar';
@@ -208,7 +209,7 @@ export default function MentorApprovals() {
 
   // Interviews are graded per-answer in their own drawer, never in bulk (bulk
   // only sets a rating/points), so they're excluded from every selection path.
-  const isBulkable = (q: ApprovalItem) => q.type !== 'interview';
+  const isBulkable = (q: ApprovalItem) => q.type !== 'interview' && q.type !== 'quiz';
 
   const selectedItems = useMemo(
     () => queue.filter((q) => selected.has(q.submissionId) && isBulkable(q)),
@@ -835,7 +836,15 @@ export default function MentorApprovals() {
         />
       )}
 
-      {reviewing && reviewing.type !== 'interview' && (
+      {reviewing && reviewing.type === 'quiz' && (
+        <QuizReviewDrawer
+          taskId={reviewing.taskId}
+          onClose={() => setReviewing(null)}
+          onReviewed={() => { setSelected(new Set()); refetch(); }}
+        />
+      )}
+
+      {reviewing && reviewing.type !== 'interview' && reviewing.type !== 'quiz' && (
         <ReviewDrawer
           item={reviewing}
           onClose={() => setReviewing(null)}

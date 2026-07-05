@@ -14,8 +14,9 @@ import RichTextEditor from '@/components/shared/RichTextEditor';
 import { cleanHtml } from '@/lib/utils/html';
 import { pointsForDifficulty } from '@/lib/config/points';
 import { interviewApi, type InterviewKitSummary } from '@/lib/services/interview-api';
+import { quizApi, type QuizKitSummary } from '@/lib/services/quiz-api';
 import Link from 'next/link';
-import { Mic } from 'lucide-react';
+import { Mic, ListChecks } from 'lucide-react';
 
 type AssignSource = 'custom' | 'roadmap';
 
@@ -120,6 +121,34 @@ export function AssignTaskDrawer({
     setCameraRequired(selectedKit.cameraDefault);
     setAiGrading(selectedKit.aiGradingDefault);
   }, [kitId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Quiz type: pick a kit + per-assignment options (evaluation mode / retake).
+  const [quizKits, setQuizKits] = useState<QuizKitSummary[]>([]);
+  const [quizKitsLoading, setQuizKitsLoading] = useState(false);
+  const quizKitsFetchedRef = useRef(false);
+  const [quizKitId, setQuizKitId] = useState('');
+  const [quizEvalMode, setQuizEvalMode] = useState<'auto' | 'review'>('auto');
+  const [quizAllowRetake, setQuizAllowRetake] = useState(false);
+  const selectedQuizKit = quizKits.find((k) => k.id === quizKitId) || null;
+
+  useEffect(() => {
+    if (type !== 'quiz' || quizKitsFetchedRef.current) return;
+    let active = true;
+    quizKitsFetchedRef.current = true;
+    setQuizKitsLoading(true);
+    quizApi.listKits('published')
+      .then((res: any) => { if (active) setQuizKits(res?.data?.kits ?? []); })
+      .catch(() => { if (active) { setQuizKits([]); quizKitsFetchedRef.current = false; } })
+      .finally(() => { if (active) setQuizKitsLoading(false); });
+    return () => { active = false; };
+  }, [type]);
+
+  // When a quiz kit is chosen, seed the option controls from its defaults.
+  useEffect(() => {
+    if (!selectedQuizKit) return;
+    setQuizEvalMode(selectedQuizKit.evaluationDefault);
+    setQuizAllowRetake(selectedQuizKit.allowRetakeDefault);
+  }, [quizKitId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // bulk targeting
   const [selected, setSelected] = useState<Set<string>>(new Set(mentee ? [mentee.id] : []));
@@ -228,7 +257,7 @@ export function AssignTaskDrawer({
   const blockedCount = rawTargetIds.length - targetCount;
   // Single-mode roadmap where the one mentee already has this roadmap.
   const canSubmit = targetCount > 0 && (source === 'custom'
-    ? (!!title.trim() && (type !== 'interview' || !!kitId))
+    ? (!!title.trim() && (type !== 'interview' || !!kitId) && (type !== 'quiz' || !!quizKitId))
     : (!!roadmapId && selectedSteps.size > 0));
 
   const submit = async () => {
@@ -271,6 +300,10 @@ export function AssignTaskDrawer({
         // Interview tasks carry the kit + options; the runner/grading use these.
         ...(type === 'interview' && kitId
           ? { interview: { kitId, allowRetake, cameraRequired, aiGradingEnabled: aiGrading } }
+          : {}),
+        // Quiz tasks carry the kit + options (evaluation mode / retake).
+        ...(type === 'quiz' && quizKitId
+          ? { quiz: { kitId: quizKitId, evaluationMode: quizEvalMode, allowRetake: quizAllowRetake } }
           : {}),
       };
       if (mode === 'bulk') {
@@ -411,6 +444,60 @@ export function AssignTaskDrawer({
                 </div>
               )}
 
+              {type === 'quiz' && (
+                <div className="rounded-xl border border-brand-200 bg-brand-50/50 dark:bg-brand-500/5 p-4 space-y-3">
+                  <div className="flex items-center gap-2 text-sm font-medium text-slate-800">
+                    <ListChecks className="w-4 h-4 text-brand-600" /> Quiz <span className="text-red-500">*</span>
+                  </div>
+                  {quizKitsLoading ? (
+                    <div className="flex items-center gap-2 text-sm text-slate-400 py-1"><Loader2 className="w-4 h-4 animate-spin" />Loading your quizzes…</div>
+                  ) : quizKits.length === 0 ? (
+                    <p className="text-sm text-slate-500">
+                      No <span className="font-medium">published</span> quizzes to assign.{' '}
+                      <Link href="/mentor/quizzes" className="text-brand-600 hover:text-brand-700 font-medium">Build or publish one →</Link>
+                    </p>
+                  ) : (
+                    <>
+                      <select value={quizKitId} onChange={(e) => setQuizKitId(e.target.value)} className={field} aria-label="Quiz">
+                        <option value="">Select a quiz…</option>
+                        {quizKits.map((k) => (
+                          <option key={k.id} value={k.id}>{k.title} · {k.questionCount} Q</option>
+                        ))}
+                      </select>
+                      {selectedQuizKit && (
+                        <p className="text-[11px] text-slate-400">
+                          {selectedQuizKit.questionCount} question{selectedQuizKit.questionCount === 1 ? '' : 's'} · scored out of {selectedQuizKit.totalPoints}
+                          {selectedQuizKit.passScore != null ? ` · pass ${selectedQuizKit.passScore}%` : ''}
+                          <span className="block">Awards up to {pointsForDifficulty(difficulty)} pts (set by difficulty), pro-rated by their score.</span>
+                        </p>
+                      )}
+                      {/* Auto vs mentor-review — the key choice for a quiz. */}
+                      <div>
+                        <span className="block text-xs font-medium text-slate-600 mb-1.5">How to grade</span>
+                        <div className="grid grid-cols-2 gap-2">
+                          {([
+                            ['auto', 'Auto-grade', 'Score & points post the moment they submit'],
+                            ['review', 'Mentor review', 'Auto-scored, but you confirm before points post'],
+                          ] as const).map(([val, label, hint]) => (
+                            <button key={val} type="button" onClick={() => setQuizEvalMode(val)}
+                              className={`text-left rounded-lg border p-2.5 ${quizEvalMode === val ? 'border-brand-400 bg-brand-50 dark:bg-brand-500/10' : 'border-slate-200 hover:border-slate-300'}`}>
+                              <span className="block text-sm font-medium text-slate-800">{label}</span>
+                              <span className="block text-[11px] text-slate-500 mt-0.5">{hint}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <label className="flex items-start gap-2.5 cursor-pointer pt-1">
+                        <input type="checkbox" checked={quizAllowRetake} onChange={(e) => setQuizAllowRetake(e.target.checked)}
+                          className="mt-0.5 w-4 h-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500" />
+                        <span className="text-sm text-slate-700">Allow re-attempt<span className="block text-[11px] text-slate-400">Off = strict one-take</span></span>
+                      </label>
+                      <Link href="/mentor/quizzes" className="inline-block text-xs text-brand-600 hover:text-brand-700">Manage quizzes →</Link>
+                    </>
+                  )}
+                </div>
+              )}
+
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Brief</label>
                 <RichTextEditor content={description} onChange={setDescription} placeholder="What should they do? (defaults to the title)" minHeight="120px" />
@@ -460,7 +547,7 @@ export function AssignTaskDrawer({
                 )}
               </div>
 
-              {type !== 'interview' && (<>
+              {type !== 'interview' && type !== 'quiz' && (<>
               <div>
                 <label htmlFor="assign-task-deliverable" className="block text-sm font-medium text-slate-700 mb-1">Deliverable</label>
                 <input id="assign-task-deliverable" value={deliverable} onChange={(e) => setDeliverable(e.target.value)} placeholder="What should they submit?" className={field} />

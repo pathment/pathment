@@ -178,10 +178,13 @@ export default function MenteeTasks() {
                 <div className="divide-y divide-slate-100">
                   {(groupTasks as any[]).map((task) => {
                     const overdue = isOverdue(task.dueDate) && !['completed', 'submitted'].includes(task.status);
-                    // Interview tasks run in a dedicated full-screen flow — never the
+                    // Interview & quiz tasks run in a dedicated flow — never the
                     // generic start/submit path (which opens the submit drawer).
-                    const isInterview = (task.roadmapTask?.type || task.type) === 'interview';
+                    const taskType = task.roadmapTask?.type || task.type;
+                    const isInterview = taskType === 'interview';
                     const interviewHref = `/mentee/interviews/${task.id}`;
+                    const isQuiz = taskType === 'quiz';
+                    const quizHref = `/mentee/quizzes/${task.id}`;
 
                     return (
                 <div key={task.id} className="p-6 hover:bg-slate-50 transition-colors w-full overflow-hidden">
@@ -266,6 +269,13 @@ export default function MenteeTasks() {
                           >
                             Start interview
                           </button>
+                        ) : isQuiz ? (
+                          <button
+                            onClick={() => router.push(quizHref)}
+                            className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm transition-colors w-full sm:w-auto break-words"
+                          >
+                            Start quiz
+                          </button>
                         ) : (
                           <button
                             onClick={() => handleStartTask(task.id)}
@@ -283,6 +293,13 @@ export default function MenteeTasks() {
                             className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm transition-colors w-full sm:w-auto break-words"
                           >
                             Resume interview
+                          </button>
+                        ) : isQuiz ? (
+                          <button
+                            onClick={() => router.push(quizHref)}
+                            className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm transition-colors w-full sm:w-auto break-words"
+                          >
+                            Resume quiz
                           </button>
                         ) : (
                           <button
