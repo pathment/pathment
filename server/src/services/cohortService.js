@@ -474,7 +474,7 @@ class CohortService {
     const row = rows[0];
     if (!row) return null;
 
-    const [blockers, taskDetails, insights, delays, menteeProfile] = await Promise.all([
+    const [blockers, taskDetails, insights, delays, meetingNotes, collaborators, dailyLogs] = await Promise.all([
       models.Blocker.findAll({
         where: { menteeId },
         order: [['status', 'ASC'], ['openedAt', 'DESC']],
@@ -492,27 +492,23 @@ class CohortService {
         include: [{ model: models.User, as: 'author', attributes: ['firstName', 'lastName'] }]
       }),
       models.DelayEvent.findAll({ where: { menteeId }, order: [['occurredAt', 'DESC']] }),
-      models.MenteeProfile.findOne({ where: { userId: menteeId }, attributes: ['personality'] })
+      models.MeetingNote.findAll({
+        where: { menteeId },
+        order: [['date', 'DESC']],
+        include: [{ model: models.User, as: 'author', attributes: ['firstName', 'lastName'] }]
+      }),
+      models.Collaborator.findAll({
+        where: { menteeId },
+        order: [['created_at', 'DESC']]
+      }),
+      models.DailyLogEntry.findAll({
+        where: { menteeId },
+        order: [['dateKey', 'DESC']],
+        limit: 7
+      }),
     ]);
 
-    const meetingNotes = await models.MeetingNote.findAll({
-      where: { menteeId },
-      order: [['date', 'DESC']],
-      include: [{ model: models.User, as: 'author', attributes: ['firstName', 'lastName'] }]
-    });
-
-    const collaborators = await models.Collaborator.findAll({
-      where: { menteeId },
-      order: [['created_at', 'DESC']]
-    });
-
-    const dailyLogs = await models.DailyLogEntry.findAll({
-      where: { menteeId },
-      order: [['dateKey', 'DESC']],
-      limit: 7
-    });
-
-    const completed = taskDetails.filter((t) => t.status === 'completed').length;
+    const completed = row.tasksCompleted;
 
     // Group tasks by status for the profile's work history.
     const tasksByStatus = {};
@@ -555,7 +551,7 @@ class CohortService {
         aiRationale: d.aiRationale,
         occurredAt: d.occurredAt
       })),
-      personality: menteeProfile?.personality || null,
+      personality: row.personality,
       insights: insights.map((i) => ({
         id: i.id,
         kind: i.kind,
