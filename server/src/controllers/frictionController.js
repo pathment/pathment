@@ -28,7 +28,8 @@ function resolveMenteeId(req) {
 const listBlockers = catchAsync(async (req, res) => {
   const blockers = await frictionService.listBlockers({
     menteeId: resolveMenteeId(req),
-    status: req.query.status
+    status: req.query.status,
+    user: req.user
   });
   res.status(200).json(successResponse('Blockers retrieved', { blockers }));
 });
@@ -51,7 +52,10 @@ const deleteBlocker = catchAsync(async (req, res) => {
 
 // ── Delays ──────────────────────────────────────────────────────────────
 const listDelays = catchAsync(async (req, res) => {
-  const delays = await frictionService.listDelays({ menteeId: resolveMenteeId(req) });
+  const delays = await frictionService.listDelays({
+    menteeId: resolveMenteeId(req),
+    user: req.user
+  });
   res.status(200).json(successResponse('Delays retrieved', { delays }));
 });
 

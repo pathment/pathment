@@ -12,10 +12,43 @@ const DELETE_WINDOW_MS = 6 * 60 * 60 * 1000; // 6 hours
  * "what's slowing you down" inputs that feed the cockpit and the fairness read.
  */
 class FrictionService {
+  async #getMentorMenteeIds(userId) {
+    const [matches, clanMemberships] = await Promise.all([
+      models.MentorMenteeMatch.findAll({
+        attributes: ['menteeId'],
+        where: { mentorId: userId, status: 'active' },
+        raw: true
+      }),
+      models.ClanMembership.findAll({
+        attributes: ['clanId'],
+        where: { userId, role: ['lead_mentor', 'co_mentor'], status: 'active' },
+        raw: true
+      })
+    ]);
+
+    const directIds = matches.map(m => m.menteeId);
+    if (clanMemberships.length === 0) return directIds;
+
+    const clanIds = clanMemberships.map(c => c.clanId);
+    const clanMentees = await models.ClanMembership.findAll({
+      attributes: ['userId'],
+      where: { clanId: clanIds, role: 'mentee', status: 'active' },
+      raw: true
+    });
+
+    return [...new Set([...directIds, ...clanMentees.map(m => m.userId)])];
+  }
+
   // ── Blockers ──────────────────────────────────────────────────────────────
-  async listBlockers({ menteeId, status }) {
-    const where = {};
-    if (menteeId) where.menteeId = menteeId;
+  async listBlockers({ menteeId, status, user }) {
+    let where = {};
+    if (menteeId) {
+      where.menteeId = menteeId;
+    } else if (user && user.role === 'mentor') {
+      const menteeIds = await this.#getMentorMenteeIds(user.id);
+      if (menteeIds.length === 0) return [];
+      where.menteeId = menteeIds;
+    }
     if (status) where.status = status;
     return models.Blocker.findAll({ where, order: [['openedAt', 'DESC']] });
   }
@@ -69,9 +102,15 @@ class FrictionService {
   }
 
   // ── Delays ──────────────────────────────────────────────────────────────
-  async listDelays({ menteeId }) {
-    const where = {};
-    if (menteeId) where.menteeId = menteeId;
+  async listDelays({ menteeId, user }) {
+    let where = {};
+    if (menteeId) {
+      where.menteeId = menteeId;
+    } else if (user && user.role === 'mentor') {
+      const menteeIds = await this.#getMentorMenteeIds(user.id);
+      if (menteeIds.length === 0) return [];
+      where.menteeId = menteeIds;
+    }
     return models.DelayEvent.findAll({ where, order: [['occurredAt', 'DESC']] });
   }
 
