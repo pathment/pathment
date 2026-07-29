@@ -394,6 +394,39 @@ class AuthzService {
   }
 
   /**
+   * Every mentee userId a user may legitimately view data for — combining
+   * direct 1:1 matches and all clan-sourced relationships. This is the
+   * canonical "give me the mentees this person mentors" resolver, used by
+   * cohort, friction, and task domains so there is a single source of truth
+   * that covers lead_mentor, co_mentor, core_team, cross-clan cover, and
+   * explicit RoleAssignment grants. Returns [] when the user mentors nobody.
+   */
+  async resolveMenteeIds(userId) {
+    if (!userId) return [];
+    const ids = new Set();
+
+    const [matches, clanIds] = await Promise.all([
+      models.MentorMenteeMatch.findAll({
+        where: { mentorId: userId, status: 'active' },
+        attributes: ['menteeId']
+      }),
+      this.mentoredClanIds(userId)
+    ]);
+
+    matches.forEach((m) => m.menteeId && ids.add(m.menteeId));
+
+    if (clanIds.length) {
+      const menteeMemberships = await models.ClanMembership.findAll({
+        where: { clanId: { [Op.in]: clanIds }, status: 'active', role: 'mentee' },
+        attributes: ['userId']
+      });
+      menteeMemberships.forEach((m) => m.userId && ids.add(m.userId));
+    }
+
+    return [...ids];
+  }
+
+  /**
    * The clans a user may exercise a permission in — `mentoredClanIds` filtered by
    * an actual scoped `can()` check. This is what makes a co-mentor's data views
    * (e.g. the Approvals queue) match what the action layer (`canActOnTask`) will
