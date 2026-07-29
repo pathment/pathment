@@ -50,29 +50,7 @@ class CohortService {
   }
 
   async resolveMenteeIds(mentorId) {
-    const ids = new Set();
-
-    const [matches, { clanIds }] = await Promise.all([
-      // (a) Legacy / existing path: active 1:1 matches.
-      models.MentorMenteeMatch.findAll({
-        where: { mentorId, status: 'active' },
-        attributes: ['menteeId']
-      }),
-      // (b) Clans where this user is a mentor (membership / grant / cover).
-      this.mentorClanMap(mentorId)
-    ]);
-
-    matches.forEach((m) => ids.add(m.menteeId));
-
-    if (clanIds.length) {
-      const menteeMemberships = await models.ClanMembership.findAll({
-        where: { clanId: { [Op.in]: clanIds }, status: 'active', role: 'mentee' },
-        attributes: ['userId']
-      });
-      menteeMemberships.forEach((m) => ids.add(m.userId));
-    }
-
-    return [...ids];
+    return authzService.resolveMenteeIds(mentorId);
   }
 
   /** Active mentee userIds in ONE clan (cohort-review is now clan-scoped). */
