@@ -1,4 +1,5 @@
 const { models } = require('../db');
+const authzService = require('./authzService');
 const { NotFoundError, ValidationError, ForbiddenError } = require('../utils/errors/errorTypes');
 
 // Grace window for a mentee to delete a friction record they logged. Long
@@ -12,53 +13,53 @@ const DELETE_WINDOW_MS = 6 * 60 * 60 * 1000; // 6 hours
  * "what's slowing you down" inputs that feed the cockpit and the fairness read.
  */
 class FrictionService {
-  async #getMentorMenteeIds(userId) {
-    const [matches, clanMemberships] = await Promise.all([
-      models.MentorMenteeMatch.findAll({
-        attributes: ['menteeId'],
-        where: { mentorId: userId, status: 'active' },
-        raw: true
-      }),
-      models.ClanMembership.findAll({
-        attributes: ['clanId'],
-        where: { userId, role: ['lead_mentor', 'co_mentor'], status: 'active' },
-        raw: true
-      })
-    ]);
+  /**
+   * Resolve the menteeId(s) that `currentUser` is authorized to access.
+   *
+   * - Specific mentee requested: verify via authzService.canViewMentee()
+   *   (handles self, admin, direct match, clan scope, cross-clan cover)
+   * - No specific mentee: admin → no filter; mentee → self; mentor → all
+   *   their mentees via authzService.resolveMenteeIds()
+   *
+   * @returns {string|string[]|undefined}  single id, array of ids, or
+   *   undefined (admin sees all — no filter). Throws ForbiddenError when
+   *   the caller has no right to the target mentee.
+   */
+  async #resolveAuthorizedMenteeIds(requestedMenteeId, currentUser) {
+    if (!currentUser) throw new ForbiddenError('Authentication required');
 
-    const directIds = matches.map(m => m.menteeId);
-    if (clanMemberships.length === 0) return directIds;
+    // Specific mentee requested: one-shot permission check.
+    if (requestedMenteeId) {
+      if (!(await authzService.canViewMentee(currentUser, requestedMenteeId))) {
+        throw new ForbiddenError('You are not authorized to access this mentee\'s records');
+      }
+      return requestedMenteeId;
+    }
 
-    const clanIds = clanMemberships.map(c => c.clanId);
-    const clanMentees = await models.ClanMembership.findAll({
-      attributes: ['userId'],
-      where: { clanId: clanIds, role: 'mentee', status: 'active' },
-      raw: true
-    });
+    // No specific mentee — determine the implicit scope.
+    if (currentUser.role === 'mentee') return currentUser.id;
+    if (currentUser.role === 'admin') return undefined; // admin sees all
 
-    return [...new Set([...directIds, ...clanMentees.map(m => m.userId)])];
+    // Mentor and any other mentoring-role holder.
+    return authzService.resolveMenteeIds(currentUser.id);
   }
 
   // ── Blockers ──────────────────────────────────────────────────────────────
   async listBlockers({ menteeId, status, user }) {
+    const resolved = await this.#resolveAuthorizedMenteeIds(menteeId, user);
+    if (resolved !== undefined && Array.isArray(resolved) && resolved.length === 0) return [];
     let where = {};
-    if (menteeId) {
-      where.menteeId = menteeId;
-    } else if (user && user.role === 'mentor') {
-      const menteeIds = await this.#getMentorMenteeIds(user.id);
-      if (menteeIds.length === 0) return [];
-      where.menteeId = menteeIds;
-    }
+    if (resolved !== undefined) where.menteeId = resolved;
     if (status) where.status = status;
     return models.Blocker.findAll({ where, order: [['openedAt', 'DESC']] });
   }
 
-  async createBlocker(data, createdBy) {
+  async createBlocker(data, createdBy, currentUser) {
     const { menteeId } = data;
+    if (!menteeId) throw new ValidationError('menteeId is required');
+    await this.#resolveAuthorizedMenteeIds(menteeId, currentUser);
     const title = typeof data.title === 'string' ? data.title.trim() : '';
-    if (!title || !menteeId) throw new ValidationError('title and menteeId are required');
-    // Generous cap with a friendly message, so a huge paste is a clean 400 — not
-    // an opaque DB error. (Column is TEXT, so normal paragraphs are fine.)
+    if (!title) throw new ValidationError('title is required');
     if (title.length > 5000) throw new ValidationError('That blocker note is too long — please keep it under 5000 characters.');
     return models.Blocker.create({
       menteeId,
@@ -71,27 +72,21 @@ class FrictionService {
     });
   }
 
-  async resolveBlocker(id) {
+  async resolveBlocker(id, currentUser) {
     const blocker = await models.Blocker.findByPk(id);
     if (!blocker) throw new NotFoundError('Blocker not found');
+    await this.#resolveAuthorizedMenteeIds(blocker.menteeId, currentUser);
     blocker.status = 'resolved';
     blocker.resolvedAt = new Date();
     await blocker.save();
     return blocker;
   }
 
-  /**
-   * Delete a blocker outright. A mentee may only delete their OWN blocker, and
-   * only within the grace window (after that it's a permanent part of the
-   * record — they can still Resolve it). Mentors/admins may delete any, anytime.
-   */
-  async deleteBlocker(id, user) {
+  async deleteBlocker(id, currentUser) {
     const blocker = await models.Blocker.findByPk(id);
     if (!blocker) throw new NotFoundError('Blocker not found');
-    if (user && user.role === 'mentee') {
-      if (blocker.menteeId !== user.id) {
-        throw new ForbiddenError('You can only delete your own blockers');
-      }
+    await this.#resolveAuthorizedMenteeIds(blocker.menteeId, currentUser);
+    if (currentUser.role === 'mentee') {
       const age = Date.now() - new Date(blocker.openedAt || blocker.createdAt).getTime();
       if (age > DELETE_WINDOW_MS) {
         throw new ForbiddenError('Blockers can only be deleted within 6 hours of logging them. Mark it resolved instead.');
@@ -103,20 +98,18 @@ class FrictionService {
 
   // ── Delays ──────────────────────────────────────────────────────────────
   async listDelays({ menteeId, user }) {
-    let where = {};
-    if (menteeId) {
-      where.menteeId = menteeId;
-    } else if (user && user.role === 'mentor') {
-      const menteeIds = await this.#getMentorMenteeIds(user.id);
-      if (menteeIds.length === 0) return [];
-      where.menteeId = menteeIds;
-    }
+    const resolved = await this.#resolveAuthorizedMenteeIds(menteeId, user);
+    if (resolved !== undefined && Array.isArray(resolved) && resolved.length === 0) return [];
+    const where = {};
+    if (resolved !== undefined) where.menteeId = resolved;
     return models.DelayEvent.findAll({ where, order: [['occurredAt', 'DESC']] });
   }
 
-  async createDelay(data, createdBy) {
+  async createDelay(data, createdBy, currentUser) {
     const { reason, menteeId } = data;
-    if (!reason || !menteeId) throw new ValidationError('reason and menteeId are required');
+    if (!menteeId) throw new ValidationError('menteeId is required');
+    await this.#resolveAuthorizedMenteeIds(menteeId, currentUser);
+    if (!reason) throw new ValidationError('reason is required');
     return models.DelayEvent.create({
       menteeId,
       assignedTaskId: data.assignedTaskId || null,
@@ -130,24 +123,20 @@ class FrictionService {
     });
   }
 
-  async acceptDelay(id, { accepted = true, category }) {
+  async acceptDelay(id, { accepted = true, category }, currentUser) {
     const delay = await models.DelayEvent.findByPk(id);
     if (!delay) throw new NotFoundError('Delay event not found');
+    await this.#resolveAuthorizedMenteeIds(delay.menteeId, currentUser);
     delay.accepted = accepted;
     if (category) delay.category = category;
     await delay.save();
     return delay;
   }
 
-  /**
-   * Reject (remove) a PENDING logged delay. Lets a mentor clear duplicate/bogus
-   * requests. An already-accepted delay is locked: it's been credited toward the
-   * mentee's fair progress, so removing it would retroactively change standings —
-   * not allowed. The route is permission-gated (TASK_REVIEW on the delay's scope).
-   */
-  async rejectDelay(id) {
+  async rejectDelay(id, currentUser) {
     const delay = await models.DelayEvent.findByPk(id);
     if (!delay) throw new NotFoundError('Delay event not found');
+    await this.#resolveAuthorizedMenteeIds(delay.menteeId, currentUser);
     if (delay.accepted) {
       throw new ValidationError('This delay was already accepted and credited — it can no longer be rejected.');
     }
