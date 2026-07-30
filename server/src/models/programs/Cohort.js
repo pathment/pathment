@@ -46,6 +46,13 @@ module.exports = (sequelize, DataTypes) => {
       defaultValue: [],
       field: 'levels'
     },
+    // Admin-editable entry criteria per level, used to recommend a placement
+    // from evidence in the applicant's own answers. Null = use the defaults.
+    levelRules: {
+      type: DataTypes.JSONB,
+      allowNull: true,
+      field: 'level_rules'
+    },
     // The zone "apply closes <date>" is interpreted in, so the stored close
     // instant is end-of-day in the org's region (correct across timezones).
     timezone: {
@@ -97,6 +104,12 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       defaultValue: false,
       field: 'assessment_required'
+    },
+    // Percent (0-100). An applicant passes when total/max*100 >= this. null = no gate.
+    passThreshold: {
+      type: DataTypes.DECIMAL(5, 2),
+      allowNull: true,
+      field: 'pass_threshold'
     },
     // Optional separate deadline for the assessment. Null = use applyClosesAt.
     assessmentDeadline: {

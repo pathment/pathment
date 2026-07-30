@@ -64,6 +64,7 @@ class AssessmentService {
       instructions: data.instructions || null,
       programId: data.programId || null,
       passingScore: (data.passingScore ?? '') === '' ? null : Number(data.passingScore),
+      aiRubric: data.aiRubric && String(data.aiRubric).trim() ? String(data.aiRubric).trim() : null,
       timeLimitMins: (data.timeLimitMins ?? '') === '' ? null : Number(data.timeLimitMins),
       // A brand-new assessment has no questions yet, so it cannot be published.
       // Publishing is a deliberate step after adding at least one question.
@@ -76,7 +77,7 @@ class AssessmentService {
     const assessment = await models.Assessment.findByPk(assessmentId);
     if (!assessment) throw new NotFoundError('Assessment not found');
     this._validateMeta(data);
-    const allowed = ['title', 'description', 'instructions', 'programId', 'passingScore', 'timeLimitMins', 'status'];
+    const allowed = ['title', 'description', 'instructions', 'programId', 'passingScore', 'timeLimitMins', 'status', 'aiRubric'];
     const patch = {};
     for (const key of allowed) if (data[key] !== undefined) patch[key] = data[key];
     if (patch.status && !['draft', 'published', 'archived'].includes(patch.status)) {
@@ -127,6 +128,9 @@ class AssessmentService {
         points: Number.isFinite(Number(q.points)) ? Math.max(0, Math.trunc(Number(q.points))) : 0,
         options,
         correctOptionIds,
+        // Grading guidance the AI scores an open-ended answer against. Stored
+        // for any type (harmless), surfaced in the builder for text questions.
+        rubric: q.rubric && String(q.rubric).trim() ? String(q.rubric).trim() : null,
         config: q.config && typeof q.config === 'object' ? q.config : {}
       };
     });
@@ -316,6 +320,233 @@ class AssessmentService {
     // Mirror the final score onto the application for triage.
     await models.Application.update({ assessmentScore: total }, { where: { id: submission.applicationId } });
     return submission;
+  }
+
+  // ── AI grading (a SUGGESTION the admin reviews — never the final score) ──────
+  /** Open-ended types the AI can read + score from text. mcq/multi_select are
+   *  already auto-graded; file/link have no gradable text, so they stay manual. */
+  _aiGradableTypes() { return ['short_text', 'long_text']; }
+
+  /**
+   * AI-score ONE submission: each open-ended answer against its per-question
+   * rubric (0–100 → suggested points), plus a holistic 0–100 fit score + summary
+   * for the whole application against the assessment's `aiRubric`. Stores the
+   * result on `submission.aiDraft` and NEVER touches the real score.
+   */
+  async aiGradeSubmission(submissionId, graderId) {
+    const groqService = require('./groqService');
+    const submission = await models.AssessmentSubmission.findByPk(submissionId, {
+      include: [
+        { model: models.Assessment, as: 'assessment', include: [{ model: models.AssessmentQuestion, as: 'questions' }] },
+        { model: models.Application, as: 'application' },
+      ],
+    });
+    if (!submission) throw new NotFoundError('Submission not found');
+    const assessment = submission.assessment;
+    const questions = [...((assessment && assessment.questions) || [])].sort((a, b) => a.position - b.position);
+    const answers = submission.answers || {};
+
+    // Per-question blocks for the open-ended, answered items only.
+    const gradable = questions.filter((q) => this._aiGradableTypes().includes(q.type));
+    const blocks = gradable
+      .map((q) => ({ q, text: String((answers[q.id] || {}).text || '').trim() }))
+      .filter((b) => b.text.length > 0);
+
+    // Compact context so the holistic score can weigh the whole picture.
+    const autoInfo = questions
+      .filter((q) => AUTO_GRADED.includes(q.type))
+      .map((q) => `- ${q.prompt}: ${(q.points || 0)} pt auto-graded`);
+    const app = submission.application;
+    const profileLines = [];
+    if (app) {
+      if (app.level) profileLines.push(`Level chosen: ${app.level}`);
+      // Answers keyed by the QUESTION that was asked, not the raw field key.
+      const { labelledResponses } = require('../utils/intakeResponses');
+      const cohort = await models.Cohort.findByPk(app.cohortId, { attributes: ['intakeFormSchema'] });
+      profileLines.push(...labelledResponses(app.responses, cohort && cohort.intakeFormSchema));
+    }
+
+    const qBody = blocks.map((b, i) => (
+      `[Q${i + 1}] id: ${b.q.id} · worth ${b.q.points || 0} points\n` +
+      `Question: ${b.q.prompt}\n` +
+      `Rubric: ${b.q.rubric || '(none — judge on correctness, relevance and clarity)'}\n` +
+      `Answer: ${b.text}`
+    )).join('\n\n---\n\n');
+
+    const prompt = [
+      `Program / role rubric for the OVERALL fit score:\n${assessment?.aiRubric || '(none — judge overall suitability from the answers and profile)'}`,
+      profileLines.length ? `\nApplicant profile:\n${profileLines.join('\n')}` : '',
+      autoInfo.length ? `\nAuto-graded questions (already scored, for context):\n${autoInfo.join('\n')}` : '',
+      blocks.length ? `\nOpen-ended answers to score:\n\n${qBody}` : '\n(No open-ended answers to score — give the overall from the profile + auto-graded items.)',
+    ].join('\n');
+
+    const raw = await groqService.generateText({
+      feature: 'assessment',
+      userId: graderId,
+      temperature: 0.2,
+      maxTokens: Math.min(2000, 160 * (blocks.length + 1) + 200),
+      system: [
+        'You are a fair, experienced admissions reviewer scoring ONE applicant\'s assessment.',
+        'Score EACH open-ended question 0–100 against ITS OWN rubric. Calibrate honestly: 85–100 = clearly above bar, 60–84 = meets the bar, 40–59 = partial or shaky, below 40 = weak or off-topic. Give partial credit.',
+        'Then give an OVERALL 0–100 fit score for the candidate against the program rubric, weighing every answer and the profile, with a one or two sentence summary of strengths and gaps.',
+        'Reply with STRICT JSON only, no text outside it: {"questions":[{"id":"<exact id shown>","score":<int 0-100>,"note":"<one sentence>"}],"overall":<int 0-100>,"summary":"<1-2 sentences>"}.',
+      ].join(' '),
+      prompt,
+    });
+
+    // Tolerant parse (the model may wrap the JSON in prose).
+    let parsed = {};
+    try {
+      const match = raw.match(/\{[\s\S]*\}/);
+      parsed = match ? JSON.parse(match[0]) : {};
+    } catch { parsed = {}; }
+
+    const clamp = (n) => Math.max(0, Math.min(100, Math.round(Number(n) || 0)));
+    const perQuestion = {};
+    const byId = new Map(blocks.map((b) => [String(b.q.id), b.q]));
+    for (const r of (Array.isArray(parsed.questions) ? parsed.questions : [])) {
+      const q = r && byId.get(String(r.id));
+      if (!q) continue;
+      const pct = clamp(r.score);
+      perQuestion[q.id] = {
+        score: pct,
+        suggestedPoints: Math.round((pct / 100) * (q.points || 0)),
+        note: r.note ? String(r.note).slice(0, 500) : null,
+      };
+    }
+
+    const aiDraft = {
+      perQuestion,
+      overall: parsed.overall != null ? clamp(parsed.overall) : null,
+      summary: parsed.summary ? String(parsed.summary).slice(0, 1000) : null,
+      gradedQuestionIds: blocks.map((b) => b.q.id),
+      at: new Date().toISOString(),
+    };
+    await submission.update({ aiDraft });
+    return { submissionId: submission.id, applicationId: submission.applicationId, aiDraft };
+  }
+
+  /**
+   * What an AI-scoring run would actually grade on — shown to the admin BEFORE
+   * anything runs, so "AI score" is never a black box. A cohort can use a POOL
+   * of assessments (level-aware, randomly assigned), so different applicants in
+   * the same selection can sit different papers: this groups the selection by
+   * the assessment each applicant was actually assigned, and lists exactly the
+   * questions the AI will read, with their points and rubric.
+   */
+  async getScoringPlan(cohortId, applicationIds = []) {
+    const cohort = await models.Cohort.findByPk(cohortId);
+    if (!cohort) throw new NotFoundError('Cohort not found');
+
+    const where = { cohortId };
+    if (Array.isArray(applicationIds) && applicationIds.length) where.id = applicationIds;
+    const apps = await models.Application.findAll({
+      where, attributes: ['id', 'assignedAssessmentId'],
+    });
+
+    // Who actually has something to grade.
+    const subs = apps.length
+      ? await models.AssessmentSubmission.findAll({
+        where: { applicationId: apps.map((a) => a.id) },
+        attributes: ['applicationId', 'status'],
+      })
+      : [];
+    const submittedIds = new Set(subs.filter((s) => s.status !== 'in_progress').map((s) => s.applicationId));
+
+    // Group the selection by the assessment each applicant was assigned.
+    const countByAssessment = new Map();
+    for (const a of apps) {
+      const aid = a.assignedAssessmentId || cohort.assessmentId;
+      if (!aid) continue;
+      countByAssessment.set(String(aid), (countByAssessment.get(String(aid)) || 0) + 1);
+    }
+
+    const ids = [...countByAssessment.keys()];
+    const assessments = ids.length
+      ? await models.Assessment.findAll({
+        where: { id: ids },
+        include: [{ model: models.AssessmentQuestion, as: 'questions' }],
+      })
+      : [];
+
+    const aiTypes = this._aiGradableTypes();
+    const plan = assessments.map((asmt) => {
+      const questions = [...(asmt.questions || [])].sort((a, b) => a.position - b.position);
+      const gradable = questions.filter((q) => aiTypes.includes(q.type));
+      return {
+        id: asmt.id,
+        title: asmt.title,
+        aiRubric: asmt.aiRubric || null,
+        applicantCount: countByAssessment.get(String(asmt.id)) || 0,
+        autoGradedCount: questions.filter((q) => AUTO_GRADED.includes(q.type)).length,
+        questions: gradable.map((q) => ({
+          id: q.id,
+          prompt: q.prompt,
+          type: q.type,
+          points: q.points || 0,
+          rubric: q.rubric || null,
+        })),
+      };
+    }).sort((a, b) => b.applicantCount - a.applicantCount);
+
+    return {
+      applicants: {
+        selected: apps.length,
+        withSubmission: apps.filter((a) => submittedIds.has(a.id)).length,
+        withoutSubmission: apps.filter((a) => !submittedIds.has(a.id)).length,
+      },
+      assessments: plan,
+    };
+  }
+
+  // ── Reusable rubric snippets ─────────────────────────────────────────────
+  async listSnippets() {
+    const rows = await models.RubricSnippet.findAll({ order: [['title', 'ASC']] });
+    return rows.map((r) => r.toJSON());
+  }
+
+  async createSnippet({ title, body }, createdBy) {
+    const t = String(title || '').trim();
+    const b = String(body || '').trim();
+    if (!t) throw new ValidationError('Give the snippet a name');
+    if (!b) throw new ValidationError('A snippet needs some rubric text');
+    return models.RubricSnippet.create({ title: t.slice(0, 160), body: b, createdBy });
+  }
+
+  async deleteSnippet(id) {
+    const row = await models.RubricSnippet.findByPk(id);
+    if (!row) throw new NotFoundError('Snippet not found');
+    await row.destroy();
+    return { deleted: true };
+  }
+
+  /** AI-grade by applicationId (resolves the latest submission). Returns a
+   *  per-application result so a bulk caller can page through selected rows. */
+  async aiGradeApplication(applicationId, graderId) {
+    const submission = await models.AssessmentSubmission.findOne({
+      where: { applicationId },
+      order: [['submittedAt', 'DESC']],
+    });
+    if (!submission) return { applicationId, graded: false, reason: 'no_submission' };
+    if (submission.status === 'in_progress') return { applicationId, graded: false, reason: 'not_submitted' };
+    const res = await this.aiGradeSubmission(submission.id, graderId);
+    return { applicationId, graded: true, submissionId: submission.id, aiDraft: res.aiDraft };
+  }
+
+  /**
+   * Commit the AI's suggested per-question points to the REAL score (the admin's
+   * explicit "apply" action): total = autoScore + Σ suggested points for the
+   * AI-graded questions. Marks the submission graded and mirrors onto the
+   * application — same write path as a manual grade.
+   */
+  async applyAiScores(submissionId, gradedBy) {
+    const submission = await models.AssessmentSubmission.findByPk(submissionId);
+    if (!submission) throw new NotFoundError('Submission not found');
+    const draft = submission.aiDraft;
+    if (!draft || !draft.perQuestion) throw new ValidationError('No AI scores to apply — run AI scoring first');
+    const aiPoints = Object.values(draft.perQuestion).reduce((s, r) => s + (Number(r.suggestedPoints) || 0), 0);
+    const total = Number(submission.autoScore || 0) + aiPoints;
+    return this.gradeSubmission(submissionId, { manualScore: aiPoints, totalScore: total }, gradedBy);
   }
 }
 

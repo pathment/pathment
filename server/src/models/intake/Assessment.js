@@ -30,6 +30,13 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.DECIMAL(6, 2),
       field: 'passing_score'
     },
+    // Holistic "what a strong candidate looks like" guidance for the AI's
+    // overall 0-100 fit score + summary across the whole application.
+    aiRubric: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      field: 'ai_rubric'
+    },
     timeLimitMins: {
       type: DataTypes.INTEGER,
       field: 'time_limit_mins'

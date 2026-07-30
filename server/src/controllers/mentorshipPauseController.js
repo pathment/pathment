@@ -28,10 +28,23 @@ const listPaused = catchAsync(async (req, res) => {
   res.status(200).json(successResponse('Paused mentees', { paused }));
 });
 
-/** GET /api/mentor/pause-suggestions — active mentees that look inactive. */
+/** GET /api/mentor/pause-suggestions?clanId= — active mentees that look inactive. */
 const listSuggestions = catchAsync(async (req, res) => {
-  const suggestions = await pauseService.listSuggestions(req.user);
+  const suggestions = await pauseService.listSuggestions(req.user, req.query.clanId || null);
   res.status(200).json(successResponse('Pause suggestions', { suggestions }));
+});
+
+/** POST /api/mentor/inactivity-check  { clanId?, autoPause? } — run a check now. */
+const runInactivityCheck = catchAsync(async (req, res) => {
+  const { clanId, autoPause } = req.body || {};
+  const result = await pauseService.runInactivityCheck(req.user, { clanId: clanId || null, autoPause: !!autoPause });
+  res.status(200).json(successResponse(autoPause ? 'Inactivity check applied' : 'Inactivity check preview', result));
+});
+
+/** GET /api/mentee/pause-state — is the signed-in mentee paused, and by whom to ask. */
+const selfPauseState = catchAsync(async (req, res) => {
+  const state = await pauseService.selfPauseState(req.user.id);
+  res.status(200).json(successResponse('Pause state', state));
 });
 
 /** POST /api/mentor/pause-suggestions/:menteeId/dismiss  { clanId? } */
@@ -41,4 +54,4 @@ const dismissSuggestion = catchAsync(async (req, res) => {
   res.status(200).json(successResponse('Suggestion dismissed', result));
 });
 
-module.exports = { pause, resume, listPaused, listSuggestions, dismissSuggestion, menteeState };
+module.exports = { pause, resume, listPaused, listSuggestions, dismissSuggestion, menteeState, runInactivityCheck, selfPauseState };

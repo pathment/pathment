@@ -125,7 +125,7 @@ class CohortIntakeService {
       'name', 'description', 'status', 'capacity', 'startDate', 'endDate',
       // public intake link + assessment configuration
       'applyOpensAt', 'applyClosesAt', 'maxApplications', 'intakeFormSchema',
-      'assessmentId', 'assessmentRequired', 'assessmentDeadline', 'timezone'
+      'assessmentId', 'assessmentRequired', 'assessmentDeadline', 'timezone', 'passThreshold'
     ];
     const patch = {};
     for (const key of allowed) {

@@ -67,6 +67,16 @@ const getApprovals = catchAsync(async (req, res) => {
 });
 
 /**
+ * GET /api/mentor/approvals/count
+ * Just the number waiting on this mentor (+ a per-clan breakdown) for the
+ * sidebar badge — cheap enough to call on every page.
+ */
+const getApprovalsCount = catchAsync(async (req, res) => {
+  const counts = await submissionService.getMentorApprovalsCount(req.user.id);
+  res.status(200).json(successResponse('Approvals count retrieved', counts));
+});
+
+/**
  * GET /api/mentor/approvals/changes-requested
  * Tasks the mentor sent back for changes that are awaiting a resubmission.
  */
@@ -197,4 +207,4 @@ const getMenteeAttendanceHistory = catchAsync(async (req, res) => {
   res.status(200).json(successResponse('Attendance history', { history }));
 });
 
-module.exports = { getCohort, getCohortActivity, getCohortReportSummary, getMenteeProfile, getApprovals, getChangesRequested, getReviewed, bulkApprove, bulkReview, nudge, getMyProgress, updatePersonality, addInsight, logMeetingNote, addCollaborator, removeCollaborator, setAttendance, getReviewAttendance, getMenteeAttendanceHistory };
+module.exports = { getCohort, getCohortActivity, getCohortReportSummary, getMenteeProfile, getApprovals, getApprovalsCount, getChangesRequested, getReviewed, bulkApprove, bulkReview, nudge, getMyProgress, updatePersonality, addInsight, logMeetingNote, addCollaborator, removeCollaborator, setAttendance, getReviewAttendance, getMenteeAttendanceHistory };

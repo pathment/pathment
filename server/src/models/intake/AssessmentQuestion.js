@@ -66,6 +66,12 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.JSONB,
       allowNull: false,
       defaultValue: {}
+    },
+    // Optional grading guidance the AI scores an open-ended answer against.
+    // Admin-only — never included in the applicant-facing payload.
+    rubric: {
+      type: DataTypes.TEXT,
+      allowNull: true
     }
   }, {
     tableName: 'assessment_questions',

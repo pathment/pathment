@@ -896,6 +896,41 @@ class LinearRoadmapService {
    * the mentee's progress and assign the next step. Safe to call always - it
    * no-ops for tasks that aren't part of a tracked roadmap.
    */
+  /**
+   * Assign the NEXT roadmap step as soon as the current one is SUBMITTED, so a
+   * mentee isn't idle for days waiting on a mentor's review. Only advances
+   * WITHIN the roadmap — the roadmap only "finishes" (and chains to a linked
+   * next roadmap) when the last step is APPROVED, which stays in
+   * advanceOnApproval. Idempotent: _assignStep no-ops if the step is already
+   * assigned, so a later approval never double-assigns.
+   */
+  async advanceOnSubmission(menteeId, roadmapTaskId) {
+    const task = await models.RoadmapTask.findByPk(roadmapTaskId, { attributes: ['id', 'roadmapId'] });
+    if (!task || !task.roadmapId) return null;
+
+    const progress = await models.RoadmapProgress.findOne({ where: { roadmapId: task.roadmapId, menteeId } });
+    if (!progress) return null;
+
+    const steps = await this.getSteps(task.roadmapId);
+    const currentIdx = steps.findIndex((s) => s.id === roadmapTaskId);
+    if (currentIdx === -1) return null;
+
+    const nextIdx = currentIdx + 1;
+    // Last step: completion + cross-roadmap chaining wait for approval.
+    if (nextIdx >= steps.length) return { atLastStep: true };
+
+    const prevAssignment = await models.AssignedTask.findOne({
+      where: { roadmapTaskId, menteeId },
+      attributes: ['mentorId', 'enrollmentId']
+    });
+    if (!prevAssignment) return null;
+
+    await this._assignStep(steps[nextIdx], menteeId, prevAssignment.mentorId, prevAssignment.enrollmentId);
+    // Move the pointer forward (approval keeps it here — idempotent).
+    if ((progress.currentStep || 0) < nextIdx) { progress.currentStep = nextIdx; await progress.save(); }
+    return { advancedTo: nextIdx };
+  }
+
   async advanceOnApproval(menteeId, roadmapTaskId) {
     const task = await models.RoadmapTask.findByPk(roadmapTaskId, { attributes: ['id', 'roadmapId'] });
     if (!task || !task.roadmapId) return null;

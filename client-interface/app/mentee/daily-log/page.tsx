@@ -62,7 +62,7 @@ export default function MenteeDailyLog() {
     setNote(e?.note ?? '');
   }, [activeKey, entryByKey]);
 
-  const activeTasks = (tasks || []).filter((t: any) => !['cancelled'].includes(t.status));
+  const activeTasks = (tasks || []).filter((t: any) => !['completed', 'cancelled'].includes(t.status));
   const taskTitle = (t: any) => t?.roadmapTask?.title || t?.title || 'Task';
 
   const toggle = (id: string) =>

@@ -22,6 +22,16 @@ module.exports = (sequelize, DataTypes) => {
     },
     finishedAt: { type: DataTypes.DATE, allowNull: true, field: 'finished_at' },
     note: { type: DataTypes.TEXT, allowNull: true },
+    // ── Live video (Jitsi) ──
+    meetingProvider: { type: DataTypes.STRING(20), allowNull: true, field: 'meeting_provider' },
+    meetingRoom: { type: DataTypes.STRING(120), allowNull: true, field: 'meeting_room' },
+    meetingUrl: { type: DataTypes.STRING(500), allowNull: true, field: 'meeting_url' },
+    externalMeetingUrl: { type: DataTypes.STRING(500), allowNull: true, field: 'external_meeting_url' },
+    meetingStartedAt: { type: DataTypes.DATE, allowNull: true, field: 'meeting_started_at' },
+    meetingEndedAt: { type: DataTypes.DATE, allowNull: true, field: 'meeting_ended_at' },
+    // OFF by default: a live call is just a call. When the mentor flips this on,
+    // mentees who join are auto-marked present (a review, not a general meeting).
+    attendanceTracking: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: 'attendance_tracking' },
   }, {
     tableName: 'cohort_review_sessions',
     underscored: true,

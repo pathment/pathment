@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { assessmentApi, type Assessment, type AssessmentQuestionType } from '@/lib/services/assessment-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { Drawer } from '@/components/shared/Drawer';
+import { RubricField } from '@/components/admin/RubricField';
 import { useConfirm } from '@/lib/context/ConfirmContext';
 
 interface Option { id: string; label: string }
@@ -18,6 +19,8 @@ interface QuestionDraft {
   points: number;
   options: Option[];
   correctOptionIds: string[];
+  /** AI grading guidance for open-ended answers. */
+  rubric: string;
   config: Record<string, unknown>;
 }
 
@@ -30,6 +33,8 @@ const TYPE_LABELS: Record<AssessmentQuestionType, string> = {
   external_link: 'External link',
 };
 const AUTO_GRADED: AssessmentQuestionType[] = ['mcq', 'multi_select'];
+// Types the AI can read + score from text — these get a rubric box.
+const AI_GRADABLE: AssessmentQuestionType[] = ['short_text', 'long_text'];
 
 const newId = () =>
   (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
@@ -57,11 +62,11 @@ export function AssessmentDrawer({
   const confirm = useConfirm();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [meta, setMeta] = useState({ title: '', description: '', instructions: '', status: 'draft', passingScore: '' as string | number, timeLimitMins: '' as string | number });
+  const [meta, setMeta] = useState({ title: '', description: '', instructions: '', status: 'draft', passingScore: '' as string | number, timeLimitMins: '' as string | number, aiRubric: '' });
   const [questions, setQuestions] = useState<QuestionDraft[]>([]);
 
   const reset = useCallback(() => {
-    setMeta({ title: '', description: '', instructions: '', status: 'draft', passingScore: '', timeLimitMins: '' });
+    setMeta({ title: '', description: '', instructions: '', status: 'draft', passingScore: '', timeLimitMins: '', aiRubric: '' });
     setQuestions([]);
   }, []);
 
@@ -75,11 +80,12 @@ export function AssessmentDrawer({
         setMeta({
           title: a.title || '', description: a.description || '', instructions: a.instructions || '',
           status: a.status || 'draft', passingScore: a.passingScore ?? '', timeLimitMins: a.timeLimitMins ?? '',
+          aiRubric: a.aiRubric ?? '',
         });
         setQuestions((a.questions || []).map((q) => ({
           id: q.id || newId(), type: q.type, prompt: q.prompt, required: q.required !== false,
           points: q.points || 0, options: (q.options || []).map((o) => ({ id: o.id || newId(), label: o.label })),
-          correctOptionIds: q.correctOptionIds || [], config: q.config || {},
+          correctOptionIds: q.correctOptionIds || [], rubric: q.rubric ?? '', config: q.config || {},
         })));
       })
       .catch(() => toast.error('Could not load this assessment'))
@@ -87,7 +93,7 @@ export function AssessmentDrawer({
   }, [open, assessmentId, reset]);
 
   const addQuestion = (type: AssessmentQuestionType) => {
-    const base: QuestionDraft = { id: newId(), type, prompt: '', required: true, points: AUTO_GRADED.includes(type) ? 10 : 0, options: [], correctOptionIds: [], config: {} };
+    const base: QuestionDraft = { id: newId(), type, prompt: '', required: true, points: AUTO_GRADED.includes(type) ? 10 : 0, options: [], correctOptionIds: [], rubric: '', config: {} };
     if (AUTO_GRADED.includes(type)) base.options = [{ id: newId(), label: '' }, { id: newId(), label: '' }];
     setQuestions((prev) => [...prev, base]);
   };
@@ -127,6 +133,7 @@ export function AssessmentDrawer({
         instructions: meta.instructions.trim() || undefined,
         passingScore: meta.passingScore === '' ? null : Number(meta.passingScore),
         timeLimitMins: meta.timeLimitMins === '' ? null : Number(meta.timeLimitMins),
+        aiRubric: meta.aiRubric.trim() || null,
       };
       if (!targetId) {
         const created = await assessmentApi.create(metaPayload); // server forces draft
@@ -136,7 +143,9 @@ export function AssessmentDrawer({
       await assessmentApi.setQuestions(targetId, questions.map((q) => ({
         type: q.type, prompt: q.prompt.trim(), required: q.required, points: q.points,
         options: AUTO_GRADED.includes(q.type) ? q.options.filter((o) => o.label.trim()) : [],
-        correctOptionIds: q.correctOptionIds, config: q.config,
+        correctOptionIds: q.correctOptionIds,
+        rubric: AI_GRADABLE.includes(q.type) ? q.rubric.trim() || null : null,
+        config: q.config,
       })));
       const saved = await assessmentApi.update(targetId, { ...metaPayload, status: meta.status as Assessment['status'] });
       toast.success(editing ? 'Assessment saved' : 'Assessment created');
@@ -208,6 +217,19 @@ export function AssessmentDrawer({
                 <input type="number" min={1} value={meta.timeLimitMins} onChange={(e) => setMeta({ ...meta, timeLimitMins: e.target.value.replace(/^0+(?=\d)/, '') })} placeholder="-" className="w-full border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500" />
               </div>
             </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-500 mb-1">
+                AI scoring guide <span className="text-slate-400 font-normal">— what a strong candidate looks like</span>
+              </label>
+              <RubricField
+                value={meta.aiRubric}
+                onChange={(v) => setMeta({ ...meta, aiRubric: v })}
+                placeholder="e.g. Strong candidates have shipped a real project and can explain their choices."
+                rows={3}
+                tone="slate"
+              />
+              <p className="mt-1 text-xs text-slate-400">Used for the AI&apos;s overall fit score. Never shown to applicants.</p>
+            </div>
             <p className="text-xs text-slate-400">{questions.length} question{questions.length === 1 ? '' : 's'} · {totalPoints} auto-graded points</p>
           </div>
 
@@ -263,6 +285,19 @@ function QuestionCard({
             </div>
           </div>
           <textarea rows={2} value={q.prompt} onChange={(e) => onPatch({ prompt: e.target.value })} placeholder={`Question ${idx + 1} prompt`} className="mt-3 w-full border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-card" />
+          {AI_GRADABLE.includes(q.type) && (
+            <div className="mt-3 rounded-lg border border-violet-200 bg-violet-50/60 dark:bg-violet-500/10 p-3">
+              <label className="block text-[11px] font-medium text-violet-800 mb-1">
+                Grading rubric <span className="font-normal text-violet-600">— how the AI should score this answer</span>
+              </label>
+              <RubricField
+                value={q.rubric}
+                onChange={(v) => onPatch({ rubric: v })}
+                placeholder="e.g. Full marks: names a specific project AND their own role. Partial: vague. Zero: no real project."
+              />
+            </div>
+          )}
+
           {isChoice && (
             <div className="mt-3 space-y-2">
               <p className="text-xs text-slate-500">Options - mark the correct one{q.type === 'multi_select' ? '(s)' : ''}.</p>

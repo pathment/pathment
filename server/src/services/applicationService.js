@@ -1,3 +1,4 @@
+const { Op } = require('sequelize');
 const { models } = require('../db');
 const { NotFoundError, ValidationError, ConflictError } = require('../utils/errors/errorTypes');
 const { createAuditLog } = require('../utils/auditContext');
@@ -28,7 +29,7 @@ class ApplicationService {
     const where = { cohortId };
     if (status) where.status = status;
 
-    return models.Application.findAll({
+    const applications = await models.Application.findAll({
       where,
       include: [
         { model: models.User, as: 'reviewer', attributes: ['id', 'firstName', 'lastName'] },
@@ -36,6 +37,28 @@ class ApplicationService {
       ],
       order: [['createdAt', 'DESC']]
     });
+
+    // Attach each applicant's max score + AI overall (for the table's grade /
+    // pass-fail column) in ONE batched query — no per-row N+1.
+    const ids = applications.map((a) => a.id);
+    if (ids.length) {
+      const subs = await models.AssessmentSubmission.findAll({
+        where: { applicationId: ids },
+        attributes: ['applicationId', 'maxScore', 'submittedAt', 'aiDraft'],
+      });
+      const byApp = new Map();
+      for (const s of subs) {
+        const prev = byApp.get(s.applicationId);
+        if (!prev || new Date(s.submittedAt || 0) > new Date(prev.submittedAt || 0)) byApp.set(s.applicationId, s);
+      }
+      applications.forEach((a) => {
+        const s = byApp.get(a.id);
+        a.setDataValue('maxScore', s && s.maxScore != null ? Number(s.maxScore) : null);
+        a.setDataValue('aiOverall', s && s.aiDraft && s.aiDraft.overall != null ? s.aiDraft.overall : null);
+      });
+    }
+    // The cohort's pass threshold rides along so the client can render pass/fail.
+    return { applications, passThreshold: cohort.passThreshold != null ? Number(cohort.passThreshold) : null };
   }
 
   /**
@@ -204,32 +227,127 @@ class ApplicationService {
    * program (and an optional clan). The invite carries the cohort so the
    * eventual enrollment is traceable back to this intake.
    */
+  /**
+   * Accept an application → issue (or reuse) a mentee invite carrying the clan.
+   *
+   * Idempotent and duplicate-safe, because it runs at intake scale where a
+   * batch can be retried, double-submitted, or resumed after a token expiry:
+   *   - already accepted with a live invite → return it (retarget its clan if a
+   *     clan is now given), never a throw;
+   *   - an active invite already exists for this email → REUSE it and point it
+   *     at this clan/cohort, rather than minting a second (the orphaned-duplicate
+   *     bug);
+   *   - otherwise issue a fresh invite.
+   * Net: re-running an assignment is a clean no-op, and "invited without a clan,
+   * then assigned" now actually lands the clan on the existing invite.
+   */
   async acceptApplication(applicationId, { clanId } = {}, acceptedBy) {
     const app = await models.Application.findByPk(applicationId, {
       include: [{ model: models.Cohort, as: 'cohort' }]
     });
     if (!app) throw new NotFoundError('Application not found');
-    if (app.status === 'accepted') throw new ConflictError('Application is already accepted');
 
     const cohort = app.cohort;
     if (!cohort) throw new ValidationError('Application is not attached to a cohort');
+    const normalizedEmail = (app.email || '').trim().toLowerCase();
 
-    const invite = await adminService.createRegistrationInvite({
-      email: app.email,
-      role: 'mentee',
-      programId: cohort.programId,
-      clanId: clanId || undefined,
-      cohortId: cohort.id
-    }, acceptedBy);
+    const isLive = (inv) => inv && !inv.usedAt && !inv.revokedAt && new Date(inv.expiresAt) > new Date();
+
+    // 1. Already accepted with a live invite — idempotent. Retarget the clan if
+    //    one is supplied and differs (lets you re-assign before they register).
+    if (app.status === 'accepted' && app.inviteId) {
+      const existing = await models.RegistrationInvite.findByPk(app.inviteId);
+      if (isLive(existing)) {
+        if (clanId && existing.clanId !== clanId) await existing.update({ clanId });
+        return { application: app, invite: existing, reused: true };
+      }
+    }
+
+    // 2. Reuse any active invite already issued for this email (a prior send, or
+    //    a concurrent accept that won the race) — retarget it to this placement.
+    const existingActive = await models.RegistrationInvite.findOne({
+      where: { email: normalizedEmail, role: 'mentee', usedAt: null, revokedAt: null, expiresAt: { [Op.gt]: new Date() } },
+      order: [['createdAt', 'DESC']],
+    });
+    let invite;
+    if (existingActive) {
+      await existingActive.update({
+        clanId: clanId || existingActive.clanId,
+        programId: cohort.programId,
+        cohortId: cohort.id,
+      });
+      invite = existingActive;
+    } else {
+      // 3. Fresh invite. If a concurrent accept created one between our check and
+      //    here, createRegistrationInvite throws ConflictError — fall back to the
+      //    now-existing active invite instead of surfacing a duplicate error.
+      try {
+        invite = await adminService.createRegistrationInvite({
+          email: app.email, role: 'mentee', programId: cohort.programId,
+          clanId: clanId || undefined, cohortId: cohort.id,
+        }, acceptedBy);
+      } catch (e) {
+        if (e instanceof ConflictError) {
+          const raced = await models.RegistrationInvite.findOne({
+            where: { email: normalizedEmail, role: 'mentee', usedAt: null, revokedAt: null, expiresAt: { [Op.gt]: new Date() } },
+            order: [['createdAt', 'DESC']],
+          });
+          if (isLive(raced)) {
+            if (clanId && raced.clanId !== clanId) await raced.update({ clanId });
+            invite = raced;
+          } else { throw e; }
+        } else { throw e; }
+      }
+    }
 
     await app.update({
       status: 'accepted',
       decidedAt: new Date(),
       reviewedBy: acceptedBy,
-      inviteId: invite.id
+      inviteId: invite.id,
     });
 
     return { application: app, invite };
+  }
+
+  /**
+   * Accept + invite MANY applicants at once (the "send invites to the selected"
+   * action). Idempotent and resilient: each applicant is accepted via the same
+   * single path (issues a mentee invite + emails the magic link + marks accepted),
+   * and anyone already accepted / already registered / already invited / withdrawn
+   * is SKIPPED with a reason rather than failing the batch. Emails only go to the
+   * applicants that are newly invited here.
+   */
+  async bulkAccept(cohortId, applicationIds, { clanId } = {}, acceptedBy) {
+    const cohort = await models.Cohort.findByPk(cohortId);
+    if (!cohort) throw new NotFoundError('Cohort not found');
+    const ids = [...new Set((applicationIds || []).filter(Boolean))];
+    if (!ids.length) return { invited: [], skipped: [], total: 0 };
+
+    // Only applicants that actually belong to this cohort (defensive scoping).
+    const apps = await models.Application.findAll({
+      where: { id: ids, cohortId }, attributes: ['id', 'email', 'firstName', 'lastName', 'status'],
+    });
+    const found = new Set(apps.map((a) => a.id));
+
+    const invited = [];
+    const skipped = [];
+    for (const id of ids) {
+      if (!found.has(id)) { skipped.push({ id, reason: 'not in this cohort' }); continue; }
+      const app = apps.find((a) => a.id === id);
+      if (app.status === 'accepted') { skipped.push({ id, email: app.email, reason: 'already accepted' }); continue; }
+      if (app.status === 'withdrawn') { skipped.push({ id, email: app.email, reason: 'withdrawn' }); continue; }
+      try {
+        const { invite } = await this.acceptApplication(id, { clanId }, acceptedBy);
+        invited.push({ id, email: app.email, inviteId: invite.id });
+      } catch (e) {
+        // createRegistrationInvite throws ConflictError when the person already
+        // has an account or a live invite — a skip, not a failure.
+        const reason = /already/i.test(e.message) ? e.message : e.message || 'could not invite';
+        skipped.push({ id, email: app.email, reason });
+      }
+    }
+    return { invited, skipped, total: ids.length };
   }
 
   async rejectApplication(applicationId, { reason } = {}, reviewerId) {

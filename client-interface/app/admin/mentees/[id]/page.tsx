@@ -6,6 +6,7 @@ import {
   CheckCircle2, TrendingUp, Award, Trophy, Flame,
   AlertCircle, Loader2, UserCheck, BookOpen, Users2,
   Target, ListChecks, Clock,
+  Layers,
 } from 'lucide-react';
 import { useMenteeProfile } from '@/lib/hooks/admin';
 import { StatsCard, PageHeader } from '@/components/admin/ui';
@@ -57,7 +58,7 @@ const initialsOf = (a?: string, b?: string) => `${a?.[0] ?? ''}${b?.[0] ?? ''}`;
 
 export default function AdminMenteeProfilePage() {
   const {
-    mentee, assignedMentor, coMentors, currentClan,
+    mentee, admission, assignedMentor, coMentors, currentClan,
     enrollments, recentTasks, stats, isLoading, error,
   } = useMenteeProfile();
 
@@ -115,12 +116,25 @@ export default function AdminMenteeProfilePage() {
               {(mp?.currentOccupation || mp?.currentEducation) && (
                 <p className="text-slate-600 text-sm mt-1">{mp?.currentOccupation ?? mp?.currentEducation}</p>
               )}
-              {currentClan && (
-                <span className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-brand-50 text-brand-700">
-                  <Users2 className="w-3.5 h-3.5" />
-                  {currentClan.name}
-                </span>
-              )}
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {currentClan && (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-brand-50 text-brand-700">
+                    <Users2 className="w-3.5 h-3.5" />
+                    {currentClan.name}
+                  </span>
+                )}
+                {/* How they came in — history from their intake application, not a
+                    label on the person (they may well have moved past it). */}
+                {admission?.levelLabel && (
+                  <span
+                    title={`Admitted${admission.cohortName ? ` from ${admission.cohortName}` : ''}${admission.assessmentScore != null ? ` · assessment ${admission.assessmentScore}` : ''}`}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600"
+                  >
+                    <Layers className="w-3.5 h-3.5" />
+                    Joined at {admission.levelLabel}
+                  </span>
+                )}
+              </div>
             </div>
 
             {/* Contact */}

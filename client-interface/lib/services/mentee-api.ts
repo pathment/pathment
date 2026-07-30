@@ -23,6 +23,14 @@ export const menteeApi = {
   saveDailyLog: (data: { dateKey: string; tasksDone: string[]; slotsDone?: string[]; note?: string }) =>
     apiClient.post('/mentee/daily-log', data),
 
+  // Is the signed-in user's mentee side paused? Powers the paused gate.
+  getPauseState: () => apiClient.get('/mentee/pause-state'),
+
+  // Live cohort-review video (self-report attendance).
+  getActiveReview: () => apiClient.get('/mentee/review/active'),
+  joinReview: (sessionId: string) => apiClient.post(`/mentee/review/${sessionId}/join`, {}),
+  leaveReview: (sessionId: string, seconds: number) => apiClient.post(`/mentee/review/${sessionId}/leave`, { seconds }),
+
   deleteUser: (id: string) => {
     return apiClient.delete(`/admin/users/${id}`);
   },

@@ -9,6 +9,11 @@ const { PERMISSIONS } = require('../config/permissions');
 // program_admin). Org-scoped check - no per-resource scope needed here.
 const canAuthor = [authenticate, requirePermissionMinScope(PERMISSIONS.ASSESSMENT_AUTHOR)];
 
+// Reusable rubric snippets — declared BEFORE /:id so "snippets" isn't read as an id.
+router.get('/snippets', ...canAuthor, assessmentController.listSnippets);
+router.post('/snippets', ...canAuthor, assessmentController.createSnippet);
+router.delete('/snippets/:id', ...canAuthor, assessmentController.deleteSnippet);
+
 router.get('/', ...canAuthor, assessmentController.listAssessments);
 router.post('/', ...canAuthor, assessmentController.createAssessment);
 router.get('/:id', ...canAuthor, assessmentController.getAssessment);

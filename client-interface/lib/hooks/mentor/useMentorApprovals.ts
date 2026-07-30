@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useClan, ALL_CLANS } from '@/lib/context/ClanContext';
 import { mentorApi } from '@/lib/services/mentor-api';
+import { notifyApprovalsChanged } from '@/lib/utils/approvals-badge';
 import { submissionService } from '@/lib/services/submissionService';
 
 export interface BulkReviewPayload {
@@ -13,9 +15,13 @@ export interface BulkReviewPayload {
   pointsPercent?: number;
 }
 
+/** The clan a queue row belongs to — drives the sidebar clan-scope filter. */
+export interface ItemClan { id: string; name: string | null }
+
 export interface ApprovalItem {
   submissionId: string;
   taskId: string;
+  clan: ItemClan | null;
   roadmapTaskId: string | null;
   version: number;
   submissionText: string;
@@ -39,6 +45,7 @@ export interface ApprovalItem {
 /** A task the mentor sent back for changes, awaiting the mentee's resubmission. */
 export interface ChangesRequestedItem {
   taskId: string;
+  clan: ItemClan | null;
   roadmapTaskId: string | null;
   title: string;
   type: string | null;
@@ -56,6 +63,7 @@ export interface ChangesRequestedItem {
 /** A task the mentor has already approved — the "Reviewed" history. */
 export interface ReviewedItem {
   taskId: string;
+  clan: ItemClan | null;
   roadmapTaskId: string | null;
   title: string;
   type: string | null;
@@ -83,11 +91,12 @@ export interface UseMentorApprovalsReturn {
 }
 
 export function useMentorApprovals(): UseMentorApprovalsReturn {
-  const [queue, setQueue] = useState<ApprovalItem[]>([]);
-  const [changesRequested, setChangesRequested] = useState<ChangesRequestedItem[]>([]);
-  const [reviewed, setReviewed] = useState<ReviewedItem[]>([]);
+  const [allQueue, setAllQueue] = useState<ApprovalItem[]>([]);
+  const [allChangesRequested, setAllChangesRequested] = useState<ChangesRequestedItem[]>([]);
+  const [allReviewed, setAllReviewed] = useState<ReviewedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { activeClanId } = useClan();
 
   const fetchQueue = useCallback(async () => {
     try {
@@ -101,16 +110,31 @@ export function useMentorApprovals(): UseMentorApprovalsReturn {
         mentorApi.getChangesRequested().catch(() => null),
         mentorApi.getReviewed().catch(() => null),
       ]);
-      setQueue(res?.data?.queue ?? []);
-      setChangesRequested(changesRes?.data?.items ?? []);
-      setReviewed(reviewedRes?.data?.items ?? []);
+      setAllQueue(res?.data?.queue ?? []);
+      setAllChangesRequested(changesRes?.data?.items ?? []);
+      setAllReviewed(reviewedRes?.data?.items ?? []);
+      // The queue just changed (initial load or a post-review refetch) — nudge
+      // the sidebar badge so it never lags behind what's on screen.
+      notifyApprovalsChanged();
     } catch {
       setError('Failed to load the approvals queue');
-      setQueue([]);
+      setAllQueue([]);
     } finally {
       setLoading(false);
     }
   }, []);
+
+  // Scope every list to the clan picked in the sidebar (multi-clan mentors).
+  // 'all' = the merged view. Same fetch-once/filter-in-memory shape the cohort
+  // views use, so switching clans is instant and needs no refetch.
+  const scope = useCallback(
+    <T extends { clan: ItemClan | null }>(rows: T[]) =>
+      (activeClanId === ALL_CLANS ? rows : rows.filter((r) => r.clan?.id === activeClanId)),
+    [activeClanId]
+  );
+  const queue = useMemo(() => scope(allQueue), [allQueue, scope]);
+  const changesRequested = useMemo(() => scope(allChangesRequested), [allChangesRequested, scope]);
+  const reviewed = useMemo(() => scope(allReviewed), [allReviewed, scope]);
 
   const bulkApprove = useCallback(async (submissionIds: string[]) => {
     await mentorApi.bulkApprove(submissionIds);

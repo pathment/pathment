@@ -82,7 +82,72 @@ class MentorshipPauseService {
       status: 'paused', pausedAt: new Date(), pausedReason: reason || null, pausedBy: by,
       reengageCount: 0, reengageStage: 0, lastReengagedAt: null, pauseSuggestionDismissedAt: null,
     });
+    await this._notifyPaused(menteeId, clanId, reason);
     return this._shape(m);
+  }
+
+  /**
+   * Tell the mentee they've been paused (in-app + email): what it means and how
+   * to come back — ask their clan's mentor to unpause them. Best-effort: a
+   * notification failure must never undo or block the pause itself.
+   */
+  async _notifyPaused(menteeId, clanId, reason = null) {
+    try {
+      const [mentee, clan] = await Promise.all([
+        models.User.findByPk(menteeId, { attributes: ['id', 'firstName'] }),
+        models.Clan.findByPk(clanId, { attributes: ['id', 'name'] }),
+      ]);
+      if (!mentee) return;
+      const first = mentee.firstName || 'there';
+      const clanName = clan?.name || 'your clan';
+      await notificationOrchestrator.dispatch({
+        eventKey: NOTIFICATION_EVENTS.MENTEE_PAUSED,
+        recipients: [{ userId: menteeId }],
+        payload: {
+          title: `Your place in ${clanName} is paused`,
+          message: `Hi ${first}, your mentee dashboard in ${clanName} has been paused${reason ? ` (${reason})` : ''}. You can still sign in, but your tasks and clan are on hold until a mentor resumes you. Ready to come back? Message your mentor and ask them to unpause you — one click and you're back in.`,
+          actionUrl: '/mentee/dashboard',
+          actionLabel: 'Ask my mentor to unpause me',
+          emailSubject: `You've been paused in ${clanName}`,
+          // No relatedEntityId: a later pause episode must not be deduped against
+          // an earlier one — each pause should send its own notice.
+        },
+      });
+    } catch (e) {
+      console.error('[notifyPaused] failed (pause still applied):', e.message);
+    }
+  }
+
+  /**
+   * Self-service pause state for the signed-in mentee — powers the "you're
+   * paused" gate on the mentee side. Reports every clan they're paused in and
+   * who to ask for a resume. A user who is ALSO a mentor is unaffected on their
+   * mentor side; this only reflects their mentee memberships.
+   */
+  async selfPauseState(userId) {
+    const rows = await models.ClanMembership.findAll({
+      where: { userId, role: 'mentee', status: 'paused' },
+      attributes: ['clanId', 'pausedAt', 'pausedReason'], raw: true,
+    });
+    if (!rows.length) return { paused: false, clans: [] };
+    const clanIds = rows.map((r) => r.clanId);
+    const clans = await models.Clan.findAll({ where: { id: { [Op.in]: clanIds } }, attributes: ['id', 'name'] });
+    const clanNameById = new Map(clans.map((c) => [c.id, c.name || 'your clan']));
+    const out = [];
+    for (const r of rows) {
+      const mentorIds = await this._clanMentorIds(r.clanId);
+      const mentors = mentorIds.length
+        ? await models.User.findAll({ where: { id: { [Op.in]: mentorIds } }, attributes: ['id', 'firstName', 'lastName', 'email'] })
+        : [];
+      out.push({
+        clanId: r.clanId,
+        clanName: clanNameById.get(r.clanId) || 'your clan',
+        pausedAt: r.pausedAt,
+        pausedReason: r.pausedReason,
+        mentors: mentors.map((u) => ({ id: u.id, name: this._name(u), email: u.email })),
+      });
+    }
+    return { paused: true, clans: out };
   }
 
   /** Resume a paused mentee back to active and clear the win-back state. */
@@ -150,52 +215,152 @@ class MentorshipPauseService {
     return out;
   }
 
+  /**
+   * Task-activity signal per mentee for one clan. A mentee is "inactive on
+   * tasks" only when they have OPEN assigned work (not completed/cancelled) AND
+   * have neither started nor submitted anything within the window. `startedAt`
+   * and `submittedAt` are set by the mentee's own actions (submissionService),
+   * so this measures the mentee, never a mentor editing the task.
+   * Returns Map<menteeId, { hasOpenTasks, taskInactive }>.
+   */
+  async _clanTaskSignals(memberIds, cutoff) {
+    const out = new Map();
+    if (!memberIds.length) return out;
+    const OPEN = ['not_started', 'assigned', 'in_progress', 'revision_needed'];
+    const tasks = await models.AssignedTask.findAll({
+      where: { menteeId: { [Op.in]: memberIds } },
+      attributes: ['menteeId', 'status', 'startedAt', 'submittedAt'], raw: true,
+    });
+    const agg = new Map(); // menteeId -> { open, recentActivity }
+    for (const t of tasks) {
+      const a = agg.get(t.menteeId) || { open: 0, recentActivity: false };
+      if (OPEN.includes(t.status)) a.open += 1;
+      // Started or submitted within the window = the mentee touched their work.
+      const started = t.startedAt && new Date(t.startedAt).getTime() >= cutoff;
+      const submitted = t.submittedAt && new Date(t.submittedAt).getTime() >= cutoff;
+      if (started || submitted) a.recentActivity = true;
+      agg.set(t.menteeId, a);
+    }
+    for (const id of memberIds) {
+      const a = agg.get(id) || { open: 0, recentActivity: false };
+      // recentActivity spares them regardless of open-task count (they submitted
+      // their last task = engaged). taskInactive only when open work sits untouched.
+      out.set(id, {
+        hasOpenTasks: a.open > 0,
+        recentActivity: a.recentActivity,
+        taskInactive: a.open > 0 && !a.recentActivity,
+      });
+    }
+    return out;
+  }
+
   // ── suggestions queue (Phase 2): active mentees who look inactive ─────────
-  async listSuggestions(user) {
-    const { clanIds, clanNameById } = await this._scopeClans(user);
+  /**
+   * Active mentees who look inactive, by the combined rule:
+   *   missed ≥ N consecutive recent reviews  AND
+   *   (if they have open tasks) no task activity in the window.
+   * A mentee actively doing assigned work is never flagged, even if they skip
+   * reviews. When a clan records no reviews at all, we fall back to the task
+   * signal alone so task-driven clans are still monitored.
+   * @param {string} [clanId] restrict to one clan (admin "check this clan").
+   */
+  async listSuggestions(user, clanId = null) {
+    let { clanIds, clanNameById } = await this._scopeClans(user);
+    if (clanId) {
+      if (!clanIds.includes(clanId)) throw new ForbiddenError('You do not oversee this clan');
+      clanIds = [clanId];
+    }
     if (!clanIds.length) return [];
     const now = Date.now();
+    const taskCutoff = now - INACTIVITY.taskInactivityDays * DAY_MS;
     const suggestions = [];
-    for (const clanId of clanIds) {
+    for (const cid of clanIds) {
       const members = await models.ClanMembership.findAll({
-        where: { clanId, role: 'mentee', status: 'active' },
+        where: { clanId: cid, role: 'mentee', status: 'active' },
         attributes: ['userId', 'joinedAt', 'pauseSuggestionDismissedAt'], raw: true,
       });
       if (!members.length) continue;
-      const signals = await this._clanAttendanceSignals(clanId, members);
-      const flaggedIds = [];
+      const attendance = await this._clanAttendanceSignals(cid, members);
+      const taskSignals = await this._clanTaskSignals(members.map((m) => m.userId), taskCutoff);
+      // Does this clan run reviews at all? If not, attendance can't decide and
+      // we lean on tasks alone.
+      const clanHasReviews = [...attendance.values()].some((s) => s.totalSinceJoin > 0);
+
+      const flagged = [];
       for (const m of members) {
-        const s = signals.get(m.userId);
-        if (!s) continue;
         const daysSinceJoin = m.joinedAt ? (now - new Date(m.joinedAt).getTime()) / DAY_MS : 999;
         if (daysSinceJoin < INACTIVITY.minDaysSinceJoin) continue;
-        if (s.totalSinceJoin < INACTIVITY.reviewsBeforeFlag) continue;
-        if (s.missed < INACTIVITY.reviewsBeforeFlag) continue;
         // Honour a recent "keep active" dismissal (snooze ~ minDaysSinceJoin).
         if (m.pauseSuggestionDismissedAt && (now - new Date(m.pauseSuggestionDismissedAt).getTime()) < INACTIVITY.minDaysSinceJoin * DAY_MS) continue;
-        flaggedIds.push({ ...m, signals: s });
+
+        const a = attendance.get(m.userId);
+        const t = taskSignals.get(m.userId) || { hasOpenTasks: false, taskInactive: false };
+        const missedEnough = !!a && a.totalSinceJoin >= INACTIVITY.reviewsBeforeFlag && a.missed >= INACTIVITY.reviewsBeforeFlag;
+
+        // Missed reviews is the REQUIRED signal — never flag on tasks alone.
+        // If a clan records no reviews (or the attendance data isn't there),
+        // nobody is flagged here rather than the whole clan: tasks only ever
+        // reduce flags, they never create them.
+        if (!clanHasReviews || !missedEnough) continue;
+        // Any recent task activity means engaged — spare them whatever the
+        // reviews say (the mentee who submits work but skips reviews).
+        if (t.recentActivity) continue;
+        // If they have open tasks, require those to be idle too; with no open
+        // tasks, the review miss stands on its own.
+        if (t.hasOpenTasks && !t.taskInactive) continue;
+        const reason = t.hasOpenTasks
+          ? `Missed the last ${a.missed} reviews and no task activity in ${INACTIVITY.taskInactivityDays} days`
+          : (a.lastPresentDate ? `No attendance in the last ${a.missed} reviews` : `Never attended (${a.missed} reviews held since joining)`);
+        flagged.push({ ...m, attendance: a, task: t, reason });
       }
-      if (!flaggedIds.length) continue;
-      const users = await models.User.findAll({ where: { id: { [Op.in]: flaggedIds.map((f) => f.userId) } }, attributes: ['id', 'firstName', 'lastName', 'email'] });
+      if (!flagged.length) continue;
+      const users = await models.User.findAll({ where: { id: { [Op.in]: flagged.map((f) => f.userId) } }, attributes: ['id', 'firstName', 'lastName', 'email'] });
       const userById = new Map(users.map((u) => [u.id, u]));
-      for (const f of flaggedIds) {
+      for (const f of flagged) {
         const u = userById.get(f.userId);
         suggestions.push({
           menteeId: f.userId,
           name: this._name(u),
           email: u?.email || null,
-          clanId,
-          clanName: clanNameById.get(clanId) || 'Clan',
-          neverAttended: !f.signals.lastPresentDate,
-          lastPresentDate: f.signals.lastPresentDate,
-          missedReviews: f.signals.missed,
-          reason: f.signals.lastPresentDate
-            ? `No attendance in the last ${f.signals.missed} reviews`
-            : `Never attended (${f.signals.missed} reviews held since joining)`,
+          clanId: cid,
+          clanName: clanNameById.get(cid) || 'Clan',
+          neverAttended: !(f.attendance && f.attendance.lastPresentDate),
+          lastPresentDate: f.attendance ? f.attendance.lastPresentDate : null,
+          missedReviews: f.attendance ? f.attendance.missed : 0,
+          hasOpenTasks: f.task.hasOpenTasks,
+          taskInactive: f.task.taskInactive,
+          reason: f.reason,
         });
       }
     }
     return suggestions;
+  }
+
+  /**
+   * Admin/mentor "run an inactivity check". Previews (autoPause=false) or pauses
+   * (autoPause=true) every mentee the rule flags, across all overseen clans or
+   * one specific clan. Auto-paused mentees get the pause email.
+   */
+  async runInactivityCheck(user, { clanId = null, autoPause = false } = {}) {
+    const flagged = await this.listSuggestions(user, clanId);
+    if (!autoPause) return { checked: true, autoPaused: false, flaggedCount: flagged.length, flagged };
+
+    let paused = 0;
+    for (const f of flagged) {
+      try {
+        const m = await models.ClanMembership.findOne({ where: { clanId: f.clanId, userId: f.menteeId, role: 'mentee' } });
+        if (!m || m.status === 'paused') continue;
+        await m.update({
+          status: 'paused', pausedAt: new Date(), pausedReason: f.reason, pausedBy: 'auto',
+          reengageCount: 0, reengageStage: 0, lastReengagedAt: null, pauseSuggestionDismissedAt: null,
+        });
+        await this._notifyPaused(f.menteeId, f.clanId, f.reason);
+        paused += 1;
+      } catch (e) {
+        console.error('[inactivityCheck] pause failed for', f.menteeId, e.message);
+      }
+    }
+    return { checked: true, autoPaused: true, flaggedCount: flagged.length, pausedCount: paused, flagged };
   }
 
   /** Mentor dismisses a suggestion (keep active); snoozes re-flagging. */

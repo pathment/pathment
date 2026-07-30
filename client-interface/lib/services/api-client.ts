@@ -5,6 +5,14 @@ import { tokenStore } from './token-store';
 
 class ApiClient {
   private client: AxiosInstance;
+  // Single-flight refresh: when the access token expires, a page fires many
+  // requests that all 401 at once. Without this they each POST /auth/refresh —
+  // a dozen concurrent refreshes that hammer the 10/hour limiter (some get 429'd
+  // and log the user out mid-session). We coalesce them into ONE refresh and let
+  // every waiter reuse its result.
+  private refreshPromise: Promise<string> | null = null;
+  // Guard so a burst of failures triggers ONE logout/redirect, not a dozen.
+  private authFailing = false;
   private readonly publicAuthPaths = [
     '/auth/login',
     '/auth/register',
@@ -57,39 +65,14 @@ class ApiClient {
         const hasAccessToken = Boolean(this.getToken());
         const isPublicAuthRequest = this.publicAuthPaths.some((path) => requestUrl.includes(path));
 
-        // Handle 401 Unauthorized - try to refresh token
+        // Handle 401 Unauthorized - try to refresh token (single-flight)
         if (error.response?.status === 401 && !originalRequest._retry && hasAccessToken && !isPublicAuthRequest) {
           originalRequest._retry = true;
-
           try {
-            const refreshToken = this.getRefreshToken();
-            if (!refreshToken) {
-              // No refresh token, clear and redirect
-              this.handleAuthFailure('Session expired. Please log in again.');
-              return Promise.reject(error);
-            }
-
-            // Try to refresh the token
-            const response = await axios.post(
-              `${apiConfig.baseUrl}${apiConfig.endpoints.refreshToken}`,
-              { refreshToken },
-              { headers: { 'Content-Type': 'application/json' } }
-            );
-            
-            // Extract new token from response
-            const newToken = response.data?.data?.accessToken || response.data?.accessToken || response.data?.data?.token || response.data?.token;
-            if (!newToken) {
-              console.error('Refresh response:', response.data);
-              throw new Error('No token in refresh response');
-            }
-
-            // Save new token and retry original request
-            this.setToken(newToken);
+            const newToken = await this.refreshAccessToken();
             originalRequest.headers.Authorization = `Bearer ${newToken}`;
             return this.client(originalRequest);
           } catch (refreshError) {
-            // Refresh failed, clear tokens and redirect
-            console.error('Token refresh failed:', refreshError);
             this.handleAuthFailure('Your session has expired. Redirecting to login...');
             return Promise.reject(refreshError);
           }
@@ -100,7 +83,38 @@ class ApiClient {
     );
   }
 
+  /**
+   * Refresh the access token, at most ONE request in flight at a time. Every
+   * caller that arrives while a refresh is running awaits the same promise, so a
+   * burst of 401s produces a single /auth/refresh — not a dozen.
+   */
+  private refreshAccessToken(): Promise<string> {
+    if (this.refreshPromise) return this.refreshPromise;
+
+    const refreshToken = this.getRefreshToken();
+    if (!refreshToken) return Promise.reject(new Error('No refresh token'));
+
+    this.refreshPromise = axios
+      .post(
+        `${apiConfig.baseUrl}${apiConfig.endpoints.refreshToken}`,
+        { refreshToken },
+        { headers: { 'Content-Type': 'application/json' } }
+      )
+      .then((response) => {
+        const newToken = response.data?.data?.accessToken || response.data?.accessToken || response.data?.data?.token || response.data?.token;
+        if (!newToken) throw new Error('No token in refresh response');
+        this.setToken(newToken);
+        return newToken as string;
+      })
+      .finally(() => { this.refreshPromise = null; });
+
+    return this.refreshPromise;
+  }
+
   private handleAuthFailure(message: string): void {
+    // A single expiry 401s many requests; only the first should log out + redirect.
+    if (this.authFailing) return;
+    this.authFailing = true;
     this.clearTokens();
     if (typeof window !== 'undefined') {
       // Show toast notification if available

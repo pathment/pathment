@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import {
   ChevronLeft, ChevronRight, SkipForward, Check, Loader2,
   TrendingUp, TrendingDown, Minus, Flag, Clock, ClipboardCheck, Keyboard, CheckCircle2, ArrowUpRight, Send, Plus, ListTodo, CalendarClock,
-  Trash2, X, History, RotateCcw, CalendarDays, AlertTriangle, StickyNote, Search, Lock, Unlock, PauseCircle,
+  Trash2, X, History, RotateCcw, CalendarDays, AlertTriangle, StickyNote, Search, Lock, Unlock, PauseCircle, Sparkles,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useMentorCohort, useMentorApprovals, type CohortMentee, type CohortMomentum, type CohortRisk, type ApprovalItem } from '@/lib/hooks/mentor';
@@ -24,10 +24,13 @@ import { NudgeButton } from '@/components/mentor/NudgeButton';
 import { ReviewDrawer } from '@/components/mentor/ReviewDrawer';
 import { AssignTaskDrawer } from '@/components/mentor/AssignTaskDrawer';
 import { MenteeTaskDrawer } from '@/components/mentor/MenteeTaskDrawer';
+import { InterviewReviewDrawer } from '@/components/mentor/InterviewReviewDrawer';
+import { QuizReviewDrawer } from '@/components/mentor/QuizReviewDrawer';
 import { Drawer } from '@/components/shared/Drawer';
 import { Avatar } from '@/components/shared/Avatar';
 import { useConfirm } from '@/lib/context/ConfirmContext';
 import { AttendanceSection } from '@/components/mentor/attendance/AttendanceSection';
+import { ReviewMeetingPanel } from '@/components/mentor/ReviewMeetingPanel';
 
 type Attendance = 'present' | 'absent' | 'excused';
 type EntryStatus = 'pending' | 'reviewed' | 'deferred';
@@ -774,6 +777,11 @@ export default function CohortReview() {
         )}
       </div>
 
+      {/* Live video (Jitsi): start the room, auto-attendance, contribution points. */}
+      {session && (session.id || isDraft) && (
+        <ReviewMeetingPanel sessionId={session.id} isDraft={isDraft} ensureSession={ensureSession} />
+      )}
+
       {/* Attendance Strip */}
       <AttendanceSection
         cohort={cohort}
@@ -828,6 +836,14 @@ export default function CohortReview() {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <h2 className="font-semibold text-slate-900 truncate">{mentee!.name}</h2>
+                  {mentee!.isNew && (
+                    <span
+                      title={mentee!.daysSinceJoined != null ? `Joined ${mentee!.daysSinceJoined === 0 ? 'today' : `${mentee!.daysSinceJoined} day${mentee!.daysSinceJoined === 1 ? '' : 's'} ago`}` : 'New to the platform'}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200"
+                    >
+                      <Sparkles className="w-3 h-3" /> New mentee
+                    </span>
+                  )}
                   <MomentumIcon m={mentee!.momentum} />
                   <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-xs font-medium ${risk.cls}`}><span className={`w-1.5 h-1.5 rounded-full ${risk.dot}`} />{risk.label}</span>
                 </div>
@@ -1190,9 +1206,30 @@ export default function CohortReview() {
         )}
       </Drawer>
 
-      {reviewing && <ReviewDrawer item={reviewing} onClose={() => setReviewing(null)} onReviewed={refresh} />}
+      {/* Review the right way for the task's type — interview + quiz have their
+          own review UIs; everything else uses the generic ReviewDrawer. */}
+      {reviewing && reviewing.type === 'interview' && (
+        <InterviewReviewDrawer taskId={reviewing.taskId} onClose={() => setReviewing(null)} onFinalized={refresh} />
+      )}
+      {reviewing && reviewing.type === 'quiz' && (
+        <QuizReviewDrawer taskId={reviewing.taskId} onClose={() => setReviewing(null)} onReviewed={refresh} />
+      )}
+      {reviewing && reviewing.type !== 'interview' && reviewing.type !== 'quiz' && (
+        <ReviewDrawer item={reviewing} onClose={() => setReviewing(null)} onReviewed={refresh} />
+      )}
 
-      {taskDetail && <MenteeTaskDrawer task={taskDetail} onClose={() => setTaskDetail(null)} onChanged={refresh} />}
+      {/* Opening a task also respects its type, so an interview/quiz doesn't fall
+          into the generic task drawer. */}
+      {taskDetail && (() => {
+        const taskType = taskDetail.roadmapTask?.type || taskDetail.type;
+        if (taskType === 'interview') {
+          return <InterviewReviewDrawer taskId={taskDetail.id} onClose={() => setTaskDetail(null)} onFinalized={refresh} />;
+        }
+        if (taskType === 'quiz') {
+          return <QuizReviewDrawer taskId={taskDetail.id} onClose={() => setTaskDetail(null)} onReviewed={refresh} />;
+        }
+        return <MenteeTaskDrawer task={taskDetail} onClose={() => setTaskDetail(null)} onChanged={refresh} />;
+      })()}
 
       {assigning && mentee && (
         <AssignTaskDrawer

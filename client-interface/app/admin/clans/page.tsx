@@ -9,6 +9,7 @@ import { TablePagination } from '@/components/shared/TablePagination';
 import { Avatar } from '@/components/shared/Avatar';
 import { CoMentorPermissionsDrawer } from '@/components/shared/CoMentorPermissionsDrawer';
 import { ReassignClanModal } from '@/components/admin/ReassignClanModal';
+import { ClanLevelsField } from '@/components/admin/ClanLevelsField';
 import { useAdminClans, type Clan, type ClanMembershipRow } from '@/lib/hooks/admin';
 import { clanApi } from '@/lib/services/clan-api';
 import { programsApi } from '@/lib/services/program-api';
@@ -29,6 +30,8 @@ function CreateClanDrawer({ programs, mentors, onClose, onCreated }: {
   const [programId, setProgramId] = useState('');
   const [leadMentorId, setLeadMentorId] = useState('');
   const [levelLabel, setLevelLabel] = useState('');
+  const [levels, setLevels] = useState<string[]>([]);
+  const [countries, setCountries] = useState('');
   const [tags, setTags] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -40,6 +43,8 @@ function CreateClanDrawer({ programs, mentors, onClose, onCreated }: {
         name: name.trim(), programId,
         leadMentorId: leadMentorId || undefined,
         levelLabel: levelLabel.trim() || undefined,
+        levels,
+        countries: countries.split(',').map((c) => c.trim()).filter(Boolean),
         tags: tags.split(',').map((t) => t.trim()).filter(Boolean),
       });
       toast.success('Clan created');
@@ -85,6 +90,14 @@ function CreateClanDrawer({ programs, mentors, onClose, onCreated }: {
             <input value={levelLabel} onChange={(e) => setLevelLabel(e.target.value)} placeholder="e.g. Intermediate" className={field} />
           </div>
           <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Levels served <span className="text-slate-400 font-normal">(for intake assignment)</span></label>
+            <ClanLevelsField programId={programId} value={levels} onChange={setLevels} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Countries served <span className="text-slate-400 font-normal">(comma-separated, optional)</span></label>
+            <input value={countries} onChange={(e) => setCountries(e.target.value)} placeholder="e.g. Pakistan, India" className={field} />
+          </div>
+          <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Tags <span className="text-slate-400 font-normal">(comma-separated)</span></label>
             <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="e.g. frontend, react" className={field} />
           </div>
@@ -110,6 +123,9 @@ function ClanDrawer({ clanId, mentors, mentees, onClose, onChanged }: {
   const [busy, setBusy] = useState(false);
   const [moving, setMoving] = useState<{ userId: string; name: string } | null>(null);
   const [permMember, setPermMember] = useState<any | null>(null);
+  const [levelsDraft, setLevelsDraft] = useState<string[]>([]);
+  const [savingLevels, setSavingLevels] = useState(false);
+  const [details, setDetails] = useState({ name: '', description: '', leadMentorId: '', maxMentees: '25', status: 'active', tags: '', countries: '' });
 
   // Searchable person picker (server-backed) so ANYONE is findable — not just the
   // first 20 of a base-role directory. This is how a removed/re-roled person
@@ -121,8 +137,47 @@ function ClanDrawer({ clanId, mentors, mentees, onClose, onChanged }: {
 
   const load = async () => {
     setLoading(true);
-    try { const res = await clanApi.get(clanId); setClan(res?.data?.clan ?? null); }
+    try {
+      const res = await clanApi.get(clanId); const c = res?.data?.clan ?? null; setClan(c);
+      setLevelsDraft(Array.isArray(c?.levels) ? c.levels : []);
+      setDetails({
+        name: c?.name ?? '', description: c?.description ?? '', leadMentorId: c?.leadMentor?.id ?? '',
+        maxMentees: String(c?.maxMentees ?? 25), status: c?.status ?? 'active',
+        tags: (c?.tags ?? []).join(', '), countries: (c?.countries ?? []).join(', '),
+      });
+    }
     finally { setLoading(false); }
+  };
+
+  // Save all clan detail edits (incl. levels) in one call.
+  const detailsDirty = !!clan && (
+    details.name !== (clan.name ?? '') ||
+    details.description !== (clan.description ?? '') ||
+    details.leadMentorId !== (clan.leadMentor?.id ?? '') ||
+    details.maxMentees !== String(clan.maxMentees ?? 25) ||
+    details.status !== (clan.status ?? 'active') ||
+    details.tags !== (clan.tags ?? []).join(', ') ||
+    details.countries !== (clan.countries ?? []).join(', ') ||
+    JSON.stringify(levelsDraft) !== JSON.stringify(clan.levels ?? [])
+  );
+  const saveDetails = async () => {
+    if (!details.name.trim()) { toast.error('Name is required'); return; }
+    setSavingLevels(true);
+    try {
+      await clanApi.update(clanId, {
+        name: details.name.trim(),
+        description: details.description.trim() || null,
+        leadMentorId: details.leadMentorId || null,
+        maxMentees: Math.max(1, parseInt(details.maxMentees, 10) || 25),
+        status: details.status,
+        tags: details.tags.split(',').map((t) => t.trim()).filter(Boolean),
+        countries: details.countries.split(',').map((c) => c.trim()).filter(Boolean),
+        levels: levelsDraft,
+      });
+      toast.success('Clan updated');
+      await load(); onChanged();
+    } catch { toast.error('Could not update the clan'); }
+    finally { setSavingLevels(false); }
   };
   useEffect(() => { load(); }, [clanId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -187,6 +242,61 @@ function ClanDrawer({ clanId, mentors, mentees, onClose, onChanged }: {
             <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-brand-600" /></div>
           ) : (
             <>
+              {/* Clan details — name, lead, capacity, status, levels, tags. */}
+              <div className="rounded-xl border border-slate-200 p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-medium text-slate-700 flex items-center gap-1.5"><SlidersHorizontal className="w-4 h-4 text-brand-500" />Clan details</h3>
+                  <button
+                    onClick={saveDetails}
+                    disabled={savingLevels || !detailsDirty}
+                    className="text-xs font-medium text-brand-700 hover:text-brand-800 disabled:opacity-40 inline-flex items-center gap-1"
+                  >
+                    {savingLevels ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}Save changes
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div className="col-span-2">
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Name</label>
+                    <input value={details.name} onChange={(e) => setDetails((d) => ({ ...d, name: e.target.value }))} className={`w-full ${field}`} />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Description</label>
+                    <input value={details.description} onChange={(e) => setDetails((d) => ({ ...d, description: e.target.value }))} placeholder="What this clan is about" className={`w-full ${field}`} />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Lead mentor</label>
+                    <SelectMenu value={details.leadMentorId} onChange={(v) => setDetails((d) => ({ ...d, leadMentorId: v }))}
+                      options={mentors.map((m) => ({ value: m.id, label: `${m.firstName} ${m.lastName}`.trim() }))} placeholder="No lead mentor" ariaLabel="Lead mentor" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Capacity</label>
+                    <input type="number" min={1} value={details.maxMentees} onChange={(e) => setDetails((d) => ({ ...d, maxMentees: e.target.value }))} className={`w-full ${field}`} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Status</label>
+                    <select value={details.status} onChange={(e) => setDetails((d) => ({ ...d, status: e.target.value }))} className={`w-full ${field}`}>
+                      <option value="active">Active</option>
+                      <option value="inactive">Inactive</option>
+                      <option value="archived">Archived</option>
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">Levels served <span className="text-slate-400 font-normal">(intake matching)</span></label>
+                  <ClanLevelsField programId={clan?.programId} value={levelsDraft} onChange={setLevelsDraft} />
+                  <p className="text-xs text-slate-400 mt-1">Candidates of these levels are matched here during assignment. None = any level.</p>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">Countries served <span className="text-slate-400 font-normal">(comma-separated)</span></label>
+                  <input value={details.countries} onChange={(e) => setDetails((d) => ({ ...d, countries: e.target.value }))} placeholder="e.g. Pakistan, India" className={`w-full ${field}`} />
+                  <p className="text-xs text-slate-400 mt-1">Candidates from these countries are matched here. None = any country.</p>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">Tags <span className="text-slate-400 font-normal">(comma-separated)</span></label>
+                  <input value={details.tags} onChange={(e) => setDetails((d) => ({ ...d, tags: e.target.value }))} placeholder="e.g. frontend, react" className={`w-full ${field}`} />
+                </div>
+              </div>
+
               {/* Add member */}
               <div className="rounded-xl border border-slate-200 p-4">
                 <h3 className="text-sm font-medium text-slate-700 mb-3 flex items-center gap-1.5"><UserPlus className="w-4 h-4 text-brand-500" />Add member</h3>

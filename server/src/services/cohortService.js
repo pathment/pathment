@@ -822,6 +822,22 @@ class CohortService {
       cohort.forEach((r) => { r.clan = null; });
     }
 
+    // New-mentee flag: joined the platform within the last NEW_MENTEE_DAYS, so a
+    // mentor can spot a brand-new mentee at a glance (they need more hand-holding,
+    // and "no activity yet" is expected, not a risk signal).
+    const NEW_MENTEE_DAYS = 10;
+    const newCutoff = Date.now() - NEW_MENTEE_DAYS * 86400000;
+    const createdRows = await models.User.findAll({
+      where: { id: { [Op.in]: menteeIds } }, attributes: ['id', 'createdAt'], raw: true,
+    });
+    const createdById = new Map(createdRows.map((u) => [u.id, u.createdAt]));
+    cohort.forEach((r) => {
+      const joined = createdById.get(r.id);
+      r.joinedAt = joined || null;
+      r.isNew = !!joined && new Date(joined).getTime() >= newCutoff;
+      r.daysSinceJoined = joined ? Math.floor((Date.now() - new Date(joined).getTime()) / 86400000) : null;
+    });
+
     const totals = {
       mentees: cohort.length,
       pendingApprovals: cohort.reduce((n, m) => n + m.pendingApprovals, 0),

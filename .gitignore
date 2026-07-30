@@ -41,3 +41,9 @@ Thumbs.db
 uploads/
 
 articles
+# Local ops runbook — infra details, never commit
+OPS-RUNBOOK.local.md
+*.local.md
+
+# local promote-to-main helper
+promote.sh

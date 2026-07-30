@@ -32,7 +32,27 @@ const deleteAssessment = catchAsync(async (req, res) => {
   res.status(200).json(successResponse('Assessment deleted', result));
 });
 
+
+// ── Reusable rubric snippets (org-wide library) ──────────────────────────────
+const listSnippets = catchAsync(async (req, res) => {
+  const snippets = await assessmentService.listSnippets();
+  res.status(200).json(successResponse('Snippets retrieved', { snippets }));
+});
+
+const createSnippet = catchAsync(async (req, res) => {
+  const snippet = await assessmentService.createSnippet(req.body || {}, req.user.id);
+  res.status(201).json(successResponse('Snippet saved', { snippet }, 201));
+});
+
+const deleteSnippet = catchAsync(async (req, res) => {
+  const result = await assessmentService.deleteSnippet(req.params.id);
+  res.status(200).json(successResponse('Snippet deleted', result));
+});
+
 module.exports = {
+  listSnippets,
+  createSnippet,
+  deleteSnippet,
   listAssessments,
   getAssessment,
   createAssessment,

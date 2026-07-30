@@ -130,6 +130,15 @@ class SubmissionService {
     // Re-engagement: a paused mentee who submits work has come back → resume.
     require('./mentorshipPauseService').autoResumeIfPaused(task.menteeId, 'submitted work').catch(() => { });
 
+    // Assign the next roadmap step NOW (at submission), not at approval — so the
+    // mentee has work to do while the mentor reviews. Within-roadmap only;
+    // roadmap completion + chaining to a linked next roadmap still happen on
+    // approval. Non-fatal; never block the submission on it.
+    if (task.roadmapTaskId) {
+      require('./linearRoadmapService').advanceOnSubmission(task.menteeId, task.roadmapTaskId)
+        .catch((err) => console.error('Roadmap advance-on-submission failed (non-fatal):', err.message));
+    }
+
     // Return complete submission with files
     const fullSubmission = await this.getSubmissionById(submission.id);
 
@@ -426,10 +435,12 @@ class SubmissionService {
 
     await task.update(updateData);
 
-    // Auto-advance a roadmap chain FIRST (assign the next step) so the stats
-    // recompute below counts it - otherwise approving the last-assigned step
-    // would momentarily read 100% and flag the enrollment ready-to-complete
-    // before the next step appears.
+    // The NEXT within-roadmap step was already assigned at submission time (so
+    // the mentee wasn't idle). advanceOnApproval still runs here to (a) safety-
+    // net that assignment (idempotent — no double-assign), and (b) finalize the
+    // roadmap on the LAST step: mark it complete and chain to a linked next
+    // roadmap. Runs before the stats recompute so a completed last step doesn't
+    // momentarily read 100% and flag ready-to-complete before the chain fires.
     if (isApproved) {
       try {
         const linearRoadmapService = require('./linearRoadmapService');
@@ -874,6 +885,86 @@ class SubmissionService {
   }
 
   /**
+   * Which of THIS mentor's clans each mentee sits in, so the approvals lists can
+   * be scoped by the sidebar clan switcher the same way the cohort views are.
+   * Mirrors getCohort's clan-attach: one clan per mentee (their active mentee
+   * membership in a clan this mentor runs). Batched — no per-item queries.
+   */
+  async _clanByMentee(mentorId, menteeIds = []) {
+    const map = new Map();
+    if (!menteeIds.length) return map;
+    const cohortService = require('./cohortService');
+    const { clanIds, clanNameById } = await cohortService.mentorClanMap(mentorId);
+    if (!clanIds.length) return map;
+    const rows = await models.ClanMembership.findAll({
+      where: {
+        clanId: { [Op.in]: clanIds },
+        userId: { [Op.in]: menteeIds },
+        status: 'active',
+        role: 'mentee',
+      },
+      attributes: ['userId', 'clanId'],
+    });
+    for (const r of rows) {
+      if (!map.has(r.userId)) map.set(r.userId, { id: r.clanId, name: clanNameById.get(r.clanId) || null });
+    }
+    return map;
+  }
+
+  /**
+   * How many submissions are waiting on this mentor — the number behind the
+   * sidebar "Approvals" badge. Deliberately mirrors the "To review" tab exactly:
+   * work awaiting review of EVERY task type (project / assignment / interview /
+   * quiz / video), collapsed to one per assignment, EXCLUDING pending extension
+   * requests (those live in their own tab).
+   *
+   * Returns a per-clan breakdown alongside the total so the badge can follow the
+   * sidebar clan switcher without a refetch. Lighter than the full queue: no
+   * roadmap/user/settings includes, just the columns the count needs.
+   */
+  async getMentorApprovalsCount(mentorId) {
+    const submissions = await models.TaskSubmission.findAll({
+      where: { status: 'pending' },
+      attributes: ['id', 'assignedTaskId', 'version', 'extensionRequested', 'extensionStatus'],
+      include: [{
+        model: models.AssignedTask,
+        as: 'assignedTask',
+        required: true,
+        attributes: ['id', 'status', 'menteeId'],
+        where: await this._reviewableTaskWhere(mentorId),
+      }],
+    });
+
+    // Same shape as the queue: keep only the latest version per assignment, so a
+    // resubmission doesn't count twice.
+    const latestByTask = new Map();
+    for (const s of submissions) {
+      const t = s.assignedTask;
+      const counts = t?.status === 'submitted' || Boolean(s.extensionRequested && s.extensionStatus === 'pending');
+      if (!counts) continue;
+      const prev = latestByTask.get(s.assignedTaskId);
+      if (!prev || (s.version || 0) > (prev.version || 0)) latestByTask.set(s.assignedTaskId, s);
+    }
+
+    // Work to review only — an extension request is a separate tab/action.
+    const toReview = [...latestByTask.values()]
+      .filter((s) => !(s.extensionRequested && s.extensionStatus === 'pending'));
+
+    const clanByMentee = await this._clanByMentee(
+      mentorId,
+      [...new Set(toReview.map((s) => s.assignedTask?.menteeId).filter(Boolean))]
+    );
+
+    const byClan = {};
+    for (const s of toReview) {
+      const clanId = clanByMentee.get(s.assignedTask?.menteeId)?.id;
+      if (clanId) byClan[clanId] = (byClan[clanId] || 0) + 1;
+    }
+
+    return { total: toReview.length, byClan };
+  }
+
+  /**
    * The mentor's approvals queue: pending submissions across their assigned
    * tasks, shaped for the review UI (criteria checklist + submission content).
    */
@@ -925,6 +1016,7 @@ class SubmissionService {
       ? await models.UserSettings.findAll({ where: { userId: { [Op.in]: menteeIds } }, attributes: ['userId', 'timezone'] })
       : [];
     const tzByUser = new Map(tzRows.map((r) => [r.userId, r.timezone || 'UTC']));
+    const clanByMentee = await this._clanByMentee(mentorId, menteeIds);
 
     return latest.map((s) => {
       const t = s.assignedTask;
@@ -932,6 +1024,8 @@ class SubmissionService {
       return {
         submissionId: s.id,
         taskId: t.id,
+        // The clan this mentee is in (for the sidebar clan-scope filter).
+        clan: clanByMentee.get(t.menteeId) || null,
         // Stable peer-grouping key for the client's "group by task" view. Title
         // can be per-mentee overridden, so don't group by title.
         roadmapTaskId: t.roadmapTaskId || null,
@@ -991,6 +1085,11 @@ class SubmissionService {
       order: [['updatedAt', 'DESC']],
     });
 
+    const clanByMentee = await this._clanByMentee(
+      mentorId,
+      [...new Set(tasks.map((t) => t.menteeId).filter(Boolean))]
+    );
+
     return tasks.map((t) => {
       const m = t.mentee;
       // Latest "changes requested" feedback (newest first). isApproved=false covers
@@ -1000,6 +1099,7 @@ class SubmissionService {
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0] || null;
       return {
         taskId: t.id,
+        clan: clanByMentee.get(t.menteeId) || null,
         roadmapTaskId: t.roadmapTaskId || null,
         title: t.titleOverride || t.roadmapTask?.title || 'Task',
         type: t.roadmapTask?.type || null,
@@ -1044,6 +1144,11 @@ class SubmissionService {
       limit,
     });
 
+    const clanByMentee = await this._clanByMentee(
+      mentorId,
+      [...new Set(tasks.map((t) => t.menteeId).filter(Boolean))]
+    );
+
     return tasks.map((t) => {
       const m = t.mentee;
       const latestFb = (t.feedback || [])
@@ -1051,6 +1156,7 @@ class SubmissionService {
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0] || null;
       return {
         taskId: t.id,
+        clan: clanByMentee.get(t.menteeId) || null,
         roadmapTaskId: t.roadmapTaskId || null,
         title: t.titleOverride || t.roadmapTask?.title || 'Task',
         type: t.roadmapTask?.type || null,

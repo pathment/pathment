@@ -210,6 +210,8 @@ class ClanService {
         description: data.description || null,
         leadMentorId: data.leadMentorId || null,
         tags: Array.isArray(data.tags) ? data.tags : [],
+        levels: Array.isArray(data.levels) ? data.levels : [],
+        countries: Array.isArray(data.countries) ? data.countries : [],
         maxMentees: data.maxMentees || 25,
         status: data.status || 'active',
         createdBy
@@ -234,15 +236,47 @@ class ClanService {
   }
 
   async updateClan(clanId, updates) {
-    const clan = await models.Clan.findByPk(clanId);
-    if (!clan) throw new NotFoundError('Clan not found');
+    const { Op } = require('sequelize');
+    return sequelize.transaction(async (transaction) => {
+      const clan = await models.Clan.findByPk(clanId, { transaction });
+      if (!clan) throw new NotFoundError('Clan not found');
 
-    const allowed = ['name', 'description', 'leadMentorId', 'tags', 'maxMentees', 'status', 'healthStatus'];
-    allowed.forEach((key) => {
-      if (updates[key] !== undefined) clan[key] = updates[key];
+      const prevLeadId = clan.leadMentorId;
+      const allowed = ['name', 'description', 'tags', 'levels', 'countries', 'maxMentees', 'status', 'healthStatus'];
+      allowed.forEach((key) => {
+        if (updates[key] !== undefined) clan[key] = updates[key];
+      });
+
+      // Lead change is more than an FK: the new lead must be a real lead_mentor
+      // member (with the mentor capability), and the old lead steps down — so
+      // mentored-clan queries and the team view stay correct.
+      if (updates.leadMentorId !== undefined && (updates.leadMentorId || null) !== (prevLeadId || null)) {
+        const newLeadId = updates.leadMentorId || null;
+        clan.leadMentorId = newLeadId;
+        if (newLeadId) {
+          const leadUser = await models.User.findByPk(newLeadId, { transaction });
+          if (!leadUser) throw new NotFoundError('Lead mentor user not found');
+          await this.ensureCapability(leadUser, 'mentor', transaction);
+          // Reuse a mentor-role row if they already help here; never repurpose a
+          // mentee row. Otherwise create their lead_mentor membership.
+          const existing = await models.ClanMembership.findOne({
+            where: { clanId, userId: newLeadId, role: { [Op.in]: MENTOR_CLAN_ROLES } }, transaction,
+          });
+          if (existing) { existing.role = 'lead_mentor'; existing.status = 'active'; await existing.save({ transaction }); }
+          else { await models.ClanMembership.create({ clanId, userId: newLeadId, role: 'lead_mentor', status: 'active' }, { transaction }); }
+        }
+        // Previous lead steps down (a clan has one lead).
+        if (prevLeadId && prevLeadId !== newLeadId) {
+          await models.ClanMembership.update(
+            { status: 'removed' },
+            { where: { clanId, userId: prevLeadId, role: 'lead_mentor' }, transaction }
+          );
+        }
+      }
+
+      await clan.save({ transaction });
+      return clan;
     });
-    await clan.save();
-    return clan;
   }
 
   /**

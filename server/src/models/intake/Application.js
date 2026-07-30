@@ -65,6 +65,18 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.DECIMAL(5, 2),
       field: 'assessment_score'
     },
+    // Level the rules landed on from evidence (may differ from the applicant's
+    // self-selected `level`), plus the per-criterion proof behind it.
+    recommendedLevel: {
+      type: DataTypes.STRING(40),
+      allowNull: true,
+      field: 'recommended_level'
+    },
+    levelEvidence: {
+      type: DataTypes.JSONB,
+      allowNull: true,
+      field: 'level_evidence'
+    },
     reviewerNotes: {
       type: DataTypes.TEXT,
       field: 'reviewer_notes'

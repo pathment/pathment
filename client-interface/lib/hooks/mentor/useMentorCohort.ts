@@ -33,6 +33,10 @@ export interface CohortMentee {
   tasksCompleted: number;
   sentiment: string;
   clan?: { id: string; name: string } | null;
+  /** Joined the platform within the last ~10 days — show a "New" badge. */
+  isNew?: boolean;
+  joinedAt?: string | null;
+  daysSinceJoined?: number | null;
 }
 
 export interface CohortTotals {

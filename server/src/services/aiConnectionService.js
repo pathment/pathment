@@ -34,7 +34,7 @@ const PROVIDER_DEFAULT_MODEL = {
   openrouter: 'meta-llama/llama-3.3-70b-instruct',
   // anthropic + custom: no safe default — the connection should set one.
 };
-const FEATURES = ['summary', 'delay', 'atrisk', 'nudge', 'stall', 'coaching', 'feedback', 'roadmap'];
+const FEATURES = ['summary', 'delay', 'atrisk', 'nudge', 'stall', 'coaching', 'feedback', 'roadmap', 'assessment'];
 
 const isAdmin = (user) => {
   const caps = Array.isArray(user?.capabilities) && user.capabilities.length ? user.capabilities : [user?.role];

@@ -69,6 +69,13 @@ module.exports = (sequelize, DataTypes) => {
     gradedBy: {
       type: DataTypes.UUID,
       field: 'graded_by'
+    },
+    // AI grading result — a SUGGESTION the admin reviews, never the final score.
+    // { perQuestion: { [questionId]: { score, note } }, overall, summary, model, at }
+    aiDraft: {
+      type: DataTypes.JSONB,
+      allowNull: true,
+      field: 'ai_draft'
     }
   }, {
     tableName: 'assessment_submissions',

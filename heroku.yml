@@ -1,0 +1,12 @@
+# Heroku container build manifest.
+#
+# Tells Heroku to build the `web` process from the root Dockerfile (which wraps
+# server/). With this file + the app's stack set to "container", connecting the
+# GitHub repo in the Heroku Dashboard → Deploy tab and deploying the `main`
+# branch builds and runs the API — no CLI, no buildpacks.
+#
+# The web process command comes from the Dockerfile's ENTRYPOINT + CMD
+# (dumb-init -- node src/index.js), and the app binds Heroku's $PORT.
+build:
+  docker:
+    web: Dockerfile

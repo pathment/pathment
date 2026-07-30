@@ -276,12 +276,40 @@ const getMenteeById = catchAsync(async (req, res) => {
   const menteeJson = mentee.toJSON();
   const lastActive = menteeJson.menteeProfile?.lastActivityDate || mentee.lastLoginAt || null;
 
+  // How they were admitted — read THROUGH the application they registered from,
+  // rather than copying the level onto the user. A copy would go stale the
+  // moment they progress, and a cohort's level keys only mean anything inside
+  // that cohort. This stays accurate forever and reads as history, not a label.
+  let admission = null;
+  try {
+    const app = await models.Application.findOne({
+      where: { userId: id },
+      attributes: ['id', 'level', 'recommendedLevel', 'assessmentScore', 'decidedAt', 'cohortId'],
+      include: [{ model: models.Cohort, as: 'cohort', attributes: ['id', 'name', 'levels'] }],
+      order: [['decidedAt', 'DESC']],
+    });
+    if (app) {
+      const levels = Array.isArray(app.cohort?.levels) ? app.cohort.levels : [];
+      const labelOf = (key) => levels.find((l) => l.key === key)?.label || key || null;
+      admission = {
+        cohortId: app.cohortId,
+        cohortName: app.cohort?.name || null,
+        levelKey: app.level || null,
+        levelLabel: labelOf(app.level),
+        recommendedLevelLabel: app.recommendedLevel ? labelOf(app.recommendedLevel) : null,
+        assessmentScore: app.assessmentScore != null ? Number(app.assessmentScore) : null,
+        admittedAt: app.decidedAt,
+      };
+    }
+  } catch { /* admission history is contextual — never break the profile over it */ }
+
   res.status(200).json({
     success: true,
     message: 'Mentee profile retrieved successfully',
     statusCode: 200,
     data: {
       mentee: menteeJson,
+      admission,
       assignedMentor,
       coMentors,
       currentClan,

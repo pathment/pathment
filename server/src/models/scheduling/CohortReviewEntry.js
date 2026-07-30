@@ -20,6 +20,13 @@ module.exports = (sequelize, DataTypes) => {
       validate: { isIn: [['pending', 'reviewed', 'deferred']] },
     },
     note: { type: DataTypes.TEXT, allowNull: true },
+    // ── Live-meeting presence + contribution ──
+    joinedAt: { type: DataTypes.DATE, allowNull: true, field: 'joined_at' },
+    leftAt: { type: DataTypes.DATE, allowNull: true, field: 'left_at' },
+    secondsPresent: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0, field: 'seconds_present' },
+    autoPresent: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: 'auto_present' },
+    talkSeconds: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0, field: 'talk_seconds' },
+    contributionPoints: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0, field: 'contribution_points' },
   }, {
     tableName: 'cohort_review_entries',
     underscored: true,

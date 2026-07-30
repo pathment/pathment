@@ -89,6 +89,14 @@ class AdminService {
       throw new ConflictError('An active invite already exists for this email and role');
     }
 
+    // An expired, unused, unrevoked invite is dead but still occupies the
+    // active-unique slot (the index predicate ignores expiry) — revoke it so a
+    // fresh invite can be issued after an old one lapses.
+    await models.RegistrationInvite.update(
+      { revokedAt: new Date() },
+      { where: { email: normalizedEmail, role, usedAt: null, revokedAt: null, expiresAt: { [Op.lte]: new Date() } } }
+    );
+
     const placement = await this._resolveInvitePlacement({
       role,
       program: inviteData.programId ?? inviteData.program,
@@ -98,17 +106,28 @@ class AdminService {
     const rawToken = generateRandomToken();
     const tokenHash = hashToken(rawToken);
 
-    const invite = await models.RegistrationInvite.create({
-      tokenHash,
-      email: normalizedEmail,
-      role,
-      invitedBy: createdBy,
-      expiresAt,
-      programId: placement.programId,
-      clanId: placement.clanId,
-      // Set when the invite is issued from an accepted application.
-      cohortId: inviteData.cohortId || null
-    });
+    let invite;
+    try {
+      invite = await models.RegistrationInvite.create({
+        tokenHash,
+        email: normalizedEmail,
+        role,
+        invitedBy: createdBy,
+        expiresAt,
+        programId: placement.programId,
+        clanId: placement.clanId,
+        // Set when the invite is issued from an accepted application.
+        cohortId: inviteData.cohortId || null
+      });
+    } catch (e) {
+      // The partial unique index (migration 082) is the last line of defence: if
+      // a concurrent request created the active invite between our check above
+      // and this insert, surface the same ConflictError so callers reuse it.
+      if (e && e.name === 'SequelizeUniqueConstraintError') {
+        throw new ConflictError('An active invite already exists for this email and role');
+      }
+      throw e;
+    }
 
     await createAuditLog({
       userId: createdBy,

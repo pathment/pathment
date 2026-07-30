@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const cohortController = require('../controllers/cohortController');
 const cohortReviewController = require('../controllers/cohortReviewController');
+const reviewMeetingController = require('../controllers/reviewMeetingController');
 const reviewLockController = require('../controllers/reviewLockController');
 const linearRoadmapController = require('../controllers/linearRoadmapController');
 const promotionController = require('../controllers/promotionController');
@@ -29,6 +30,9 @@ router.post('/cohort/report-summary', authenticate, authorize(['mentor', 'admin'
 // pause/resume/dismiss. Paused mentees stay in the clan but drop out of reports.
 router.get('/paused', mentorOnly, mentorshipPauseController.listPaused);
 router.get('/pause-suggestions', mentorOnly, mentorshipPauseController.listSuggestions);
+// Run an inactivity check now (preview, or autoPause=true to pause the flagged).
+// Admin can scope to one clanId or sweep every clan they oversee.
+router.post('/inactivity-check', mentorOnly, mentorshipPauseController.runInactivityCheck);
 router.post('/pause-suggestions/:menteeId/dismiss', mentorOnly, mentorshipPauseController.dismissSuggestion);
 router.get('/mentees/:menteeId/pause-state', mentorOnly, mentorshipPauseController.menteeState);
 router.post('/mentees/:menteeId/pause', mentorOnly, mentorshipPauseController.pause);
@@ -56,6 +60,16 @@ router.put('/review/sessions/:id/entries/:menteeId', mentorOnly, cohortReviewCon
 router.post('/review/sessions/:id/finish', mentorOnly, cohortReviewController.finish);
 router.post('/review/sessions/:id/reopen', mentorOnly, cohortReviewController.reopen);
 router.delete('/review/sessions/:id', mentorOnly, cohortReviewController.remove);
+// Live video (Jitsi) for a review — host controls (mentor is the source of truth).
+router.get('/review/meeting-config', mentorOnly, reviewMeetingController.config);
+router.post('/review/sessions/:id/meeting/start', mentorOnly, reviewMeetingController.start);
+router.post('/review/sessions/:id/meeting/end', mentorOnly, reviewMeetingController.end);
+router.get('/review/sessions/:id/meeting', mentorOnly, reviewMeetingController.hostView);
+router.put('/review/sessions/:id/meeting/attendance-tracking', mentorOnly, reviewMeetingController.setAttendanceTracking);
+router.put('/review/sessions/:id/meeting/present/:menteeId', mentorOnly, reviewMeetingController.markPresent);
+router.post('/review/sessions/:id/meeting/talk-time', mentorOnly, reviewMeetingController.recordTalk);
+router.get('/review/sessions/:id/meeting/contribution', mentorOnly, reviewMeetingController.proposeContribution);
+router.post('/review/sessions/:id/meeting/contribution', mentorOnly, reviewMeetingController.finalizeContribution);
 // Cohort-review deletion lock (mentor-side): see the org lock state + ask an
 // admin for temporary delete access.
 router.get('/review/lock-state', mentorOnly, reviewLockController.lockState);
@@ -65,6 +79,7 @@ router.delete('/mentee/:id/collaborators/:collaboratorId', mentorOnly, cohortCon
 
 // Approvals queue + bulk approve.
 router.get('/approvals', authenticate, authorize(['mentor', 'admin']), cohortController.getApprovals);
+router.get('/approvals/count', authenticate, authorize(['mentor', 'admin']), cohortController.getApprovalsCount);
 router.get('/approvals/changes-requested', authenticate, authorize(['mentor', 'admin']), cohortController.getChangesRequested);
 router.get('/approvals/reviewed', authenticate, authorize(['mentor', 'admin']), cohortController.getReviewed);
 router.post('/approvals/bulk', authenticate, authorize(['mentor', 'admin']), cohortController.bulkApprove);

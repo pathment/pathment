@@ -31,6 +31,7 @@ EXTENSION_HANDLED: 'extension_handled',
   REVIEW_UNLOCK_REQUESTED: 'review_unlock_requested',
   REVIEW_UNLOCK_HANDLED: 'review_unlock_handled',
   MENTEE_PAUSE_SUGGESTED: 'mentee_pause_suggested',
+  MENTEE_PAUSED: 'mentee_paused',
   MENTEE_REENGAGE: 'mentee_reengage',
   MENTEE_RETURNED: 'mentee_returned',
   FEEDBACK_SUBMITTED: 'feedback_submitted',
@@ -263,6 +264,13 @@ const NOTIFICATION_MATRIX = {
     audience: 'mentor',
     preferenceKey: 'mentee_pause_suggested',
     channels: { inApp: true, email: false, chat: false }
+  },
+  // A mentee was paused (in-app + email): what it means + ask a mentor to resume.
+  [NOTIFICATION_EVENTS.MENTEE_PAUSED]: {
+    type: 'system',
+    audience: 'mentee',
+    preferenceKey: 'mentee_paused',
+    channels: { inApp: true, email: true, chat: false }
   },
   // Win-back reminder to a paused mentee (in-app + email, the Zomato model).
   [NOTIFICATION_EVENTS.MENTEE_REENGAGE]: {

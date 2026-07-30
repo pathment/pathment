@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/context/AuthContext';
@@ -26,6 +26,8 @@ import { NavLink } from '@/lib/config/navigation';
 import { useNavPreferences } from '@/lib/hooks/shared';
 import { usePermissions } from '@/lib/hooks/usePermissions';
 import { useClan, ALL_CLANS } from '@/lib/context/ClanContext';
+import { mentorApi } from '@/lib/services/mentor-api';
+import { APPROVALS_CHANGED } from '@/lib/utils/approvals-badge';
 import { SelectMenu } from './SelectMenu';
 import { CommandPalette } from './CommandPalette';
 import { FeedbackDrawer } from './FeedbackDrawer';
@@ -55,6 +57,9 @@ export default function Navigation({ role }: NavigationProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
+  // Review-queue size for the Approvals badge: a total plus a per-clan
+  // breakdown, so switching clans re-scopes the badge with no refetch.
+  const [approvalCounts, setApprovalCounts] = useState<{ total: number; byClan: Record<string, number> }>({ total: 0, byClan: {} });
   const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
   const { links, pinned, isEditing, toggleEdit, togglePin, moveUp, moveDown, reset, recordUsage } = useNavPreferences(role);
@@ -126,6 +131,35 @@ export default function Navigation({ role }: NavigationProps) {
     }).catch(() => {});
   }, [user?.id, pathname]);
 
+  // The badge follows the sidebar clan picker so it always matches the page:
+  // 'All clans' = the full queue, otherwise just that clan's share.
+  const approvalsBadgeCount = activeClanId === ALL_CLANS
+    ? approvalCounts.total
+    : (approvalCounts.byClan[activeClanId] || 0);
+
+  // ── Approvals badge (mentors only) ────────────────────────────────────────
+  // Counts work awaiting review of EVERY task type, excluding extension
+  // requests (their own tab) — i.e. exactly the "To review" number.
+  const isMentorNav = role === 'mentor';
+  const refreshApprovalCounts = useCallback(() => {
+    if (!isMentorNav) return;
+    mentorApi.getApprovalsCount()
+      .then((r: any) => setApprovalCounts({ total: r?.data?.total ?? 0, byClan: r?.data?.byClan ?? {} })) // eslint-disable-line @typescript-eslint/no-explicit-any
+      .catch(() => {});
+  }, [isMentorNav]);
+
+  // Re-read on mount and whenever the mentor navigates (covers reviewing then
+  // leaving the page).
+  useEffect(() => { refreshApprovalCounts(); }, [refreshApprovalCounts, pathname]);
+
+  // And immediately when the Approvals page says the queue changed.
+  useEffect(() => {
+    if (!isMentorNav) return;
+    const onChanged = () => refreshApprovalCounts();
+    window.addEventListener(APPROVALS_CHANGED, onChanged);
+    return () => window.removeEventListener(APPROVALS_CHANGED, onChanged);
+  }, [isMentorNav, refreshApprovalCounts]);
+
   useEffect(() => {
     if (!user?.id) return;
     const socketUrl = apiBaseUrl.endsWith('/api') ? apiBaseUrl.slice(0, -4) : apiBaseUrl;
@@ -133,6 +167,8 @@ export default function Navigation({ role }: NavigationProps) {
 
     socket.on('notification:new', (data: { type?: string }) => {
       if (data?.type === 'message') setUnreadMessageCount((p) => p + 1);
+      // A submission landing is a 'task' notification — re-read the queue size.
+      else if (data?.type === 'task') refreshApprovalCounts();
     });
     socket.on('message:unread-count', () => {
       messagingApi.listConversations(50).then((convs) => {
@@ -141,7 +177,7 @@ export default function Navigation({ role }: NavigationProps) {
     });
 
     return () => { socket.disconnect(); };
-  }, [user?.id, apiBaseUrl]);
+  }, [user?.id, apiBaseUrl, refreshApprovalCounts]);
 
   const handleLogout = async () => {
     await logout();
@@ -216,11 +252,27 @@ export default function Navigation({ role }: NavigationProps) {
       >
         <Icon className={`w-4.5 h-4.5 shrink-0 ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-slate-600'}`} />
         <span className="text-sm font-medium">{link.label}</span>
-        {link.hasBadge && unreadMessageCount > 0 && (
-          <span className="absolute right-3 inline-flex items-center justify-center min-w-5 h-5 px-1.5 bg-red-500 text-white text-[11px] font-bold rounded-full">
-            {unreadMessageCount > 99 ? '99+' : unreadMessageCount}
-          </span>
-        )}
+        {(() => {
+          const count = link.badge === 'messages' ? unreadMessageCount
+            : link.badge === 'approvals' ? approvalsBadgeCount
+            : 0;
+          if (!count) return null;
+          // Approvals is a work queue, not an alert — keep red for unread
+          // messages and use the brand colour here so it reads as "to do".
+          const tone = link.badge === 'approvals' ? 'bg-brand-600' : 'bg-red-500';
+          const label = link.badge === 'approvals'
+            ? `${count} ${count === 1 ? 'submission' : 'submissions'} to review`
+            : `${count} unread`;
+          return (
+            <span
+              aria-label={label}
+              title={label}
+              className={`absolute right-3 inline-flex items-center justify-center min-w-5 h-5 px-1.5 ${tone} text-white text-[11px] font-bold rounded-full`}
+            >
+              {count > 99 ? '99+' : count}
+            </span>
+          );
+        })()}
       </Link>
     );
   };

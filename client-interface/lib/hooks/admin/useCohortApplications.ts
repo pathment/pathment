@@ -21,6 +21,23 @@ export interface Application {
   level?: string | null;
   assignedAssessmentId?: string | null;
   assessmentScore?: number | null;
+  /** Max points of the applicant's submission + AI's holistic score (list view). */
+  maxScore?: number | null;
+  aiOverall?: number | null;
+  /** Evidence-based placement: the level the rules landed on + the proof. */
+  recommendedLevel?: string | null;
+  levelEvidence?: {
+    /** True when NO criterion could be judged — the criteria don't match what
+     *  this cohort actually asks, so the placement is a fallback not a finding. */
+    evidenceThin?: boolean;
+    judgedCount?: number;
+    criteriaCount?: number;
+    criteria: Record<string, { verdict: boolean | null; quote: string; note: string }>;
+    reason: string;
+    coherence?: string;
+    selfSelected?: string | null;
+    matchesSelfSelected?: boolean;
+  } | null;
   reviewerNotes?: string | null;
   decisionReason?: string | null;
   decidedAt?: string | null;
@@ -44,6 +61,7 @@ export function useCohortApplications(cohortId: string) {
   const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<ApplicationStatus | 'all'>('all');
+  const [passThreshold, setPassThreshold] = useState<number | null>(null);
 
   const fetchCohort = useCallback(async () => {
     try {
@@ -57,15 +75,18 @@ export function useCohortApplications(cohortId: string) {
   const fetchApplications = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await applicationApi.list(cohortId, statusFilter === 'all' ? undefined : statusFilter);
+      // Fetch the WHOLE cohort once; the page filters client-side so every tab
+      // can show a real count and switching filters is instant (no round-trip).
+      const res = await applicationApi.list(cohortId);
       setApplications(res?.data?.applications ?? []);
+      setPassThreshold(res?.data?.passThreshold ?? null);
     } catch {
       toast.error('Failed to load applications');
       setApplications([]);
     } finally {
       setLoading(false);
     }
-  }, [cohortId, statusFilter]);
+  }, [cohortId]);
 
   useEffect(() => { fetchCohort(); }, [fetchCohort]);
   useEffect(() => { fetchApplications(); }, [fetchApplications]);
@@ -122,6 +143,7 @@ export function useCohortApplications(cohortId: string) {
     loading,
     statusFilter,
     setStatusFilter,
+    passThreshold,
     refetch,
     importRows,
     updateApplication,

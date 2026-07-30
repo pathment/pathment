@@ -83,9 +83,22 @@ export interface MenteeDetail {
   skills?: MenteeSkill[];
 }
 
+/** How this mentee was admitted — read from their intake application, so it
+ *  stays accurate and never becomes a stale label on the person. */
+export interface MenteeAdmission {
+  cohortId: string;
+  cohortName: string | null;
+  levelKey: string | null;
+  levelLabel: string | null;
+  recommendedLevelLabel: string | null;
+  assessmentScore: number | null;
+  admittedAt: string | null;
+}
+
 interface UseMenteeProfileReturn {
   mentee: MenteeDetail | null;
   assignedMentor: MenteePerson | null;
+  admission: MenteeAdmission | null;
   coMentors: MenteePerson[];
   currentClan: { id: string; name: string; programId?: string } | null;
   enrollments: MenteeEnrollment[];
@@ -100,6 +113,7 @@ export function useMenteeProfile(): UseMenteeProfileReturn {
   const { id } = useParams<{ id: string }>();
   const [mentee, setMentee] = useState<MenteeDetail | null>(null);
   const [assignedMentor, setAssignedMentor] = useState<MenteePerson | null>(null);
+  const [admission, setAdmission] = useState<MenteeAdmission | null>(null);
   const [coMentors, setCoMentors] = useState<MenteePerson[]>([]);
   const [currentClan, setCurrentClan] = useState<UseMenteeProfileReturn['currentClan']>(null);
   const [enrollments, setEnrollments] = useState<MenteeEnrollment[]>([]);
@@ -117,6 +131,7 @@ export function useMenteeProfile(): UseMenteeProfileReturn {
         data?: {
           mentee?: MenteeDetail;
           assignedMentor?: MenteePerson | null;
+          admission?: MenteeAdmission | null;
           coMentors?: MenteePerson[];
           currentClan?: UseMenteeProfileReturn['currentClan'];
           enrollments?: MenteeEnrollment[];
@@ -127,6 +142,7 @@ export function useMenteeProfile(): UseMenteeProfileReturn {
       const d = response?.data;
       setMentee(d?.mentee ?? null);
       setAssignedMentor(d?.assignedMentor ?? null);
+      setAdmission(d?.admission ?? null);
       setCoMentors(d?.coMentors ?? []);
       setCurrentClan(d?.currentClan ?? null);
       setEnrollments(d?.enrollments ?? []);
@@ -147,6 +163,7 @@ export function useMenteeProfile(): UseMenteeProfileReturn {
 
   return {
     mentee,
+    admission,
     assignedMentor,
     coMentors,
     currentClan,
