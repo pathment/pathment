@@ -32,6 +32,8 @@ import { useConfirm } from '@/lib/context/ConfirmContext';
 import { AttendanceSection } from '@/components/mentor/attendance/AttendanceSection';
 import { ReviewMeetingPanel } from '@/components/mentor/ReviewMeetingPanel';
 import { ReviewScheduleDrawer } from '@/components/mentor/ReviewScheduleDrawer';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { getViewerTimeZone } from '@/lib/utils/datetime';
 
 type Attendance = 'present' | 'absent' | 'excused';
 type EntryStatus = 'pending' | 'reviewed' | 'deferred';
@@ -63,6 +65,7 @@ const TASK_STATUS_META: Record<string, { label: string; cls: string }> = {
   cancelled: { label: 'Cancelled', cls: 'bg-slate-100 text-slate-400' },
 };
 const TASK_STATUS_ORDER = ['revision_needed', 'submitted', 'in_progress', 'assigned', 'not_started', 'completed', 'cancelled'];
+const TASK_STATUS_COLLAPSED_DEFAULT = new Set(['completed', 'cancelled']);
 
 export default function CohortReview() {
   const router = useRouter();
@@ -409,6 +412,26 @@ export default function CohortReview() {
     const r = Number(fb.rating);
     return { note, rating: t.status === 'completed' && Number.isFinite(r) && r > 0 ? r : null };
   };
+
+  const fmtCardDate = (value: string | Date | null | undefined) => {
+    if (!value) return null;
+    const d = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: getViewerTimeZone() });
+  };
+
+  const taskTimeline = (t: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
+    const sub = t.submissions?.[0];
+    return {
+      submitted: fmtCardDate(sub?.submittedAt || t.submittedAt),
+      reviewed: fmtCardDate(sub?.reviewedAt || (t.status === 'completed' ? t.completedAt : null)),
+    };
+  };
+
+  const openTaskGroups = useMemo(
+    () => taskGroups.filter((g) => !TASK_STATUS_COLLAPSED_DEFAULT.has(g.status)).map((g) => g.status),
+    [taskGroups],
+  );
 
   const go = useCallback((delta: number) => {
     selectMentee(Math.max(0, Math.min(cohort.length - 1, idx + delta)));
@@ -942,85 +965,126 @@ export default function CohortReview() {
               ) : dayTasks.length === 0 ? (
                 <p className="text-sm text-slate-500 px-1 py-2">Nothing assigned yet - use Assign to give {mentee!.name.split(' ')[0]} their first task.</p>
               ) : (
-                <div className="space-y-4">
+                <Accordion
+                  key={mentee?.id || 'tasks'}
+                  type="multiple"
+                  defaultValue={openTaskGroups}
+                  className="space-y-1"
+                >
                   {taskGroups.map((g) => {
                     const meta = TASK_STATUS_META[g.status] ?? TASK_STATUS_META.assigned;
+                    const showTimeline = g.status === 'revision_needed' || g.status === 'completed';
                     return (
-                      <div key={g.status}>
-                        <div className="flex items-center gap-2 mb-1.5">
-                          <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{meta.label}</span>
-                          <span className="text-xs text-slate-400">{g.items.length}</span>
-                        </div>
-                        <div className="space-y-1.5">
-                          {g.items.map((t: any) => { /* eslint-disable-line @typescript-eslint/no-explicit-any */
-                            const due = t.dueDate ? new Date(t.dueDate) : null;
-                            const overdue = due && t.status !== 'completed' && due.getTime() < Date.now();
-                            const { note, rating } = reviewOf(t);
-                            const canManage = !['cancelled'].includes(t.status);
-                            const canUnassign = !['submitted', 'completed', 'cancelled'].includes(t.status);
-                            const isEditingDue = editingDue === t.id;
-                            const busy = busyTaskId === t.id;
-                            return (
-                              <div key={t.id} className="p-2.5 rounded-xl border border-slate-200">
-                                <div className="flex items-center gap-3">
-                                  <button type="button" onClick={() => setTaskDetail(t)} className="min-w-0 flex-1 text-left group">
-                                    <p className="text-sm text-slate-900 truncate group-hover:text-brand-600 group-hover:underline">
-                                      {t.roadmapTask?.title || t.title || 'Task'}
-                                      {t.hasOverrides && <span className="ml-1.5 align-middle text-[10px] font-medium text-amber-600">• customized</span>}
-                                    </p>
-                                    <div className="flex items-center gap-2 text-xs text-slate-500 flex-wrap">
-                                      {/* Source: which roadmap, or a custom task. */}
-                                      <span className="inline-flex items-center rounded-full bg-slate-100 text-slate-600 px-1.5 py-0.5 text-[10px] font-medium max-w-[14rem] truncate">
-                                        {t.isCustomTask ? 'Custom' : (t.roadmapName ? `Roadmap · ${t.roadmapName}` : 'Roadmap')}
-                                      </span>
-                                      {(t.points ?? t.pointsBase ?? t.roadmapTask?.pointsBase) != null && <span>{t.points ?? t.pointsBase ?? t.roadmapTask?.pointsBase} pts</span>}
-                                      {t.roadmapTask?.type && <span className="capitalize">{t.roadmapTask.type}</span>}
-                                      {due && <span className={overdue ? 'text-red-600 inline-flex items-center gap-1' : ''}>{overdue && <Clock className="w-3 h-3" />}due {due.toLocaleDateString()}</span>}
-                                      {rating != null && <span className="inline-flex items-center gap-0.5 text-amber-600"><CheckCircle2 className="w-3 h-3" />{rating}★</span>}
-                                      {t.mentorNote && <span className="inline-flex items-center gap-0.5 text-amber-600"><StickyNote className="w-3 h-3" />note</span>}
-                                    </div>
-                                  </button>
-                                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium shrink-0 ${meta.cls}`}>{meta.label}</span>
-                                  {canManage && (
-                                    <div className="flex items-center gap-0.5 shrink-0">
-                                      <button onClick={() => { setEditingDue(isEditingDue ? null : t.id); setDueVal(t.dueDate ? new Date(t.dueDate).toISOString().split('T')[0] : ''); }}
-                                        title="Change deadline" className="p-1 text-slate-400 hover:text-brand-600 disabled:opacity-40" disabled={busy}>
-                                        <CalendarClock className="w-3.5 h-3.5" />
-                                      </button>
-                                      {canUnassign && (
-                                        <button onClick={() => unassignTask(t.id)} title="Unassign task"
-                                          className="p-1 text-slate-400 hover:text-red-500 disabled:opacity-40" disabled={busy}>
-                                          {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                                        </button>
+                      <AccordionItem key={g.status} value={g.status} className="border-0">
+                        <AccordionTrigger className="py-2 hover:no-underline">
+                          <span className="flex items-center gap-2">
+                            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{meta.label}</span>
+                            <span className="text-xs text-slate-400">{g.items.length}</span>
+                          </span>
+                        </AccordionTrigger>
+                        <AccordionContent className="pb-2">
+                          <div className="space-y-1.5">
+                            {g.items.map((t: any) => { /* eslint-disable-line @typescript-eslint/no-explicit-any */
+                              const dueMs = t.dueDate ? new Date(t.dueDate).getTime() : null;
+                              const overdue = dueMs != null && t.status !== 'completed' && dueMs < Date.now();
+                              const { note, rating } = reviewOf(t);
+                              const { submitted, reviewed } = showTimeline ? taskTimeline(t) : { submitted: null, reviewed: null };
+                              const points = t.points ?? t.pointsBase ?? t.roadmapTask?.pointsBase;
+                              const source = t.isCustomTask ? 'Custom' : (t.roadmapName || 'Roadmap');
+                              const typeLabel = t.roadmapTask?.type
+                                ? String(t.roadmapTask.type).charAt(0).toUpperCase() + String(t.roadmapTask.type).slice(1)
+                                : null;
+                              const dueLabel = fmtCardDate(t.dueDate);
+                              const canManage = !['cancelled'].includes(t.status);
+                              const canUnassign = !['submitted', 'completed', 'cancelled'].includes(t.status);
+                              const isEditingDue = editingDue === t.id;
+                              const busy = busyTaskId === t.id;
+                              return (
+                                <div key={t.id} className="p-3 rounded-xl border border-slate-200">
+                                  <div className="flex items-center gap-2.5">
+                                    <button type="button" onClick={() => setTaskDetail(t)} className="min-w-0 flex-1 text-left group">
+                                      <p className="text-sm font-medium text-slate-900 truncate group-hover:text-brand-600 group-hover:underline">
+                                        {t.roadmapTask?.title || t.title || 'Task'}
+                                        {t.hasOverrides && <span className="ml-1.5 align-middle text-[10px] font-medium text-amber-600">• customized</span>}
+                                      </p>
+                                      <p className="mt-0.5 text-xs text-slate-500 truncate">
+                                        {[source, typeLabel, points != null ? `${points} pts` : null].filter(Boolean).join(' · ')}
+                                        {rating != null && <span className="ml-2 inline-flex items-center gap-0.5 text-amber-600"><CheckCircle2 className="w-3 h-3" />{rating}★</span>}
+                                        {t.mentorNote && <span className="ml-2 inline-flex items-center gap-0.5 text-amber-600"><StickyNote className="w-3 h-3" />note</span>}
+                                      </p>
+                                    </button>
+                                    <div className="hidden sm:flex items-start gap-5 shrink-0 text-right">
+                                      {dueLabel && (
+                                        <div className="min-w-[3.5rem]">
+                                          <p className="text-[10px] leading-none text-slate-400">Due</p>
+                                          <p className={`mt-1 text-xs leading-none tabular-nums ${overdue ? 'text-red-600' : 'text-slate-700'}`}>
+                                            {overdue && <Clock className="inline-block w-2.5 h-2.5 mr-0.5 align-[-1px]" aria-hidden />}
+                                            {dueLabel}
+                                          </p>
+                                        </div>
+                                      )}
+                                      {showTimeline && (
+                                        <>
+                                          <div className="min-w-[3.5rem]">
+                                            <p className="text-[10px] leading-none text-slate-400">Submitted</p>
+                                            <p className="mt-1 text-xs leading-none text-slate-700 tabular-nums">{submitted || '—'}</p>
+                                          </div>
+                                          <div className="min-w-[3.5rem]">
+                                            <p className="text-[10px] leading-none text-slate-400">Reviewed</p>
+                                            <p className="mt-1 text-xs leading-none text-slate-700 tabular-nums">{reviewed || '—'}</p>
+                                          </div>
+                                        </>
                                       )}
                                     </div>
+                                    <div className="flex items-center gap-0.5 shrink-0">
+                                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${meta.cls}`}>{meta.label}</span>
+                                      {canManage && (
+                                        <>
+                                          <button onClick={() => { setEditingDue(isEditingDue ? null : t.id); setDueVal(t.dueDate ? new Date(t.dueDate).toISOString().split('T')[0] : ''); }}
+                                            title="Change deadline" className="p-1 text-slate-400 hover:text-brand-600 disabled:opacity-40" disabled={busy}>
+                                            <CalendarClock className="w-3.5 h-3.5" />
+                                          </button>
+                                          {canUnassign && (
+                                            <button onClick={() => unassignTask(t.id)} title="Unassign task"
+                                              className="p-1 text-slate-400 hover:text-red-500 disabled:opacity-40" disabled={busy}>
+                                              {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                                            </button>
+                                          )}
+                                        </>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="sm:hidden mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
+                                    {dueLabel && <span className={overdue ? 'text-red-600' : ''}>Due {dueLabel}</span>}
+                                    {showTimeline && <span>Submitted {submitted || '—'}</span>}
+                                    {showTimeline && <span>Reviewed {reviewed || '—'}</span>}
+                                  </div>
+                                  {isEditingDue && (
+                                    <div className="mt-2 flex items-center gap-2">
+                                      <input type="date" value={dueVal} onChange={(e) => setDueVal(e.target.value)}
+                                        className="border border-slate-300 rounded-lg px-2 py-1 text-xs bg-card focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                                      <button onClick={() => saveDue(t.id)} disabled={busy || !dueVal}
+                                        className="px-2.5 py-1 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-xs font-medium inline-flex items-center gap-1 disabled:opacity-50">
+                                        {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : null}Save
+                                      </button>
+                                      <button onClick={() => { setEditingDue(null); setDueVal(''); }} className="p-1 text-slate-400 hover:text-slate-700"><X className="w-3.5 h-3.5" /></button>
+                                    </div>
+                                  )}
+                                  {note && (
+                                    <p className={`mt-1.5 text-xs rounded-lg px-2.5 py-1.5 ${t.status === 'revision_needed' ? 'bg-amber-50 text-amber-800 dark:bg-amber-500/10 dark:text-amber-300' : 'text-slate-500'}`}>
+                                      {t.status === 'revision_needed' && <span className="font-medium">Your note: </span>}“{note}”
+                                      {t.status === 'revision_needed' && <span className="text-amber-600/80"> · awaiting resubmission</span>}
+                                    </p>
                                   )}
                                 </div>
-                                {isEditingDue && (
-                                  <div className="mt-2 flex items-center gap-2">
-                                    <input type="date" value={dueVal} onChange={(e) => setDueVal(e.target.value)}
-                                      className="border border-slate-300 rounded-lg px-2 py-1 text-xs bg-card focus:outline-none focus:ring-2 focus:ring-brand-500" />
-                                    <button onClick={() => saveDue(t.id)} disabled={busy || !dueVal}
-                                      className="px-2.5 py-1 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-xs font-medium inline-flex items-center gap-1 disabled:opacity-50">
-                                      {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : null}Save
-                                    </button>
-                                    <button onClick={() => { setEditingDue(null); setDueVal(''); }} className="p-1 text-slate-400 hover:text-slate-700"><X className="w-3.5 h-3.5" /></button>
-                                  </div>
-                                )}
-                                {note && (
-                                  <p className={`mt-1.5 text-xs rounded-lg px-2.5 py-1.5 ${t.status === 'revision_needed' ? 'bg-amber-50 text-amber-800 dark:bg-amber-500/10 dark:text-amber-300' : 'text-slate-500'}`}>
-                                    {t.status === 'revision_needed' && <span className="font-medium">Your note: </span>}“{note}”
-                                    {t.status === 'revision_needed' && <span className="text-amber-600/80"> · awaiting resubmission</span>}
-                                  </p>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
+                              );
+                            })}
+                          </div>
+                        </AccordionContent>
+                      </AccordionItem>
                     );
                   })}
-                </div>
+                </Accordion>
               )}
             </div>
           </div>
