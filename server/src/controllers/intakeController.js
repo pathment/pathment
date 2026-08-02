@@ -233,6 +233,16 @@ const bulkAcceptApplications = catchAsync(async (req, res) => {
   res.status(200).json(successResponse('Invites sent', result));
 });
 
+const bulkRejectApplications = catchAsync(async (req, res) => {
+  const result = await applicationService.bulkReject(
+    req.params.id,
+    Array.isArray(req.body?.applicationIds) ? req.body.applicationIds : [],
+    { reason: req.body?.reason },
+    req.user.id
+  );
+  res.status(200).json(successResponse('Applications rejected', result));
+});
+
 const importApplications = catchAsync(async (req, res) => {
   const { rows, allowExceed } = req.body;
   const report = await applicationService.importApplications(req.params.id, rows, req.user.id, { allowExceed: !!allowExceed });
@@ -303,6 +313,7 @@ module.exports = {
   updateApplication,
   acceptApplication,
   bulkAcceptApplications,
+  bulkRejectApplications,
   rejectApplication,
   previewClanAssignment,
   commitClanAssignment,

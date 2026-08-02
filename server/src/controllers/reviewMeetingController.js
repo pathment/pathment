@@ -23,6 +23,10 @@ const setAttendanceTracking = catchAsync(async (req, res) => {
   const result = await svc.setAttendanceTracking(req.user.id, req.params.id, req.body?.enabled === true);
   res.status(200).json(successResponse('Attendance tracking updated', result));
 });
+const setPolls = catchAsync(async (req, res) => {
+  const result = await svc.setPolls(req.user.id, req.params.id, req.body?.enabled === true);
+  res.status(200).json(successResponse('Polls updated', result));
+});
 const hostView = catchAsync(async (req, res) => {
   const result = await svc.hostView(req.user.id, req.params.id);
   res.status(200).json(successResponse('Meeting view', result));
@@ -53,7 +57,7 @@ const active = catchAsync(async (req, res) => {
   res.status(200).json(successResponse('Active review', { meeting }));
 });
 const join = catchAsync(async (req, res) => {
-  const result = await svc.selfPresent(req.user.id, req.params.id);
+  const result = await svc.selfPresent(req.user.id, req.params.id, { talkSeconds: req.body?.talkSeconds });
   res.status(200).json(successResponse('Joined', result));
 });
 const leave = catchAsync(async (req, res) => {
@@ -61,4 +65,4 @@ const leave = catchAsync(async (req, res) => {
   res.status(200).json(successResponse('Left', result));
 });
 
-module.exports = { config, start, end, setAttendanceTracking, hostView, markPresent, recordTalk, proposeContribution, finalizeContribution, active, join, leave };
+module.exports = { config, start, end, setAttendanceTracking, setPolls, hostView, markPresent, recordTalk, proposeContribution, finalizeContribution, active, join, leave };

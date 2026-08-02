@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import {
-  BookOpen, Calendar, CalendarCheck, CheckCircle2, Clock, Mail, MessageSquare, Plus, PauseCircle, PlayCircle,
+  BookOpen, Calendar, CalendarCheck, CheckCircle2, Clock, Mail, Phone, MessageSquare, Plus, PauseCircle, PlayCircle,
   Target, TrendingUp, TrendingDown, Minus, Flag, Check, User, Loader2,
   Star, ThumbsUp, ThumbsDown, AlertCircle, ChevronLeft, Trash2,
 } from 'lucide-react';
@@ -153,6 +153,7 @@ export default function MenteeDetail() {
 
   // Full cohort-review attendance record for this mentee (every meeting they
   // were marked on, newest first) — same data as the cohort-review drawer.
+  const [showPhone, setShowPhone] = useState(false);
   const [attOpen, setAttOpen] = useState(false);
   const [attLoading, setAttLoading] = useState(false);
   const [attHistory, setAttHistory] = useState<{ sessionId: string; date: string | null; status: 'present' | 'absent' | 'excused'; title: string | null }[]>([]);
@@ -277,6 +278,19 @@ export default function MenteeDetail() {
                 <span>Wk {week}/{totalWeeks || '-'}</span>
                 <span className="text-slate-300">·</span>
                 <span className="inline-flex items-center gap-1"><Mail className="w-3.5 h-3.5" />{mentee?.email}</span>
+                {(mentee as { phone?: string | null })?.phone && (
+                  <>
+                    <span className="text-slate-300">·</span>
+                    <span className="inline-flex items-center gap-1">
+                      <Phone className="w-3.5 h-3.5" />
+                      {showPhone ? (
+                        <a href={`tel:${(mentee as { phone?: string }).phone}`} className="text-slate-700 hover:text-brand-600">{(mentee as { phone?: string }).phone}</a>
+                      ) : (
+                        <button onClick={() => setShowPhone(true)} className="text-brand-600 hover:text-brand-700 font-medium">View phone number</button>
+                      )}
+                    </span>
+                  </>
+                )}
               </div>
             </div>
           </div>

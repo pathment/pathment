@@ -268,9 +268,9 @@ class MatchingService {
       include: [
         { model: models.User, as: 'mentor', attributes: ['id', 'firstName', 'lastName', 'email'] },
         { 
-          model: models.User, 
-          as: 'mentee', 
-          attributes: ['id', 'firstName', 'lastName', 'email'],
+          model: models.User,
+          as: 'mentee',
+          attributes: ['id', 'firstName', 'lastName', 'email', 'phone', 'profilePictureUrl'],
           include: [{ model: models.MenteeProfile, as: 'menteeProfile' }]
         },
         {

@@ -20,6 +20,8 @@ import { AssessmentDrawer } from '@/components/admin/AssessmentDrawer';
 import { IntakeScoreToolbar } from '@/components/admin/IntakeScoreToolbar';
 import { LevelCriteriaEditor } from '@/components/admin/LevelCriteriaEditor';
 import { Drawer } from '@/components/shared/Drawer';
+import RichTextEditor from '@/components/shared/RichTextEditor';
+import { RichContent } from '@/components/shared/RichContent';
 import { getBrowserTimeZone } from '@/lib/utils/datetime';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import type { IntakeFormField } from '@/lib/config/intakeFields';
@@ -254,6 +256,8 @@ function IntakePanel({ cohortId, cohort, onChange }: { cohortId: string; cohort:
   const [assessments, setAssessments] = useState<Assessment[]>([]);
   const [otherCohorts, setOtherCohorts] = useState<{ id: string; name: string }[]>([]);
   const [required, setRequired] = useState<boolean>(Boolean(cohort?.assessmentRequired));
+  // Applicant-facing intro, shown at the top of the public apply form.
+  const [description, setDescription] = useState<string>(cohort?.description || '');
   const [seats, setSeats] = useState<string>(cohort?.capacity != null ? String(cohort.capacity) : '');
   const [maxApps, setMaxApps] = useState<string>(cohort?.maxApplications != null ? String(cohort.maxApplications) : '');
   const [opensDate, setOpensDate] = useState<string>(splitLocal(cohort?.applyOpensAt).date);
@@ -295,6 +299,7 @@ function IntakePanel({ cohortId, cohort, onChange }: { cohortId: string; cohort:
   }, [cohortId]);
   useEffect(() => {
     setRequired(Boolean(cohort?.assessmentRequired));
+    setDescription(cohort?.description || '');
     setSeats(cohort?.capacity != null ? String(cohort.capacity) : '');
     setMaxApps(cohort?.maxApplications != null ? String(cohort.maxApplications) : '');
     setOpensDate(splitLocal(cohort?.applyOpensAt).date); setOpensTime(splitLocal(cohort?.applyOpensAt).time);
@@ -302,7 +307,7 @@ function IntakePanel({ cohortId, cohort, onChange }: { cohortId: string; cohort:
     setAssessDeadlineDate(splitLocal(cohort?.assessmentDeadline).date); setAssessDeadlineTime(splitLocal(cohort?.assessmentDeadline).time);
     setLevelLabels((cohort?.levels || []).map((l: any) => l.label));
     setFormFields(cohort?.intakeFormSchema || []);
-  }, [cohort?.assessmentRequired, cohort?.capacity, cohort?.maxApplications, cohort?.applyOpensAt, cohort?.applyClosesAt, cohort?.assessmentDeadline, cohort?.levels, cohort?.intakeFormSchema]);
+  }, [cohort?.assessmentRequired, cohort?.description, cohort?.capacity, cohort?.maxApplications, cohort?.applyOpensAt, cohort?.applyClosesAt, cohort?.assessmentDeadline, cohort?.levels, cohort?.intakeFormSchema]);
 
   const enabled = Boolean(cohort?.publicEnabled && cohort?.publicSlug);
   const applyUrl = cohort?.publicSlug && typeof window !== 'undefined' ? `${window.location.origin}/apply/${cohort.publicSlug}` : '';
@@ -333,6 +338,9 @@ function IntakePanel({ cohortId, cohort, onChange }: { cohortId: string; cohort:
     setBusy(true);
     try {
       await cohortApi.update(cohortId, {
+        // Empty rich-text still emits markup like "<p></p>" — store null when there's
+        // no actual text so the apply form doesn't render a blank block.
+        description: description.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim() ? description : null,
         capacity: seats === '' ? null : Number(seats),
         maxApplications: maxApps === '' ? null : Number(maxApps),
         timezone: tz,
@@ -398,6 +406,19 @@ function IntakePanel({ cohortId, cohort, onChange }: { cohortId: string; cohort:
       <div className="flex items-center gap-2">
         <ClipboardCheck className="w-4 h-4 text-brand-600" />
         <h2 className="font-medium text-slate-900">Admissions settings</h2>
+      </div>
+
+      {/* Applicant-facing description — rich text, shown at the top of the apply form */}
+      <div>
+        <label className="block text-xs font-medium text-slate-500 mb-1">
+          Description <span className="text-slate-400 font-normal">— shown to applicants on the apply form</span>
+        </label>
+        <RichTextEditor
+          content={description}
+          onChange={setDescription}
+          placeholder="What is this intake about? Who is it for, what will they get, and any expectations. Applicants see this at the top of the form."
+          minHeight="120px"
+        />
       </div>
 
       {/* Capacity (the application window itself is set below) */}
@@ -600,6 +621,7 @@ function IntakePanel({ cohortId, cohort, onChange }: { cohortId: string; cohort:
         subtitle="Exactly what an applicant sees on the apply page."
       >
         <ApplyFormPreview
+          description={description}
           fields={formFields}
           levels={levelOptions}
           hasAssessment={pool.some((p) => p.assessmentId)}
@@ -611,7 +633,8 @@ function IntakePanel({ cohortId, cohort, onChange }: { cohortId: string; cohort:
 }
 
 /** Read-only mock of exactly what an applicant will see on the apply page. */
-function ApplyFormPreview({ fields, levels, hasAssessment, required }: { fields: IntakeFormField[]; levels: { key: string; label: string }[]; hasAssessment: boolean; required: boolean }) {
+function ApplyFormPreview({ description, fields, levels, hasAssessment, required }: { description?: string; fields: IntakeFormField[]; levels: { key: string; label: string }[]; hasAssessment: boolean; required: boolean }) {
+  const hasDesc = !!description && !!description.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
   const Row = ({ label, req, children }: { label: string; req?: boolean; children: React.ReactNode }) => (
     <div>
       <label className="block text-xs font-medium text-slate-600 mb-1">{label}{req && <span className="text-rose-500"> *</span>}</label>
@@ -623,6 +646,7 @@ function ApplyFormPreview({ fields, levels, hasAssessment, required }: { fields:
   return (
     <div className="mt-4 rounded-xl border border-slate-200 bg-canvas p-4 space-y-3">
       <p className="text-[11px] uppercase tracking-wide text-slate-400">Applicant sees</p>
+      {hasDesc && <RichContent html={description} className="text-slate-600 border-b border-slate-100 pb-3" />}
       <div className="grid grid-cols-2 gap-3">
         <Row label="First name"><Box /></Row>
         <Row label="Last name"><Box /></Row>

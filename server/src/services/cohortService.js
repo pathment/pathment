@@ -264,7 +264,7 @@ class CohortService {
       lastAttendance = preloads.attendance[menteeId] || null;
     } else {
       mentee = await models.User.findByPk(menteeId, {
-        attributes: ['id', 'firstName', 'lastName', 'email', 'profilePictureUrl'],
+        attributes: ['id', 'firstName', 'lastName', 'email', 'phone', 'profilePictureUrl'],
         include: [
           { model: models.MenteeProfile, as: 'menteeProfile', attributes: ['lastActivityDate', 'currentOccupation'] },
           {
@@ -337,6 +337,7 @@ class CohortService {
       name: `${mentee.firstName} ${mentee.lastName}`.trim(),
       avatar: initialsOf(mentee.firstName, mentee.lastName),
       email: mentee.email,
+      phone: mentee.phone || null,
       profilePictureUrl: mentee.profilePictureUrl || null,
       program: enrollment?.program?.name || '-',
       level: '-',

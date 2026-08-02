@@ -57,6 +57,7 @@ router.use('/auth', authRoutes);
 
 // Profile and skills routes
 router.use('/profile', profileRoutes);
+router.use('/email', require('./emailPublic')); // public: one-click unsubscribe
 router.use('/skills', skillRoutes);
 
 // Admin routes (protected)

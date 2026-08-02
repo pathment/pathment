@@ -9,10 +9,15 @@ import { ComingSoon } from '@/components/shared/ComingSoon';
 
 interface RosterRow { menteeId: string; name: string; attendance: string | null; autoPresent: boolean; talkSeconds: number; contributionPoints: number }
 interface ScoreRow { menteeId: string; name: string; talkSeconds: number; proposed: boolean; alreadyAwarded: boolean }
-interface Meeting { sessionId: string; domain: string; room: string; url: string; displayName: string | null; avatarUrl: string | null; externalUrl: string | null; startedAt: string | null; endedAt: string | null }
+interface Meeting { sessionId: string; domain: string; room: string; url: string; displayName: string | null; avatarUrl: string | null; externalUrl: string | null; startedAt: string | null; endedAt: string | null; pollsEnabled?: boolean }
 
 // Talk time: seconds under a minute (the contribution bar is 20s), minutes above.
 const fmtTalk = (s: number) => (s < 60 ? `${s}s` : `${Math.round(s / 60)}m`);
+
+// Max seconds credited per continuous "dominant speaker" span. Jitsi keeps the
+// last speaker "dominant" through silence, so an uncapped span counts that
+// silence — cap it so a brief utterance can't read as minutes.
+const SPEAK_SPAN_CAP = 15;
 
 /**
  * Host (mentor) side of the live cohort review. Starts the Jitsi room, embeds
@@ -20,11 +25,17 @@ const fmtTalk = (s: number) => (s < 60 ? `${s}s` : `${Math.round(s / 60)}m`);
  * signal, and on "End & score" awards the contribution point to the confirmed
  * speakers. The mentor's page is the source of truth for attendance + talk time.
  */
-export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession }: {
+export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession, onAttendanceSync, onEnded }: {
   sessionId: string;
   isDraft?: boolean;
   /** Creates today's session on demand, so "Start meeting" works from a blank page. */
   ensureSession?: () => Promise<{ id: string } | null>;
+  /** Push live auto-attendance up to the review page so its attendance strip and
+   *  present/absent/excused counts reflect who joined the call (server truth). */
+  onAttendanceSync?: (rows: { menteeId: string; attendance: string | null }[]) => void;
+  /** Fired after the call ends (which now auto-finishes the session server-side) so
+   *  the page can reload and show the "Finished" state. */
+  onEnded?: () => void;
 }) {
   // The session id can arrive late (created by Start), so track it locally.
   const [liveSessionId, setLiveSessionId] = useState(sessionId);
@@ -33,8 +44,14 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession }: {
   const [roster, setRoster] = useState<RosterRow[]>([]);
   const [live, setLive] = useState(false);
   const [loading, setLoading] = useState(true);
-  // Off = a general call (no attendance). On = joining auto-marks mentees present.
-  const [attendanceTracking, setAttendanceTracking] = useState(false);
+  // On by default for reviews (joining auto-marks present); the server is the
+  // source of truth and overwrites this on the first refresh. Off = general call.
+  const [attendanceTracking, setAttendanceTracking] = useState(true);
+  // Private 1:1 chat — OFF by default; the host toggles it on (remounts Jitsi).
+  const [privateChat, setPrivateChat] = useState(false);
+  // In-call polls — OFF by default; server (session.pollsEnabled) is the source of
+  // truth and overwrites this on refresh. Propagated to mentees so they can vote.
+  const [polls, setPolls] = useState(false);
   // The whole live-video feature is behind a server flag (self-hosted Jitsi not
   // wired in prod yet). When the server reports it off, render nothing — unless
   // it also reports `comingSoon`, in which case we show an inviting teaser.
@@ -62,6 +79,7 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession }: {
       setRoster(res?.data?.roster ?? []);
       setLive(!!res?.data?.live);
       setAttendanceTracking(!!res?.data?.attendanceTracking);
+      setPolls(!!res?.data?.meeting?.pollsEnabled);
     } catch { /* keep last */ }
     finally { setLoading(false); }
   }, [liveSessionId]);
@@ -95,6 +113,15 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession }: {
     const t = setInterval(refresh, 8_000);
     return () => clearInterval(t);
   }, [live, refresh]);
+  // Mirror the roster's attendance (server truth, incl. live auto-present) up to
+  // the review page, so its strip + present/absent/excused counts stay in sync
+  // instead of showing the stale once-loaded session. Only rows with a mark set
+  // are pushed — an unmarked mentee shouldn't clobber a page-side pending state.
+  useEffect(() => {
+    if (!onAttendanceSync || !roster.length) return;
+    const marked = roster.filter((r) => r.attendance).map((r) => ({ menteeId: r.menteeId, attendance: r.attendance }));
+    if (marked.length) onAttendanceSync(marked);
+  }, [roster, onAttendanceSync]);
 
   // Map a Jitsi participant name → a roster menteeId (best-effort, by name).
   const menteeIdForName = useCallback((name?: string) => {
@@ -104,16 +131,16 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession }: {
   }, [roster]);
 
   const flushTalk = useCallback(async () => {
-    // Close the current speaking span.
-    if (speakingId.current) {
-      const add = Math.round((Date.now() - speakingSince.current) / 1000);
-      talkById.current.set(speakingId.current, (talkById.current.get(speakingId.current) || 0) + Math.max(0, add));
-      speakingSince.current = Date.now();
-    }
+    // Report closed spans + the OPEN span (capped) without closing it, so the
+    // per-span cap isn't defeated by the periodic flush re-opening the span.
     const items: { menteeId: string; seconds: number }[] = [];
     for (const [id, secs] of talkById.current.entries()) {
+      let total = secs;
+      if (speakingId.current === id && speakingSince.current) {
+        total += Math.min(SPEAK_SPAN_CAP, (Date.now() - speakingSince.current) / 1000);
+      }
       const menteeId = menteeIdForName(nameById.current.get(id));
-      if (menteeId) items.push({ menteeId, seconds: secs });
+      if (menteeId) items.push({ menteeId, seconds: Math.round(total) });
     }
     if (items.length) { try { await mentorApi.recordReviewTalkTime(liveSessionId, items); } catch { /* retry next flush */ } }
   }, [liveSessionId, menteeIdForName]);
@@ -156,20 +183,23 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession }: {
     setBusy(true);
     try {
       await flushTalk();
-      await mentorApi.endReviewMeeting(liveSessionId);
+      await mentorApi.endReviewMeeting(liveSessionId); // also finishes the session server-side
       const res = await mentorApi.proposeReviewContribution(liveSessionId) as { data?: { proposed: ScoreRow[] } };
       setLive(false);
       setScoring(res?.data?.proposed ?? []);
       await refresh();
+      onEnded?.(); // let the page reload → header shows "Finished"
     } catch { toast.error('Could not end the meeting'); endingRef.current = false; }
     finally { setBusy(false); }
-  }, [flushTalk, liveSessionId, refresh]);
+  }, [flushTalk, liveSessionId, refresh, onEnded]);
 
   const onDominant = (id: string) => {
-    if (speakingId.current && speakingId.current !== id) {
-      const add = Math.round((Date.now() - speakingSince.current) / 1000);
+    // Close the previous span (capped) and open the new one.
+    if (speakingId.current && speakingId.current !== id && speakingSince.current) {
+      const add = Math.min(SPEAK_SPAN_CAP, (Date.now() - speakingSince.current) / 1000);
       talkById.current.set(speakingId.current, (talkById.current.get(speakingId.current) || 0) + Math.max(0, add));
     }
+    if (!talkById.current.has(id)) talkById.current.set(id, 0);
     speakingId.current = id;
     speakingSince.current = Date.now();
   };
@@ -179,6 +209,11 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession }: {
     const next = !attendanceTracking;
     setAttendanceTracking(next); // optimistic
     try { await mentorApi.setReviewAttendanceTracking(liveSessionId, next); } catch { setAttendanceTracking(!next); toast.error('Could not update attendance tracking'); }
+  };
+  const togglePolls = async () => {
+    const next = !polls;
+    setPolls(next); // optimistic (remounts Jitsi with polls on/off for everyone)
+    try { await mentorApi.setReviewPolls(liveSessionId, next); } catch { setPolls(!next); toast.error('Could not update polls'); }
   };
 
   const togglePresent = async (r: RosterRow) => {
@@ -240,10 +275,11 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession }: {
 
       {live && meeting && (
         <div className="grid gap-3 lg:grid-cols-[1fr_240px]">
-          <div className="h-[440px]">
+          <div className="h-[68vh] min-h-[520px]">
             <JitsiRoom
               key={videoKey}
               domain={meeting.domain} room={meeting.room} displayName={meeting.displayName} avatarUrl={meeting.avatarUrl}
+              role="host" privateChat={privateChat} polls={polls}
               onParticipantJoined={onParticipant} onDominantSpeaker={onDominant}
               onReadyToClose={endAndScore}
               onError={(m) => toast.error(m)}
@@ -254,7 +290,25 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession }: {
               <span className="text-xs font-medium text-slate-700" title="When on, mentees who join are marked present. Off = a general call.">Track attendance</span>
               <button type="button" role="switch" aria-checked={attendanceTracking} onClick={toggleAttendance}
                 className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${attendanceTracking ? 'bg-brand-600' : 'bg-slate-300'}`}>
-                <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${attendanceTracking ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                <span className={`absolute left-0 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${attendanceTracking ? 'translate-x-4' : 'translate-x-0.5'}`} />
+              </button>
+            </div>
+            {/* Private 1:1 chat is OFF by default (mentees can't DM anyone); the
+                mentor flips it on when they want to message privately. */}
+            <div className="mb-2 flex items-center justify-between gap-2 rounded-lg border border-slate-200 px-2.5 py-1.5">
+              <span className="text-xs font-medium text-slate-700" title="Off = no private 1:1 messages. On lets you privately message a participant.">Private chat</span>
+              <button type="button" role="switch" aria-checked={privateChat} onClick={() => setPrivateChat((v) => !v)}
+                className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${privateChat ? 'bg-brand-600' : 'bg-slate-300'}`}>
+                <span className={`absolute left-0 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${privateChat ? 'translate-x-4' : 'translate-x-0.5'}`} />
+              </button>
+            </div>
+            {/* Polls — OFF by default; the mentor turns it on to create polls. When
+                on, mentees can vote/see results too (propagated). */}
+            <div className="mb-2 flex items-center justify-between gap-2 rounded-lg border border-slate-200 px-2.5 py-1.5">
+              <span className="text-xs font-medium text-slate-700" title="On lets you create in-call polls; mentees can vote and see results.">Polls</span>
+              <button type="button" role="switch" aria-checked={polls} onClick={togglePolls}
+                className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${polls ? 'bg-brand-600' : 'bg-slate-300'}`}>
+                <span className={`absolute left-0 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${polls ? 'translate-x-4' : 'translate-x-0.5'}`} />
               </button>
             </div>
             <p className="text-xs text-slate-500 mb-2">{presentCount}/{roster.length} present</p>

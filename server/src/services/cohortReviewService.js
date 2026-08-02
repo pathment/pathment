@@ -143,9 +143,24 @@ class CohortReviewService {
   /** Full history (newest first) for a clan, with attendance/progress counts. */
   async listSessions(mentorId, clanId) {
     const resolvedClanId = await this._resolveClanId(mentorId, clanId);
-    const sessions = await models.CohortReviewSession.findAll({
+    const all = await models.CohortReviewSession.findAll({
       where: { clanId: resolvedClanId },
       order: [['session_date', 'DESC'], ['created_at', 'DESC']],
+    });
+    // History = PAST reviews. A recurring schedule pre-creates the next couple
+    // weeks of sessions (14-day horizon), so without this the history is polluted
+    // with future placeholder dates (e.g. "Aug 11" while it's Jul 29). Drop any
+    // future-dated session that never actually ran (no live call, no entries yet).
+    const tz = await this._mentorTz(mentorId);
+    const today = todayInZone(tz); // 'YYYY-MM-DD' in the mentor's zone
+    const preFilterIds = all.map((s) => s.id);
+    const anyEntries = preFilterIds.length
+      ? new Set((await models.CohortReviewEntry.findAll({ where: { sessionId: { [Op.in]: preFilterIds } }, attributes: ['sessionId'], raw: true })).map((e) => e.sessionId))
+      : new Set();
+    const sessions = all.filter((s) => {
+      const isFuture = String(s.sessionDate) > today;
+      const everRan = !!s.meetingStartedAt || !!s.finishedAt || anyEntries.has(s.id);
+      return !isFuture || everRan; // keep past/today always; keep future only if it actually ran
     });
     const ids = sessions.map((s) => s.id);
     const entries = ids.length

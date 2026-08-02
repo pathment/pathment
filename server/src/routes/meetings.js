@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const schedulingController = require('../controllers/schedulingController');
+const adminMeetingController = require('../controllers/adminMeetingController');
 const { authenticate, authorize } = require('../middlewares/auth');
 
 /**
@@ -17,6 +18,11 @@ router.delete('/availability/:id', authenticate, authorize(['mentor', 'admin']),
 
 // Open slots for a given mentor (mentee browsing to book).
 router.get('/availability', authenticate, schedulingController.listOpenForMentor);
+
+// Admin-hosted live meetings the current user is in the audience for.
+// Declared before the generic '/' and ':id' handlers so they aren't shadowed.
+router.get('/live', authenticate, adminMeetingController.live);
+router.get('/admin/:id/join', authenticate, adminMeetingController.join);
 
 // Booking + meetings.
 router.get('/bookable', authenticate, schedulingController.getBookable);

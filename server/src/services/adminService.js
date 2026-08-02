@@ -146,10 +146,19 @@ class AdminService {
     const clientBaseUrl = process.env.CLIENT_URL || 'http://localhost:3003';
     const inviteUrl = `${clientBaseUrl.replace(/\/$/, '')}/register?invite=${encodeURIComponent(rawToken)}`;
 
+    // A mentee placed in a clan gets that clan's WhatsApp group link in the email
+    // so they can join it (WhatsApp can't be auto-joined via API).
+    let whatsappLink = null;
+    if (placement.clanId) {
+      const clan = await models.Clan.findByPk(placement.clanId, { attributes: ['whatsappGroupLink'] });
+      whatsappLink = clan?.whatsappGroupLink || null;
+    }
+
     const emailDelivery = await notificationOrchestrator.sendRegistrationInviteEmail({
       email: invite.email,
       role: invite.role,
-      inviteUrl
+      inviteUrl,
+      whatsappLink
     });
 
     if (!emailDelivery?.queued && !emailDelivery?.sent && !emailDelivery?.deduped) {

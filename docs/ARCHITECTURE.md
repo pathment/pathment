@@ -261,4 +261,5 @@ Full details, env var reference, and troubleshooting live in the root
 | Understand intake/registration | `services/applicationService.js`, `cohortIntakeService.js`, `authService.js` |
 | Understand tasks/progress | `services/taskService.js`, `submissionService.js` |
 | Understand real-time | `server/src/socket/index.js`, `client-interface/components/shared/messages/` |
+| Understand cohort-review **live video** (Jitsi) | [docs/COHORT-REVIEW-VIDEO.md](./COHORT-REVIEW-VIDEO.md) — self-hosted Jitsi + attendance/talk-time flows, all files |
 | API reference | [server/docs/API_DOCUMENTATION.md](../server/docs/API_DOCUMENTATION.md) |

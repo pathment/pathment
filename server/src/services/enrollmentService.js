@@ -59,7 +59,7 @@ class EnrollmentService {
         {
           model: models.User,
           as: 'mentee',
-          attributes: ['id', 'firstName', 'lastName', 'email', 'profilePictureUrl'],
+          attributes: ['id', 'firstName', 'lastName', 'email', 'phone', 'profilePictureUrl'],
           include: [{
             model: models.MenteeProfile,
             as: 'menteeProfile',
@@ -95,17 +95,26 @@ class EnrollmentService {
     });
 
     // Attach each mentee's clan (program-aware) without a JOIN fan-out: batch
-    // their active mentee memberships and map back onto the page's rows.
+    // their active mentee memberships and map back onto the page's rows. Include
+    // the clan's LEAD MENTOR so the overview can show who mentors each mentee —
+    // in this platform mentors are assigned via the clan, not a 1:1 match, so the
+    // direct-match `mentor` is usually empty (was showing "Not assigned").
     const menteeIds = [...new Set(rows.map((r) => r.menteeId))];
     if (menteeIds.length) {
       const memberships = await models.ClanMembership.findAll({
         where: { userId: { [Op.in]: menteeIds }, role: 'mentee', status: 'active' },
-        include: [{ model: models.Clan, as: 'clan', attributes: ['id', 'name', 'programId'] }]
+        include: [{
+          model: models.Clan, as: 'clan', attributes: ['id', 'name', 'programId'],
+          include: [{ model: models.User, as: 'leadMentor', attributes: ['id', 'firstName', 'lastName', 'email', 'profilePictureUrl'] }],
+        }]
       });
       rows.forEach((r) => {
         const forUser = memberships.filter((m) => m.userId === r.menteeId && m.clan);
         const clan = forUser.find((m) => m.clan.programId === r.programId)?.clan || forUser[0]?.clan || null;
-        r.setDataValue('clan', clan ? { id: clan.id, name: clan.name } : null);
+        const lead = clan?.leadMentor
+          ? { id: clan.leadMentor.id, firstName: clan.leadMentor.firstName, lastName: clan.leadMentor.lastName, email: clan.leadMentor.email, profilePictureUrl: clan.leadMentor.profilePictureUrl }
+          : null;
+        r.setDataValue('clan', clan ? { id: clan.id, name: clan.name, leadMentor: lead } : null);
       });
     }
 

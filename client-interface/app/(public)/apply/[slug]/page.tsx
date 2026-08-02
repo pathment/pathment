@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { publicApi, type ApplyInfo } from '@/lib/services/public-api';
 import { validateIntakeValue } from '@/lib/config/intakeFields';
 import { IntakeFormFields } from '@/components/shared/IntakeFormFields';
+import { RichContent } from '@/components/shared/RichContent';
 import { isValidPhoneNumber } from 'react-phone-number-input';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 
@@ -214,6 +215,9 @@ export default function ApplyPage() {
 
       <h1 className="mt-4 text-2xl font-semibold text-slate-900">Apply - {info.program?.name}</h1>
       <p className="mt-1 text-slate-600">{info.cohort.name}</p>
+      {info.cohort.description && (
+        <RichContent html={info.cohort.description} className="mt-3 text-slate-600" />
+      )}
       {info.assessment && (
         <p className="mt-3 text-sm rounded-lg bg-brand-50 dark:bg-brand-500/15 text-brand-800 px-3 py-2">
           This application includes a {info.assessment.required ? 'required' : 'short'} assessment after you submit.

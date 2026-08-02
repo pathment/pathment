@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { Video, X, ExternalLink } from 'lucide-react';
 import { menteeApi } from '@/lib/services/mentee-api';
 import { JitsiRoom } from '@/components/shared/JitsiRoom';
@@ -9,7 +10,8 @@ import { getSocket } from '@/lib/services/socket-client';
 interface ActiveReview {
   sessionId: string;
   domain: string; room: string; url: string;
-  displayName: string | null; clanName: string; externalUrl: string | null;
+  displayName: string | null; clanName: string; externalUrl: string | null; avatarUrl: string | null;
+  pollsEnabled?: boolean;
 }
 
 /**
@@ -18,12 +20,33 @@ interface ActiveReview {
  * (identity pre-set) and self-reports presence — the mentee's own client tells
  * the server "I'm here," so attendance is trustworthy without name-matching.
  */
+// Max seconds credited for one continuous "dominant speaker" span — bounds the
+// silence tail Jitsi keeps attributing to the last speaker.
+const SPEAK_SPAN_CAP = 15;
+
 export function ReviewJoinBar() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
   const [active, setActive] = useState<ActiveReview | null>(null);
   const [open, setOpen] = useState(false);
   const [dismissed, setDismissed] = useState<string | null>(null);
+  const autoJoinedRef = useRef(false);
   const joinedAtRef = useRef<number | null>(null);
   const leavingRef = useRef(false);
+  // Own dominant-speaker time: talkRef = accumulated seconds, speakingSince =
+  // when the current speaking span started (null when not speaking).
+  const talkRef = useRef(0);
+  const speakingSinceRef = useRef<number | null>(null);
+  // Jitsi only tells us "you're the dominant speaker" — which stays true through
+  // silence until someone else speaks. So cap each continuous span: a real
+  // utterance is bounded, and this stops trailing silence inflating the number.
+  const spanSecs = () => (speakingSinceRef.current ? Math.min(SPEAK_SPAN_CAP, (Date.now() - speakingSinceRef.current) / 1000) : 0);
+  const currentTalk = () => Math.round(talkRef.current + spanSecs());
+  const onSelfDominant = (speaking: boolean) => {
+    if (speaking) { if (!speakingSinceRef.current) speakingSinceRef.current = Date.now(); }
+    else if (speakingSinceRef.current) { talkRef.current += spanSecs(); speakingSinceRef.current = null; }
+  };
 
   const poll = useCallback(async () => {
     try {
@@ -44,10 +67,24 @@ export function ReviewJoinBar() {
     return () => { clearInterval(t); socket?.off('review:started', onStarted); };
   }, [poll]);
 
+  // Deep-link from the "Join review" notification (`?join=review`): the moment the
+  // active review loads, open the call directly instead of just landing on the
+  // dashboard. Fires once, then strips the param so a refresh doesn't re-join.
+  useEffect(() => {
+    if (autoJoinedRef.current || searchParams.get('join') !== 'review' || !active) return;
+    autoJoinedRef.current = true;
+    setDismissed(null);
+    setOpen(true);
+    const params = new URLSearchParams(Array.from(searchParams.entries()));
+    params.delete('join');
+    router.replace(`${pathname}${params.toString() ? `?${params.toString()}` : ''}`, { scroll: false });
+  }, [active, searchParams, router, pathname]);
+
   const onJoined = async () => {
     if (!active) return;
     joinedAtRef.current = Date.now();
     leavingRef.current = false;
+    talkRef.current = 0; speakingSinceRef.current = null;
     try { await menteeApi.joinReview(active.sessionId); } catch { /* best-effort */ }
   };
 
@@ -58,7 +95,7 @@ export function ReviewJoinBar() {
   // re-fires "joined"). Also re-marks present if tracking is flipped on mid-call.
   useEffect(() => {
     if (!open || !active) return;
-    const hb = setInterval(() => { menteeApi.joinReview(active.sessionId).catch(() => {}); }, 15_000);
+    const hb = setInterval(() => { menteeApi.joinReview(active.sessionId, currentTalk()).catch(() => {}); }, 15_000);
     return () => clearInterval(hb);
   }, [open, active]);
   // Leaving can be triggered twice (closing the panel AND Jitsi's own
@@ -69,6 +106,9 @@ export function ReviewJoinBar() {
     const secs = joinedAtRef.current ? Math.round((Date.now() - joinedAtRef.current) / 1000) : 0;
     joinedAtRef.current = null;
     setOpen(false);
+    // Flush the final talk time before leaving, then record leave/presence.
+    try { await menteeApi.joinReview(active.sessionId, currentTalk()); } catch { /* best-effort */ }
+    speakingSinceRef.current = null;
     try { await menteeApi.leaveReview(active.sessionId, secs); } catch { /* best-effort */ }
   };
 
@@ -113,8 +153,12 @@ export function ReviewJoinBar() {
                 domain={active.domain}
                 room={active.room}
                 displayName={active.displayName}
+                avatarUrl={active.avatarUrl}
+                role="guest"
+                polls={!!active.pollsEnabled}
                 onJoined={onJoined}
                 onLeft={onLeft}
+                onSelfDominantChange={onSelfDominant}
               />
             </div>
           </div>

@@ -24,6 +24,14 @@ module.exports = (sequelize, DataTypes) => {
     description: {
       type: DataTypes.TEXT
     },
+    // Optional WhatsApp group INVITE link for the clan. Included in a new mentee's
+    // acceptance email + shown in-app so they can join. (WhatsApp has no API to
+    // auto-add someone to a group, so the mentee joins via this link themselves.)
+    whatsappGroupLink: {
+      type: DataTypes.STRING(500),
+      allowNull: true,
+      field: 'whatsapp_group_link'
+    },
     // Optional lead mentor (the "clan leader"). Co-mentors are tracked as
     // ClanMembership rows with role 'co_mentor'.
     leadMentorId: {

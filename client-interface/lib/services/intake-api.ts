@@ -63,6 +63,8 @@ export const applicationApi = {
    *  Idempotent: already-accepted / registered / withdrawn are skipped with a reason. */
   bulkAccept: (cohortId: string, applicationIds: string[], clanId?: string) =>
     apiClient.post(`/intake/cohorts/${cohortId}/applications/bulk-accept`, { applicationIds, clanId }, { timeout: 120000 }),
+  bulkReject: (cohortId: string, applicationIds: string[], reason?: string) =>
+    apiClient.post(`/intake/cohorts/${cohortId}/applications/bulk-reject`, { applicationIds, reason }, { timeout: 120000 }),
 
   // ── AI scoring ──────────────────────────────────────────────────────────
   /** AI-score a batch of applicants' open-ended answers + a holistic score.

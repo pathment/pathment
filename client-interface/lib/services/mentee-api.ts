@@ -28,7 +28,7 @@ export const menteeApi = {
 
   // Live cohort-review video (self-report attendance).
   getActiveReview: () => apiClient.get('/mentee/review/active'),
-  joinReview: (sessionId: string) => apiClient.post(`/mentee/review/${sessionId}/join`, {}),
+  joinReview: (sessionId: string, talkSeconds?: number) => apiClient.post(`/mentee/review/${sessionId}/join`, talkSeconds != null ? { talkSeconds } : {}),
   leaveReview: (sessionId: string, seconds: number) => apiClient.post(`/mentee/review/${sessionId}/leave`, { seconds }),
 
   deleteUser: (id: string) => {

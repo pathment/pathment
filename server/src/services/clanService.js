@@ -208,6 +208,7 @@ class ClanService {
         programId,
         name,
         description: data.description || null,
+        whatsappGroupLink: data.whatsappGroupLink || null,
         leadMentorId: data.leadMentorId || null,
         tags: Array.isArray(data.tags) ? data.tags : [],
         levels: Array.isArray(data.levels) ? data.levels : [],
@@ -242,7 +243,7 @@ class ClanService {
       if (!clan) throw new NotFoundError('Clan not found');
 
       const prevLeadId = clan.leadMentorId;
-      const allowed = ['name', 'description', 'tags', 'levels', 'countries', 'maxMentees', 'status', 'healthStatus'];
+      const allowed = ['name', 'description', 'whatsappGroupLink', 'tags', 'levels', 'countries', 'maxMentees', 'status', 'healthStatus'];
       allowed.forEach((key) => {
         if (updates[key] !== undefined) clan[key] = updates[key];
       });

@@ -29,9 +29,20 @@ module.exports = (sequelize, DataTypes) => {
     externalMeetingUrl: { type: DataTypes.STRING(500), allowNull: true, field: 'external_meeting_url' },
     meetingStartedAt: { type: DataTypes.DATE, allowNull: true, field: 'meeting_started_at' },
     meetingEndedAt: { type: DataTypes.DATE, allowNull: true, field: 'meeting_ended_at' },
-    // OFF by default: a live call is just a call. When the mentor flips this on,
-    // mentees who join are auto-marked present (a review, not a general meeting).
-    attendanceTracking: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: 'attendance_tracking' },
+    // ON by default: these ARE cohort reviews, so a mentee who joins the call is
+    // auto-marked present. A mentor can still flip it off to run a general call
+    // (no attendance) for a given session.
+    attendanceTracking: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true, field: 'attendance_tracking' },
+    // Jitsi in-call polls. OFF by default; the mentor toggles it on. Propagated to
+    // mentees so they can vote/see results while it's on. (Jitsi can't enforce
+    // mentor-only creation or hide voters per-role — that needs a native poll.)
+    pollsEnabled: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: 'polls_enabled' },
+    // ── Scheduling (recurring reviews) ──
+    scheduledAt: { type: DataTypes.DATE, allowNull: true, field: 'scheduled_at' },
+    reviewScheduleId: { type: DataTypes.UUID, allowNull: true, field: 'review_schedule_id' },
+    invitesSentAt: { type: DataTypes.DATE, allowNull: true, field: 'invites_sent_at' },
+    reminded24hAt: { type: DataTypes.DATE, allowNull: true, field: 'reminded_24h_at' },
+    reminded1hAt: { type: DataTypes.DATE, allowNull: true, field: 'reminded_1h_at' },
   }, {
     tableName: 'cohort_review_sessions',
     underscored: true,

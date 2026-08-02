@@ -125,7 +125,7 @@ function ClanDrawer({ clanId, mentors, mentees, onClose, onChanged }: {
   const [permMember, setPermMember] = useState<any | null>(null);
   const [levelsDraft, setLevelsDraft] = useState<string[]>([]);
   const [savingLevels, setSavingLevels] = useState(false);
-  const [details, setDetails] = useState({ name: '', description: '', leadMentorId: '', maxMentees: '25', status: 'active', tags: '', countries: '' });
+  const [details, setDetails] = useState({ name: '', description: '', whatsappGroupLink: '', leadMentorId: '', maxMentees: '25', status: 'active', tags: '', countries: '' });
 
   // Searchable person picker (server-backed) so ANYONE is findable — not just the
   // first 20 of a base-role directory. This is how a removed/re-roled person
@@ -141,7 +141,7 @@ function ClanDrawer({ clanId, mentors, mentees, onClose, onChanged }: {
       const res = await clanApi.get(clanId); const c = res?.data?.clan ?? null; setClan(c);
       setLevelsDraft(Array.isArray(c?.levels) ? c.levels : []);
       setDetails({
-        name: c?.name ?? '', description: c?.description ?? '', leadMentorId: c?.leadMentor?.id ?? '',
+        name: c?.name ?? '', description: c?.description ?? '', whatsappGroupLink: c?.whatsappGroupLink ?? '', leadMentorId: c?.leadMentor?.id ?? '',
         maxMentees: String(c?.maxMentees ?? 25), status: c?.status ?? 'active',
         tags: (c?.tags ?? []).join(', '), countries: (c?.countries ?? []).join(', '),
       });
@@ -153,6 +153,7 @@ function ClanDrawer({ clanId, mentors, mentees, onClose, onChanged }: {
   const detailsDirty = !!clan && (
     details.name !== (clan.name ?? '') ||
     details.description !== (clan.description ?? '') ||
+    details.whatsappGroupLink !== (clan.whatsappGroupLink ?? '') ||
     details.leadMentorId !== (clan.leadMentor?.id ?? '') ||
     details.maxMentees !== String(clan.maxMentees ?? 25) ||
     details.status !== (clan.status ?? 'active') ||
@@ -167,6 +168,7 @@ function ClanDrawer({ clanId, mentors, mentees, onClose, onChanged }: {
       await clanApi.update(clanId, {
         name: details.name.trim(),
         description: details.description.trim() || null,
+        whatsappGroupLink: details.whatsappGroupLink.trim() || null,
         leadMentorId: details.leadMentorId || null,
         maxMentees: Math.max(1, parseInt(details.maxMentees, 10) || 25),
         status: details.status,
@@ -262,6 +264,10 @@ function ClanDrawer({ clanId, mentors, mentees, onClose, onChanged }: {
                   <div className="col-span-2">
                     <label className="block text-xs font-medium text-slate-500 mb-1">Description</label>
                     <input value={details.description} onChange={(e) => setDetails((d) => ({ ...d, description: e.target.value }))} placeholder="What this clan is about" className={`w-full ${field}`} />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-xs font-medium text-slate-500 mb-1">WhatsApp group link <span className="font-normal text-slate-400">— emailed to new mentees + shown in-app</span></label>
+                    <input value={details.whatsappGroupLink} onChange={(e) => setDetails((d) => ({ ...d, whatsappGroupLink: e.target.value }))} placeholder="https://chat.whatsapp.com/…" className={`w-full ${field}`} />
                   </div>
                   <div className="col-span-2">
                     <label className="block text-xs font-medium text-slate-500 mb-1">Lead mentor</label>

@@ -30,6 +30,7 @@ import { mentorApi } from '@/lib/services/mentor-api';
 import { APPROVALS_CHANGED } from '@/lib/utils/approvals-badge';
 import { SelectMenu } from './SelectMenu';
 import { CommandPalette } from './CommandPalette';
+import { LiveMeetingBanner } from './LiveMeetingBanner';
 import { FeedbackDrawer } from './FeedbackDrawer';
 import { NotificationDrawer } from './NotificationDrawer';
 import { ChangelogDrawer } from './ChangelogDrawer';
@@ -382,6 +383,9 @@ export default function Navigation({ role }: NavigationProps) {
     <>
       <CommandPalette role={role} />
       <FeedbackDrawer open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
+      {/* Live-meeting join banner — appears for any role when an admin-hosted
+          meeting they're invited to goes live. */}
+      <LiveMeetingBanner />
 
       {/* ── Desktop Sidebar ── */}
       <div className="hidden lg:flex lg:flex-col lg:w-64 lg:fixed lg:inset-y-0 bg-card border-r border-slate-100">

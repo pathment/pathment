@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { Download, Upload, Sparkles, Loader2, X, AlertTriangle, Check, Send, MailCheck, Layers, Users2 } from 'lucide-react';
+import { Download, Upload, Sparkles, Loader2, X, AlertTriangle, Check, Send, MailCheck, Layers, Users2, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { applicationApi } from '@/lib/services/intake-api';
 import { AssignToClansDrawer } from '@/components/admin/AssignToClansDrawer';
@@ -51,6 +51,11 @@ export function IntakeScoreToolbar({
   const [preflight, setPreflight] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
   const [levelProgress, setLevelProgress] = useState<{ done: number; total: number } | null>(null);
+  // Bulk reject: confirm gate (with a shared reason) → batched → result summary.
+  const [confirmReject, setConfirmReject] = useState(false);
+  const [rejectReason, setRejectReason] = useState('');
+  const [rejectProgress, setRejectProgress] = useState<{ done: number; total: number } | null>(null);
+  const [rejectResult, setRejectResult] = useState<{ rejected: { id: string }[]; skipped: { id: string; reason: string }[] } | null>(null);
 
   // Recommend levels for the selection — batched, resilient, same shape as AI scoring.
   const doRecommendLevels = async () => {
@@ -151,6 +156,33 @@ export function IntakeScoreToolbar({
     }
   };
 
+  // Bulk reject in batches (each applicant gets the decision email + shared reason).
+  const doBulkReject = async () => {
+    setConfirmReject(false);
+    const CHUNK = 25;
+    const reason = rejectReason.trim() || undefined;
+    const rejected: { id: string }[] = [];
+    const skipped: { id: string; reason: string }[] = [];
+    setRejectProgress({ done: 0, total: selectedIds.length });
+    try {
+      for (let i = 0; i < selectedIds.length; i += CHUNK) {
+        const batch = selectedIds.slice(i, i + CHUNK);
+        try {
+          const res = await applicationApi.bulkReject(cohortId, batch, reason) as { data?: { rejected?: { id: string }[]; skipped?: { id: string; reason: string }[] } };
+          rejected.push(...(res?.data?.rejected || []));
+          skipped.push(...(res?.data?.skipped || []));
+        } catch {
+          skipped.push(...batch.map((id) => ({ id, reason: 'request failed' })));
+        }
+        setRejectProgress({ done: Math.min(i + CHUNK, selectedIds.length), total: selectedIds.length });
+      }
+      setRejectResult({ rejected, skipped });
+      onDone();
+    } finally {
+      setRejectProgress(null);
+    }
+  };
+
   const applyImport = async () => {
     setApplying(true);
     try {
@@ -211,6 +243,16 @@ export function IntakeScoreToolbar({
             {inviteProgress ? `Sending ${inviteProgress.done}/${inviteProgress.total}…` : `Send invites (${selectedIds.length})`}
           </button>
         )}
+        {selectedIds.length > 0 && (
+          <button
+            onClick={() => { setRejectResult(null); setConfirmReject(true); }}
+            disabled={!!rejectProgress}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-60"
+          >
+            {rejectProgress ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />}
+            {rejectProgress ? `Rejecting ${rejectProgress.done}/${rejectProgress.total}…` : `Reject (${selectedIds.length})`}
+          </button>
+        )}
       </div>
 
       {assignOpen && (
@@ -249,6 +291,55 @@ export function IntakeScoreToolbar({
               <button onClick={sendInvites} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700">
                 <Send className="w-4 h-4" /> Send {selectedIds.length} invite{selectedIds.length === 1 ? '' : 's'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk reject — confirm with a shared reason, then email each applicant. */}
+      {confirmReject && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setConfirmReject(false)}>
+          <div className="w-full max-w-md rounded-2xl bg-card shadow-2xl p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 text-rose-700">
+              <XCircle className="w-5 h-5" /><h3 className="font-semibold text-slate-900">Reject {selectedIds.length} applicant{selectedIds.length === 1 ? '' : 's'}?</h3>
+            </div>
+            <p className="mt-3 text-sm text-slate-600">
+              This marks each selected applicant <strong>rejected</strong> and <strong>emails them the decision + reason below</strong>. Already-decided or withdrawn applicants are skipped.
+            </p>
+            <label className="block mt-4 text-xs font-medium text-slate-600 mb-1">Reason <span className="font-normal text-slate-400">— shared, shown to every rejected applicant</span></label>
+            <textarea value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} rows={3}
+              placeholder="e.g. The required assessment wasn't submitted before the deadline for this cohort."
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-rose-500" />
+            <div className="mt-5 flex justify-end gap-2">
+              <button onClick={() => setConfirmReject(false)} className="px-4 py-2 rounded-lg border border-slate-200 text-sm text-slate-700">Cancel</button>
+              <button onClick={doBulkReject} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-rose-600 text-white text-sm font-medium hover:bg-rose-700">
+                <XCircle className="w-4 h-4" /> Reject {selectedIds.length}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reject result summary. */}
+      {rejectResult && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setRejectResult(null)}>
+          <div className="w-full max-w-lg max-h-[85vh] overflow-hidden rounded-2xl bg-card shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
+              <div className="flex items-center gap-2 text-rose-700"><XCircle className="w-5 h-5" /><h3 className="font-semibold text-slate-900">Rejections sent</h3></div>
+              <button onClick={() => setRejectResult(null)} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="px-5 py-3 flex flex-wrap gap-4 text-sm border-b border-slate-100">
+              <span className="text-rose-700 font-medium">{rejectResult.rejected.length} rejected</span>
+              {rejectResult.skipped.length > 0 && <span className="text-slate-500">{rejectResult.skipped.length} skipped</span>}
+            </div>
+            {rejectResult.skipped.length > 0 && (
+              <div className="overflow-y-auto p-5 space-y-1 text-xs">
+                <p className="text-slate-500 mb-1">Skipped:</p>
+                {rejectResult.skipped.map((s, i) => <p key={i} className="text-slate-600">{s.id.slice(0, 8)}… — {s.reason}</p>)}
+              </div>
+            )}
+            <div className="px-5 py-4 border-t border-slate-100 flex justify-end">
+              <button onClick={() => setRejectResult(null)} className="px-4 py-2 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700">Done</button>
             </div>
           </div>
         </div>

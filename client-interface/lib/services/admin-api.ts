@@ -49,4 +49,21 @@ export const adminApi = {
     promote: (id: string, clanId?: string) => apiClient.post(`/admin/promotions/${id}/promote`, { clanId }),
     decline: (id: string, decisionNote?: string) => apiClient.post(`/admin/promotions/${id}/decline`, { decisionNote }),
   },
+  /** Cohort-review records — read-only rollups, clan-wise / mentor-wise. */
+  reviewRecords: {
+    list: (params: { clanId?: string; mentorId?: string; from?: string; to?: string } = {}) =>
+      apiClient.get('/admin/review-records', { params }),
+    detail: (id: string) => apiClient.get(`/admin/review-records/${id}`),
+  },
+  /** Admin-hosted live meetings — schedule + host org broadcasts. */
+  meetings: {
+    list: () => apiClient.get('/admin/meetings'),
+    create: (data: {
+      title: string; description?: string; scheduledAt: string; durationMinutes?: number;
+      audienceType: 'mentors' | 'clan' | 'both'; clanId?: string | null;
+    }) => apiClient.post('/admin/meetings', data),
+    start: (id: string) => apiClient.post(`/admin/meetings/${id}/start`, {}),
+    end: (id: string) => apiClient.post(`/admin/meetings/${id}/end`, {}),
+    cancel: (id: string) => apiClient.delete(`/admin/meetings/${id}`),
+  },
 };

@@ -62,7 +62,9 @@ const convertToCSV = (data: Enrollment[]): string => {
   // Convert data rows
   const rows = data.map((enrollment) => {
     const match = enrollment.matches?.[0];
-    const mentor = match?.mentor;
+    // Mentors are assigned via the clan (lead mentor), not a 1:1 match — fall back
+    // to the clan lead so the export isn't full of "Not assigned".
+    const mentor = match?.mentor || enrollment.clan?.leadMentor;
     const mentorId = mentor?.id || '';
     const mentorName = mentor ? `${mentor.firstName} ${mentor.lastName}`.trim() : 'Not assigned';
     const mentorEmail = mentor?.email || 'N/A';
@@ -159,9 +161,15 @@ const columns: DataTableColumn<Enrollment>[] = [
     key: 'matches',
     label: 'Mentor',
     render: (_, row) => {
-      const mentor = row.matches?.[0]?.mentor;
+      // Prefer a direct 1:1 match; otherwise show the clan's lead mentor (how
+      // mentors are actually assigned here), so this isn't perpetually empty.
+      const mentor = row.matches?.[0]?.mentor || row.clan?.leadMentor;
+      const viaClan = !row.matches?.[0]?.mentor && !!row.clan?.leadMentor;
       return mentor ? (
-        <AvatarWithInitials firstName={mentor.firstName} lastName={mentor.lastName} email={mentor.email} src={mentor.profilePictureUrl} href={mentor.id ? `/admin/mentors/${mentor.id}` : undefined} colorClass="bg-purple-100 text-purple-700" />
+        <div className="flex items-center gap-1.5">
+          <AvatarWithInitials firstName={mentor.firstName} lastName={mentor.lastName} email={mentor.email} src={mentor.profilePictureUrl} href={mentor.id ? `/admin/mentors/${mentor.id}` : undefined} colorClass="bg-purple-100 text-purple-700" />
+          {viaClan && <span className="text-[10px] text-slate-400 rounded-full bg-slate-100 px-1.5 py-0.5 shrink-0" title="Assigned via the clan's lead mentor">via clan</span>}
+        </div>
       ) : (
         <span className="text-slate-400 text-sm">Not assigned</span>
       );

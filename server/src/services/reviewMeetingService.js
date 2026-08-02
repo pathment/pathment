@@ -1,9 +1,10 @@
 const crypto = require('crypto');
-const { Op } = require('sequelize');
+const { Op, col } = require('sequelize');
 const { models } = require('../db');
 const { NotFoundError, ForbiddenError, ValidationError } = require('../utils/errors/errorTypes');
 const authzService = require('./authzService');
 const cfg = require('../config/reviewMeeting');
+const { activeOccurrence } = require('../utils/reviewRecurrence');
 
 // A live meeting older than this with no explicit end is treated as abandoned —
 // stops a never-ended meeting from showing the mentee "Join" banner forever.
@@ -38,6 +39,9 @@ class ReviewMeetingService {
       avatarUrl: avatarUrl || null,
       startedAt: session.meetingStartedAt,
       endedAt: session.meetingEndedAt,
+      // Mentor-controlled in-call polls (see setPolls). Propagated to mentees so
+      // they can vote/see results when it's on.
+      pollsEnabled: !!session.pollsEnabled,
     };
   }
 
@@ -62,25 +66,32 @@ class ReviewMeetingService {
   }
 
   // ── host: open / close the room ──────────────────────────────────────────
+  /**
+   * Clean the attendance slate for a NEW live call so it never inherits who
+   * attended a PREVIOUS call (or a seeded / prior-day mark on the same day-session).
+   * Clears present/absent + all presence/talk/auto signals; keeps only a deliberate
+   * 'excused' mark (a "can't attend" the mentor set on purpose). Whoever actually
+   * joins THIS call re-marks present via auto-attendance.
+   */
+  async _wipePerCallAttendance(sessionId) {
+    await models.CohortReviewEntry.update(
+      { attendance: null, autoPresent: false, joinedAt: null, leftAt: null, secondsPresent: 0, talkSeconds: 0 },
+      { where: { sessionId, attendance: { [Op.ne]: 'excused' } } }
+    );
+    // Excused people weren't in the call either — zero their presence/talk too.
+    await models.CohortReviewEntry.update(
+      { autoPresent: false, joinedAt: null, leftAt: null, secondsPresent: 0, talkSeconds: 0 },
+      { where: { sessionId, attendance: 'excused' } }
+    );
+  }
+
   /** Start (or return) the live room for a session. Idempotent. */
   async startMeeting(mentorId, sessionId, { externalUrl } = {}) {
     if (!cfg.enabled) throw new ForbiddenError('Live review video is not enabled');
     const session = await this._hostSession(mentorId, sessionId);
-    // Re-opening after a prior call = a fresh call. Wipe the per-call attendance
-    // signals so a new meeting doesn't inherit who attended the LAST one (joined,
-    // seconds, talk time, and any AUTO 'present'). A mentor's MANUAL marks
-    // (auto_present = false) are kept.
-    const isRestart = !!session.meetingStartedAt;
-    if (isRestart) {
-      await models.CohortReviewEntry.update(
-        { attendance: null },
-        { where: { sessionId, autoPresent: true } }
-      );
-      await models.CohortReviewEntry.update(
-        { autoPresent: false, joinedAt: null, leftAt: null, secondsPresent: 0, talkSeconds: 0 },
-        { where: { sessionId } }
-      );
-    }
+    // Every call start begins with a clean attendance slate (no carry-over from a
+    // prior call or seeded/earlier marks) — only actual joiners of THIS call count.
+    await this._wipePerCallAttendance(sessionId);
     const patch = {};
     if (!session.meetingRoom) {
       // Non-guessable slug — the natural way in is Pathment's Join button, not
@@ -95,6 +106,10 @@ class ReviewMeetingService {
     // treat a genuinely live call as stale and hide the Join banner.
     patch.meetingStartedAt = new Date();
     patch.meetingEndedAt = null; // reopening clears a prior end
+    // Starting a live call means the review is active again — flip a 'finished'
+    // session back to in_progress so the whole flow (roster edits, attendance)
+    // is consistent with a call being live.
+    if (session.status !== 'in_progress') patch.status = 'in_progress';
     if (externalUrl !== undefined) patch.externalMeetingUrl = externalUrl || null;
     if (Object.keys(patch).length) await session.update(patch);
 
@@ -108,29 +123,104 @@ class ReviewMeetingService {
     return this._joinConfig(session, this._fullName(host), host && host.profilePictureUrl);
   }
 
-  /** Emit `review:started` to every mentee in the session's clan (real-time banner). */
+  /**
+   * Tell the clan's mentees a review just went live: a real-time `review:started`
+   * socket event (instant banner) AND a persistent in-app notification (the bell).
+   * The notification is the reliable path — it survives a dropped/absent socket
+   * (e.g. a misconfigured origin) and the mentee's 12s poll still shows the banner.
+   */
   async _notifyMenteesStarted(session) {
+    if (!session.clanId) return;
     const { emitToUser } = require('../socket');
     const cohortService = require('./cohortService');
     const [menteeIds, clan] = await Promise.all([
       cohortService.resolveMenteeIdsForClan(session.clanId),
       models.Clan.findByPk(session.clanId, { attributes: ['name'] }),
     ]);
-    const payload = { sessionId: session.id, clanName: clan?.name || 'your clan' };
+    if (!menteeIds.length) return;
+    const clanName = clan?.name || 'your clan';
+    // Real-time banner.
+    const payload = { sessionId: session.id, clanName };
     for (const uid of menteeIds) emitToUser(uid, 'review:started', payload);
+    // Persistent bell notification (in-app only; no email/dedupe key so it always
+    // fires on a genuine start). Best-effort — never block the call from starting.
+    try {
+      const notificationOrchestrator = require('./notificationOrchestrator');
+      const { NOTIFICATION_EVENTS } = require('../config/notificationMatrix');
+      await notificationOrchestrator.dispatch({
+        eventKey: NOTIFICATION_EVENTS.REVIEW_REMINDER,
+        recipients: menteeIds.map((id) => ({ userId: id })),
+        payload: {
+          title: 'Review is live',
+          message: `Your mentor started the ${clanName} review — join now.`,
+          // ?join=review makes the dashboard open the call directly (see ReviewJoinBar).
+          actionUrl: '/mentee/dashboard?join=review',
+          actionLabel: 'Join review',
+          relatedEntityType: 'review_session',
+        },
+        channelOverrides: { inApp: true, email: false, chat: false },
+      });
+    } catch (e) { console.error('[review] start in-app notify failed (non-fatal):', e.message); }
   }
 
-  /** Close the room (stops new auto-attendance; contribution is finalized separately). */
+  /** Close the room (stops new auto-attendance; contribution is finalized separately).
+   *  Ending the call also FINISHES the review automatically — the mentor no longer
+   *  has to click "Finish" separately. A later "Start a new call" reopens it
+   *  (startMeeting flips status back to in_progress). */
   async endMeeting(mentorId, sessionId) {
     const session = await this._hostSession(mentorId, sessionId);
-    if (!session.meetingEndedAt) await session.update({ meetingEndedAt: new Date() });
+    const patch = {};
+    if (!session.meetingEndedAt) patch.meetingEndedAt = new Date();
+    if (session.status !== 'finished') {
+      patch.status = 'finished';
+      patch.finishedAt = session.finishedAt || new Date();
+    }
+    if (Object.keys(patch).length) await session.update(patch);
     return this._joinConfig(session, null);
+  }
+
+  /**
+   * If ANY active recurring schedule for one of `clanIds` has an occurrence whose
+   * window contains `now`, ensure that clan's day-session is OPEN for it and return
+   * it. Liveness is driven by the SCHEDULE's occurrence window — NOT the session's
+   * single frozen `scheduled_at` — so a clan can run several reviews on the same
+   * day (e.g. 4:10 AM and 3:00 PM) and each goes live at its own time. Also
+   * (re)opens over an earlier call that day. Returns { schedule, occ, session } or null.
+   */
+  async _liveScheduleForClans(clanIds, now = new Date()) {
+    if (!clanIds || !clanIds.length) return null;
+    const schedules = await models.ReviewSchedule.findAll({ where: { clanId: { [Op.in]: clanIds }, active: true } });
+    for (const s of schedules) {
+      const occ = activeOccurrence(s, now);
+      if (!occ) continue;
+      const session = await require('./reviewScheduleService')._findOrCreateSession(s, occ);
+      // Deliberately ended AFTER this occurrence started → stays closed.
+      if (session.meetingEndedAt && new Date(session.meetingEndedAt).getTime() >= occ.start.getTime()) continue;
+      const openForThis = session.meetingStartedAt
+        && new Date(session.meetingStartedAt).getTime() === occ.start.getTime()
+        && !session.meetingEndedAt;
+      if (!openForThis) {
+        // Fresh occurrence — clean the attendance slate so it doesn't inherit an
+        // earlier call's / seeded marks, then open (or re-open over an earlier call).
+        await this._wipePerCallAttendance(session.id);
+        await session.update({ scheduledAt: occ.start, reviewScheduleId: s.id, meetingStartedAt: occ.start, meetingEndedAt: null, status: 'in_progress' });
+        this._notifyMenteesStarted(session).catch((err) => console.error('scheduled review start notify failed (non-fatal):', err.message));
+      }
+      return { schedule: s, occ, session };
+    }
+    return null;
   }
 
   /** Host's embed config + live roster (attendance/talk state per mentee). */
   async hostView(mentorId, sessionId) {
     if (!cfg.enabled) return { enabled: false, comingSoon: cfg.comingSoon };
     const session = await this._hostSession(mentorId, sessionId);
+    // A scheduled review auto-opens when any active schedule for this clan is live
+    // NOW (window-based, so multiple reviews/day + a stale scheduled_at both work).
+    try {
+      const live = await this._liveScheduleForClans([session.clanId], new Date());
+      if (live) await session.reload();
+    } catch (e) { console.error('scheduled review auto-open failed (non-fatal):', e.message); }
     // Reconcile first so the roster covers EVERY clan mentee, not just those who
     // already self-reported — otherwise the mentor can't mark a direct joiner
     // present, or even see who hasn't shown up.
@@ -171,6 +261,14 @@ class ReviewMeetingService {
     return { attendanceTracking: !!enabled, marked };
   }
 
+  /** Mentor toggle: enable/disable Jitsi in-call polls for the session (propagated
+   *  to mentees via the join config so they can vote/see results while it's on). */
+  async setPolls(mentorId, sessionId, enabled) {
+    const session = await this._hostSession(mentorId, sessionId);
+    await session.update({ pollsEnabled: !!enabled });
+    return { pollsEnabled: !!enabled };
+  }
+
   // ── mentee: discover + join + leave ──────────────────────────────────────
   /** The live review the signed-in mentee can join right now (or null). */
   async activeForMentee(userId) {
@@ -181,6 +279,21 @@ class ReviewMeetingService {
     })).map((m) => m.clanId).filter(Boolean);
     if (!clanIds.length) return null;
 
+    const now = new Date();
+    // (0) SCHEDULE-DRIVEN liveness (the reliable path): if any active recurring
+    //     schedule for the mentee's clan is live right now, open + return it. This
+    //     is window-based off the SCHEDULE, so it works even when the shared
+    //     day-session's frozen `scheduled_at` points at a different schedule (e.g.
+    //     two reviews the same day) — the exact bug where nothing showed at 4:10.
+    try {
+      const live = await this._liveScheduleForClans(clanIds, now);
+      if (live) {
+        const u = await models.User.findByPk(userId, { attributes: ['id', 'firstName', 'lastName', 'profilePictureUrl'] });
+        const clan = await models.Clan.findByPk(live.session.clanId, { attributes: ['name'] });
+        return { ...this._joinConfig(live.session, this._fullName(u), u && u.profilePictureUrl), clanName: clan?.name || 'your clan' };
+      }
+    } catch (e) { console.error('[activeForMentee] schedule-live check failed:', e.message); }
+
     // Staleness guard: a meeting the mentor never cleanly ended (closed the tab
     // / hung up in Jitsi instead of "End & score") would otherwise leave
     // meetingEndedAt null forever and show the "Join review" banner to mentees
@@ -189,12 +302,44 @@ class ReviewMeetingService {
     const session = await models.CohortReviewSession.findOne({
       where: {
         clanId: { [Op.in]: clanIds },
-        status: 'in_progress',
-        meetingStartedAt: { [Op.gt]: freshCutoff },
-        meetingEndedAt: null,
+        [Op.or]: [
+          // (a) Ad-hoc / manual: the mentor started a call recently and hasn't
+          //     ended it. Liveness tracks the CALL (started + not ended), NOT the
+          //     review's workflow status — a mentor can run a live call on a
+          //     'finished' review (reopen / "start a new call"), and mentees must
+          //     still see the Join banner.
+          { meetingStartedAt: { [Op.gt]: freshCutoff }, meetingEndedAt: null },
+          // (b) SCHEDULED review whose time has arrived. Deliberately does NOT
+          //     depend on `status` or on any earlier call that day: the day's
+          //     session is shared with ad-hoc reviews, so a prior finish/end must
+          //     never suppress the scheduled occurrence. It's live during its
+          //     window unless it was ended AFTER its own scheduled start.
+          {
+            reviewScheduleId: { [Op.ne]: null },
+            scheduledAt: { [Op.gt]: freshCutoff, [Op.lte]: now },
+            [Op.or]: [
+              { meetingEndedAt: null },
+              { meetingEndedAt: { [Op.lt]: col('scheduled_at') } },
+            ],
+          },
+        ],
       },
-      order: [['meeting_started_at', 'DESC']],
+      order: [['scheduled_at', 'DESC'], ['meeting_started_at', 'DESC']],
     });
+    // Opt-in diagnostics (set REVIEW_DEBUG=true): explains WHY a scheduled review
+    // is / isn't surfacing to a mentee, straight from the actual rows.
+    if (process.env.REVIEW_DEBUG === 'true') {
+      const recent = await models.CohortReviewSession.findAll({
+        where: { clanId: { [Op.in]: clanIds }, [Op.or]: [{ scheduledAt: { [Op.ne]: null } }, { meetingStartedAt: { [Op.ne]: null } }] },
+        order: [['createdAt', 'DESC']], limit: 5,
+        attributes: ['id', 'clanId', 'status', 'scheduledAt', 'meetingStartedAt', 'meetingEndedAt', 'reviewScheduleId'],
+      });
+      console.log('[REVIEW_DEBUG] activeForMentee', {
+        userId, clanIds, now: now.toISOString(), freshCutoff: freshCutoff.toISOString(),
+        matched: session ? session.id : null,
+        candidates: recent.map((r) => ({ id: r.id, status: r.status, scheduledAt: r.scheduledAt, startedAt: r.meetingStartedAt, endedAt: r.meetingEndedAt, sched: !!r.reviewScheduleId })),
+      });
+    }
     if (!session) return null;
     const user = await models.User.findByPk(userId, { attributes: ['id', 'firstName', 'lastName', 'profilePictureUrl'] });
     const clan = await models.Clan.findByPk(session.clanId, { attributes: ['name'] });
@@ -202,7 +347,7 @@ class ReviewMeetingService {
   }
 
   /** Mark the AUTHENTICATED mentee present (self-report). Only marks themselves. */
-  async selfPresent(userId, sessionId) {
+  async selfPresent(userId, sessionId, { talkSeconds } = {}) {
     const session = await models.CohortReviewSession.findByPk(sessionId);
     if (!session) throw new NotFoundError('Review session not found');
     if (!(await this._menteeInClan(userId, session))) throw new ForbiddenError('You are not a mentee of this clan');
@@ -212,6 +357,10 @@ class ReviewMeetingService {
       defaults: { sessionId, menteeId: userId, status: 'pending' },
     });
     const patch = {};
+    // Mentee self-reports their own dominant-speaker time (heartbeat). Monotonic —
+    // never lower it; the mentor's name-based tracking also feeds the same field.
+    const ts = Math.max(0, Math.min(24 * 3600, parseInt(talkSeconds, 10) || 0));
+    if (ts > (entry.talkSeconds || 0)) patch.talkSeconds = ts;
     // Attendance is only touched when the mentor turned tracking ON for this call
     // (a review, not a general meeting). When on, JOINING is live proof of
     // presence, so mark present even over a prior 'absent' — but respect an

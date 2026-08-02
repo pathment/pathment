@@ -31,6 +31,7 @@ import { Avatar } from '@/components/shared/Avatar';
 import { useConfirm } from '@/lib/context/ConfirmContext';
 import { AttendanceSection } from '@/components/mentor/attendance/AttendanceSection';
 import { ReviewMeetingPanel } from '@/components/mentor/ReviewMeetingPanel';
+import { ReviewScheduleDrawer } from '@/components/mentor/ReviewScheduleDrawer';
 
 type Attendance = 'present' | 'absent' | 'excused';
 type EntryStatus = 'pending' | 'reviewed' | 'deferred';
@@ -110,6 +111,7 @@ export default function CohortReview() {
   const [extReview, setExtReview] = useState<any>(null); // eslint-disable-line @typescript-eslint/no-explicit-any
   const [extDays, setExtDays] = useState(3);
   const [isSavingAttendance, setIsSavingAttendance] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
 
   const mentee: CohortMentee | undefined = cohort[idx];
   const menteeId = mentee?.id;
@@ -255,6 +257,30 @@ export default function CohortReview() {
     entries.some((e) => e.menteeId === mId)
       ? entries.map((e) => (e.menteeId === mId ? { ...e, ...patch } : e))
       : [...entries, { menteeId: mId, attendance: null, status: 'pending', ...patch } as ReviewEntry];
+
+  // Live auto-attendance sync: the meeting panel pushes the roster's attendance
+  // (server truth — includes mentees auto-marked present on joining the call) so
+  // the attendance strip and the present/absent/excused counts reflect it live,
+  // instead of the stale session loaded once on page open. Server already
+  // persisted these marks; we only mirror them into local state (no write). A
+  // change guard keeps the 8s roster poll from re-rendering when nothing moved.
+  const syncMeetingAttendance = useCallback((rows: { menteeId: string; attendance: string | null }[]) => {
+    setSession((s) => {
+      if (!s) return s;
+      let entries = s.entries;
+      let changed = false;
+      for (const row of rows) {
+        const att = row.attendance as Attendance | null;
+        if (!att) continue;
+        const cur = entries.find((e) => e.menteeId === row.menteeId);
+        if (!cur || cur.attendance !== att) {
+          entries = upsert(entries, row.menteeId, { attendance: att, status: 'reviewed' });
+          changed = true;
+        }
+      }
+      return changed ? { ...s, entries } : s;
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const patchEntry = useCallback(async (mId: string, patch: { attendance?: Attendance | null; status?: EntryStatus; note?: string }, commit = false) => {
     if (!session) return;
@@ -712,6 +738,7 @@ export default function CohortReview() {
           <p className="text-slate-600 text-sm">{idx + 1} of {cohort.length} · {session?.title || 'review each mentee, then finish'}</p>
         </div>
         <div className="flex items-center gap-2">
+          <button onClick={() => setScheduleOpen(true)} className="px-3 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm hover:bg-slate-50 inline-flex items-center gap-1" title="Recurring reviews"><CalendarClock className="w-4 h-4" />Schedule</button>
           <button onClick={openHistory} className="px-3 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm hover:bg-slate-50 inline-flex items-center gap-1" title="Past reviews"><History className="w-4 h-4" />History</button>
           <button onClick={() => setAssigning(true)} className="px-3 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm hover:bg-slate-50 inline-flex items-center gap-1" title="Assign a task (t)"><Plus className="w-4 h-4" />Assign task</button>
           <button onClick={() => setShowHelp(true)} className="p-2 rounded-lg text-slate-400 hover:bg-slate-100" title="Shortcuts"><Keyboard className="w-4 h-4" /></button>
@@ -779,7 +806,7 @@ export default function CohortReview() {
 
       {/* Live video (Jitsi): start the room, auto-attendance, contribution points. */}
       {session && (session.id || isDraft) && (
-        <ReviewMeetingPanel sessionId={session.id} isDraft={isDraft} ensureSession={ensureSession} />
+        <ReviewMeetingPanel sessionId={session.id} isDraft={isDraft} ensureSession={ensureSession} onAttendanceSync={syncMeetingAttendance} onEnded={loadSession} />
       )}
 
       {/* Attendance Strip */}
@@ -1239,6 +1266,14 @@ export default function CohortReview() {
           onAssigned={refresh}
         />
       )}
+
+      {/* Recurring reviews: set up / cancel weekly-biweekly reviews with invites. */}
+      <ReviewScheduleDrawer
+        open={scheduleOpen}
+        onClose={() => setScheduleOpen(false)}
+        clans={clans}
+        defaultClanId={effectiveClanId}
+      />
 
       {/* Cohort-review history: browse & open past dated sessions to view or edit. */}
       <Drawer open={historyOpen} onClose={() => setHistoryOpen(false)} width="md" title="Cohort review history" subtitle="Open a past session to view or edit it">

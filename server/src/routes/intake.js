@@ -60,5 +60,6 @@ router.post('/cohorts/:id/applications/export', ...adminOnly, intakeController.e
 router.post('/cohorts/:id/scores/import/preview', ...adminOnly, intakeController.previewScoreImport);
 router.post('/cohorts/:id/scores/import/apply', ...adminOnly, intakeController.applyScoreImport);
 router.post('/cohorts/:id/applications/bulk-accept', ...adminOnly, intakeController.bulkAcceptApplications);
+router.post('/cohorts/:id/applications/bulk-reject', ...adminOnly, intakeController.bulkRejectApplications);
 
 module.exports = router;

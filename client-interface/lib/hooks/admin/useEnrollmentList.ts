@@ -43,7 +43,7 @@ export interface Enrollment {
     type: string;
     status: string;
   };
-  clan?: { id: string; name: string } | null;
+  clan?: { id: string; name: string; leadMentor?: { id: string; firstName: string; lastName: string; email: string; profilePictureUrl?: string | null } | null } | null;
   matches: Array<{
     id: string;
     status: string;

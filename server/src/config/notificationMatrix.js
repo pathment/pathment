@@ -38,7 +38,13 @@ EXTENSION_HANDLED: 'extension_handled',
   FEEDBACK_STATUS_UPDATED: 'feedback_status_updated',
   // Admissions intake (admin-facing)
   APPLICATION_RECEIVED: 'application_received',
-  APPLICATION_CAPACITY_REACHED: 'application_capacity_reached'
+  APPLICATION_CAPACITY_REACHED: 'application_capacity_reached',
+  // Recurring cohort reviews + admin-hosted meetings (in-app; the rich email +
+  // calendar .ics is enqueued separately by the scheduling services)
+  REVIEW_SCHEDULED: 'review_scheduled',
+  REVIEW_REMINDER: 'review_reminder',
+  ADMIN_MEETING_INVITE: 'admin_meeting_invite',
+  ADMIN_MEETING_REMINDER: 'admin_meeting_reminder'
 };
 
 // Which role's "hat" a notification concerns, so the bell + list can scope to the
@@ -299,6 +305,34 @@ const NOTIFICATION_MATRIX = {
     audience: 'any',
     preferenceKey: 'feedback_status_updated',
     channels: { inApp: true, email: true, chat: false }
+  },
+  // Recurring review scheduled / reminder — in-app only here; the calendar
+  // invite email (+ .ics) is enqueued directly by reviewScheduleService.
+  [NOTIFICATION_EVENTS.REVIEW_SCHEDULED]: {
+    type: 'system',
+    audience: 'any',
+    preferenceKey: 'review_scheduled',
+    channels: { inApp: true, email: false, chat: false }
+  },
+  [NOTIFICATION_EVENTS.REVIEW_REMINDER]: {
+    type: 'system',
+    audience: 'any',
+    preferenceKey: 'review_reminder',
+    channels: { inApp: true, email: false, chat: false }
+  },
+  // Admin-hosted meeting invite / reminder — in-app only here; the calendar
+  // invite email (+ .ics) is enqueued directly by adminMeetingService.
+  [NOTIFICATION_EVENTS.ADMIN_MEETING_INVITE]: {
+    type: 'system',
+    audience: 'any',
+    preferenceKey: 'admin_meeting_invite',
+    channels: { inApp: true, email: false, chat: false }
+  },
+  [NOTIFICATION_EVENTS.ADMIN_MEETING_REMINDER]: {
+    type: 'system',
+    audience: 'any',
+    preferenceKey: 'admin_meeting_reminder',
+    channels: { inApp: true, email: false, chat: false }
   }
 };
 

@@ -15,6 +15,7 @@ export interface Clan {
   id: string;
   name: string;
   description?: string;
+  whatsappGroupLink?: string | null;
   status: string;
   tags: string[];
   levelLabel?: string | null;
