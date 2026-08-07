@@ -400,17 +400,34 @@ class AuthzService {
    * cohort, friction, and task domains so there is a single source of truth
    * that covers lead_mentor, co_mentor, core_team, cross-clan cover, and
    * explicit RoleAssignment grants. Returns [] when the user mentors nobody.
+   *
+   * Accepts a user object or a bare userId. Pass `{ permission }` to narrow the
+   * clan side to clans where the user may ACTUALLY exercise that permission
+   * (`clansWhereCan`) — a data view should ask for the permission it renders,
+   * so a co-mentor with `mentee.view` revoked drops out of the list exactly as
+   * they already do from the per-record check. Direct 1:1 matches are never
+   * filtered: the match itself is the grant.
    */
-  async resolveMenteeIds(userId) {
+  async resolveMenteeIds(userOrId, opts = {}) {
+    const asUser = userOrId && typeof userOrId === 'object' ? userOrId : null;
+    const userId = asUser ? asUser.id : userOrId;
     if (!userId) return [];
     const ids = new Set();
+
+    // `clansWhereCan` runs `getAssignments`, which reads the base role — so a
+    // bare id has to be hydrated before it can be permission-filtered.
+    const clanSource = async () => {
+      if (!opts.permission) return this.mentoredClanIds(userId);
+      const user = asUser || (await models.User.findByPk(userId, { attributes: ['id', 'role'] }));
+      return user ? this.clansWhereCan(user, opts.permission, { assignments: opts.assignments }) : [];
+    };
 
     const [matches, clanIds] = await Promise.all([
       models.MentorMenteeMatch.findAll({
         where: { mentorId: userId, status: 'active' },
         attributes: ['menteeId']
       }),
-      this.mentoredClanIds(userId)
+      clanSource()
     ]);
 
     matches.forEach((m) => m.menteeId && ids.add(m.menteeId));
@@ -434,11 +451,11 @@ class AuthzService {
    * out here, so they never see work they couldn't act on. Leads / core-team /
    * grants keep every clan (no deny list applies to them).
    */
-  async clansWhereCan(user, permission) {
+  async clansWhereCan(user, permission, opts = {}) {
     if (!user) return [];
     const clanIds = await this.mentoredClanIds(user.id);
     if (!clanIds.length) return [];
-    const assignments = await this.getAssignments(user);
+    const assignments = opts.assignments || (await this.getAssignments(user));
     const allowed = [];
     for (const clanId of clanIds) {
       const resource = await this.scopeOfClan(clanId);

@@ -2,6 +2,16 @@ const { catchAsync } = require('../middlewares/errorHandler');
 const { successResponse } = require('../utils/responses');
 const frictionService = require('../services/frictionService');
 
+/**
+ * A mentee logging their own friction doesn't send a menteeId — the client has
+ * no reason to know it — so default it to them. This grants nothing: the service
+ * still runs the ownership check, and `canViewMentee` is true for self anyway.
+ * Mentors/admins name the mentee explicitly.
+ */
+function targetMenteeId(req) {
+  return req.body?.menteeId || (req.user.role === 'mentee' ? req.user.id : undefined);
+}
+
 // ── Blockers ──────────────────────────────────────────────────────────────
 const listBlockers = catchAsync(async (req, res) => {
   const blockers = await frictionService.listBlockers({
@@ -13,7 +23,9 @@ const listBlockers = catchAsync(async (req, res) => {
 });
 
 const createBlocker = catchAsync(async (req, res) => {
-  const blocker = await frictionService.createBlocker(req.body, req.user.id, req.user);
+  const blocker = await frictionService.createBlocker(
+    { ...req.body, menteeId: targetMenteeId(req) }, req.user.id, req.user
+  );
   res.status(201).json(successResponse('Blocker logged', { blocker }, 201));
 });
 
@@ -37,7 +49,9 @@ const listDelays = catchAsync(async (req, res) => {
 });
 
 const createDelay = catchAsync(async (req, res) => {
-  const delay = await frictionService.createDelay(req.body, req.user.id, req.user);
+  const delay = await frictionService.createDelay(
+    { ...req.body, menteeId: targetMenteeId(req) }, req.user.id, req.user
+  );
   res.status(201).json(successResponse('Delay logged', { delay }, 201));
 });
 
