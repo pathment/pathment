@@ -22,8 +22,9 @@ router.post('/daily-log', authenticate, authorize(['mentee', 'admin']), dailyLog
 // can ask about their own state (a mentor who is also a mentee included).
 router.get('/pause-state', authenticate, mentorshipPauseController.selfPauseState);
 
-// Live cohort-review video: discover the active room, and self-report presence.
+// Live cohort-review video: discover the active room, upcoming review, and self-report presence.
 router.get('/review/active', authenticate, reviewMeetingController.active);
+router.get('/review/upcoming', authenticate, reviewMeetingController.upcoming);
 router.post('/review/:id/join', authenticate, reviewMeetingController.join);
 router.post('/review/:id/leave', authenticate, reviewMeetingController.leave);
 

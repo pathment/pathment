@@ -4,7 +4,7 @@ const { models } = require('../db');
 const { NotFoundError, ForbiddenError, ValidationError } = require('../utils/errors/errorTypes');
 const authzService = require('./authzService');
 const cfg = require('../config/reviewMeeting');
-const { activeOccurrence } = require('../utils/reviewRecurrence');
+const { activeOccurrence, nextOccurrences } = require('../utils/reviewRecurrence');
 
 // A live meeting older than this with no explicit end is treated as abandoned —
 // stops a never-ended meeting from showing the mentee "Join" banner forever.
@@ -345,6 +345,45 @@ class ReviewMeetingService {
     const user = await models.User.findByPk(userId, { attributes: ['id', 'firstName', 'lastName', 'profilePictureUrl'] });
     const clan = await models.Clan.findByPk(session.clanId, { attributes: ['name'] });
     return { ...this._joinConfig(session, this._fullName(user), user && user.profilePictureUrl), clanName: clan?.name || 'your clan' };
+  }
+
+  /** Next upcoming scheduled review for the mentee's clan (or null). */
+  async upcomingForMentee(userId) {
+    if (!cfg.enabled) return null;
+    const clanIds = (await models.ClanMembership.findAll({
+      where: { userId, role: 'mentee', status: { [Op.in]: ['active', 'paused'] } },
+      attributes: ['clanId'], raw: true,
+    })).map((m) => m.clanId).filter(Boolean);
+    if (!clanIds.length) return null;
+
+    const now = new Date();
+    const schedules = await models.ReviewSchedule.findAll({
+      where: { clanId: { [Op.in]: clanIds }, active: true },
+      include: [
+        { model: models.Clan, as: 'clan', attributes: ['id', 'name'] },
+        { model: models.User, as: 'mentor', attributes: ['id', 'firstName', 'lastName'] },
+      ],
+    });
+
+    let earliest = null;
+    for (const s of schedules) {
+      const occs = nextOccurrences(s, now, 1);
+      if (!occs || !occs.length) continue;
+      const occ = occs[0];
+      if (!occ || new Date(occ.start).getTime() <= now.getTime()) continue;
+      if (!earliest || new Date(occ.start).getTime() < new Date(earliest.scheduledAt).getTime()) {
+        const mentorName = s.mentor ? `${s.mentor.firstName || ''} ${s.mentor.lastName || ''}`.trim() : 'Mentor';
+        earliest = {
+          scheduleId: s.id,
+          title: s.title || `${s.clan?.name || 'Clan'} cohort review`,
+          scheduledAt: occ.start,
+          clanName: s.clan?.name || 'Clan',
+          mentorName,
+          durationMinutes: s.durationMinutes || 60,
+        };
+      }
+    }
+    return earliest;
   }
 
   /** Mark the AUTHENTICATED mentee present (self-report). Only marks themselves. */

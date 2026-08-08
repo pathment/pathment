@@ -26,8 +26,9 @@ export const menteeApi = {
   // Is the signed-in user's mentee side paused? Powers the paused gate.
   getPauseState: () => apiClient.get('/mentee/pause-state'),
 
-  // Live cohort-review video (self-report attendance).
+  // Live cohort-review video (self-report attendance & upcoming countdown).
   getActiveReview: () => apiClient.get('/mentee/review/active'),
+  getUpcomingReview: () => apiClient.get('/mentee/review/upcoming'),
   joinReview: (sessionId: string, talkSeconds?: number) => apiClient.post(`/mentee/review/${sessionId}/join`, talkSeconds != null ? { talkSeconds } : {}),
   leaveReview: (sessionId: string, seconds: number) => apiClient.post(`/mentee/review/${sessionId}/leave`, { seconds }),
 

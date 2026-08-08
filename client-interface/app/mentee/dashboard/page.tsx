@@ -22,6 +22,8 @@ import { ActivityCard } from '@/components/shared/ActivityCard';
 import { RecurringRitualsCard } from '@/components/mentee/RecurringRitualsCard';
 import { AnnouncementsCard } from '@/components/shared/AnnouncementsCard';
 
+import { UpcomingReviewCard } from '@/features/reviews/components/UpcomingReviewCard';
+
 function MenteeDashboardInner() {
   const { user } = useAuth();
   const searchParams = useSearchParams();
@@ -115,6 +117,9 @@ function MenteeDashboardInner() {
           </span>
         </Link>
       )}
+
+      {/* Upcoming Cohort Review Countdown */}
+      <UpcomingReviewCard />
 
       {/* Recurring rituals (from your schedule) */}
       <RecurringRitualsCard />

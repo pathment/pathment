@@ -56,6 +56,10 @@ const active = catchAsync(async (req, res) => {
   const meeting = await svc.activeForMentee(req.user.id);
   res.status(200).json(successResponse('Active review', { meeting }));
 });
+const upcoming = catchAsync(async (req, res) => {
+  const upcoming = await svc.upcomingForMentee(req.user.id);
+  res.status(200).json(successResponse('Upcoming review', { upcoming }));
+});
 const join = catchAsync(async (req, res) => {
   const result = await svc.selfPresent(req.user.id, req.params.id, { talkSeconds: req.body?.talkSeconds });
   res.status(200).json(successResponse('Joined', result));
@@ -65,4 +69,4 @@ const leave = catchAsync(async (req, res) => {
   res.status(200).json(successResponse('Left', result));
 });
 
-module.exports = { config, start, end, setAttendanceTracking, setPolls, hostView, markPresent, recordTalk, proposeContribution, finalizeContribution, active, join, leave };
+module.exports = { config, start, end, setAttendanceTracking, setPolls, hostView, markPresent, recordTalk, proposeContribution, finalizeContribution, active, upcoming, join, leave };
