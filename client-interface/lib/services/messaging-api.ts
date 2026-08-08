@@ -11,8 +11,8 @@ export interface SendMessagePayload {
 }
 
 export const messagingApi = {
-  async listConversations(limit = 25): Promise<ConversationSummary[]> {
-    const response = await apiClient.get<any>(`/messaging/conversations?limit=${limit}`);
+  async listConversations(limit = 50, archived = false): Promise<ConversationSummary[]> {
+    const response = await apiClient.get<any>(`/messaging/conversations?limit=${limit}&archived=${archived}`);
     return response.data?.conversations || [];
   },
 
@@ -45,6 +45,21 @@ export const messagingApi = {
     return {
       updatedCount: response.data?.updatedCount || 0,
     };
+  },
+
+  async archiveConversation(conversationId: string): Promise<any> {
+    const response = await apiClient.post(`/messaging/conversations/${conversationId}/archive`, {});
+    return response.data;
+  },
+
+  async unarchiveConversation(conversationId: string): Promise<any> {
+    const response = await apiClient.post(`/messaging/conversations/${conversationId}/unarchive`, {});
+    return response.data;
+  },
+
+  async deleteConversation(conversationId: string): Promise<any> {
+    const response = await apiClient.delete(`/messaging/conversations/${conversationId}`);
+    return response.data;
   },
 
   async toggleReaction(messageId: string, emoji: string): Promise<{ messageId: string; reactions: { id: string; userId: string; emoji: string }[] }> {

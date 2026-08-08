@@ -1,8 +1,8 @@
 'use client';
 
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Check, CheckCheck, Loader2, MessageSquare, RefreshCw, Send } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { messagingApi } from '@/lib/services/messaging-api';
@@ -12,85 +12,61 @@ import { useAuth } from '@/lib/context/AuthContext';
 import { useClan, ALL_CLANS } from '@/lib/context/ClanContext';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import type { ChatMessage, ConversationSummary, MessageReaction, SearchableUser } from '@/lib/types/messaging';
-import UserSearchCombobox from './UserSearchCombobox';
+
+import ConversationList from './ConversationList';
+import ChatWindow from './ChatWindow';
 
 interface MessageCenterProps {
   role: 'admin' | 'mentor' | 'mentee';
 }
 
-const QUICK_REACTIONS = ['👍', '❤️', '😂', '🎉', '🙏'];
-
 function getErrorMessage(error: unknown, fallback: string): string {
   return extractApiErrorMessage(error, fallback);
-}
-
-/** Same calendar day? (for date separators + consecutive-message grouping). */
-function sameDay(a: string, b: string): boolean {
-  return new Date(a).toDateString() === new Date(b).toDateString();
-}
-
-/** Compact last-activity label for the conversation list: "3:42 PM" today, "Yesterday", weekday, else date. */
-function conversationTime(iso?: string): string {
-  if (!iso) return '';
-  const date = new Date(iso);
-  const today = new Date();
-  const yesterday = new Date();
-  yesterday.setDate(today.getDate() - 1);
-  if (date.toDateString() === today.toDateString()) {
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  }
-  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
-  const within7 = (today.getTime() - date.getTime()) / 86400000 < 7;
-  if (within7) return date.toLocaleDateString([], { weekday: 'short' });
-  return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
-}
-
-/** Human day label for the separator: Today / Yesterday / "Mon, Jun 2" (+ year if not this year). */
-function dayLabel(iso: string): string {
-  const date = new Date(iso);
-  const today = new Date();
-  const yesterday = new Date();
-  yesterday.setDate(today.getDate() - 1);
-  if (date.toDateString() === today.toDateString()) return 'Today';
-  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
-  return date.toLocaleDateString([], {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    ...(date.getFullYear() !== today.getFullYear() ? { year: 'numeric' } : {}),
-  });
 }
 
 export default function MessageCenter({ role }: MessageCenterProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useAuth();
+  const { activeClanId } = useClan();
 
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  const [archivedConversations, setArchivedConversations] = useState<ConversationSummary[]>([]);
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
 
   const [isBootstrapping, setIsBootstrapping] = useState(true);
   const [isMessagesLoading, setIsMessagesLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
-
   const [composer, setComposer] = useState('');
-  const messageListEndRef = useRef<HTMLDivElement | null>(null);
+
+  const [activeTab, setActiveTab] = useState<'all' | 'unread' | 'archived'>('all');
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+
+  // Cache messages by conversation ID for 0ms conversation switching
+  const messageCacheRef = useRef<Record<string, ChatMessage[]>>({});
+  const pendingConversationPromisesRef = useRef<Record<string, Promise<any>>>({});
+
+  // Mobile layout state: 'list' or 'chat'
+  const [activeMobilePane, setActiveMobilePane] = useState<'list' | 'chat'>('list');
 
   const participantId = searchParams.get('participantId');
   const queryConversationId = searchParams.get('conversationId');
 
-  const selectedConversation = useMemo(
-    () => conversations.find((conversation) => conversation.id === selectedConversationId) || null,
-    [conversations, selectedConversationId]
-  );
-
-  // Scope the conversation list to the active clan (mentors with 2+ clans).
-  const { activeClanId } = useClan();
+  // Scope conversation list to active clan for mentors
   const visibleConversations = useMemo(() => {
     if (role !== 'mentor' || activeClanId === ALL_CLANS) return conversations;
     return conversations.filter((c) => (c.clanIds || []).includes(activeClanId));
   }, [conversations, role, activeClanId]);
+
+  const selectedConversation = useMemo(
+    () =>
+      conversations.find((c) => c.id === selectedConversationId) ||
+      archivedConversations.find((c) => c.id === selectedConversationId) ||
+      null,
+    [conversations, archivedConversations, selectedConversationId]
+  );
 
   const selectedTitle = useMemo(() => {
     if (!selectedConversation) {
@@ -108,6 +84,14 @@ export default function MessageCenter({ role }: MessageCenterProps) {
 
   const mergeIncomingMessage = (incoming: ChatMessage) => {
     setMessages((prev) => {
+      // Replace optimistic temp message if matching text or temp id
+      const existingTempIdx = prev.findIndex((m) => m.id.startsWith('temp-') && m.messageText === incoming.messageText);
+      if (existingTempIdx !== -1) {
+        const next = [...prev];
+        next[existingTempIdx] = incoming;
+        return next;
+      }
+
       if (prev.some((message) => message.id === incoming.id)) {
         return prev;
       }
@@ -115,23 +99,41 @@ export default function MessageCenter({ role }: MessageCenterProps) {
     });
   };
 
-  const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
-    requestAnimationFrame(() => {
-      messageListEndRef.current?.scrollIntoView({ behavior, block: 'end' });
-    });
-  };
-
   const loadConversations = async () => {
-    const list = await messagingApi.listConversations(50);
-    setConversations(list);
-    return list;
+    try {
+      const [activeList, archivedList] = await Promise.all([
+        messagingApi.listConversations(50, false),
+        messagingApi.listConversations(50, true),
+      ]);
+      setConversations(activeList);
+      setArchivedConversations(archivedList);
+      return activeList;
+    } catch {
+      return [];
+    }
   };
 
-  const loadMessages = async (conversationId: string) => {
-    setIsMessagesLoading(true);
+  const handleTabChange = (tab: 'all' | 'unread' | 'archived') => {
+    setActiveTab(tab);
+  };
+
+  const loadMessages = async (conversationId: string, showLoadingState = true) => {
+    if (conversationId.startsWith('temp-')) {
+      setMessages([]);
+      setIsMessagesLoading(false);
+      setHasMore(false);
+      return;
+    }
+
+    if (showLoadingState && !messageCacheRef.current[conversationId]) {
+      setIsMessagesLoading(true);
+    }
     try {
-      const list = await messagingApi.listMessages(conversationId, 100);
+      const list = await messagingApi.listMessages(conversationId, 15);
+      messageCacheRef.current[conversationId] = list;
       setMessages(list);
+      setHasMore(list.length === 15);
+
       await messagingApi.markConversationRead(conversationId);
       setConversations((prev) =>
         prev.map((conversation) =>
@@ -145,6 +147,32 @@ export default function MessageCenter({ role }: MessageCenterProps) {
     }
   };
 
+  const loadMoreMessages = async () => {
+    if (isLoadingMore || !hasMore || !selectedConversationId || selectedConversationId.startsWith('temp-')) return;
+    setIsLoadingMore(true);
+
+    const oldestMessage = messages[0];
+    if (!oldestMessage) {
+      setIsLoadingMore(false);
+      return;
+    }
+
+    try {
+      const list = await messagingApi.listMessages(selectedConversationId, 15, oldestMessage.createdAt);
+      if (list.length < 15) {
+        setHasMore(false);
+      }
+      const updatedList = [...list, ...messages];
+      setMessages(updatedList);
+      messageCacheRef.current[selectedConversationId] = updatedList;
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Failed to load older messages'));
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
+
+  // Bootstrap initial load
   useEffect(() => {
     const boot = async () => {
       setIsBootstrapping(true);
@@ -158,16 +186,19 @@ export default function MessageCenter({ role }: MessageCenterProps) {
 
           if (conversation?.id) {
             await loadMessages(conversation.id);
+            setActiveMobilePane('chat');
             router.replace(`/${role}/messages?conversationId=${conversation.id}`);
           }
         } else {
-          const initialConversationId = queryConversationId || list[0]?.id || null;
+          const initialConversationId = queryConversationId || null;
           setSelectedConversationId(initialConversationId);
           if (initialConversationId) {
             await loadMessages(initialConversationId);
+            if (queryConversationId) {
+              setActiveMobilePane('chat');
+            }
           }
         }
-
       } catch (error: unknown) {
         toast.error(getErrorMessage(error, 'Could not open messages'));
       } finally {
@@ -178,53 +209,50 @@ export default function MessageCenter({ role }: MessageCenterProps) {
     boot();
   }, [participantId, queryConversationId, role, router]);
 
+  // Load messages on conversation switch with cache fallback (0ms latency switch)
   useEffect(() => {
     if (!selectedConversationId || isBootstrapping) {
       return;
     }
 
-    loadMessages(selectedConversationId);
+    // Instant switch to cached messages if available
+    if (messageCacheRef.current[selectedConversationId]) {
+      setMessages(messageCacheRef.current[selectedConversationId]);
+      setIsMessagesLoading(false);
+      loadMessages(selectedConversationId, false); // silent background revalidation
+    } else {
+      setMessages([]);
+      loadMessages(selectedConversationId, true);
+    }
   }, [isBootstrapping, selectedConversationId]);
 
+  // Socket connection and global event listeners
   useEffect(() => {
     const token = getToken();
-    if (!token) {
-      return;
-    }
+    if (!token) return;
 
     const socket = connectSocket(token);
 
     const onMessage = (payload: { conversationId: string; message: ChatMessage }) => {
       const incomingConversationId = payload?.conversationId;
       const incomingMessage = payload?.message;
-      if (!incomingConversationId || !incomingMessage) {
-        return;
-      }
+      if (!incomingConversationId || !incomingMessage) return;
 
       if (incomingConversationId === selectedConversationId) {
         mergeIncomingMessage(incomingMessage);
 
-        // If user is currently viewing this conversation, keep it read in real-time.
         if (incomingMessage.senderId !== user?.id) {
-          messagingApi.markConversationRead(incomingConversationId).catch(() => {
-            // Non-blocking: badge will re-sync on next fetch/socket refresh even if this fails.
-          });
+          messagingApi.markConversationRead(incomingConversationId).catch(() => {});
         }
-
-        scrollToBottom('smooth');
       }
 
       setConversations((prev) => {
         const target = prev.find((conversation) => conversation.id === incomingConversationId);
-        if (!target) {
-          return prev;
-        }
+        if (!target) return prev;
 
         return prev
           .map((conversation) => {
-            if (conversation.id !== incomingConversationId) {
-              return conversation;
-            }
+            if (conversation.id !== incomingConversationId) return conversation;
             const unreadIncrement = incomingMessage.senderId === user?.id ? 0 : 1;
             return {
               ...conversation,
@@ -244,12 +272,10 @@ export default function MessageCenter({ role }: MessageCenterProps) {
       });
     };
 
-    // Recipient came online (or opened a tab) → my sent ticks flip to delivered (✓✓).
     const onDelivered = (payload: { messageIds?: string[] }) => {
       const ids = new Set(payload?.messageIds || []);
-      if (ids.size === 0) {
-        return;
-      }
+      if (ids.size === 0) return;
+
       setMessages((prev) =>
         prev.map((message) =>
           ids.has(message.id) && !message.deliveredAt
@@ -259,14 +285,10 @@ export default function MessageCenter({ role }: MessageCenterProps) {
       );
     };
 
-    // The other participant read the conversation → my ticks turn blue (read).
     const onConversationRead = (payload: { conversationId?: string; userId?: string }) => {
-      if (!payload?.conversationId || payload.conversationId !== selectedConversationId) {
-        return;
-      }
-      if (payload.userId === user?.id) {
-        return;
-      }
+      if (!payload?.conversationId || payload.conversationId !== selectedConversationId) return;
+      if (payload.userId === user?.id) return;
+
       setMessages((prev) =>
         prev.map((message) =>
           message.senderId === user?.id && !message.isRead
@@ -277,9 +299,8 @@ export default function MessageCenter({ role }: MessageCenterProps) {
     };
 
     const onReaction = (payload: { messageId?: string; reactions?: MessageReaction[] }) => {
-      if (!payload?.messageId) {
-        return;
-      }
+      if (!payload?.messageId) return;
+
       setMessages((prev) =>
         prev.map((message) =>
           message.id === payload.messageId ? { ...message, reactions: payload.reactions || [] } : message
@@ -304,11 +325,10 @@ export default function MessageCenter({ role }: MessageCenterProps) {
     };
   }, [selectedConversationId, user?.id]);
 
+  // Join/leave conversation socket rooms
   useEffect(() => {
     const socket = getSocket();
-    if (!socket || !selectedConversationId) {
-      return;
-    }
+    if (!socket || !selectedConversationId) return;
 
     socket.emit('conversation:join', { conversationId: selectedConversationId });
     return () => {
@@ -316,67 +336,258 @@ export default function MessageCenter({ role }: MessageCenterProps) {
     };
   }, [selectedConversationId]);
 
-  useEffect(() => {
-    if (messages.length === 0) {
-      return;
-    }
+  const handleSelectConversation = (id: string) => {
+    setSelectedConversationId(id);
+    setActiveMobilePane('chat');
+  };
 
-    scrollToBottom(isMessagesLoading ? 'auto' : 'smooth');
-  }, [messages, selectedConversationId, isMessagesLoading]);
-
+  /**
+   * OPTIMISTIC MESSAGE SENDING (0ms UI latency)
+   */
   const handleSendMessage = async () => {
-    if (!selectedConversationId || !composer.trim() || isSending) {
+    if (!selectedConversationId || !composer.trim()) return;
+
+    let targetConversationId = selectedConversationId;
+
+    if (targetConversationId.startsWith('temp-') && Boolean(pendingConversationPromisesRef.current[targetConversationId])) {
+      try {
+        const realConv = await pendingConversationPromisesRef.current[targetConversationId];
+        if (realConv?.id) {
+          targetConversationId = realConv.id;
+        }
+      } catch {
+        // Error handled in handleStartConversation
+      }
+    }
+
+    if (targetConversationId.startsWith('temp-')) {
+      toast.error('Starting conversation, please try sending again in a second...');
       return;
     }
+
+    const messageText = composer.trim();
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+
+    const optimisticMessage: ChatMessage = {
+      id: tempId,
+      threadId: targetConversationId,
+      senderId: user?.id || '',
+      recipientId: selectedConversation?.participants[0]?.id || '',
+      messageText,
+      isRead: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      sender: user ? {
+        id: user.id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        role: user.role as 'admin' | 'mentor' | 'mentee',
+        profilePictureUrl: user.profilePictureUrl || undefined,
+      } : undefined,
+      reactions: [],
+    };
+
+    // 1. Instantly append optimistic message & update lastMessage in state
+    setMessages((prev) => [...prev, optimisticMessage]);
+    setComposer('');
+    setConversations((prev) =>
+      prev.map((c) =>
+        c.id === selectedConversationId
+          ? { ...c, lastMessage: optimisticMessage, lastMessageAt: optimisticMessage.createdAt }
+          : c
+      )
+    );
 
     setIsSending(true);
     try {
+      // 2. Call API in background
       const sent = await messagingApi.sendMessage({
-        conversationId: selectedConversationId,
-        messageText: composer.trim(),
+        conversationId: targetConversationId,
+        messageText,
       });
 
-      mergeIncomingMessage(sent);
-      setComposer('');
-      setConversations((prev) =>
-        prev.map((conversation) =>
-          conversation.id === selectedConversationId
-            ? { ...conversation, lastMessage: sent, lastMessageAt: sent.createdAt }
-            : conversation
-        )
+      // 3. Reconcile temporary message with server response
+      setMessages((prev) =>
+        prev.map((m) => (m.id === tempId ? sent : m))
       );
+
+      // Update cache
+      if (messageCacheRef.current[selectedConversationId]) {
+        messageCacheRef.current[selectedConversationId] = messageCacheRef.current[selectedConversationId].map(
+          (m) => (m.id === tempId ? sent : m)
+        );
+      }
     } catch (error: unknown) {
-      toast.error(getErrorMessage(error, 'Could not send message'));
+      // Revert optimistic message on failure
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
+      toast.error(getErrorMessage(error, 'Failed to send message'));
     } finally {
       setIsSending(false);
     }
   };
 
-  const reactToMessage = async (messageId: string, emoji: string) => {
-    // Optimistic + authoritative: the server returns the full reaction set and
-    // also broadcasts `message:reaction`, so the click feels instant either way.
+  /**
+   * OPTIMISTIC EMOJI REACTION (0ms UI latency)
+   */
+  const handleReactToMessage = async (messageId: string, emoji: string) => {
+    if (!user?.id) return;
+
+    let originalReactions: MessageReaction[] = [];
+
+    // 1. Instantly toggle reaction locally in state
+    setMessages((prev) =>
+      prev.map((message) => {
+        if (message.id !== messageId) return message;
+        originalReactions = message.reactions || [];
+
+        const existingUserReaction = originalReactions.find((r) => r.userId === user.id);
+        let updatedReactions: MessageReaction[];
+
+        if (existingUserReaction?.emoji === emoji) {
+          // Remove reaction if clicking same emoji
+          updatedReactions = originalReactions.filter((r) => r.userId !== user.id);
+        } else if (existingUserReaction) {
+          // Replace emoji if clicking different emoji
+          updatedReactions = originalReactions.map((r) =>
+            r.userId === user.id ? { ...r, emoji } : r
+          );
+        } else {
+          // Add new reaction
+          updatedReactions = [
+            ...originalReactions,
+            { id: `temp-react-${Date.now()}`, userId: user.id, emoji },
+          ];
+        }
+
+        return { ...message, reactions: updatedReactions };
+      })
+    );
+
+    // 2. Call API in background to persist
     try {
       const { reactions } = await messagingApi.toggleReaction(messageId, emoji);
       setMessages((prev) =>
         prev.map((message) => (message.id === messageId ? { ...message, reactions } : message))
       );
     } catch (error: unknown) {
+      // Revert to original state on network error
+      setMessages((prev) =>
+        prev.map((message) => (message.id === messageId ? { ...message, reactions: originalReactions } : message))
+      );
       toast.error(getErrorMessage(error, 'Could not add reaction'));
     }
   };
 
+  /**
+   * OPTIMISTIC NEW CHAT SELECTION (0ms UI latency)
+   */
   const handleStartConversation = async (selectedUser: SearchableUser) => {
-    try {
-      const conversation = await messagingApi.createDirectConversation(selectedUser.id);
-      const list = await loadConversations();
-      const nextConversationId = conversation?.id || list[0]?.id || null;
+    // 1. Check if conversation with target user already exists
+    const existing = conversations.find((c) =>
+      c.participants.some((p) => p.id === selectedUser.id)
+    );
 
-      setSelectedConversationId(nextConversationId);
-      if (nextConversationId) {
-        await loadMessages(nextConversationId);
+    if (existing) {
+      setSelectedConversationId(existing.id);
+      setActiveMobilePane('chat');
+      return;
+    }
+
+    // 2. Optimistically add new conversation to state instantly (0ms)
+    const tempId = `temp-conv-${Date.now()}`;
+    const optimisticConv: ConversationSummary = {
+      id: tempId,
+      type: 'direct',
+      unreadCount: 0,
+      participants: [
+        {
+          id: selectedUser.id,
+          firstName: selectedUser.firstName,
+          lastName: selectedUser.lastName,
+          email: selectedUser.email,
+          role: selectedUser.role,
+          profilePictureUrl: selectedUser.profilePictureUrl,
+        },
+      ],
+    };
+
+    setConversations((prev) => [optimisticConv, ...prev]);
+    setSelectedConversationId(tempId);
+    setActiveMobilePane('chat');
+
+    // 3. Call API in background to persist
+    const createPromise = messagingApi.createDirectConversation(selectedUser.id);
+    pendingConversationPromisesRef.current[tempId] = createPromise;
+
+    try {
+      const realConv = await createPromise;
+      if (realConv?.id) {
+        setConversations((prev) =>
+          prev.map((c) => (c.id === tempId ? { ...realConv, participants: optimisticConv.participants } : c))
+        );
+        setSelectedConversationId((current) => (current === tempId ? realConv.id : current));
       }
     } catch (error: unknown) {
+      setConversations((prev) => prev.filter((c) => c.id !== tempId));
+      setSelectedConversationId((current) => (current === tempId ? null : current));
       toast.error(getErrorMessage(error, 'Could not start conversation'));
+    } finally {
+      delete pendingConversationPromisesRef.current[tempId];
+    }
+  };
+
+  const handleArchiveConversation = async (conversationId: string) => {
+    const target = conversations.find((c) => c.id === conversationId);
+    setConversations((prev) => prev.filter((c) => c.id !== conversationId));
+    if (target) {
+      setArchivedConversations((prev) => [{ ...target, isArchived: true }, ...prev]);
+    }
+    if (selectedConversationId === conversationId) {
+      setSelectedConversationId(null);
+      setActiveMobilePane('list');
+    }
+    toast.success('Conversation archived');
+    try {
+      await messagingApi.archiveConversation(conversationId);
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Failed to archive conversation'));
+      loadConversations();
+    }
+  };
+
+  const handleUnarchiveConversation = async (conversationId: string) => {
+    const target = archivedConversations.find((c) => c.id === conversationId);
+    setArchivedConversations((prev) => prev.filter((c) => c.id !== conversationId));
+    if (target) {
+      setConversations((prev) => [{ ...target, isArchived: false }, ...prev]);
+    }
+    if (selectedConversationId === conversationId) {
+      setSelectedConversationId(null);
+      setActiveMobilePane('list');
+    }
+    toast.success('Conversation unarchived');
+    try {
+      await messagingApi.unarchiveConversation(conversationId);
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Failed to unarchive conversation'));
+      loadConversations();
+    }
+  };
+
+  const handleDeleteConversation = async (conversationId: string) => {
+    setConversations((prev) => prev.filter((c) => c.id !== conversationId));
+    setArchivedConversations((prev) => prev.filter((c) => c.id !== conversationId));
+    if (selectedConversationId === conversationId) {
+      setSelectedConversationId(null);
+      setActiveMobilePane('list');
+    }
+    toast.success('Conversation deleted');
+    try {
+      await messagingApi.deleteConversation(conversationId);
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'Failed to delete conversation'));
+      loadConversations();
     }
   };
 
@@ -389,250 +600,57 @@ export default function MessageCenter({ role }: MessageCenterProps) {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-slate-900 mb-1">Messages</h1>
-          <p className="text-slate-600 text-sm capitalize">
-            Realtime chat for {role}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <UserSearchCombobox onSelect={handleStartConversation} />
-          <button
-            onClick={async () => {
-              await loadConversations();
-              if (selectedConversationId) {
-                await loadMessages(selectedConversationId);
-              }
-            }}
-            className="inline-flex items-center gap-2 px-3 py-2 border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-100"
-          >
-            <RefreshCw className="w-4 h-4" />
-            Refresh
-          </button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 min-h-[70vh] xl:h-[calc(100dvh-10rem)]">
-        <div className="xl:col-span-4 bg-card border border-slate-200 rounded-2xl overflow-hidden flex flex-col xl:h-full min-h-0">
-          <div className="p-4 border-b border-slate-200">
-            <h2 className="text-slate-900">Conversations</h2>
-          </div>
-          <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-100">
-            {visibleConversations.length === 0 ? (
-              <div className="p-6 text-sm text-slate-500">
-                {role === 'mentor' && activeClanId !== ALL_CLANS && conversations.length > 0
-                  ? 'No conversations with members of this clan.'
-                  : 'No conversations yet. Use a "Message" button from any user card to start one.'}
-              </div>
-            ) : (
-              visibleConversations.map((conversation) => {
-                const participant = conversation.participants[0];
-                const fullName = `${participant?.firstName || ''} ${participant?.lastName || ''}`.trim();
-                const title = fullName || participant?.email || 'Conversation';
-
-                return (
-                  <button
-                    key={conversation.id}
-                    onClick={() => setSelectedConversationId(conversation.id)}
-                    className={`w-full text-left p-4 transition-colors ${
-                      selectedConversationId === conversation.id
-                        ? 'bg-brand-50 dark:bg-brand-500/15'
-                        : 'hover:bg-slate-50'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="text-slate-900 truncate">{title}</p>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className="text-[11px] text-slate-400">{conversationTime(conversation.lastMessageAt)}</span>
-                        {conversation.unreadCount > 0 && (
-                          <span className="min-w-5 h-5 px-1 rounded-full bg-brand-600 text-white text-xs flex items-center justify-center">
-                            {conversation.unreadCount}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <p className="text-xs text-slate-500 truncate mt-1">
-                      {conversation.lastMessage?.messageText || 'No messages yet'}
-                    </p>
-                  </button>
-                );
-              })
-            )}
-          </div>
+    <div className="h-[calc(100vh-6.5rem)] max-h-[calc(100vh-6.5rem)] overflow-hidden">
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 xl:gap-6 h-full">
+        {/* Sidebar Panel */}
+        <div
+          className={`xl:col-span-4 h-full min-h-0 ${
+            activeMobilePane === 'list' ? 'block' : 'hidden xl:block'
+          }`}
+        >
+          <ConversationList
+            conversations={activeTab === 'archived' ? archivedConversations : visibleConversations}
+            allCount={visibleConversations.length}
+            archivedCount={archivedConversations.length}
+            selectedConversationId={selectedConversationId}
+            onSelectConversation={handleSelectConversation}
+            role={role}
+            onStartConversation={handleStartConversation}
+            onRefresh={loadConversations}
+            onArchiveConversation={handleArchiveConversation}
+            onUnarchiveConversation={handleUnarchiveConversation}
+            onDeleteConversation={handleDeleteConversation}
+            activeTab={activeTab}
+            onTabChange={handleTabChange}
+            isBootstrapping={isBootstrapping}
+          />
         </div>
 
-        <div className="xl:col-span-8 bg-card border border-slate-200 rounded-2xl flex flex-col overflow-hidden xl:h-full min-h-0">
-          <div className="p-4 border-b border-slate-200 flex items-center gap-2">
-            <MessageSquare className="w-4 h-4 text-brand-600" />
-            <h2 className="text-slate-900 truncate">{selectedTitle}</h2>
-          </div>
-
-          <div className="flex-1 min-h-0 p-4 overflow-y-auto bg-slate-50">
-            {isMessagesLoading ? (
-              <div className="h-full flex items-center justify-center">
-                <Loader2 className="w-6 h-6 animate-spin text-brand-600" />
-              </div>
-            ) : messages.length === 0 ? (
-              <div className="h-full flex items-center justify-center text-slate-500 text-sm">
-                Send your first message.
-              </div>
-            ) : (
-              <>
-                {messages.map((message, index) => {
-                  const mine = message.senderId === user?.id;
-                  const read = Boolean(message.isRead || message.readAt);
-                  const prev = index > 0 ? messages[index - 1] : null;
-                  // A new day → show a centered date separator above this message.
-                  const showDateSeparator = !prev || !sameDay(prev.createdAt, message.createdAt);
-                  // Consecutive messages from the same sender on the same day collapse
-                  // into one visual group - only the first shows the name + extra gap.
-                  const startsRun = showDateSeparator || !prev || prev.senderId !== message.senderId;
-
-                  // Group reactions by emoji so chips show "👍 2" and mark which I added.
-                  const grouped = (message.reactions || []).reduce(
-                    (acc, reaction) => {
-                      let entry = acc.find((item) => item.emoji === reaction.emoji);
-                      if (!entry) {
-                        entry = { emoji: reaction.emoji, count: 0, mine: false };
-                        acc.push(entry);
-                      }
-                      entry.count += 1;
-                      if (reaction.userId === user?.id) {
-                        entry.mine = true;
-                      }
-                      return acc;
-                    },
-                    [] as { emoji: string; count: number; mine: boolean }[]
-                  );
-
-                  return (
-                    <Fragment key={message.id}>
-                      {showDateSeparator && (
-                        <div className="flex justify-center py-2">
-                          <span className="rounded-full bg-slate-200/70 px-3 py-1 text-[11px] font-medium text-slate-500">
-                            {dayLabel(message.createdAt)}
-                          </span>
-                        </div>
-                      )}
-                      <div
-                        className={`flex flex-col ${mine ? 'items-end' : 'items-start'} ${startsRun ? 'mt-3' : 'mt-0.5'}`}
-                      >
-                      <div className="group/msg relative max-w-[80%]">
-                        <div
-                          className={`rounded-2xl px-4 py-3 ${
-                            mine
-                              ? 'bg-brand-600 text-white'
-                              : 'bg-card border border-slate-200 text-slate-800'
-                          }`}
-                        >
-                          {startsRun && !mine && (
-                            <p className="text-xs font-medium opacity-75 mb-1">
-                              {`${message.sender?.firstName || ''} ${message.sender?.lastName || ''}`.trim() || 'User'}
-                            </p>
-                          )}
-                          <p className="text-sm whitespace-pre-wrap">{message.messageText}</p>
-                          <div className={`flex items-center gap-1.5 mt-2 ${mine ? 'justify-end' : ''}`}>
-                            <span className={`text-[11px] ${mine ? 'text-white/70' : 'text-slate-400'}`}>
-                              {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </span>
-                            {mine && (
-                              <span className="inline-flex" title={read ? 'Seen' : message.deliveredAt ? 'Delivered' : 'Sent'}>
-                                {read ? (
-                                  // Seen → double blue tick
-                                  <CheckCheck className="w-4 h-4 text-sky-300" aria-label="Seen" />
-                                ) : message.deliveredAt ? (
-                                  // Delivered (recipient online) → double tick
-                                  <CheckCheck className="w-4 h-4 text-white/60" aria-label="Delivered" />
-                                ) : (
-                                  // Sent, recipient offline → single tick
-                                  <Check className="w-4 h-4 text-white/60" aria-label="Sent" />
-                                )}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Hover reaction picker - floating pill that pops above the bubble */}
-                        <div
-                          className={`absolute -top-11 ${mine ? 'right-0' : 'left-0'} z-10 origin-bottom flex items-center gap-0.5 rounded-full border border-slate-200 bg-card px-1.5 py-1 shadow-lg opacity-0 scale-90 translate-y-1.5 pointer-events-none transition-all duration-150 ease-out group-hover/msg:opacity-100 group-hover/msg:scale-100 group-hover/msg:translate-y-0 group-hover/msg:pointer-events-auto focus-within:opacity-100 focus-within:scale-100 focus-within:translate-y-0 focus-within:pointer-events-auto`}
-                        >
-                          {QUICK_REACTIONS.map((emoji) => {
-                            const active = grouped.some((g) => g.emoji === emoji && g.mine);
-                            return (
-                              <button
-                                key={emoji}
-                                type="button"
-                                onClick={() => reactToMessage(message.id, emoji)}
-                                className={`w-8 h-8 rounded-full text-lg leading-none flex items-center justify-center transition-transform duration-100 hover:scale-125 hover:bg-slate-100 ${active ? 'bg-brand-50 dark:bg-brand-500/15' : ''}`}
-                                aria-label={`React ${emoji}`}
-                              >
-                                {emoji}
-                              </button>
-                            );
-                          })}
-                        </div>
-
-                        {/* Reaction chips - sit on the bubble's bottom edge (WhatsApp-style) */}
-                        {grouped.length > 0 && (
-                          <div className={`flex flex-wrap gap-1 -mt-2 ${mine ? 'justify-end pr-1' : 'pl-1'} relative z-[1]`}>
-                            {grouped.map((entry) => (
-                              <button
-                                key={entry.emoji}
-                                type="button"
-                                onClick={() => reactToMessage(message.id, entry.emoji)}
-                                title={entry.mine ? 'You reacted - tap to remove' : 'Tap to react'}
-                                className={`inline-flex items-center gap-1 rounded-full border bg-card px-2 py-0.5 text-xs shadow-sm transition-all hover:-translate-y-0.5 ${
-                                  entry.mine
-                                    ? 'border-brand-300 ring-1 ring-brand-200 bg-brand-50 dark:bg-brand-500/15'
-                                    : 'border-slate-200 hover:bg-slate-50'
-                                }`}
-                              >
-                                <span className="leading-none text-sm">{entry.emoji}</span>
-                                {entry.count > 1 && <span className="font-medium text-slate-500">{entry.count}</span>}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      </div>
-                    </Fragment>
-                  );
-                })}
-                <div ref={messageListEndRef} />
-              </>
-            )}
-          </div>
-
-          <div className="p-4 border-t border-slate-200 bg-card">
-            <div className="flex items-center gap-2">
-              <textarea
-                value={composer}
-                onChange={(event) => setComposer(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' && !event.shiftKey) {
-                    event.preventDefault();
-                    handleSendMessage();
-                  }
-                }}
-                rows={2}
-                placeholder="Type a message..."
-                disabled={!selectedConversationId || isSending}
-                className="flex-1 resize-none border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-              />
-              <button
-                onClick={handleSendMessage}
-                disabled={!selectedConversationId || !composer.trim() || isSending}
-                className="h-10 px-4 bg-brand-600 hover:bg-brand-700 text-white rounded-lg disabled:opacity-50 inline-flex items-center gap-2"
-              >
-                {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                Send
-              </button>
-            </div>
-          </div>
+        {/* Chat Thread Pane */}
+        <div
+          className={`xl:col-span-8 h-full min-h-0 ${
+            activeMobilePane === 'chat' ? 'block' : 'hidden xl:block'
+          }`}
+        >
+          <ChatWindow
+            selectedConversation={selectedConversation}
+            selectedTitle={selectedTitle}
+            messages={messages}
+            currentUserId={user?.id}
+            isLoading={isMessagesLoading}
+            composerValue={composer}
+            onComposerChange={setComposer}
+            onSendMessage={handleSendMessage}
+            isSending={isSending}
+            onReact={handleReactToMessage}
+            onBackToList={() => setActiveMobilePane('list')}
+            onArchiveConversation={handleArchiveConversation}
+            onDeleteConversation={handleDeleteConversation}
+            onLoadMore={loadMoreMessages}
+            hasMore={hasMore}
+            isLoadingMore={isLoadingMore}
+          />
         </div>
-
       </div>
     </div>
   );

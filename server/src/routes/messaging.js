@@ -14,6 +14,9 @@ router.get('/conversations', messagingController.getConversations);
 router.post('/conversations/direct', validateBody(messagingSchemas.createDirectConversation), messagingController.createDirectConversation);
 router.get('/conversations/:conversationId/messages', validateParams(messagingSchemas.conversationParams), validateQuery(messagingSchemas.listMessagesQuery), messagingController.getConversationMessages);
 router.post('/conversations/:conversationId/read', validateParams(messagingSchemas.conversationParams), messagingController.markConversationRead);
+router.post('/conversations/:conversationId/archive', validateParams(messagingSchemas.conversationParams), messagingController.archiveConversation);
+router.post('/conversations/:conversationId/unarchive', validateParams(messagingSchemas.conversationParams), messagingController.unarchiveConversation);
+router.delete('/conversations/:conversationId', validateParams(messagingSchemas.conversationParams), messagingController.deleteConversation);
 
 router.post('/messages', validateBody(messagingSchemas.sendMessage), messagingController.sendMessage);
 router.post('/messages/:messageId/reactions', messagingController.toggleReaction);

@@ -97,6 +97,24 @@ exports.markConversationRead = catchAsync(async (req, res) => {
   res.status(200).json(successResponse('Conversation marked as read', result));
 });
 
+exports.archiveConversation = catchAsync(async (req, res) => {
+  const { conversationId } = req.params;
+  const result = await messagingService.archiveConversation(req.user.id, conversationId);
+  res.status(200).json(successResponse('Conversation archived successfully', result));
+});
+
+exports.unarchiveConversation = catchAsync(async (req, res) => {
+  const { conversationId } = req.params;
+  const result = await messagingService.unarchiveConversation(req.user.id, conversationId);
+  res.status(200).json(successResponse('Conversation unarchived successfully', result));
+});
+
+exports.deleteConversation = catchAsync(async (req, res) => {
+  const { conversationId } = req.params;
+  const result = await messagingService.deleteConversation(req.user.id, conversationId);
+  res.status(200).json(successResponse('Conversation deleted successfully', result));
+});
+
 exports.toggleReaction = catchAsync(async (req, res) => {
   const { messageId } = req.params;
   const { emoji } = req.body;
