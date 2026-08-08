@@ -86,6 +86,12 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession, onAttend
   // live UI even when the feature is off — this is what leaked it into prod.
   useEffect(() => {
     let cancelled = false;
+    // If a session ID is present, hit refresh() directly — getReviewMeeting returns enabled/comingSoon flags,
+    // avoiding a sequential request waterfall.
+    if (liveSessionId) {
+      refresh();
+      return;
+    }
     (async () => {
       try {
         const res = await mentorApi.getReviewMeetingConfig() as { data?: { enabled?: boolean; comingSoon?: boolean } };
@@ -97,8 +103,7 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession, onAttend
           return;
         }
       } catch { /* fall through to the session-based path */ }
-      if (cancelled) return;
-      if (liveSessionId) refresh(); else setLoading(false);
+      if (!cancelled) setLoading(false);
     })();
     return () => { cancelled = true; };
   }, [refresh, liveSessionId]);
@@ -249,7 +254,19 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession, onAttend
       />
     ) : null;
   }
-  if (loading) return <div className="py-4 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-brand-600" /></div>;
+  if (loading) {
+    return (
+      <div className="rounded-xl border border-slate-200 p-4 animate-pulse space-y-3">
+        <link rel="preconnect" href="https://meet.jit.si" />
+        <link rel="dns-prefetch" href="https://meet.jit.si" />
+        <div className="flex items-center justify-between">
+          <div className="h-4 w-28 bg-slate-200 rounded" />
+          <div className="h-7 w-24 bg-slate-200 rounded-lg" />
+        </div>
+        <div className="h-12 w-full bg-slate-100 rounded-lg" />
+      </div>
+    );
+  }
 
   const presentCount = roster.filter((r) => r.attendance === 'present').length;
 
@@ -258,13 +275,9 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession, onAttend
       <div className="flex items-center justify-between gap-2 mb-3">
         <h3 className="text-sm font-medium text-slate-900 flex items-center gap-1.5"><Video className="w-4 h-4 text-brand-600" /> Live review</h3>
         {!live ? (
-          // A meeting that was scored OR ended (endedAt set, e.g. after a refresh)
-          // is done — offer a quiet "Start a new call", not a primary "Resume"
-          // that implies unfinished business. Only a never-started session shows
-          // the primary "Start meeting".
           (scored || !!meeting?.endedAt) ? (
-            <button onClick={start} disabled={busy} className="text-xs font-medium text-slate-500 hover:text-brand-700 disabled:opacity-50">
-              {busy ? 'Starting…' : 'Start a new call'}
+            <button onClick={start} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50">
+              {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Video className="w-3.5 h-3.5" />} {busy ? 'Starting…' : 'Start a new call'}
             </button>
           ) : (
             <button onClick={start} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50">

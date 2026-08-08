@@ -33,8 +33,17 @@ function nextOccurrences(schedule, from = new Date(), count = 4) {
   const { dayOfWeek, timeLocal, timezone, intervalWeeks = 1, durationMinutes = 60, startsOn, endsOn } = schedule;
   if (dayOfWeek == null || !timeLocal || !timezone || !startsOn) return [];
   const stepMs = Math.max(1, intervalWeeks) * 7 * DAY_MS;
-  const anchor = anchorDate(startsOn, dayOfWeek);
+  let anchor = anchorDate(startsOn, dayOfWeek);
   const endMs = endsOn ? parseDateOnly(endsOn).getTime() + DAY_MS : Infinity; // inclusive of endsOn's day
+
+  // Fast-forward anchor close to `from` date to avoid converting past years of dates via slow Intl
+  if (anchor.getTime() < from.getTime() - stepMs) {
+    const skipSteps = Math.floor((from.getTime() - stepMs - anchor.getTime()) / stepMs);
+    if (skipSteps > 0) {
+      anchor = new Date(anchor.getTime() + skipSteps * stepMs);
+    }
+  }
+
   const out = [];
   // Cap the scan so a bad/no-end schedule can't loop forever.
   for (let d = new Date(anchor), i = 0; i < 520 && out.length < count; i++, d = new Date(anchor.getTime() + i * stepMs)) {

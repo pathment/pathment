@@ -24,6 +24,11 @@ function loadJitsi(domain: string): Promise<void> {
   return loaders[domain];
 }
 
+// Proactively preload the Jitsi API script on client bundle load so it is cached and instant when needed.
+if (typeof window !== 'undefined') {
+  loadJitsi('meet.jit.si').catch(() => { /* silent preload catch */ });
+}
+
 export interface JitsiParticipant { id: string; displayName?: string }
 
 /** Channel used to make sure ONE browser tab at a time is in a given room. */

@@ -9,12 +9,30 @@
  * Positive east of UTC (e.g. +5h for Asia/Karachi). Handles DST because it is
  * evaluated at the specific instant.
  */
+const dtfCache = new Map();
+function getDTF(timeZone) {
+  let dtf = dtfCache.get(timeZone);
+  if (!dtf) {
+    try {
+      dtf = new Intl.DateTimeFormat('en-US', {
+        timeZone, hour12: false,
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit',
+      });
+      dtfCache.set(timeZone, dtf);
+    } catch {
+      dtf = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'UTC', hour12: false,
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit',
+      });
+    }
+  }
+  return dtf;
+}
+
 function offsetMsAt(utcMs, timeZone) {
-  const dtf = new Intl.DateTimeFormat('en-US', {
-    timeZone, hour12: false,
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
-  });
+  const dtf = getDTF(timeZone || 'UTC');
   const parts = dtf.formatToParts(new Date(utcMs));
   const map = {};
   for (const p of parts) map[p.type] = p.value;

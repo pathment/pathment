@@ -6,9 +6,24 @@ const authzService = require('./authzService');
 const cfg = require('../config/reviewMeeting');
 const { activeOccurrence } = require('../utils/reviewRecurrence');
 
-// A live meeting older than this with no explicit end is treated as abandoned —
-// stops a never-ended meeting from showing the mentee "Join" banner forever.
 const MEETING_STALE_HOURS = 3;
+
+// Cache active schedules per clan set for 10 seconds to eliminate repeated DB roundtrips during polling
+const activeSchedulesCache = new Map();
+async function getActiveSchedulesForClans(clanIds) {
+  const cleanIds = (clanIds || []).filter(Boolean).map(String).sort();
+  if (!cleanIds.length) return [];
+  const key = cleanIds.join(',');
+  const cached = activeSchedulesCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.data;
+  }
+  const data = await models.ReviewSchedule.findAll({ where: { clanId: { [Op.in]: cleanIds }, active: true }, raw: true });
+  activeSchedulesCache.set(key, { data, expiresAt: Date.now() + 30000 });
+  return data;
+}
+
+const liveScheduleCache = new Map();
 
 /**
  * reviewMeetingService — live video (Jitsi) for a cohort review.
@@ -190,47 +205,50 @@ class ReviewMeetingService {
    */
   async _liveScheduleForClans(clanIds, now = new Date()) {
     if (!clanIds || !clanIds.length) return null;
-    const schedules = await models.ReviewSchedule.findAll({ where: { clanId: { [Op.in]: clanIds }, active: true } });
+    const cacheKey = clanIds.sort().join(',');
+    const cached = liveScheduleCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.result;
+    }
+
+    const tStart = Date.now();
+    const schedules = await getActiveSchedulesForClans(clanIds);
+    let result = null;
     for (const s of schedules) {
       const occ = activeOccurrence(s, now);
       if (!occ) continue;
       const session = await require('./reviewScheduleService')._findOrCreateSession(s, occ);
-      // Deliberately ended AFTER this occurrence started → stays closed.
       if (session.meetingEndedAt && new Date(session.meetingEndedAt).getTime() >= occ.start.getTime()) continue;
       const openForThis = session.meetingStartedAt
         && new Date(session.meetingStartedAt).getTime() === occ.start.getTime()
         && !session.meetingEndedAt;
       if (!openForThis) {
-        // Fresh occurrence — clean the attendance slate so it doesn't inherit an
-        // earlier call's / seeded marks, then open (or re-open over an earlier call).
         await this._wipePerCallAttendance(session.id);
         await session.update({ scheduledAt: occ.start, reviewScheduleId: s.id, meetingStartedAt: occ.start, meetingEndedAt: null, status: 'in_progress' });
         this._notifyMenteesStarted(session).catch((err) => console.error('scheduled review start notify failed (non-fatal):', err.message));
       }
-      return { schedule: s, occ, session };
+      result = { schedule: s, occ, session };
+      break;
     }
-    return null;
+    liveScheduleCache.set(cacheKey, { result, expiresAt: Date.now() + 10000 });
+    return result;
   }
 
   /** Host's embed config + live roster (attendance/talk state per mentee). */
   async hostView(mentorId, sessionId) {
     if (!cfg.enabled) return { enabled: false, comingSoon: cfg.comingSoon };
-    const session = await this._hostSession(mentorId, sessionId);
-    // A scheduled review auto-opens when any active schedule for this clan is live
-    // NOW (window-based, so multiple reviews/day + a stale scheduled_at both work).
+    const [session, host, entries] = await Promise.all([
+      this._hostSession(mentorId, sessionId),
+      models.User.findByPk(mentorId, { attributes: ['id', 'firstName', 'lastName', 'profilePictureUrl'] }),
+      models.CohortReviewEntry.findAll({
+        where: { sessionId },
+        include: [{ model: models.User, as: 'mentee', attributes: ['id', 'firstName', 'lastName'] }],
+      }),
+    ]);
     try {
       const live = await this._liveScheduleForClans([session.clanId], new Date());
       if (live) await session.reload();
     } catch (e) { console.error('scheduled review auto-open failed (non-fatal):', e.message); }
-    // Reconcile first so the roster covers EVERY clan mentee, not just those who
-    // already self-reported — otherwise the mentor can't mark a direct joiner
-    // present, or even see who hasn't shown up.
-    try { await require('./cohortReviewService')._reconcileEntries(session); } catch { /* roster falls back to existing entries */ }
-    const host = await models.User.findByPk(mentorId, { attributes: ['id', 'firstName', 'lastName', 'profilePictureUrl'] });
-    const entries = await models.CohortReviewEntry.findAll({
-      where: { sessionId },
-      include: [{ model: models.User, as: 'mentee', attributes: ['id', 'firstName', 'lastName'] }],
-    });
     const roster = entries.map((e) => ({
       menteeId: e.menteeId,
       name: this._fullName(e.mentee),
