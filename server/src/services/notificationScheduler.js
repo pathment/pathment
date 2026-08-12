@@ -125,7 +125,7 @@ class NotificationScheduler {
         },
         channelOverrides: {
           inApp: true,
-          email: false
+          email: true,
         },
         dedupe: {
           relatedEntityType: 'assigned_task',
