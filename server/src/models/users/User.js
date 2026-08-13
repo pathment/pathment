@@ -1,3 +1,5 @@
+const { avatarFull, avatarThumb } = require('../../utils/imageUrl');
+
 module.exports = (sequelize, DataTypes) => {
   const User = sequelize.define('User', {
     id: {
@@ -57,7 +59,26 @@ module.exports = (sequelize, DataTypes) => {
     },
     profilePictureUrl: {
       type: DataTypes.TEXT,
-      field: 'profile_picture_url'
+      field: 'profile_picture_url',
+      // Serve a format- and quality-optimised URL rather than the raw upload,
+      // which is whatever came off the camera (routinely several megabytes).
+      // This is a delivery-time URL rewrite, so it applies to rows that already
+      // exist and costs nothing to store.
+      //
+      // Anything that needs the ORIGINAL string — deleting the old Cloudinary
+      // asset, for instance — must read getDataValue('profilePictureUrl'),
+      // because the transform segment would break public-id extraction.
+      get() {
+        return avatarFull(this.getDataValue('profilePictureUrl'));
+      }
+    },
+    // Square, face-cropped, 128px. For lists, tables and comment threads, where
+    // the full image is thrown away by the browser anyway.
+    avatarThumbUrl: {
+      type: DataTypes.VIRTUAL,
+      get() {
+        return avatarThumb(this.getDataValue('profilePictureUrl'));
+      }
     },
     bio: {
       type: DataTypes.TEXT

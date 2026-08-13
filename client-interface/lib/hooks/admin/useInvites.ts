@@ -98,6 +98,8 @@ export function useInvites() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  /** Id of the invite currently being resent (drives the per-row spinner). */
+  const [resendingId, setResendingId] = useState<string | null>(null);
   const [status, setStatus] = useState<InviteStatusFilter>('active');
   const [invites, setInvites] = useState<InviteRecord[]>([]);
   // Server-side filters + pagination (true totals come from the API, not the page).
@@ -247,6 +249,42 @@ export function useInvites() {
     }
   };
 
+  /**
+   * Reissue an invite with the same email, role and placement - nothing to retype.
+   * The server mints a new token (the old one is unrecoverable, it's stored hashed),
+   * so any previously sent link stops working.
+   */
+  const handleResend = async (id: string) => {
+    try {
+      setResendingId(id);
+      const response = await apiClient.post<{
+        data?: { invite?: CreatedInvite };
+        invite?: CreatedInvite;
+      }>(apiConfig.endpoints.resendAdminInvite(id));
+      const invite = response?.data?.invite || response?.invite;
+
+      if (!invite?.inviteUrl) {
+        throw new Error('Invite URL was not returned');
+      }
+
+      setCreatedInviteUrl(invite.inviteUrl);
+      toast.success(`Invite resent to ${invite.email}`);
+
+      // The row we resent from is now revoked and the replacement is active, so
+      // under an "expired"/"revoked" filter both would vanish and it would look
+      // like nothing happened. Move to Active, where the new invite actually is.
+      if (status !== 'active' && status !== 'all') {
+        setStatus('active');
+      } else {
+        await fetchInvites(true);
+      }
+    } catch (error: unknown) {
+      toast.error(extractApiErrorMessage(error, 'Failed to resend invite'));
+    } finally {
+      setResendingId(null);
+    }
+  };
+
   const inviteCountLabel = useMemo(() => {
     const n = pagination.total;
     if (status === 'all') return `${n} invite${n === 1 ? '' : 's'}`;
@@ -388,6 +426,8 @@ export function useInvites() {
     handleCreateInvite,
     handleCopyLink,
     handleRevoke,
+    handleResend,
+    resendingId,
     inviteCountLabel,
     handleFileSelected,
     handleDrop,

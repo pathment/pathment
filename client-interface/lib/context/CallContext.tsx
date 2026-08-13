@@ -65,6 +65,16 @@ interface CallContextValue {
   provideRoster: (rows: { menteeId: string; name: string }[]) => void;
   /** Increments when a host call ends, so the review page can refresh itself. */
   endedNonce: number;
+  /**
+   * Did WE end this session's call during this provider's lifetime?
+   *
+   * Read during render by anything that might re-adopt a live meeting. `endedNonce`
+   * alone isn't enough: it lands as state, so a sibling effect that reacts to it
+   * (setting `scored`) cannot stop another effect in the SAME pass from seeing the
+   * stale value and rejoining the call we just ended. This is a ref, so it flips
+   * synchronously and is true the instant the call ends.
+   */
+  wasEndedHere: (sessionId: string) => boolean;
   reloadKey: number;
   minimized: boolean;
   setMinimized: (v: boolean) => void;
@@ -100,6 +110,9 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
 
   // Ending is idempotent: Jitsi's own hangup and the End button can both fire.
   const endingRef = useRef(false);
+  // Sessions whose call we ended here. Guards the review page's "re-adopt a live
+  // meeting" effect against rejoining the room a beat after ending it.
+  const endedHereRef = useRef<Set<string>>(new Set());
   // Read inside callbacks that must not close over a stale spec.
   const callRef = useRef<CallSpec | null>(null);
   useEffect(() => { callRef.current = call; }, [call]);
@@ -166,9 +179,13 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     joinedAtRef.current = null;
     leavingRef.current = false;
     endingRef.current = false;
+    // Deliberately starting this session again clears the "we ended it" mark.
+    endedHereRef.current.delete(spec.sessionId);
     setMinimized(false);
     setCall(spec);
   }, []);
+
+  const wasEndedHere = useCallback((sessionId: string) => endedHereRef.current.has(sessionId), []);
 
   const updateCall = useCallback((patch: Partial<CallSpec>) => {
     setCall((c) => (c ? { ...c, ...patch } : c));
@@ -180,6 +197,9 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     const active = callRef.current;
     if (!active || endingRef.current) return;
     endingRef.current = true;
+    // Marked BEFORE the awaits: the review page must not re-adopt this meeting at
+    // any point between "the host pressed End" and the server confirming the end.
+    endedHereRef.current.add(active.sessionId);
     try {
       await flushTalk();
       await mentorApi.endReviewMeeting(active.sessionId); // also finishes the session
@@ -191,6 +211,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     } catch {
       toast.error('Could not end the meeting');
       endingRef.current = false;
+      endedHereRef.current.delete(active.sessionId);
     }
   }, [flushTalk]);
 
@@ -254,8 +275,8 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo<CallContextValue>(() => ({
     call, isLive, startCall, updateCall, reloadCall, endHostCall, leaveGuestCall,
-    registerDock, provideRoster, endedNonce, reloadKey, minimized, setMinimized, dockedTo,
-  }), [call, isLive, startCall, updateCall, reloadCall, endHostCall, leaveGuestCall, registerDock, provideRoster, endedNonce, reloadKey, minimized, dockedTo]);
+    registerDock, provideRoster, endedNonce, wasEndedHere, reloadKey, minimized, setMinimized, dockedTo,
+  }), [call, isLive, startCall, updateCall, reloadCall, endHostCall, leaveGuestCall, registerDock, provideRoster, endedNonce, wasEndedHere, reloadKey, minimized, dockedTo]);
 
   return (
     <CallCtx.Provider value={value}>

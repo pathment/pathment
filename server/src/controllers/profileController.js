@@ -4,6 +4,7 @@ const { successResponse } = require('../utils/responses');
 const { PROFILE_MESSAGES } = require('../utils/responses/messages');
 const { catchAsync } = require('../middlewares/errorHandler');
 const { uploadToCloudinary, deleteFromCloudinary, extractPublicId } = require('../utils/cloudinaryUpload');
+const pushService = require('../services/pushService');
 
 // Profile photos are strictly PNG / JPG (the cropper exports one of these).
 const ALLOWED_IMAGE_MIME = ['image/png', 'image/jpeg', 'image/jpg'];
@@ -42,6 +43,11 @@ class ProfileController {
           // UI reads them to render the toggles. Omitting them made saved prefs
           // load as empty → every toggle showed ON again after a refresh.
           attributes: ['timezone', 'language', 'theme', 'colorTheme', 'preferences', 'emailNotifications', 'pushNotifications']
+        },
+        {
+          model: models.MentorStyleProfile,
+          as: 'styleProfile',
+          required: false
         }
       ]
     });
@@ -60,6 +66,12 @@ class ProfileController {
         const ids = await cohortService.resolveMenteeIds(userId);
         out.mentorProfile.currentMenteeCount = ids.length;
       } catch { /* fall back to the stored value */ }
+    }
+
+    if (out.styleProfile) {
+      out.autoReplyEnabled = out.styleProfile.autoReplyEnabled;
+    } else {
+      out.autoReplyEnabled = false;
     }
 
     res.json(successResponse('Profile retrieved successfully', out));
@@ -330,7 +342,10 @@ await user.update({
 
     const user = await models.User.findByPk(req.user.id);
     if (!user) throw new NotFoundError('User not found');
-    const previous = user.profilePictureUrl;
+    // The RAW stored URL, not the getter's transformed one: extractPublicId reads
+    // the path segments after /upload/, and a transform segment would corrupt the
+    // public id so the old asset would never actually be deleted.
+    const previous = user.getDataValue('profilePictureUrl');
     user.profilePictureUrl = url;
     await user.save();
 
@@ -471,6 +486,59 @@ await user.update({
         currentMenteeCount: mentorProfile.currentMenteeCount
       }
     ));
+  });
+  /**
+   * Update mentor auto-reply settings
+   * PATCH /api/profile/mentor/auto-reply
+   */
+  updateAutoReply = catchAsync(async (req, res) => {
+    const userId = req.user.id;
+    const { autoReplyEnabled } = req.body;
+
+    // Verify user is a mentor
+    const user = await models.User.findByPk(userId);
+    if (user.role !== 'mentor') {
+      throw new ForbiddenError('Only mentors can update auto-reply settings');
+    }
+
+    const [styleProfile] = await models.MentorStyleProfile.findOrCreate({ 
+      where: { mentorId: userId },
+      defaults: { mentorId: userId }
+    });
+
+    if (typeof autoReplyEnabled === 'boolean') {
+      await styleProfile.update({ autoReplyEnabled });
+    }
+
+    res.json(successResponse(
+      'Auto-reply settings updated successfully',
+      { autoReplyEnabled: styleProfile.autoReplyEnabled }
+    ));
+  });
+
+  /**
+   * Register this device for push.
+   * POST /api/profile/devices  { token, platform }
+   *
+   * Per device, not per user: someone signed in on a phone and a tablet expects
+   * both to buzz, and signing out of one must not silence the other.
+   */
+  registerDevice = catchAsync(async (req, res) => {
+    const { token, platform } = req.body || {};
+    const device = await pushService.register(req.user.id, token, platform || 'android');
+    res.status(200).json(successResponse('Device registered', {
+      device: { id: device.id, platform: device.platform }
+    }));
+  });
+
+  /**
+   * DELETE /api/profile/devices  { token }
+   * Called on sign out, so this phone stops buzzing and the others do not.
+   */
+  unregisterDevice = catchAsync(async (req, res) => {
+    const { token } = req.body || {};
+    const result = await pushService.unregister(req.user.id, token);
+    res.status(200).json(successResponse('Device removed', result));
   });
 }
 

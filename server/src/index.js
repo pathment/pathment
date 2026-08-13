@@ -1,6 +1,8 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
+const compression = require('compression');
 const http = require('http');
 const { sequelize } = require('./db');
 const routes = require('./routes');
@@ -19,6 +21,26 @@ const server = http.createServer(app);
 /**
  * Middleware Configuration
  */
+
+// Don't advertise the framework — free information for anyone fingerprinting.
+app.disable('x-powered-by');
+
+// Security headers. CSP and COEP are off on purpose: this process serves JSON to
+// other origins, not documents, so a policy here protects nothing while breaking
+// the one HTML page we do return (the email unsubscribe confirmation). HSTS is
+// left to the TLS terminator (Caddy), which is the only layer that knows whether
+// the request actually arrived over TLS.
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  hsts: false,
+}));
+
+// gzip/brotli. Production sits behind Caddy which already compresses, but local
+// dev and any deploy without that terminator were serving list endpoints raw —
+// and mobile clients feel that on every screen.
+app.use(compression());
 
 // CORS configuration
 const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:3000')
@@ -83,8 +105,9 @@ app.get('/', (req, res) => {
   });
 });
 
-// API routes
-app.use('/api', routes);
+// API routes. The global limiter is a backstop against runaway clients and
+// crawlers; the real per-action limits live on the auth and public-intake routes.
+app.use('/api', require('./middlewares/rateLimiter').apiLimiter, routes);
 
 // Provider webhooks (Resend delivery/bounce/complaint) — public, provider-signed.
 app.use('/webhooks', require('./routes/webhooks'));
@@ -130,6 +153,10 @@ async function start() {
 
     // Start HTTP + Socket.IO server
     initSocket(server);
+    
+    // Initialize RAG subsystem (Workers & Event Listeners)
+    const { initializeRag } = require('./features/rag');
+    initializeRag();
     if (process.env.NOTIFICATION_SCHEDULER_DISABLED !== 'true') {
       notificationScheduler.start();
     }

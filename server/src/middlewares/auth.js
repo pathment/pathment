@@ -21,6 +21,16 @@ const authenticate = catchAsync(async (req, res, next) => {
   // Verify token
   const decoded = verifyAccessToken(token);
 
+  // The 5-minute token minted between password and 2FA is signed with the SAME
+  // secret as a real access token, so it verifies here. It must NOT authenticate
+  // anything: accepting it would make the second factor optional for anyone who
+  // simply stops after step one. Only authenticateTemporary() accepts it.
+  if (decoded.temp) {
+    throw new AuthenticationError(
+      'Two-factor verification is not complete. Finish signing in first'
+    );
+  }
+
   // Get user from database
   const user = await models.User.findByPk(decoded.id, {
     attributes: { exclude: ['password'] }
@@ -66,6 +76,40 @@ const authenticate = catchAsync(async (req, res, next) => {
 });
 
 /**
+ * Authenticate the SECOND factor only.
+ *
+ * Accepts exclusively the short-lived `temp: true` token issued after a correct
+ * password when 2FA is on, and nothing else — a full access token is rejected
+ * here too, so this route can never be used to re-mint a session from an
+ * already-valid one. It attaches `req.user` so the 2FA controller knows who is
+ * halfway through signing in, and deliberately performs no capability loading:
+ * this user is not authorized for anything yet.
+ */
+const authenticateTemporary = catchAsync(async (req, res, next) => {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    throw new AuthenticationError('No token provided. Please log in to access this resource');
+  }
+
+  const decoded = verifyAccessToken(authHeader.split(' ')[1]);
+
+  if (!decoded.temp) {
+    throw new AuthenticationError('This endpoint expects the temporary two-factor token');
+  }
+
+  const user = await models.User.findByPk(decoded.id, {
+    attributes: { exclude: ['password'] }
+  });
+
+  if (!user) throw new AuthenticationError('User no longer exists');
+  if (user.status !== 'active') throw new AuthenticationError('Your account has been disabled');
+
+  req.user = user;
+  next();
+});
+
+/**
  * Authorize user by role
  * @param {Array<String>} roles - Allowed roles
  */
@@ -107,13 +151,16 @@ const optionalAuth = async (req, res, next) => {
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.split(' ')[1];
       const decoded = verifyAccessToken(token);
-      
-      const user = await models.User.findByPk(decoded.id, {
-        attributes: { exclude: ['password'] }
-      });
 
-      if (user && user.status === 'active') {
-        req.user = user;
+      // A half-finished 2FA sign-in is not a signed-in user, even optionally.
+      if (!decoded.temp) {
+        const user = await models.User.findByPk(decoded.id, {
+          attributes: { exclude: ['password'] }
+        });
+
+        if (user && user.status === 'active') {
+          req.user = user;
+        }
       }
     }
   } catch (error) {
@@ -125,6 +172,7 @@ const optionalAuth = async (req, res, next) => {
 
 module.exports = {
   authenticate,
+  authenticateTemporary,
   authorize,
   optionalAuth
 };

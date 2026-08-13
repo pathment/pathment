@@ -2,156 +2,143 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Trophy, Loader2, Award, TrendingUp, TrendingDown, Minus, Crown, Info } from 'lucide-react';
-import { useMentorCohort, type CohortMentee, type CohortMomentum } from '@/lib/hooks/mentor';
+import { Award, Crown, Info, Loader2, Trophy } from 'lucide-react';
+import { useClanPerformance } from '@/lib/hooks/mentor';
+import { useClan, ALL_CLANS } from '@/lib/context/ClanContext';
+import type { RankedMentee, UnrankedMentee } from '@/lib/services/performance-api';
 
-// ─── Leaderboard scoring ────────────────────────────────────────────────────
-//
-// Five-factor weighted composite — displayed on the board as a 0–100 score.
-//
-//   35%  Points Earned      – harder tasks are worth more; reflects quality of work
-//   20%  Relative Progress  – credits approved blockers / accepted external delays
-//   20%  Tasks Completed    – rewards consistent output; soft-normalised so a
-//                             single task can't top the board
-//   15%  On-Time Rate       – measures submission discipline
-//   10%  Overall Progress   – raw enrollment progress (a sanity anchor)
-//
-// Each dimension is normalised to 0-100 before weighting. Points are normalised
-// against the cohort-max so a mentee with 0 pts can still rank (at 0 on that
-// axis) without destroying the rest of their score.
+/**
+ * Cohort standings.
+ *
+ * The score is NOT worked out here. It used to be: this page had a five factor
+ * composite and /mentor/scores had a different three factor one, so the same
+ * mentee had two different numbers depending on which page you opened, and a
+ * third in the mobile app. Both browser formulas also weighted absolute and
+ * relative progress separately, though relative already contains absolute, so
+ * progress counted twice; and neither adjusted for how generously a mentor
+ * grades, which is the fairness problem the score exists to solve.
+ *
+ * It now comes from /performance, where the peer relative dimensions can
+ * actually be computed. A browser holding one page of a cohort cannot work out
+ * a percentile.
+ */
 
-const W_POINTS    = 0.35;
-const W_RELATIVE  = 0.20;
-const W_TASKS     = 0.20;
-const W_ONTIME    = 0.15;
-const W_OVERALL   = 0.10;
-
-// Tasks dimension: soft-normalise against a "full credit" target so a mentee
-// who has completed ≥ TASKS_FULL tasks gets 100 on this axis.  Raise to demand
-// more proof-of-work; lower for short roadmaps.
-const TASKS_FULL = 6;
-
-function compositeScore(m: CohortMentee, maxPoints: number): number {
-  const pointsNorm  = maxPoints > 0 ? Math.min(100, (m.pointsEarned / maxPoints) * 100) : 0;
-  const tasksNorm   = Math.min(100, ((m.tasksCompleted ?? 0) / TASKS_FULL) * 100);
-  // On-time rate only counts if there's any completed work; else neutral (50).
-  const onTimeNorm  = (m.tasksCompleted ?? 0) > 0 ? m.onTimeRate : 50;
-
-  return Math.round(
-    pointsNorm         * W_POINTS  +
-    m.relativeProgress * W_RELATIVE +
-    tasksNorm          * W_TASKS   +
-    onTimeNorm         * W_ONTIME  +
-    m.absoluteProgress * W_OVERALL,
-  );
+function rankStyle(i: number): { ring: string; bar: string } {
+  if (i === 0) return { ring: 'bg-amber-100 text-amber-700', bar: 'bg-amber-400' };
+  if (i === 1) return { ring: 'bg-slate-200 text-slate-700', bar: 'bg-slate-400' };
+  if (i === 2) return { ring: 'bg-orange-100 text-orange-700', bar: 'bg-orange-400' };
+  return { ring: 'bg-slate-100 text-slate-500', bar: 'bg-brand-500' };
 }
 
-// Tie-break: secondary sort by raw tasks completed, then on-time rate.
-const scoreKey = (m: CohortMentee, maxPoints: number) =>
-  compositeScore(m, maxPoints) * 10000 +
-  (m.tasksCompleted ?? 0) * 10 +
-  ((m.tasksCompleted ?? 0) > 0 ? m.onTimeRate : 0);
-
-function badgesOf(m: CohortMentee): string[] {
+/** Named for what somebody actually did, straight off the server's evidence. */
+function badgesOf(m: RankedMentee): string[] {
   const b: string[] = [];
-  const hasOutput = (m.tasksCompleted ?? 0) > 0;
-  if (hasOutput && m.onTimeRate >= 90) b.push('On-time hero');
-  if (m.momentum === 'up') b.push('Building momentum');
-  if (hasOutput && m.absoluteProgress >= 75) b.push('Top progress');
-  if (hasOutput && m.relativeProgress >= 95) b.push('Steady hand');
-  if (m.pointsEarned >= 100) b.push('High scorer');
+  const part = (key: string) => m.parts.find((p) => p.key === key)?.score ?? null;
+
+  if ((part('quality') ?? 0) >= 85) b.push('Quality');
+  if ((part('reliability') ?? 0) >= 90 && m.evidence.tasksCompleted > 0) b.push('On-time hero');
+  if ((part('effort') ?? 0) >= 85) b.push('Deep work');
+  if ((part('consistency') ?? 0) >= 80) b.push('Steady hand');
+  if ((part('attendance') ?? 0) >= 95) b.push('Always there');
   return b;
 }
 
-function Momentum({ m }: { m: CohortMomentum }) {
-  if (m === 'up') return <span className="inline-flex items-center gap-0.5 text-emerald-600 text-xs font-medium"><TrendingUp className="w-3.5 h-3.5" />Building</span>;
-  if (m === 'down') return <span className="inline-flex items-center gap-0.5 text-red-600 text-xs font-medium"><TrendingDown className="w-3.5 h-3.5" />Slipping</span>;
-  return <span className="inline-flex items-center gap-0.5 text-slate-400 text-xs font-medium"><Minus className="w-3.5 h-3.5" />Steady</span>;
-}
-
-// Medal tint for the top three ranks; plain slate otherwise.
-const RANK_STYLE = [
-  { ring: 'bg-amber-100 text-amber-700 ring-2 ring-amber-300', bar: 'bg-amber-400' },
-  { ring: 'bg-slate-100 text-slate-600 ring-2 ring-slate-300', bar: 'bg-slate-400' },
-  { ring: 'bg-orange-100 text-orange-700 ring-2 ring-orange-300', bar: 'bg-orange-400' },
-];
-const rankStyle = (i: number) => RANK_STYLE[i] || { ring: 'bg-slate-50 text-slate-400', bar: 'bg-brand-400' };
-
-function Avatar({ m, size = 'md' }: { m: CohortMentee; size?: 'md' | 'lg' }) {
+function Avatar({
+  m,
+  size = 'md',
+}: {
+  m: { name: string; avatar: string; profilePictureUrl: string | null };
+  size?: 'md' | 'lg';
+}) {
   const dim = size === 'lg' ? 'w-14 h-14 text-base' : 'w-9 h-9 text-xs';
-  return m.profilePictureUrl
+  return m.profilePictureUrl ? (
     // eslint-disable-next-line @next/next/no-img-element
-    ? <img src={m.profilePictureUrl} alt={m.name} className={`${dim} rounded-full object-cover shrink-0`} />
-    : <div className={`${dim} bg-brand-100 rounded-full flex items-center justify-center shrink-0`}><span className="text-brand-700 font-semibold">{m.avatar}</span></div>;
+    <img src={m.profilePictureUrl} alt={m.name} className={`${dim} rounded-full object-cover shrink-0`} />
+  ) : (
+    <div className={`${dim} bg-brand-100 rounded-full flex items-center justify-center shrink-0`}>
+      <span className="text-brand-700 font-semibold">{m.avatar}</span>
+    </div>
+  );
 }
 
 export default function MentorLeaderboard() {
-  const { cohort, loading, error, refetch } = useMentorCohort();
-  const [program, setProgram] = useState('all');
+  const { clans, activeClanId } = useClan();
 
-  const programs = useMemo(() => Array.from(new Set(cohort.map((m) => m.program).filter(Boolean))), [cohort]);
+  // Scores only compare people who train together, so a clan has to be chosen.
+  // Merging two clans into one ranking would compare mentees who were never in
+  // the same room, judged by different mentors.
+  const [picked, setPicked] = useState<string | null>(null);
+  const clanId = picked ?? (activeClanId !== ALL_CLANS ? activeClanId : clans[0]?.id ?? null);
 
-  // Cohort-max points — used to normalise the points dimension per render.
-  const maxPoints = useMemo(() => cohort.reduce((mx, m) => Math.max(mx, m.pointsEarned ?? 0), 0), [cohort]);
+  const { performance, loading, error, refetch } = useClanPerformance(clanId);
 
-  const ranked = useMemo(() => {
-    return cohort
-      .filter((m) => program === 'all' || m.program === program)
-      .slice()
-      .sort((a, b) => scoreKey(b, maxPoints) - scoreKey(a, maxPoints));
-  }, [cohort, program, maxPoints]);
+  const ranked = performance?.ranked ?? [];
+  const notRanked = performance?.notRanked ?? [];
+  const leader = ranked[0] ?? null;
 
-  const leader = ranked[0] || null;
-  // Compute the composite scores once for ranked so every row has them.
-  const scoredRanked = useMemo(
-    () => ranked.map((m) => ({ m, score: compositeScore(m, maxPoints) })),
-    [ranked, maxPoints],
-  );
+  const weightLine = useMemo(() => {
+    if (!performance) return '';
+    return Object.entries(performance.weights)
+      .sort((a, b) => b[1] - a[1])
+      .map(([key, weight]) => `${Math.round(weight)}% ${key}`)
+      .join(' · ');
+  }, [performance]);
 
   return (
     <div className="space-y-6 max-w-3xl">
       <div>
         <h1 className="text-slate-900 mb-1">Cohort standings</h1>
-        <p className="text-slate-600">Ranked by a balanced score across 5 factors — not just task count.</p>
+        <p className="text-slate-600">
+          One score, worked out on the server, so it matches everywhere it is shown.
+        </p>
         <div className="mt-3 flex items-start gap-2 rounded-xl bg-slate-50 border border-slate-200 px-3.5 py-2.5 max-w-xl">
           <Info className="w-4 h-4 text-brand-500 shrink-0 mt-0.5" />
           <p className="text-xs text-slate-500 leading-relaxed">
             <span className="font-medium text-slate-700">Score = </span>
-            <span className="font-medium text-slate-600">35% points earned</span> (harder tasks score more) ·{' '}
-            <span className="font-medium text-slate-600">20% relative progress</span> (credits approved roadblocks &amp; delays) ·{' '}
-            <span className="font-medium text-slate-600">20% tasks completed</span> · <span className="font-medium text-slate-600">15% on-time rate</span> ·{' '}
-            <span className="font-medium text-slate-600">10% overall progress</span>.
-            A single easy task can&apos;t top the board.
+            <span className="font-medium text-slate-600">{weightLine || 'loading'}</span>.
+            Marks are compared against each mentor&apos;s own average, so grading strictly does not
+            cost your mentees. Anything with no data yet is left out rather than counted as zero.
+            {performance && performance.disabled.length > 0
+              ? ` ${performance.disabled.join(' and ')} switched off for this clan.`
+              : ''}
           </p>
         </div>
       </div>
 
-      {programs.length > 0 && (
+      {clans.length > 1 && (
         <div className="flex flex-wrap items-center gap-1 p-1 bg-slate-100 rounded-xl w-fit">
-          {['all', ...programs].map((p) => (
-            <button key={p} onClick={() => setProgram(p)}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${program === p ? 'bg-card text-brand-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
-              {p === 'all' ? 'All clans' : p}
+          {clans.map((c) => (
+            <button
+              key={c.id}
+              onClick={() => setPicked(c.id)}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                clanId === c.id ? 'bg-card text-brand-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              {c.name}
             </button>
           ))}
         </div>
       )}
 
       {loading ? (
-        <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-brand-600" /></div>
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="w-8 h-8 animate-spin text-brand-600" />
+        </div>
       ) : error ? (
         <div className="bg-card rounded-2xl border border-slate-200 py-16 text-center">
           <p className="text-slate-600 mb-3">{error}</p>
-          <button onClick={refetch} className="text-brand-600 hover:text-brand-700 text-sm font-medium">Try again</button>
+          <button onClick={refetch} className="text-brand-600 hover:text-brand-700 text-sm font-medium">
+            Try again
+          </button>
         </div>
-      ) : ranked.length === 0 ? (
+      ) : ranked.length === 0 && notRanked.length === 0 ? (
         <div className="bg-card rounded-2xl border border-slate-200 py-16 text-center">
           <Trophy className="w-12 h-12 text-slate-300 mx-auto mb-3" />
           <p className="text-slate-600">No mentees to rank yet.</p>
         </div>
       ) : (
         <>
-          {/* Leader spotlight - one feature, not three floating cards */}
           {leader && (
             <div className="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 dark:from-amber-500/10 to-card p-5 flex items-center gap-4">
               <div className="relative shrink-0">
@@ -161,50 +148,75 @@ export default function MentorLeaderboard() {
                 </span>
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-600">Leading the cohort</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-600">
+                  Leading the clan
+                </p>
                 <p className="text-lg font-semibold text-slate-900 truncate">{leader.name}</p>
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-0.5 text-xs text-slate-500">
-                  <span><strong className="text-slate-700">{compositeScore(leader, maxPoints)}%</strong> score</span>
-                  <span><strong className="text-slate-700">{leader.pointsEarned} pts</strong> earned</span>
-                  <span><strong className="text-slate-700">{leader.tasksCompleted > 0 ? `${leader.onTimeRate}%` : '\u2014'}</strong> on-time</span>
-                  <Momentum m={leader.momentum} />
+                  <span>
+                    <strong className="text-slate-700">{leader.score}</strong> score
+                  </span>
+                  <span className="text-slate-400">{leader.band}</span>
+                  <span>
+                    <strong className="text-slate-700">{leader.evidence.tasksCompleted}</strong> reviewed
+                  </span>
+                  <span>
+                    <strong className="text-slate-700">{leader.evidence.onTimeRate}%</strong> on-time
+                  </span>
                 </div>
               </div>
             </div>
           )}
 
-          {/* Standings list — composite score bar per row */}
           <div className="bg-card rounded-2xl border border-slate-200 divide-y divide-slate-100">
-            {scoredRanked.map(({ m, score }, i) => {
+            {ranked.map((m, i) => {
               const rs = rankStyle(i);
               return (
                 <div key={m.id} className={`flex items-center gap-3 px-4 py-3 ${i < 3 ? 'bg-slate-50/40' : ''}`}>
-                  <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold tabular-nums shrink-0 ${rs.ring}`}>{i + 1}</span>
-                  <Link href={`/mentor/mentees/${m.id}`} className="shrink-0 rounded-full transition-opacity hover:opacity-90"><Avatar m={m} /></Link>
+                  <span
+                    className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold tabular-nums shrink-0 ${rs.ring}`}
+                  >
+                    {m.rank}
+                  </span>
+                  <Link
+                    href={`/mentor/mentees/${m.id}`}
+                    className="shrink-0 rounded-full transition-opacity hover:opacity-90"
+                  >
+                    <Avatar m={m} />
+                  </Link>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-sm font-medium text-slate-900 truncate">{m.name}</p>
-                      <Momentum m={m.momentum} />
+                      <span className="text-[11px] text-slate-400">{m.band}</span>
                     </div>
-                    {/* Composite-score bar */}
+
                     <div className="mt-1.5 flex items-center gap-2">
                       <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                        <div className={`h-full rounded-full ${rs.bar}`} style={{ width: `${score}%` }} />
+                        <div className={`h-full rounded-full ${rs.bar}`} style={{ width: `${m.score}%` }} />
                       </div>
-                      <span className="text-xs font-semibold text-slate-700 tabular-nums w-9 text-right">{score}%</span>
+                      <span className="text-xs font-semibold text-slate-700 tabular-nums w-9 text-right">
+                        {m.score}
+                      </span>
                     </div>
-                    {/* Sub-stats row */}
+
+                    {/* The parts, so a rank is arguable rather than asserted. */}
                     <div className="flex flex-wrap gap-x-2.5 gap-y-0.5 mt-1 text-[11px] text-slate-400">
-                      <span><span className="text-slate-600 font-medium">{m.pointsEarned}</span> pts</span>
-                      <span><span className="text-slate-600 font-medium">{m.tasksCompleted}</span> done</span>
-                      {m.tasksCompleted > 0 && <span><span className="text-slate-600 font-medium">{m.onTimeRate}%</span> on-time</span>}
-                      <span><span className="text-slate-600 font-medium">{m.absoluteProgress}%</span> overall</span>
+                      {m.parts.map((p) => (
+                        <span key={p.key}>
+                          <span className="text-slate-600 font-medium">{p.score}</span> {p.label.toLowerCase()}
+                        </span>
+                      ))}
                     </div>
+
                     {badgesOf(m).length > 0 && (
                       <div className="flex flex-wrap gap-1 mt-1.5">
                         {badgesOf(m).map((b) => (
-                          <span key={b} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[11px]">
-                            <Award className="w-2.5 h-2.5" />{b}
+                          <span
+                            key={b}
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[11px]"
+                          >
+                            <Award className="w-2.5 h-2.5" />
+                            {b}
                           </span>
                         ))}
                       </div>
@@ -214,6 +226,33 @@ export default function MentorLeaderboard() {
               );
             })}
           </div>
+
+          {/* Everybody left out, and why. A mentee who silently vanishes off a
+              board looks forgotten; one listed with a reason can be helped. */}
+          {notRanked.length > 0 && (
+            <div className="bg-card rounded-2xl border border-slate-200 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
+                Not ranked yet
+              </p>
+              <div className="space-y-2">
+                {notRanked.map((m: UnrankedMentee) => (
+                  <div key={m.id} className="flex items-center gap-3">
+                    <Avatar m={m} />
+                    <div className="min-w-0">
+                      <p className="text-sm text-slate-800 truncate">{m.name}</p>
+                      <p className="text-xs text-slate-500">
+                        {m.notRankedBecause ?? 'Not enough reviewed work yet'}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p className="text-[11px] text-slate-400 mt-3">
+                Ranking needs enough reviewed work to compare fairly. This is about evidence, not
+                about how well somebody is doing.
+              </p>
+            </div>
+          )}
         </>
       )}
     </div>

@@ -2,11 +2,12 @@ import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { aiConnectionsApi, type AIConnection, type AIRouting, type AIFeature, type AIProvider } from '@/lib/services/ai-connections-api';
 
-const EMPTY_ROUTING: AIRouting = { summary: null, delay: null, atrisk: null, nudge: null, stall: null, coaching: null, feedback: null, roadmap: null };
+const EMPTY_ROUTING: AIRouting = { summary: null, delay: null, atrisk: null, nudge: null, stall: null, coaching: null, feedback: null, roadmap: null, rag_generation: null, rag_grounding: null, rag_embedding: null };
 
 export function useAIConnections() {
   const [connections, setConnections] = useState<AIConnection[]>([]);
   const [routing, setRouting] = useState<AIRouting>(EMPTY_ROUTING);
+  const [quota, setQuota] = useState<{ count: number; limit: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -16,6 +17,7 @@ export function useAIConnections() {
       const res: any = await aiConnectionsApi.list();
       setConnections(res?.data?.connections ?? []);
       setRouting({ ...EMPTY_ROUTING, ...(res?.data?.routing ?? {}) });
+      setQuota(res?.data?.quota ?? null);
     } catch {
       toast.error('Failed to load AI connections');
     } finally {
@@ -52,5 +54,16 @@ export function useAIConnections() {
     catch { toast.error('Could not update routing'); fetchAll(); }
   }, [routing, fetchAll]);
 
-  return { connections, routing, loading, busyId, refetch: fetchAll, addKey, removeKey, testKey, setRoute };
+  const setQuotaLimit = useCallback(async (limit: number) => {
+    try {
+      const res: any = await aiConnectionsApi.setQuotaLimit(limit);
+      setQuota(res?.data?.quota ?? null);
+      toast.success('Quota limit updated');
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || 'Could not update quota limit');
+      fetchAll();
+    }
+  }, [fetchAll]);
+
+  return { connections, routing, quota, loading, busyId, refetch: fetchAll, addKey, removeKey, testKey, setRoute, setQuotaLimit };
 }

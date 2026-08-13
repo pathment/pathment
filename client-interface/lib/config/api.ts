@@ -51,5 +51,6 @@ export const apiConfig = {
     adminInvites: '/admin/invites',
     bulkAdminInvites: '/admin/invites/bulk',
     revokeAdminInvite: (id: string) => `/admin/invites/${id}/revoke`,
+    resendAdminInvite: (id: string) => `/admin/invites/${id}/resend`,
   },
 };

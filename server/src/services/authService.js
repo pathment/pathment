@@ -18,6 +18,18 @@ const {
 const notificationOrchestrator = require('./notificationOrchestrator');
 const { NOTIFICATION_EVENTS } = require('../config/notificationMatrix');
 const { mapResponsesToProfile } = require('../config/intakeProfileFields');
+const logger = require('../utils/logger');
+
+/**
+ * How long after rotation a spent refresh token is still treated as a retry
+ * rather than a replay.
+ *
+ * Two honest clients can present the same token at once — a page firing several
+ * requests at expiry, or a phone resuming from background. Below this window we
+ * assume the race; above it we assume theft and end every session. 60s is well
+ * past any real retry and far short of anything useful to an attacker.
+ */
+const REUSE_GRACE_MS = 60 * 1000;
 
 class AuthService {
   async getActiveInviteByToken(inviteToken, transaction) {
@@ -287,7 +299,7 @@ class AuthService {
   /**
    * Login user
    */
-  async login(email, password, rememberMe = false) {
+  async login(email, password, rememberMe = false, client = 'web') {
     const normalizedEmail = email.trim().toLowerCase();
 
     // Find user
@@ -353,17 +365,7 @@ class AuthService {
     // "Remember me" drives the session length: 30 days when checked, otherwise a
     // short 1-day session (the client also holds these tokens in session storage
     // so they vanish when the browser closes).
-    const refreshTtl = rememberMe
-      ? { str: '30d', ms: 30 * 24 * 60 * 60 * 1000 }
-      : { str: '1d', ms: 24 * 60 * 60 * 1000 };
-    const refreshToken = generateRefreshToken({ id: user.id }, refreshTtl.str);
-
-    // Store refresh token
-    await models.RefreshToken.create({
-      userId: user.id,
-      token: refreshToken,
-      expiresAt: new Date(Date.now() + refreshTtl.ms)
-    });
+    const { refreshToken } = await this._issueRefreshToken(user, { rememberMe, client });
 
     // Remove password from response
     const userResponse = user.toJSON();
@@ -385,10 +387,24 @@ class AuthService {
   }
 
   /**
-   * Refresh access token
+   * Refresh access token, ROTATING the refresh token as we go.
+   *
+   * Every exchange spends the presented token and issues a successor, so a
+   * refresh token is valid exactly once. That turns a stolen token from a
+   * long-lived master key into a single-use one, and — because the legitimate
+   * device will inevitably present the same token afterwards — makes the theft
+   * detectable rather than silent.
+   *
+   * The successor inherits the ORIGINAL expiry, so rotating does not extend a
+   * session indefinitely: a 1-day session still ends after a day.
+   *
+   * Three cases, in order:
+   *   1. active token      → rotate and return a new pair
+   *   2. rotated recently  → benign retry, hand back the same successor
+   *   3. rotated long ago  → replay of a spent token; revoke the whole family
+   *      (see REUSE_GRACE_MS for where the line sits)
    */
   async refreshAccessToken(refreshToken) {
-    // Verify token
     let decoded;
     try {
       decoded = verifyRefreshToken(refreshToken);
@@ -396,47 +412,184 @@ class AuthService {
       throw new AuthenticationError(AUTH_MESSAGES.INVALID_TOKEN);
     }
 
-    // Check if refresh token exists and is not revoked
-    const storedToken = await models.RefreshToken.findOne({
-      where: {
-        token: refreshToken,
-        userId: decoded.id,
-        revokedAt: null,
-        expiresAt: { [Op.gt]: new Date() }
-      }
+    // Check the account BEFORE spending the token: a disabled user should be
+    // turned away without their session being rotated underneath them.
+    const user = await this._activeUserOrThrow(decoded.id);
+
+    // The lookup and the rotation happen together, under a row lock, so two
+    // refreshes arriving at once are serialised: the first rotates, the second
+    // sees an already-revoked row and takes the retry path. Without the lock
+    // both would pass the "is active" check and each mint a successor, leaving
+    // a live refresh token nobody is tracking.
+    const outcome = await sequelize.transaction(async (transaction) => {
+      // Deliberately NOT filtered on revokedAt — a revoked row is not merely
+      // "invalid", it is the signal that something replayed a spent token.
+      const row = await models.RefreshToken.findOne({
+        where: { token: refreshToken, userId: decoded.id },
+        lock: transaction.LOCK.UPDATE,
+        transaction
+      });
+
+      if (!row) return { kind: 'unknown' };
+      if (row.revokedAt) return { kind: 'spent', row };
+      if (new Date(row.expiresAt) <= new Date()) return { kind: 'expired' };
+
+      // The successor inherits the ORIGINAL expiry, so rotating does not extend
+      // a session for ever: a 1-day session still ends after a day.
+      const remainingMs = new Date(row.expiresAt).getTime() - Date.now();
+      const successor = generateRefreshToken(
+        { id: user.id },
+        `${Math.max(1, Math.floor(remainingMs / 1000))}s`
+      );
+
+      await models.RefreshToken.create({
+        userId: user.id,
+        token: successor,
+        expiresAt: row.expiresAt,
+        client: row.client,
+        lastUsedAt: new Date()
+      }, { transaction });
+
+      await row.update({
+        revokedAt: new Date(),
+        revokedReason: 'rotated',
+        replacedByToken: successor,
+        lastUsedAt: new Date()
+      }, { transaction });
+
+      return { kind: 'rotated', token: successor, expiresAt: row.expiresAt };
     });
 
-    if (!storedToken) {
+    if (outcome.kind === 'rotated') {
+      return {
+        accessToken: generateAccessToken({ id: user.id, email: user.email, role: user.role }),
+        refreshToken: outcome.token,
+        expiresAt: outcome.expiresAt
+      };
+    }
+
+    if (outcome.kind === 'spent') {
+      const { row } = outcome;
+      const rotatedAgo = Date.now() - new Date(row.revokedAt).getTime();
+      const isBenignRetry =
+        row.revokedReason === 'rotated' &&
+        row.replacedByToken &&
+        rotatedAgo <= REUSE_GRACE_MS;
+
+      if (isBenignRetry) {
+        // Two in-flight refreshes from the same device, or a request retried
+        // after a dropped response. Answer the loser with the winner's token
+        // rather than signing a real person out over a race.
+        const successor = await models.RefreshToken.findOne({
+          where: { token: row.replacedByToken, revokedAt: null }
+        });
+        if (successor) {
+          return {
+            accessToken: generateAccessToken({ id: user.id, email: user.email, role: user.role }),
+            refreshToken: successor.token,
+            expiresAt: successor.expiresAt
+          };
+        }
+      }
+
+      // A spent token presented outside the retry window. We cannot tell the
+      // thief from the victim, so we end every session and make them sign in
+      // again — the only response that reliably locks an attacker out.
+      await models.RefreshToken.update(
+        { revokedAt: new Date(), revokedReason: 'reuse_detected' },
+        { where: { userId: user.id, revokedAt: null } }
+      );
+      logger.warn('Refresh token reuse detected; revoked all sessions', {
+        userId: user.id,
+        rotatedAgoMs: rotatedAgo,
+        previousReason: row.revokedReason
+      });
       throw new AuthenticationError(AUTH_MESSAGES.INVALID_TOKEN);
     }
 
-    // Get user
-    const user = await models.User.findByPk(decoded.id);
-    if (!user || user.status !== 'active') {
-      throw new AuthenticationError(AUTH_MESSAGES.USER_NOT_FOUND);
-    }
-
-    // Generate new access token
-    const accessToken = generateAccessToken({ 
-      id: user.id, 
-      email: user.email, 
-      role: user.role 
-    });
-
-    return { accessToken };
+    throw new AuthenticationError(AUTH_MESSAGES.INVALID_TOKEN);
   }
 
   /**
-   * Logout user
+   * Mint and persist a refresh token for a fresh sign-in.
+   *
+   * One place for the session-length rule, because login and the 2FA completion
+   * path both need it and had drifted into two copies.
+   *
+   * A native client always gets the long session: there is no "close the browser"
+   * moment on a phone, the token lives in the Keychain/Keystore rather than in
+   * web storage, and a 1-day session would mean re-authenticating an app people
+   * open for two minutes at a time.
+   */
+  async _issueRefreshToken(user, { rememberMe = false, client = 'web' } = {}) {
+    const longSession = rememberMe || client !== 'web';
+    const ttl = longSession
+      ? { str: '30d', ms: 30 * 24 * 60 * 60 * 1000 }
+      : { str: '1d', ms: 24 * 60 * 60 * 1000 };
+
+    const refreshToken = generateRefreshToken({ id: user.id }, ttl.str);
+    const expiresAt = new Date(Date.now() + ttl.ms);
+
+    await models.RefreshToken.create({
+      userId: user.id,
+      token: refreshToken,
+      expiresAt,
+      client,
+      lastUsedAt: new Date()
+    });
+
+    return { refreshToken, expiresAt };
+  }
+
+  /** Shared by the refresh paths: the account must still be usable. */
+  async _activeUserOrThrow(userId) {
+    const user = await models.User.findByPk(userId);
+    if (!user || user.status !== 'active') {
+      throw new AuthenticationError(AUTH_MESSAGES.USER_NOT_FOUND);
+    }
+    return user;
+  }
+
+  /**
+   * Logout — revoke one session.
+   *
+   * Deliberately keyed on the refresh token ALONE. Logout most often happens
+   * when the app has been closed for a while, which is exactly when the access
+   * token has expired; requiring one meant "sign out" silently failed to revoke
+   * anything and the refresh token stayed live for its full lifetime.
+   *
+   * If the token was already rotated we revoke its successor too, so signing out
+   * mid-refresh cannot leave a live descendant behind.
    */
   async logout(refreshToken) {
-    // Revoke refresh token
+    if (!refreshToken) return true;
+
+    const stored = await models.RefreshToken.findOne({ where: { token: refreshToken } });
+    if (!stored) return true; // Already gone: logout is idempotent, never an error.
+
+    const tokens = [refreshToken];
+    if (stored.replacedByToken) tokens.push(stored.replacedByToken);
+
     await models.RefreshToken.update(
-      { revokedAt: new Date() },
-      { where: { token: refreshToken } }
+      { revokedAt: new Date(), revokedReason: 'logout' },
+      { where: { token: { [Op.in]: tokens }, revokedAt: null } }
     );
 
     return true;
+  }
+
+  /**
+   * Sign out everywhere — every device, including this one.
+   *
+   * The honest version of what the security screen promises. Also the right
+   * response to "I think someone has my password".
+   */
+  async logoutAll(userId, reason = 'logout_all') {
+    const [count] = await models.RefreshToken.update(
+      { revokedAt: new Date(), revokedReason: reason },
+      { where: { userId, revokedAt: null } }
+    );
+    return { revoked: count };
   }
 
   /**
@@ -643,7 +796,7 @@ class AuthService {
   /**
    * Verify 2FA code during login
    */
-  async verify2FADuringLogin(userId, code, rememberMe = false) {
+  async verify2FADuringLogin(userId, code, rememberMe = false, client = 'web') {
     const securityService = require('./securityService');
     
     // Verify 2FA code (TOTP or backup code)
@@ -668,17 +821,7 @@ class AuthService {
       email: user.email, 
       role: user.role 
     });
-    const refreshTtl = rememberMe
-      ? { str: '30d', ms: 30 * 24 * 60 * 60 * 1000 }
-      : { str: '1d', ms: 24 * 60 * 60 * 1000 };
-    const refreshToken = generateRefreshToken({ id: user.id }, refreshTtl.str);
-
-    // Store refresh token
-    await models.RefreshToken.create({
-      userId: user.id,
-      token: refreshToken,
-      expiresAt: new Date(Date.now() + refreshTtl.ms)
-    });
+    const { refreshToken } = await this._issueRefreshToken(user, { rememberMe, client });
 
     // Remove password from response
     const userResponse = user.toJSON();

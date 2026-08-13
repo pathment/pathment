@@ -6,6 +6,8 @@ export interface Tab {
   icon?: React.ElementType;
   /** Optional count badge, e.g. tab count */
   count?: number;
+  /** Marks a newly arrived tab, so people notice it exists. */
+  isNew?: boolean;
 }
 
 interface TabBarProps {
@@ -48,6 +50,11 @@ export function TabBar({
                   {tab.count}
                 </span>
               )}
+              {tab.isNew && (
+                <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide ${active ? 'bg-card/20 text-white' : 'bg-brand-100 text-brand-700'}`}>
+                  New
+                </span>
+              )}
             </button>
           );
         })}
@@ -76,6 +83,11 @@ export function TabBar({
             {tab.count !== undefined && (
               <span className={`px-1.5 py-0.5 rounded text-xs font-semibold ${active ? 'bg-brand-100 text-brand-700' : 'bg-slate-100 text-slate-600'}`}>
                 {tab.count}
+              </span>
+            )}
+            {tab.isNew && (
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide bg-brand-100 text-brand-700">
+                New
               </span>
             )}
           </button>

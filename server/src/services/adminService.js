@@ -63,7 +63,7 @@ class AdminService {
   /**
    * Create one-time registration invite
    */
-  async createRegistrationInvite(inviteData, createdBy) {
+  async createRegistrationInvite(inviteData, createdBy, options = {}) {
     const { email, role, expiresInHours = 72 } = inviteData;
     const normalizedEmail = email.trim().toLowerCase();
     const defaultInviteTtl = 72;
@@ -167,7 +167,9 @@ class AdminService {
 
     // Give the clan's mentors a heads-up that a new mentee is being onboarded into
     // their clan (they get a second "joined" notification once the mentee registers).
-    if (role === 'mentee' && placement.clanId) {
+    // (Skipped on a resend - the clan's mentors were already told about this
+    // person when the original invite went out; telling them again is noise.)
+    if (role === 'mentee' && placement.clanId && options.notifyClanMentors !== false) {
       this._notifyClanMentorsOfInvitedMentee({
         clanId: placement.clanId,
         clanName: placement.clanName,
@@ -313,6 +315,103 @@ class AdminService {
     });
 
     return invite;
+  }
+
+  /**
+   * Re-issue an invite from an existing one, reusing its email, role, placement
+   * and original TTL - so an expired or revoked invite can be sent again without
+   * re-entering anything.
+   *
+   * Tokens are stored hashed, so the original link can never be recovered: a
+   * resend always mints a NEW token and the previous link stops working. For an
+   * expired/revoked invite that link was already dead; for a still-active one we
+   * revoke it here, and the caller is expected to have confirmed that.
+   */
+  async resendRegistrationInvite(inviteId, resentBy, { expiresInHours } = {}) {
+    const invite = await models.RegistrationInvite.findByPk(inviteId);
+    if (!invite) {
+      throw new NotFoundError('Registration invite not found');
+    }
+
+    if (invite.usedAt) {
+      throw new ValidationError(
+        'This invite has already been used to create an account, so it cannot be resent'
+      );
+    }
+
+    // Placement is stored as ids; a program or clan may have been deleted since.
+    // Say so plainly rather than failing with a bare "not found".
+    if (invite.programId) {
+      const program = await models.Program.findByPk(invite.programId);
+      if (!program) {
+        throw new ValidationError(
+          "This invite's program no longer exists. Create a new invite with a current program."
+        );
+      }
+    }
+    if (invite.clanId) {
+      const clan = await models.Clan.findByPk(invite.clanId);
+      if (!clan) {
+        throw new ValidationError(
+          "This invite's clan no longer exists. Create a new invite with a current clan."
+        );
+      }
+    }
+
+    // Repeat the window the original was issued with, unless overridden.
+    const originalTtlHours = Math.round(
+      (new Date(invite.expiresAt).getTime() - new Date(invite.createdAt).getTime()) / 3_600_000
+    );
+    const ttlHours = Number(expiresInHours) || (originalTtlHours > 0 ? originalTtlHours : 72);
+
+    // Retire the old one first. createRegistrationInvite refuses to issue while an
+    // active invite exists for the same (email, role), and leaving a live link
+    // around after resending would mean two working invites for one person.
+    const weRevokedIt = !invite.revokedAt;
+    if (weRevokedIt) {
+      invite.revokedAt = new Date();
+      await invite.save();
+    }
+
+    let created;
+    try {
+      created = await this.createRegistrationInvite(
+        {
+          email: invite.email,
+          role: invite.role,
+          expiresInHours: ttlHours,
+          programId: invite.programId,
+          clanId: invite.clanId,
+          cohortId: invite.cohortId
+        },
+        resentBy,
+        { notifyClanMentors: false }
+      );
+    } catch (e) {
+      // Reissue failed (e.g. a newer active invite exists, or they registered in
+      // the meantime) - put the old row back exactly as we found it. Only undo the
+      // revoke if it was ours; an already-revoked invite stays revoked.
+      if (weRevokedIt) {
+        invite.revokedAt = null;
+        await invite.save().catch(() => {});
+      }
+      throw e;
+    }
+
+    await createAuditLog({
+      userId: resentBy,
+      action: 'REGISTRATION_INVITE_RESENT',
+      entityType: 'RegistrationInvite',
+      entityId: created.id,
+      newValues: {
+        replacedInviteId: invite.id,
+        email: created.email,
+        role: created.role,
+        expiresAt: created.expiresAt
+      }
+    });
+
+    return { ...created, replacedInviteId: invite.id };
   }
 
   /**

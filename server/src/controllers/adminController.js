@@ -74,6 +74,22 @@ class AdminController {
   });
 
   /**
+   * Resend a registration invite - reissues it with the same email, role and
+   * placement, so nothing has to be re-entered.
+   * POST /api/admin/invites/:id/resend
+   */
+  resendRegistrationInvite = catchAsync(async (req, res) => {
+    const { id } = req.params;
+    const invite = await adminService.resendRegistrationInvite(id, req.user.id, {
+      expiresInHours: req.body?.expiresInHours
+    });
+
+    res.status(201).json(
+      successResponse('Invite resent successfully', { invite }, 201)
+    );
+  });
+
+  /**
    * Update admin permissions
    * PUT /api/admin/:id/permissions
    */

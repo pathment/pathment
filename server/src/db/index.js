@@ -44,11 +44,11 @@ const modelsPath = path.join(__dirname, '../models');
 
 function loadModelsFromDirectory(directory) {
   const files = fs.readdirSync(directory);
-  
+
   files.forEach(file => {
     const fullPath = path.join(directory, file);
     const stat = fs.statSync(fullPath);
-    
+
     if (stat.isDirectory()) {
       loadModelsFromDirectory(fullPath);
     } else if (file.endsWith('.js') && file !== 'index.js') {
@@ -59,6 +59,10 @@ function loadModelsFromDirectory(directory) {
 }
 
 loadModelsFromDirectory(modelsPath);
+
+// Feature-Driven Models 
+const ragModels = require('../features/rag/models')(sequelize);
+Object.assign(models, ragModels);
 
 // Set up associations
 Object.keys(models).forEach(modelName => {

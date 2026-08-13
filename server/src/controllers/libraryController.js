@@ -3,8 +3,11 @@ const { successResponse } = require('../utils/responses');
 const libraryService = require('../services/libraryService');
 
 const list = catchAsync(async (req, res) => {
-  const documents = await libraryService.list();
-  res.status(200).json(successResponse('Library retrieved', { documents }));
+  const { category, limit, offset } = req.query;
+  const { items, pagination } = await libraryService.list({ category, limit, offset });
+  res.status(200).json(
+    successResponse('Library retrieved', { documents: items, pagination })
+  );
 });
 
 const getOne = catchAsync(async (req, res) => {

@@ -67,6 +67,15 @@ router.post(
   adminController.revokeRegistrationInvite
 );
 
+// Resend a registration invite (reissues with the same email/role/placement)
+router.post(
+  '/invites/:id/resend',
+  authenticate,
+  requirePermissionMinScope(PERMISSIONS.INVITE_CREATE),
+  validateBody(adminSchemas.resendInvite),
+  adminController.resendRegistrationInvite
+);
+
 // Update admin permissions
 router.put(
   '/:id/permissions',

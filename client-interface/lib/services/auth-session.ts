@@ -128,6 +128,12 @@ export function refreshAccessToken(): Promise<string> {
       if (!token) throw new SessionExpiredError();
       consecutiveFailures = 0;
       blockedUntil = 0;
+      // The server ROTATES refresh tokens: the one we just sent is spent, and
+      // the response carries its successor. Persist it before the access token,
+      // because replaying a spent token is read as theft and ends every session.
+      // Older servers omit the field — then the token we hold is still valid.
+      const rotated = response.data?.data?.refreshToken || response.data?.refreshToken;
+      if (rotated) tokenStore.setRefreshToken(rotated);
       tokenStore.setToken(token);
       scheduleProactiveRefresh();
       listeners.forEach((fn) => { try { fn(token); } catch { /* a listener must not break refresh */ } });

@@ -16,6 +16,12 @@ const adminSchemas = {
     clan: Joi.string().optional().allow(null, '')
   }),
 
+  // Everything else (email, role, placement) is carried over from the invite
+  // being resent; only the expiry window may be overridden.
+  resendInvite: Joi.object({
+    expiresInHours: Joi.number().integer().min(1).max(24 * 30).optional()
+  }),
+
   createAdmin: Joi.object({
     firstName: Joi.string().min(2).max(50).trim().required(),
     lastName: Joi.string().min(2).max(50).trim().required(),

@@ -85,6 +85,36 @@ class ReviewMeetingService {
     );
   }
 
+  /**
+   * Room name + URL for a call. Non-guessable — the natural way in is Pathment's
+   * Join button, not this URL. Kept readable-ish for support.
+   */
+  _roomPatch(session) {
+    const room = `pathment-review-${session.id.slice(0, 8)}-${crypto.randomBytes(6).toString('hex')}`;
+    return {
+      meetingProvider: cfg.provider,
+      meetingRoom: room,
+      meetingUrl: `https://${cfg.jitsiDomain}/${room}`,
+    };
+  }
+
+  /**
+   * Does this call need a fresh room?
+   *
+   * Yes when there's no room yet, and yes when the previous call was ENDED — a
+   * new call must not reuse the room the last one ran in. Jitsi keeps a
+   * participant around until it times them out, so anyone whose browser didn't
+   * leave cleanly (closed laptop, killed tab, dropped network) is still sitting
+   * in that room; rejoining it shows those ghosts as extra people. A fresh room
+   * per call makes that structurally impossible.
+   *
+   * No while a call is LIVE (meetingEndedAt null) — rotating then would strand
+   * everyone already in the room, including the host.
+   */
+  _needsFreshRoom(session) {
+    return !session.meetingRoom || !!session.meetingEndedAt;
+  }
+
   /** Start (or return) the live room for a session. Idempotent. */
   async startMeeting(mentorId, sessionId, { externalUrl } = {}) {
     if (!cfg.enabled) throw new ForbiddenError('Live review video is not enabled');
@@ -93,13 +123,9 @@ class ReviewMeetingService {
     // prior call or seeded/earlier marks) — only actual joiners of THIS call count.
     await this._wipePerCallAttendance(sessionId);
     const patch = {};
-    if (!session.meetingRoom) {
-      // Non-guessable slug — the natural way in is Pathment's Join button, not
-      // this URL. Kept readable-ish for support.
-      patch.meetingProvider = cfg.provider;
-      patch.meetingRoom = `pathment-review-${session.id.slice(0, 8)}-${crypto.randomBytes(6).toString('hex')}`;
-      patch.meetingUrl = `https://${cfg.jitsiDomain}/${patch.meetingRoom}`;
-    }
+    // First call gets a room; every call AFTER an ended one gets a brand-new room
+    // so it can never inherit the previous call's ghost participants.
+    if (this._needsFreshRoom(session)) Object.assign(patch, this._roomPatch(session));
     // Always (re)stamp the start — opening or RESUMING the room means it's live
     // "now". Without this a resumed meeting keeps its original (old) start time,
     // and the mentee-facing staleness check (activeForMentee, 3h window) would
@@ -204,7 +230,13 @@ class ReviewMeetingService {
         // Fresh occurrence — clean the attendance slate so it doesn't inherit an
         // earlier call's / seeded marks, then open (or re-open over an earlier call).
         await this._wipePerCallAttendance(session.id);
-        await session.update({ scheduledAt: occ.start, reviewScheduleId: s.id, meetingStartedAt: occ.start, meetingEndedAt: null, status: 'in_progress' });
+        const patch = { scheduledAt: occ.start, reviewScheduleId: s.id, meetingStartedAt: occ.start, meetingEndedAt: null, status: 'in_progress' };
+        // A new occurrence is a new call, so it gets a new room — but only if the
+        // previous one was ended. If a call is live right now (an ad-hoc review the
+        // mentor started before the window opened) rotating would strand everyone
+        // already in it, so leave that room alone.
+        if (this._needsFreshRoom(session)) Object.assign(patch, this._roomPatch(session));
+        await session.update(patch);
         this._notifyMenteesStarted(session).catch((err) => console.error('scheduled review start notify failed (non-fatal):', err.message));
       }
       return { schedule: s, occ, session };

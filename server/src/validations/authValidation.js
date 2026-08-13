@@ -56,6 +56,9 @@ const authSchemas = {
     bio: Joi.string().max(500).optional()
   }),
 
+  // NOTE: validate() runs with stripUnknown:true, so anything not declared here
+  // is silently deleted before the controller sees it. `rememberMe` was missing,
+  // which quietly pinned every session to the 1-day refresh TTL.
   login: Joi.object({
     email: patterns.email.messages({
       'string.email': 'Please provide a valid email address',
@@ -63,7 +66,11 @@ const authSchemas = {
     }),
     password: Joi.string().required().messages({
       'string.empty': 'Password is required'
-    })
+    }),
+    rememberMe: Joi.boolean().default(false),
+    // Lets a native client ask for the long session without pretending to be a
+    // browser checkbox; also recorded on the refresh token for the sessions view.
+    client: Joi.string().valid('web', 'ios', 'android').default('web')
   }),
 
   refreshToken: Joi.object({
@@ -122,13 +129,23 @@ const authSchemas = {
     })
   }),
 
+  // The controller reads `code || token` and `rememberMe`; all three must be
+  // declared or stripUnknown deletes them (`token` callers got "code is
+  // required", and rememberMe was silently ignored here too).
   verify2FALogin: Joi.object({
-    code: Joi.string().length(6).pattern(/^\d+$/).required().messages({
-      'string.empty': '2FA code is required',
+    code: Joi.string().length(6).pattern(/^\d+$/).messages({
       'string.length': '2FA code must be 6 digits',
       'string.pattern.base': '2FA code must contain only digits'
-    })
+    }),
+    token: Joi.string().length(6).pattern(/^\d+$/).messages({
+      'string.length': '2FA code must be 6 digits',
+      'string.pattern.base': '2FA code must contain only digits'
+    }),
+    rememberMe: Joi.boolean().default(false),
+    client: Joi.string().valid('web', 'ios', 'android').default('web')
   })
+    .or('code', 'token')
+    .messages({ 'object.missing': '2FA code is required' })
 };
 
 module.exports = {

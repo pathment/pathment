@@ -6,6 +6,7 @@ const {
   ValidationError
 } = require('../utils/errors/errorTypes');
 const schedulingService = require('./schedulingService');
+const logger = require('../utils/logger');
 
 class MessagingService {
   /**
@@ -98,6 +99,16 @@ class MessagingService {
       const existingConversations = await this.findDirectConversationsByKey(directKey, transaction);
       const existingConversation = this.selectCanonicalDirectConversation(existingConversations);
       if (existingConversation) {
+        await models.ConversationParticipant.update({
+          leftAt: null,
+          isArchived: false
+        }, {
+          where: {
+            conversationId: existingConversation.id,
+            userId: { [Op.in]: [userId, participantId] }
+          },
+          transaction
+        });
         return existingConversation;
       }
 
@@ -128,8 +139,27 @@ class MessagingService {
     return this.getConversationByIdForUser(conversation.id, userId);
   }
 
+  async archiveConversation(userId, conversationId) {
+    const participant = await this.assertUserInConversation(userId, conversationId);
+    await participant.update({ isArchived: true });
+    return { archived: true };
+  }
+
+  async unarchiveConversation(userId, conversationId) {
+    const participant = await this.assertUserInConversation(userId, conversationId);
+    await participant.update({ isArchived: false });
+    return { archived: false };
+  }
+
+  async deleteConversation(userId, conversationId) {
+    const participant = await this.assertUserInConversation(userId, conversationId);
+    await participant.update({ leftAt: new Date() });
+    return { deleted: true };
+  }
+
   async listConversations(userId, options = {}) {
     const limit = Math.min(Math.max(Number(options.limit || 25), 1), 100);
+    const isArchived = options.archived === 'true' || options.archived === true;
 
     // Step 1: fetch conversation IDs in stable order using a lightweight join.
     const membershipRows = await models.ConversationParticipant.findAll({
@@ -137,7 +167,7 @@ class MessagingService {
       where: {
         userId,
         leftAt: null,
-        isArchived: false
+        isArchived
       },
       include: [
         {
@@ -175,8 +205,7 @@ class MessagingService {
           model: models.ConversationParticipant,
           as: 'participants',
           where: {
-            leftAt: null,
-            isArchived: false
+            leftAt: null
           },
           required: false,
           include: [
@@ -336,10 +365,10 @@ class MessagingService {
         throw new NotFoundError('Conversation not found');
       }
 
-      // Fetch participants separately within the same transaction
+      // Fetch all participants (even those who have left) to restore them
       const participantRows = await models.ConversationParticipant.findAll({
-        where: { conversationId, leftAt: null },
-        attributes: ['userId'],
+        where: { conversationId },
+        attributes: ['id', 'userId', 'leftAt'],
         transaction
       });
 
@@ -348,7 +377,29 @@ class MessagingService {
         throw new ForbiddenError('You are not a participant in this conversation');
       }
 
-      const recipientIds = participantIds.filter((id) => id !== senderId);
+      // If direct conversation, restore any participant who left
+      if (conversation.type === 'direct') {
+        const leftParticipants = participantRows.filter((p) => p.leftAt !== null);
+        if (leftParticipants.length > 0) {
+          await models.ConversationParticipant.update({
+            leftAt: null,
+            isArchived: false
+          }, {
+            where: { id: leftParticipants.map((p) => p.id) },
+            transaction
+          });
+        }
+      }
+
+      // Fetch active participants after restoration
+      const activeParticipantRows = await models.ConversationParticipant.findAll({
+        where: { conversationId, leftAt: null },
+        attributes: ['userId'],
+        transaction
+      });
+
+      const activeParticipantIds = activeParticipantRows.map((p) => p.userId);
+      const recipientIds = activeParticipantIds.filter((id) => id !== senderId);
       if (recipientIds.length === 0) {
         throw new ValidationError('Conversation has no recipient');
       }
@@ -432,6 +483,16 @@ class MessagingService {
         ],
         transaction
       });
+
+      // [RAG Core] Fire Orchestrator asynchronously if sender is a mentee
+      // (Mentors don't auto-reply to themselves)
+      if (recipientRoleById[recipientIds[0]] === 'mentor') {
+        const { RagFacade } = require('../features/rag');
+        // Fire and forget (do not await)
+        RagFacade.handleNewMessage(hydratedMessage).catch(err => {
+          logger.error('[RAG] Background orchestrator failed', { error: err.message, stack: err.stack });
+        });
+      }
 
       return {
         message: hydratedMessage,
@@ -654,11 +715,13 @@ class MessagingService {
   async getConversationByIdForUser(conversationId, userId) {
     await this.assertUserInConversation(userId, conversationId);
 
-    return models.Conversation.findByPk(conversationId, {
+    const conversation = await models.Conversation.findByPk(conversationId, {
       include: [
         {
           model: models.ConversationParticipant,
           as: 'participants',
+          where: { leftAt: null },
+          required: false,
           include: [
             {
               model: models.User,
@@ -674,6 +737,28 @@ class MessagingService {
         }
       ]
     });
+
+    if (!conversation) return null;
+    const json = conversation.toJSON();
+    const otherParticipants = (json.participants || []).filter((p) => p.userId !== userId);
+
+    return {
+      id: json.id,
+      type: json.type,
+      relatedTaskId: json.relatedTaskId,
+      relatedEnrollmentId: json.relatedEnrollmentId,
+      lastMessageAt: json.lastMessageAt,
+      unreadCount: 0,
+      participants: otherParticipants.map((p) => ({
+        id: p.user?.id || p.userId,
+        firstName: p.user?.firstName || '',
+        lastName: p.user?.lastName || '',
+        email: p.user?.email || '',
+        profilePictureUrl: p.user?.profilePictureUrl,
+        role: p.user?.role || 'mentee'
+      })),
+      lastMessage: json.lastMessage
+    };
   }
 
   async searchUsers(currentUserId, query = '', options = {}) {

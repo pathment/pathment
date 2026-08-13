@@ -290,7 +290,7 @@ const previewUnassignedAssignment = catchAsync(async (req, res) => {
 
 /** POST /cohorts/:id/assign/unassigned/commit  { placements:[{userId, clanId}] } — place into clans. */
 const commitUnassignedAssignment = catchAsync(async (req, res) => {
-  const result = await clanAssignmentService.commitPlacement(req.params.id, req.body?.placements);
+  const result = await clanAssignmentService.commitPlacement(req.params.id, req.body?.placements, req.user.id);
   res.status(200).json(successResponse('Mentees placed into clans', result));
 });
 

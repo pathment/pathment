@@ -2,8 +2,8 @@ import { apiClient } from './api-client';
 
 export type AIProvider = 'groq' | 'openai' | 'anthropic' | 'gemini' | 'openrouter' | 'custom';
 export type AIKeyStatus = 'connected' | 'error' | 'untested';
-export type AIFeature = 'summary' | 'delay' | 'atrisk' | 'nudge' | 'stall' | 'coaching' | 'feedback' | 'roadmap';
-export type AIRouting = Record<AIFeature, string | null>;
+export type AIFeature = 'summary' | 'delay' | 'atrisk' | 'nudge' | 'stall' | 'coaching' | 'feedback' | 'roadmap' | 'rag_generation' | 'rag_grounding' | 'rag_embedding' | 'auto_reply';
+export type AIRouting = Partial<Record<Exclude<AIFeature, 'auto_reply'>, string | null>>;
 
 export interface AIConnection {
   id: string;
@@ -23,4 +23,5 @@ export const aiConnectionsApi = {
   remove: (id: string) => apiClient.delete(`/ai-connections/${id}`),
   test: (id: string) => apiClient.post(`/ai-connections/${id}/test`),
   setRouting: (routing: AIRouting) => apiClient.put('/ai-connections/routing', { routing }),
+  setQuotaLimit: (limit: number) => apiClient.put('/ai-connections/quota-limit', { limit }),
 };

@@ -187,9 +187,15 @@ class ClanAssignmentService {
     for (const c of candidates) {
       const name = `${c.firstName || ''} ${c.lastName || ''}`.trim() || c.email;
       const base = { applicationId: c.applicationId, userId: c.userId || null, name, email: c.email,
-        level: c.level, levelLabel: levelLabel.get(c.level) || c.level, gender: this._candidateGender(c) };
+        level: c.level, levelLabel: levelLabel.get(c.level) || c.level, gender: this._candidateGender(c),
+        // Where they're stuck, when they're accepted but not in a clan — shown
+        // under the row so the admin can see WHY there's no invite.
+        note: c.note || null };
       if (c.alreadyPlaced) {
-        rows.push({ ...base, clanId: null, clanName: null, status: 'already_placed', reason: c.placedReason || 'Already placed' });
+        // Carry the real clan through, so the row can name it instead of just
+        // saying "already placed" and leaving the admin to go hunting.
+        rows.push({ ...base, clanId: c.placedClanId || null, clanName: c.placedClanName || null,
+          status: 'already_placed', reason: c.placedReason || 'Already placed' });
         continue;
       }
       const { clan, reason } = this._resolve(pool, c, s);
@@ -203,9 +209,105 @@ class ClanAssignmentService {
       total: rows.length,
       assigned: rows.filter((r) => r.status === 'assigned').length,
       unassigned: rows.filter((r) => r.status === 'unassigned').length,
+      // Renamed meaning: this now counts people genuinely IN a clan, not merely
+      // ones whose application says 'accepted'.
       alreadyAccepted: rows.filter((r) => r.status === 'already_placed').length,
+      // Accepted but stuck (no clan): the whole point is that these are still
+      // assignable from this screen.
+      stuck: rows.filter((r) => r.status !== 'already_placed' && r.note).length,
     };
     return { rows, clans: clansOut, summary, settings: s };
+  }
+
+  /**
+   * What has ACTUALLY happened to each applicant, as opposed to what their
+   * status column claims. `status: 'accepted'` only means someone pressed
+   * accept — it says nothing about whether they got an account, whether their
+   * invite is still usable, or whether they ever landed in a clan.
+   *
+   * Returns per applicationId: the resolved user, the clan they're really in
+   * (if any), and the state of their invite. That's what lets the drawer say
+   * "Already in Crispy Cache" or "Accepted · invite expired" instead of a bare
+   * "Already accepted" that dead-ends the admin.
+   */
+  async _resolveState(apps) {
+    const out = new Map();
+    if (!apps.length) return out;
+
+    const emails = [...new Set(apps.map((a) => (a.email || '').trim().toLowerCase()).filter(Boolean))];
+
+    // Resolve the account: applications back-link `user_id` once the person
+    // registers, but a person who registered another way (or an older row) may
+    // not be linked — so fall back to matching on email.
+    const linkedIds = [...new Set(apps.map((a) => a.userId).filter(Boolean))];
+    const users = await models.User.findAll({
+      where: { [Op.or]: [
+        ...(linkedIds.length ? [{ id: { [Op.in]: linkedIds } }] : []),
+        ...(emails.length ? [{ email: { [Op.in]: emails } }] : []),
+      ] },
+      attributes: ['id', 'email'], raw: true,
+    });
+    const userById = new Map(users.map((u) => [u.id, u]));
+    const userByEmail = new Map(users.map((u) => [(u.email || '').toLowerCase(), u]));
+
+    // The one thing that truly blocks a re-assignment: a live mentee membership.
+    const userIds = [...new Set(users.map((u) => u.id))];
+    const placedByUser = new Map();
+    if (userIds.length) {
+      const memberships = await models.ClanMembership.findAll({
+        where: { userId: { [Op.in]: userIds }, role: 'mentee', status: { [Op.in]: ['active', 'paused'] } },
+        include: [{ model: models.Clan, as: 'clan', attributes: ['id', 'name'] }],
+      });
+      memberships.forEach((m) => placedByUser.set(m.userId, { clanId: m.clanId, clanName: m.clan?.name || 'a clan' }));
+    }
+
+    // Invite state — this is what answers "why can't I find their invite link?".
+    const invites = emails.length
+      ? await models.RegistrationInvite.findAll({
+        where: { email: { [Op.in]: emails }, role: 'mentee' },
+        attributes: ['id', 'email', 'clanId', 'usedAt', 'revokedAt', 'expiresAt', 'createdAt'],
+        order: [['createdAt', 'DESC']], raw: true,
+      })
+      : [];
+    const inviteByEmail = new Map();
+    for (const inv of invites) {
+      const key = (inv.email || '').toLowerCase();
+      if (!inviteByEmail.has(key)) inviteByEmail.set(key, inv); // newest wins
+    }
+    const inviteState = (inv) => {
+      if (!inv) return 'none';
+      if (inv.usedAt) return 'used';
+      if (inv.revokedAt) return 'revoked';
+      if (new Date(inv.expiresAt) <= new Date()) return 'expired';
+      return 'live';
+    };
+
+    for (const a of apps) {
+      const email = (a.email || '').trim().toLowerCase();
+      const user = (a.userId && userById.get(a.userId)) || userByEmail.get(email) || null;
+      const placed = user ? placedByUser.get(user.id) : null;
+      const invite = inviteByEmail.get(email) || null;
+      out.set(a.id, {
+        userId: user ? user.id : null,
+        clanId: placed ? placed.clanId : null,
+        clanName: placed ? placed.clanName : null,
+        hasAccount: !!user,
+        invite: inviteState(invite),
+      });
+    }
+    return out;
+  }
+
+  /** A short human note explaining where an accepted-but-unplaced person is stuck. */
+  _stuckNote(status, st) {
+    if (status !== 'accepted') return null;
+    if (!st.hasAccount) {
+      if (st.invite === 'live') return 'Accepted · invite sent, not registered yet';
+      if (st.invite === 'expired') return 'Accepted · invite expired — assigning re-sends it';
+      if (st.invite === 'revoked') return 'Accepted · invite revoked — assigning re-sends it';
+      return 'Accepted · no invite found — assigning sends one';
+    }
+    return 'Accepted · registered but never placed in a clan';
   }
 
   /** Propose a clan for each SELECTED candidate (assign-at-accept flow). */
@@ -217,32 +319,43 @@ class ClanAssignmentService {
     const s = this._defaults(rawSettings);
     const apps = await models.Application.findAll({
       where: { id: { [Op.in]: applicationIds }, cohortId },
-      attributes: ['id', 'firstName', 'lastName', 'email', 'level', 'status', 'responses'],
+      attributes: ['id', 'firstName', 'lastName', 'email', 'level', 'status', 'responses', 'userId'],
     });
-    const candidates = apps.map((a) => ({
-      applicationId: a.id, userId: null, firstName: a.firstName, lastName: a.lastName, email: a.email,
-      level: a.level, responses: a.responses,
-      alreadyPlaced: a.status === 'accepted', placedReason: 'Already accepted',
-    }));
+    const state = await this._resolveState(apps);
+
+    const candidates = apps.map((a) => {
+      const st = state.get(a.id) || { userId: null, clanId: null, clanName: null, hasAccount: false, invite: 'none' };
+      // ONLY a real clan membership blocks re-assignment. "status = accepted"
+      // used to block it on its own, which stranded anyone who was accepted but
+      // never registered, or whose invite expired: they showed as "Already
+      // accepted" here AND were invisible on the Unplaced tab, with no way back.
+      return {
+        applicationId: a.id, userId: st.userId, firstName: a.firstName, lastName: a.lastName, email: a.email,
+        level: a.level, responses: a.responses,
+        alreadyPlaced: !!st.clanId,
+        placedReason: st.clanName ? `Already in ${st.clanName}` : null,
+        placedClanId: st.clanId, placedClanName: st.clanName,
+        note: this._stuckNote(a.status, st),
+      };
+    });
     return this._plan(cohort, candidates, s);
   }
 
   /**
-   * Accepted candidates who have REGISTERED but never landed in a clan (accepted
-   * with no clan → registered as pending_match). Returns their applications.
+   * Every accepted candidate who is NOT in a clan — whether or not they ever
+   * registered. It used to require `userId != null`, i.e. only people with an
+   * account, which meant anyone accepted-but-never-registered (expired invite,
+   * invite never delivered) appeared on NO tab at all and could not be recovered
+   * from this screen. Returns applications plus their resolved state.
    */
   async _unassignedApplications(cohortId) {
     const apps = await models.Application.findAll({
-      where: { cohortId, status: 'accepted', userId: { [Op.ne]: null } },
-      attributes: ['id', 'userId', 'firstName', 'lastName', 'email', 'level', 'responses'],
+      where: { cohortId, status: 'accepted' },
+      attributes: ['id', 'userId', 'firstName', 'lastName', 'email', 'level', 'responses', 'status'],
     });
-    if (!apps.length) return [];
-    const placed = await models.ClanMembership.findAll({
-      where: { userId: { [Op.in]: apps.map((a) => a.userId) }, role: 'mentee', status: { [Op.in]: ['active', 'paused'] } },
-      attributes: ['userId'], raw: true,
-    });
-    const placedSet = new Set(placed.map((p) => p.userId));
-    return apps.filter((a) => !placedSet.has(a.userId));
+    if (!apps.length) return { apps: [], state: new Map() };
+    const state = await this._resolveState(apps);
+    return { apps: apps.filter((a) => !state.get(a.id)?.clanId), state };
   }
 
   /** Propose a clan for each already-accepted-but-unplaced mentee. */
@@ -250,11 +363,15 @@ class ClanAssignmentService {
     const cohort = await models.Cohort.findByPk(cohortId, { attributes: ['id', 'programId', 'levels'] });
     if (!cohort) throw new NotFoundError('Cohort not found');
     const s = this._defaults(rawSettings);
-    const apps = await this._unassignedApplications(cohortId);
-    const candidates = apps.map((a) => ({
-      applicationId: a.id, userId: a.userId, firstName: a.firstName, lastName: a.lastName, email: a.email,
-      level: a.level, responses: a.responses, alreadyPlaced: false,
-    }));
+    const { apps, state } = await this._unassignedApplications(cohortId);
+    const candidates = apps.map((a) => {
+      const st = state.get(a.id) || { userId: null, hasAccount: false, invite: 'none' };
+      return {
+        applicationId: a.id, userId: st.userId, firstName: a.firstName, lastName: a.lastName, email: a.email,
+        level: a.level, responses: a.responses, alreadyPlaced: false,
+        note: this._stuckNote('accepted', st),
+      };
+    });
     return this._plan(cohort, candidates, s);
   }
 
@@ -279,24 +396,41 @@ class ClanAssignmentService {
   }
 
   /**
-   * Commit the UNPLACED-mentee plan: place each registered mentee straight into
-   * their clan via clanService.addMember (creates the membership + enrollment).
-   * No invite — they already have an account. Resilient per row.
+   * Commit the UNPLACED-mentee plan. Two kinds of person land here, and they
+   * need different treatment:
+   *   - HAS an account (registered, never placed) → drop them straight into the
+   *     clan via addMember, which creates the membership + enrollment.
+   *   - NO account (accepted but never registered — invite expired, lost, or
+   *     never delivered) → there is nobody to add yet, so re-run the accept with
+   *     the chosen clan. acceptApplication reuses or re-issues the invite and
+   *     stamps the clan on it, so registering drops them into that clan.
+   * Previously only the first case was handled and the second was skipped as
+   * "missing clan or user", which is why an accepted applicant with no invite
+   * could not be recovered from this screen at all. Resilient per row.
    */
-  async commitPlacement(cohortId, placements) {
+  async commitPlacement(cohortId, placements, actorId = null) {
     if (!Array.isArray(placements) || !placements.length) throw new ValidationError('Nothing to place');
     const clanService = require('./clanService');
-    const results = { placed: 0, skipped: [] };
+    const results = { placed: 0, invited: 0, skipped: [] };
     for (const p of placements) {
       const clanId = p.clanId || null;
       const userId = p.userId || null;
-      if (!clanId || !userId) { results.skipped.push({ userId, reason: 'missing clan or user' }); continue; }
+      if (!clanId) { results.skipped.push({ userId, applicationId: p.applicationId, reason: 'no clan chosen' }); continue; }
       try {
-        // actor omitted: the route already enforces INTAKE_MANAGE.
-        await clanService.addMember(clanId, { userId, role: 'mentee' });
-        results.placed += 1;
+        if (userId) {
+          // actor omitted: the route already enforces INTAKE_MANAGE.
+          await clanService.addMember(clanId, { userId, role: 'mentee' });
+          results.placed += 1;
+        } else if (p.applicationId) {
+          // resend: this person is being rescued precisely because they have no
+          // usable link — retargeting a silent invite would leave them stuck again.
+          await applicationService.acceptApplication(p.applicationId, { clanId, resend: true }, actorId);
+          results.invited += 1;
+        } else {
+          results.skipped.push({ userId, reason: 'no account and no application to re-invite' });
+        }
       } catch (e) {
-        results.skipped.push({ userId, reason: e.message });
+        results.skipped.push({ userId, applicationId: p.applicationId, reason: e.message });
       }
     }
     return results;

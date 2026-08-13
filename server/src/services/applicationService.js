@@ -241,7 +241,7 @@ class ApplicationService {
    * Net: re-running an assignment is a clean no-op, and "invited without a clan,
    * then assigned" now actually lands the clan on the existing invite.
    */
-  async acceptApplication(applicationId, { clanId } = {}, acceptedBy) {
+  async acceptApplication(applicationId, { clanId, resend = false } = {}, acceptedBy) {
     const app = await models.Application.findByPk(applicationId, {
       include: [{ model: models.Cohort, as: 'cohort' }]
     });
@@ -253,11 +253,25 @@ class ApplicationService {
 
     const isLive = (inv) => inv && !inv.usedAt && !inv.revokedAt && new Date(inv.expiresAt) > new Date();
 
+    // Re-sending is a token ROTATION (we only store the hash, so the original
+    // link can't be re-mailed). resendRegistrationInvite revokes the old invite
+    // and issues + emails a fresh one carrying the same placement.
+    const resendWithClan = async (existing) => {
+      if (clanId && existing.clanId !== clanId) await existing.update({ clanId });
+      const fresh = await adminService.resendRegistrationInvite(existing.id, acceptedBy, {});
+      return fresh;
+    };
+
     // 1. Already accepted with a live invite — idempotent. Retarget the clan if
     //    one is supplied and differs (lets you re-assign before they register).
     if (app.status === 'accepted' && app.inviteId) {
       const existing = await models.RegistrationInvite.findByPk(app.inviteId);
       if (isLive(existing)) {
+        if (resend) {
+          const fresh = await resendWithClan(existing);
+          await app.update({ inviteId: fresh.id });
+          return { application: app, invite: fresh, resent: true };
+        }
         if (clanId && existing.clanId !== clanId) await existing.update({ clanId });
         return { application: app, invite: existing, reused: true };
       }
@@ -270,7 +284,12 @@ class ApplicationService {
       order: [['createdAt', 'DESC']],
     });
     let invite;
-    if (existingActive) {
+    if (existingActive && resend) {
+      // The admin explicitly asked to re-send — rotate the token so a real,
+      // working link reaches them. Reusing silently is what left people
+      // "accepted" with no email they could act on.
+      invite = await resendWithClan(existingActive);
+    } else if (existingActive) {
       await existingActive.update({
         clanId: clanId || existingActive.clanId,
         programId: cohort.programId,

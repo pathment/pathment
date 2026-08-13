@@ -13,6 +13,8 @@ interface Row {
   clanId: string | null; clanName: string | null;
   status: 'assigned' | 'unassigned' | 'already_placed';
   reason: string;
+  /** Why an accepted person is still unplaced (expired invite, never registered…). */
+  note?: string | null;
 }
 type Mode = 'candidates' | 'unplaced';
 interface ClanInfo { id: string; name: string; levels: string[]; leadGender: string; cap: number; projectedFill: number }
@@ -37,7 +39,7 @@ export function AssignToClansDrawer({
   });
   const [rows, setRows] = useState<Row[]>([]);
   const [clans, setClans] = useState<ClanInfo[]>([]);
-  const [summary, setSummary] = useState<{ assigned: number; unassigned: number; alreadyAccepted: number } | null>(null);
+  const [summary, setSummary] = useState<{ assigned: number; unassigned: number; alreadyAccepted: number; stuck?: number } | null>(null);
   const [loading, setLoading] = useState(false);
   const [committing, setCommitting] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
@@ -82,13 +84,21 @@ export function AssignToClansDrawer({
     let done = 0;
     try {
       if (mode === 'unplaced') {
-        const items = ready.filter((r) => r.userId).map((r) => ({ userId: r.userId as string, clanId: r.clanId }));
+        // Send applicationId as well as userId, and DON'T drop rows without a
+        // userId: someone accepted who never registered has no account yet, and
+        // the server re-issues their clan-stamped invite from the applicationId.
+        // Filtering them out here is what made them unrecoverable.
+        const items = ready.map((r) => ({ userId: r.userId, applicationId: r.applicationId, clanId: r.clanId }));
+        let invited = 0;
         for (let i = 0; i < items.length; i += CHUNK) {
-          const res = await applicationApi.commitUnassignedAssignment(cohortId, items.slice(i, i + CHUNK)) as { data?: { placed: number } };
+          const res = await applicationApi.commitUnassignedAssignment(cohortId, items.slice(i, i + CHUNK)) as { data?: { placed: number; invited?: number } };
           done += res?.data?.placed ?? 0;
+          invited += res?.data?.invited ?? 0;
           setProgress({ done: Math.min(i + CHUNK, items.length), total: items.length });
         }
-        toast.success(`Placed ${done} mentee(s) into clans`);
+        toast.success(invited
+          ? `Placed ${done} mentee(s); re-invited ${invited} who hadn't registered`
+          : `Placed ${done} mentee(s) into clans`);
       } else {
         const items = ready.map((r) => ({ applicationId: r.applicationId, clanId: r.clanId }));
         for (let i = 0; i < items.length; i += CHUNK) {
@@ -176,7 +186,8 @@ export function AssignToClansDrawer({
           <div className="px-5 py-2 border-b border-slate-100 flex gap-4 text-sm">
             <span className="text-emerald-700 font-medium">{summary.assigned} assigned</span>
             {summary.unassigned > 0 && <span className="text-amber-700 font-medium inline-flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5" />{summary.unassigned} need a clan</span>}
-            {summary.alreadyAccepted > 0 && <span className="text-slate-500">{summary.alreadyAccepted} already accepted</span>}
+            {summary.alreadyAccepted > 0 && <span className="text-slate-500">{summary.alreadyAccepted} already in a clan</span>}
+            {(summary.stuck ?? 0) > 0 && <span className="text-brand-700 font-medium">{summary.stuck} accepted but unplaced — assigning fixes them</span>}
           </div>
         )}
 
@@ -187,7 +198,7 @@ export function AssignToClansDrawer({
           ) : rows.length === 0 ? (
             <div className="py-16 px-6 text-center text-sm text-slate-500">
               {mode === 'unplaced'
-                ? 'No accepted mentees are waiting for a clan — everyone who registered has been placed.'
+                ? 'No accepted mentees are waiting for a clan — everyone accepted is placed.'
                 : 'No candidates in this selection.'}
             </div>
           ) : (
@@ -206,11 +217,17 @@ export function AssignToClansDrawer({
                     <td className="px-4 py-2">
                       <p className="font-medium text-slate-900">{r.name}</p>
                       <p className="text-xs text-slate-500">{r.gender || '—'}</p>
+                      {/* Where an accepted person is stuck — this is what tells you
+                          the invite expired / was never sent, instead of leaving
+                          you hunting the Invites page for a link that isn't there. */}
+                      {r.note && <p className="text-[11px] text-brand-700 mt-0.5">{r.note}</p>}
                     </td>
                     <td className="px-4 py-2 text-slate-600">{r.levelLabel || '—'}</td>
                     <td className="px-4 py-2">
                       {r.status === 'already_placed' ? (
-                        <span className="text-xs text-slate-400">{r.reason}</span>
+                        <span className="text-xs text-slate-500" title="Move them from the mentee's profile or Clans page">
+                          {r.clanName ?? r.reason}
+                        </span>
                       ) : (
                         <select value={r.clanId ?? ''} onChange={(e) => setClan(r.applicationId, e.target.value)} className={`${inp} ${!r.clanId ? 'border-amber-300' : ''}`}>
                           <option value="">— pick a clan —</option>
@@ -231,7 +248,7 @@ export function AssignToClansDrawer({
           <p className="text-[11px] text-slate-400 inline-flex items-center gap-1">
             <Wand2 className="w-3.5 h-3.5" />
             {mode === 'unplaced'
-              ? 'Places each registered mentee straight into their clan (no invite).'
+              ? 'Places registered mentees straight into their clan; anyone who never registered gets a fresh clan-stamped invite.'
               : 'Accepts each candidate and emails a clan-stamped invite.'}
           </p>
           <div className="flex gap-2 shrink-0">

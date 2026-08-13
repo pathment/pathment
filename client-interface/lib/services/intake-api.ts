@@ -132,7 +132,9 @@ export const applicationApi = {
   previewUnassignedAssignment: (cohortId: string, settings: ClanAssignSettings) =>
     apiClient.post(`/intake/cohorts/${cohortId}/assign/unassigned/preview`, { settings }),
   /** Place those mentees straight into their clan (no invite). */
-  commitUnassignedAssignment: (cohortId: string, placements: { userId: string; clanId: string | null }[]) =>
+  /** `userId` is null for an accepted applicant who never registered — the
+   *  server falls back to `applicationId` and re-issues a clan-stamped invite. */
+  commitUnassignedAssignment: (cohortId: string, placements: { userId: string | null; applicationId: string; clanId: string | null }[]) =>
     apiClient.post(`/intake/cohorts/${cohortId}/assign/unassigned/commit`, { placements }),
 };
 

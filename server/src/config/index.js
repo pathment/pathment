@@ -48,9 +48,11 @@ module.exports = {
     password: process.env.REDIS_PASSWORD || undefined
   },
 
-  // Rate Limiting
+  // Rate Limiting. This is the GLOBAL backstop on /api, not the per-route auth
+  // limits (see middlewares/rateLimiter.js). 100/15min was far below what a
+  // single normal session sends, so it is deliberately generous here.
   rateLimit: {
     windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
-    maxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100
+    maxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 1000
   }
 };

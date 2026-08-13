@@ -7,6 +7,7 @@ const { endOfDayInZone } = require('../utils/timezone');
 const authzService = require('./authzService');
 const { PERMISSIONS } = require('../config/permissions');
 const { pointsForDifficulty } = require('../config/points');
+const { difficultyWeight } = require('../config/scoring');
 const interviewKitService = require('./interviewKitService');
 const quizKitService = require('./quizKitService');
 
@@ -746,7 +747,15 @@ class TaskService {
     // custom heuristic undercounted tasks assigned from non-base/local roadmaps,
     // which falsely hit 100% and prematurely triggered completion).
     const assignedTasks = await models.AssignedTask.findAll({
-      where: { enrollmentId }
+      where: { enrollmentId },
+      // Difficulty is needed to weight the bar. Without it, progress counts
+      // rows, and a five minute task moves it as far as a week of work.
+      include: [{
+        model: models.RoadmapTask,
+        as: 'roadmapTask',
+        attributes: ['difficulty'],
+        required: false
+      }]
     });
     const liveTasks = assignedTasks.filter(t => t.status !== 'cancelled');
 
@@ -765,9 +774,23 @@ class TaskService {
       ? ratings.reduce((sum, r) => sum + r, 0) / ratings.length
       : null;
 
-    // Percentage against the full program - grows steadily as work is done
-    const overallProgressPercentage = tasksTotal > 0
-      ? Math.round((tasksCompleted / tasksTotal) * 100)
+    // Progress is WEIGHTED BY DIFFICULTY, not a count of rows.
+    //
+    // Counting rows made every task worth the same, so somebody who cleared six
+    // easy steps read as further along than somebody who finished the three
+    // hardest ones. The bar is meant to say how much of the programme is behind
+    // them, and those two are not the same amount of programme.
+    //
+    // Weights come from the same table the points do, so the bar and the score
+    // can never disagree about what a hard task is worth.
+    const weightOf = (t) => difficultyWeight(t.roadmapTask?.difficulty);
+    const totalWeight = liveTasks.reduce((sum, t) => sum + weightOf(t), 0);
+    const completedWeight = liveTasks
+      .filter(t => t.status === 'completed')
+      .reduce((sum, t) => sum + weightOf(t), 0);
+
+    const overallProgressPercentage = totalWeight > 0
+      ? Math.round((completedWeight / totalWeight) * 100)
       : 0;
 
     // Completion is the MENTOR's call, and it's gated on finishing the program

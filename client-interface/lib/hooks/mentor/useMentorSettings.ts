@@ -19,6 +19,7 @@ export interface MentorProfileData {
   country: string;
   languages: string[];
   timezone: string;
+  autoReplyEnabled?: boolean;
 }
 
 export interface MentorProfessionalProfile {
@@ -51,6 +52,7 @@ export interface UseMentorSettingsReturn {
   handleProfileUpdate: () => Promise<void>;
   handleMentorProfileUpdate: () => Promise<void>;
   handleAvailabilityUpdate: () => Promise<void>;
+  handleAutoReplyUpdate: (enabled: boolean) => Promise<void>;
 }
 
 export function useMentorSettings(): UseMentorSettingsReturn {
@@ -103,6 +105,7 @@ export function useMentorSettings(): UseMentorSettingsReturn {
         country: data.country || '',
         languages: Array.isArray(data.languages) ? data.languages : [],
         timezone: data.settings?.timezone || '',
+        autoReplyEnabled: data.styleProfile?.autoReplyEnabled ?? false,
       });
 
       if (data.mentorProfile) {
@@ -182,6 +185,24 @@ export function useMentorSettings(): UseMentorSettingsReturn {
     }
   }, [availabilitySettings, fetchSettings]);
 
+  const handleAutoReplyUpdate = useCallback(async (enabled: boolean) => {
+    try {
+      setSaving(true);
+      await apiClient.patch(`${apiConfig.endpoints.profile}/mentor/auto-reply`, {
+        autoReplyEnabled: enabled
+      });
+      setProfileData(prev => ({ ...prev, autoReplyEnabled: enabled }));
+      toast.success(enabled ? 'Auto-replies enabled' : 'Auto-replies disabled');
+    } catch (error: any) {
+      console.error('Failed to update auto-reply settings:', error);
+      toast.error(extractApiErrorMessage(error, 'Failed to update auto-reply settings'));
+      // revert toggle on error
+      setProfileData(prev => ({ ...prev, autoReplyEnabled: !enabled }));
+    } finally {
+      setSaving(false);
+    }
+  }, []);
+
   return {
     loading,
     saving,
@@ -196,5 +217,6 @@ export function useMentorSettings(): UseMentorSettingsReturn {
     handleProfileUpdate,
     handleMentorProfileUpdate,
     handleAvailabilityUpdate,
+    handleAutoReplyUpdate,
   };
 }

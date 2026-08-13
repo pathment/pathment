@@ -185,16 +185,15 @@ function initSocket(httpServer) {
       try {
         const result = await messagingService.sendMessage(userId, payload);
 
-        emitToConversation(result.conversationId, 'message:new', {
-          conversationId: result.conversationId,
-          message: result.message
-        });
+        const msgPayload = { conversationId: result.conversationId, message: result.message };
+        emitToConversation(result.conversationId, 'message:new', msgPayload);
 
         result.recipientIds.forEach((recipientId) => {
+          // Direct delivery via user room — guaranteed even if recipient hasn't joined the conversation room
+          emitToUser(recipientId, 'message:new', msgPayload);
+
           const notification = result.notifications?.find((item) => item.userId === recipientId);
-          if (!notification) {
-            return;
-          }
+          if (!notification) return;
 
           emitToUser(recipientId, 'notification:new', {
             id: notification.id,

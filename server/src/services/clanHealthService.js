@@ -52,18 +52,38 @@ function initialsOf(user) {
 function deriveStatus({ memberCount, atRisk, avgCompletion, avgOnTime }) {
   if (memberCount === 0) return { status: 'amber', label: 'Watch', reason: 'No active mentees yet' };
 
+  // Health is judged on PROPORTIONS, never on a raw count.
+  //
+  // Amber used to trigger on `atRisk > 0`, which meant a clan of thirty could
+  // only be healthy if not one person was struggling. That is not a high bar,
+  // it is an unreachable one, and it got harder the bigger the clan: the
+  // largest clans could never read healthy however well they were run. Every
+  // clan in the organisation sat red or amber, so the colour said nothing.
   const atRiskRatio = atRisk / memberCount;
+
   if (atRiskRatio >= 0.34 || avgCompletion < 40) {
-    return { status: 'red', label: 'Needs attention', reason: `${atRisk} of ${memberCount} mentees at risk` };
+    return {
+      status: 'red',
+      label: 'Needs attention',
+      reason: `${atRisk} of ${memberCount} mentees at risk`
+    };
   }
-  if (atRisk > 0 || avgOnTime < 70 || avgCompletion < 65) {
+
+  if (atRiskRatio >= 0.15 || avgOnTime < 70 || avgCompletion < 65) {
     const bits = [];
-    if (atRisk > 0) bits.push(`${atRisk} at risk`);
+    if (atRiskRatio >= 0.15) bits.push(`${atRisk} of ${memberCount} at risk`);
     if (avgOnTime < 70) bits.push(`${avgOnTime}% on-time`);
     if (avgCompletion < 65) bits.push(`${avgCompletion}% complete`);
     return { status: 'amber', label: 'Watch', reason: bits.join(' · ') };
   }
-  return { status: 'green', label: 'Healthy', reason: 'On track' };
+
+  // A healthy clan can still have someone having a hard week. Say so, rather
+  // than implying nobody needs anything.
+  return {
+    status: 'green',
+    label: 'Healthy',
+    reason: atRisk > 0 ? `On track · ${atRisk} needing support` : 'On track'
+  };
 }
 
 class ClanHealthService {

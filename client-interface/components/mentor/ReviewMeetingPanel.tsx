@@ -60,7 +60,7 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession, onAttend
   // Once scored, the session is done — don't invite the mentor to reopen it.
   const [scored, setScored] = useState(false);
 
-  const { startCall, updateCall, reloadCall, endHostCall, registerDock, provideRoster, isLive, endedNonce } = useCall();
+  const { startCall, updateCall, reloadCall, endHostCall, registerDock, provideRoster, isLive, endedNonce, wasEndedHere } = useCall();
   // The placeholder the persistent call docks over while this page is open.
   const dockRef = useRef<HTMLDivElement | null>(null);
   // A call for THIS session is up (started here, or still running after the
@@ -205,11 +205,19 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession, onAttend
 
   // A full browser reload takes the provider down with everything else, but the
   // meeting is still live server-side. Re-adopt it so the mentor lands back in
-  // their call instead of staring at an empty box. (`scored` / `endedAt` guard
-  // the window right after ending, before the server refresh reports it.)
+  // their call instead of staring at an empty box.
+  //
+  // `wasEndedHere` is the guard that matters. `scored` and `meeting.endedAt` both
+  // arrive as state — `scored` from the endedNonce effect below, `endedAt` from the
+  // server refresh — so in the render pass where the call ends, BOTH are still
+  // false here and this effect used to rejoin the room the host had just left. The
+  // mentor then saw themselves in a floating window after ending, and the next
+  // "Start a new call" stacked another copy on top (three tiles, all the same
+  // person). wasEndedHere is ref-backed, so it is already true by this point.
   const readoptedRef = useRef(false);
   useEffect(() => {
     if (!live || !meeting || callUp || scored || meeting.endedAt) return;
+    if (wasEndedHere(liveSessionId)) return;
     if (readoptedRef.current) return;
     readoptedRef.current = true;
     startCall({
@@ -224,7 +232,7 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession, onAttend
       privateChat,
       polls,
     });
-  }, [live, meeting, callUp, scored, liveSessionId, privateChat, polls, startCall]);
+  }, [live, meeting, callUp, scored, liveSessionId, privateChat, polls, startCall, wasEndedHere]);
 
   const togglePresent = async (r: RosterRow) => {
     const present = r.attendance !== 'present';

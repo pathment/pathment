@@ -92,4 +92,25 @@ router.patch('/notifications', profileController.updateNotificationPreferences);
  */
 router.patch('/mentor/availability', profileController.updateMentorAvailability);
 
+/**
+ * @route   PATCH /api/profile/mentor/auto-reply
+ * @desc    Update mentor auto-reply settings
+ * @access  Private (Mentor only)
+ */
+router.patch('/mentor/auto-reply', profileController.updateAutoReply);
+
+/**
+ * @route   POST /api/profile/devices
+ * @desc    Register this device's push token
+ * @access  Private
+ */
+router.post('/devices', profileController.registerDevice);
+
+/**
+ * @route   DELETE /api/profile/devices
+ * @desc    Stop pushing to this device, without touching the others
+ * @access  Private
+ */
+router.delete('/devices', profileController.unregisterDevice);
+
 module.exports = router;

@@ -23,6 +23,28 @@ module.exports = (sequelize, DataTypes) => {
     revokedAt: {
       type: DataTypes.DATE,
       field: 'revoked_at'
+    },
+    // The successor issued when this token was spent. A client that retries
+    // /auth/refresh on a flaky network presents a token we just rotated; because
+    // we remember what it became, that retry is answered instead of being
+    // treated as a stolen-token replay and logging the person out.
+    replacedByToken: {
+      type: DataTypes.TEXT,
+      field: 'replaced_by_token'
+    },
+    // 'rotated' | 'logout' | 'logout_all' | 'reuse_detected' | 'password_change'
+    revokedReason: {
+      type: DataTypes.STRING(32),
+      field: 'revoked_reason'
+    },
+    lastUsedAt: {
+      type: DataTypes.DATE,
+      field: 'last_used_at'
+    },
+    client: {
+      type: DataTypes.STRING(16),
+      allowNull: false,
+      defaultValue: 'web'
     }
   }, {
     tableName: 'refresh_tokens',
@@ -30,7 +52,8 @@ module.exports = (sequelize, DataTypes) => {
     updatedAt: false,
     indexes: [
       { fields: ['token'] },
-      { fields: ['user_id'] }
+      { fields: ['user_id'] },
+      { fields: ['user_id', 'revoked_at'] }
     ]
   });
 

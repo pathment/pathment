@@ -30,11 +30,12 @@ const PROVIDERS = Object.keys(PROVIDER_BASE);
 const PROVIDER_DEFAULT_MODEL = {
   groq: 'llama-3.3-70b-versatile',
   openai: 'gpt-4o-mini',
-  gemini: 'gemini-2.0-flash',
+  gemini: 'gemini-3.1-flash-lite',
   openrouter: 'meta-llama/llama-3.3-70b-instruct',
-  // anthropic + custom: no safe default — the connection should set one.
+  anthropic: 'claude-3-5-haiku-latest',
+  // custom: no safe default — the connection should set one.
 };
-const FEATURES = ['summary', 'delay', 'atrisk', 'nudge', 'stall', 'coaching', 'feedback', 'roadmap', 'assessment'];
+const FEATURES = ['summary', 'delay', 'atrisk', 'nudge', 'stall', 'coaching', 'feedback', 'roadmap', 'assessment', 'rag_embedding', 'rag_generation', 'rag_grounding'];
 
 const isAdmin = (user) => {
   const caps = Array.isArray(user?.capabilities) && user.capabilities.length ? user.capabilities : [user?.role];
@@ -184,6 +185,31 @@ class AIConnectionService {
     };
   }
 
+  async getQuota(user) {
+    if (user.role !== 'mentor') return null;
+    const [profile] = await models.MentorStyleProfile.findOrCreate({
+      where: { mentorId: user.id },
+      defaults: { tone: { brevity: 0.5, formality: 0.5 }, autoReplyEnabled: false, autoReplyLimit: 100, autoReplyCount: 0 }
+    });
+    return {
+      count: profile.autoReplyCount || 0,
+      limit: profile.autoReplyLimit || 100
+    };
+  }
+
+  async setQuotaLimit(user, limit) {
+    if (user.role !== 'mentor') throw new ForbiddenError('Only mentors have an auto-reply quota');
+    const [profile] = await models.MentorStyleProfile.findOrCreate({
+      where: { mentorId: user.id },
+      defaults: { tone: { brevity: 0.5, formality: 0.5 }, autoReplyEnabled: false, autoReplyLimit: 100, autoReplyCount: 0 }
+    });
+    await profile.update({ autoReplyLimit: limit });
+    return {
+      count: profile.autoReplyCount || 0,
+      limit: profile.autoReplyLimit
+    };
+  }
+
   /**
    * Resolve the AI config the app should use: a mentor's personal routing for
    * `feature` wins, then org routing, then any connected org key, then null
@@ -219,3 +245,22 @@ class AIConnectionService {
 module.exports = new AIConnectionService();
 module.exports.FEATURES = FEATURES;
 module.exports.PROVIDERS = PROVIDERS;
+
+/**
+ * Resolves the mentor's Gemini embedding API key.
+ * Strategy (BYOK strict — no process.env fallback):
+ *   1. Explicit rag_embedding routing set by the mentor.
+ *   2. Any connected Gemini connection the mentor owns.
+ *   3. null → caller must skip gracefully.
+ */
+async function resolveGeminiKey(mentorId) {
+  const service = module.exports;
+  const routedConfig = await service.resolveActiveConfig('rag_embedding', mentorId);
+  if (routedConfig?.apiKey) return routedConfig.apiKey;
+
+  const geminiRow = await models.AIConnection.findOne({ where: { ownerId: mentorId, provider: 'gemini' } });
+  if (geminiRow) return service._toConfig(geminiRow).apiKey;
+
+  return null;
+}
+module.exports.resolveGeminiKey = resolveGeminiKey;

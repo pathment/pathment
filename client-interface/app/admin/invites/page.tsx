@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { Search, X } from 'lucide-react';
 import { useInvites, isRowValid, EMAIL_REGEX, VALID_ROLES, CSV_TEMPLATE, type InviteStatusFilter } from '@/lib/hooks/admin';
+import { useConfirm } from '@/lib/context/ConfirmContext';
 import { DataTable, type DataTableColumn } from '@/components/shared/DataTable';
 import { SelectMenu } from '@/components/shared/SelectMenu';
 import { TablePagination } from '@/components/shared/TablePagination';
@@ -53,6 +54,8 @@ export default function AdminInvitesPage() {
     handleCreateInvite,
     handleCopyLink,
     handleRevoke,
+    handleResend,
+    resendingId,
     inviteCountLabel,
     handleDrop,
     handleDragOver,
@@ -65,6 +68,25 @@ export default function AdminInvitesPage() {
     filteredCsvRows,
     handleBulkSend,
   } = useInvites();
+
+  const confirm = useConfirm();
+
+  /**
+   * Resend reissues the invite with the same email, role and placement. Tokens are
+   * stored hashed, so a resend always mints a NEW link - which means resending a
+   * still-active invite kills the link that was already sent. Confirm that case.
+   */
+  const resendInvite = async (invite: { id: string; email: string }, isActive: boolean) => {
+    if (isActive) {
+      const ok = await confirm({
+        title: 'Resend this invite?',
+        description: `A new link will be emailed to ${invite.email}. The link they already have will stop working.`,
+        confirmLabel: 'Resend',
+      });
+      if (!ok) return;
+    }
+    await handleResend(invite.id);
+  };
 
   const csvColumns: DataTableColumn<typeof filteredCsvRows[0]>[] = [
     {
@@ -593,6 +615,23 @@ export default function AdminInvitesPage() {
                         <span className="px-2 py-1 bg-amber-100 text-amber-700 text-xs rounded-md">Revoked</span>
                       ) : (
                         <span className="px-2 py-1 bg-rose-100 text-rose-700 text-xs rounded-md">Expired</span>
+                      )}
+
+                      {/* A used invite already became an account - there's nothing
+                          left to resend. Everything else can be reissued as-is. */}
+                      {!invite.usedAt && (
+                        <button
+                          type="button"
+                          onClick={() => resendInvite(invite, isActive)}
+                          disabled={resendingId === invite.id}
+                          title="Reissue with the same role, program and clan"
+                          className="inline-flex items-center gap-1 px-3 py-1.5 text-xs border border-brand-200 text-brand-700 rounded-md hover:bg-brand-50 disabled:opacity-50"
+                        >
+                          {resendingId === invite.id
+                            ? <Loader2 className="w-3 h-3 animate-spin" />
+                            : <Send className="w-3 h-3" />}
+                          Resend
+                        </button>
                       )}
 
                       {isActive && (

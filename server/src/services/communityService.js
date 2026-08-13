@@ -207,8 +207,35 @@ class CommunityService {
   }
 
   // ── feed ────────────────────────────────────────────────────────────────
-  async feed(user, { scopeType = 'global', scopeId = null, type = null, tag = null, q = null } = {}) {
+  /**
+   * The space feed.
+   *
+   * Was a hardcoded `limit: 80` with no way to ask for the next page — so a
+   * space simply stopped having history past its 80th post, and every visit
+   * paid for 80 posts with their authors and full reaction arrays.
+   *
+   * Now cursor-paginated on created_at. A cursor (rather than an offset) is the
+   * right shape for a feed people post into while reading: an offset would
+   * duplicate or skip posts as new ones arrive above.
+   *
+   * `stats` and `shoutouts` are returned on the FIRST page only. They summarise
+   * the space, not the page, and recomputing them per page would either repeat
+   * work or produce numbers that shrink as you scroll.
+   *
+   * @param {Object} [options]
+   * The default stays at the historical page size so the web feed shows exactly
+   * what it shows today; a mobile client should ask for a smaller page.
+   *
+   * @param {string} [options.before] ISO timestamp cursor — return posts older than this
+   * @param {number} [options.limit=80] capped at 80
+   */
+  async feed(user, {
+    scopeType = 'global', scopeId = null, type = null, tag = null, q = null,
+    before = null, limit = 80,
+  } = {}) {
     const ctx = await this._requireAccess(user, scopeType, scopeId);
+    const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 80, 1), 80);
+    const isFirstPage = !before;
 
     const where = { scopeType, scopeId: scopeId || null, deletedAt: null };
     if (type && POST_TYPES.includes(type)) where.type = type;
@@ -217,11 +244,17 @@ class CommunityService {
       const like = `%${q.trim()}%`;
       where[Op.or] = [{ title: { [Op.iLike]: like } }, { body: { [Op.iLike]: like } }];
     }
+    if (before) {
+      const cursor = new Date(before);
+      if (!Number.isNaN(cursor.getTime())) where.createdAt = { [Op.lt]: cursor };
+    }
 
+    // Fetch one extra row to learn whether another page exists without a
+    // second COUNT over a table that only grows.
     const posts = await models.CommunityPost.findAll({
       where,
       order: [['created_at', 'DESC']],
-      limit: 80,
+      limit: safeLimit + 1,
       include: [
         { model: models.User, as: 'author', attributes: ['id', 'firstName', 'lastName', 'profilePictureUrl'] },
         { model: models.User, as: 'recipient', attributes: ['id', 'firstName', 'lastName'] },
@@ -229,8 +262,16 @@ class CommunityService {
       ]
     });
 
+    const hasMore = posts.length > safeLimit;
+    if (hasMore) posts.pop();
+    const nextCursor = hasMore && posts.length
+      ? new Date(posts[posts.length - 1].createdAt).toISOString()
+      : null;
+
     const mapped = posts.map((p) => this._mapPost(p, user.id));
-    // Pinned first, then newest.
+    // Pinned first, then newest — within the page. The DB order stays purely
+    // chronological because that is what the cursor walks; sorting pinned to the
+    // top in SQL would make `created_at < cursor` skip older pinned posts.
     mapped.sort((a, b) => (Number(b.pinned) - Number(a.pinned)) || (new Date(b.at) - new Date(a.at)));
 
     const shoutouts = mapped.filter((p) => p.type === 'kudos' && p._toId === user.id);
@@ -244,8 +285,15 @@ class CommunityService {
     return {
       space: { type: ctx.type, id: ctx.id ?? scopeId ?? null, name: ctx.name, role: ctx.role, isModerator: ctx.isModerator },
       feed: mapped.map(strip),
-      shoutouts: shoutouts.map(strip),
-      stats: { given, cheersReceived, posts: mapped.length, openQuestions }
+      // First page only: these describe the space, and a client paging further
+      // already holds them. Omitting them keeps later pages cheap.
+      ...(isFirstPage
+        ? {
+          shoutouts: shoutouts.map(strip),
+          stats: { given, cheersReceived, posts: mapped.length, openQuestions }
+        }
+        : {}),
+      pagination: { limit: safeLimit, hasMore, nextCursor }
     };
   }
 

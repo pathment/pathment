@@ -66,6 +66,21 @@ export function setToken(token: string): void {
   store.setItem('token', token);
 }
 
+/**
+ * Replace the refresh token after the server rotates it.
+ *
+ * Refresh tokens are single-use: /auth/refresh spends the one we sent and
+ * returns its successor. Failing to persist it here would leave us replaying a
+ * spent token, which the server reads as a stolen-token replay and answers by
+ * ending every session — so this write is what keeps people signed in.
+ */
+export function setRefreshToken(refreshToken: string): void {
+  if (!isBrowser()) return;
+  const store = activeStore()
+    ?? (localStorage.getItem(MODE_KEY) === 'session' ? sessionStorage : localStorage);
+  store.setItem('refreshToken', refreshToken);
+}
+
 /** Update the cached user object in the active store. */
 export function setUser(user: unknown): void {
   if (!isBrowser()) return;
@@ -84,5 +99,5 @@ export function clearSession(): void {
 }
 
 export const tokenStore = {
-  getToken, getRefreshToken, getUser, setSession, setToken, setUser, clearSession,
+  getToken, getRefreshToken, getUser, setSession, setToken, setRefreshToken, setUser, clearSession,
 };

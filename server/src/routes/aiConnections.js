@@ -12,5 +12,6 @@ router.post('/', c.create);
 router.delete('/:id', c.remove);
 router.post('/:id/test', c.test);
 router.put('/routing', c.setRouting);
+router.put('/quota-limit', c.setQuotaLimit);
 
 module.exports = router;

@@ -1,6 +1,7 @@
 const { Op } = require('sequelize');
 const { models } = require('../db');
 const emailService = require('./emailService');
+const pushService = require('./pushService');
 const { shouldCreateNotification } = require('../utils/notificationPreferences');
 const { NOTIFICATION_EVENTS, NOTIFICATION_MATRIX, resolveAudience } = require('../config/notificationMatrix');
 const { renderEmail, plainText } = require('../utils/emailTemplate');
@@ -180,6 +181,38 @@ class NotificationOrchestrator {
           } catch (e) {
             console.error('[notify] enqueue failed for', user.email, e?.message);
           }
+        }
+      }
+
+      // Push channel. The matrix carries no push flag, so push follows inApp:
+      // anything worth a bell in the app is worth a buzz on the phone, and the
+      // alternative is forty near-identical edits that would drift apart.
+      //
+      // Quiet hours ARE respected here and deliberately not for email, because a
+      // buzz at 3am wakes someone and an email does not.
+      if (channels.push ?? channels.inApp) {
+        const pushAllowed = shouldCreateNotification(settings, preferenceKey, {
+          checkEmail: false,
+          checkPush: true,
+          respectQuietHours: true
+        }).should_create;
+
+        if (!shouldSkipByDedupe && pushAllowed) {
+          // Deliberately not awaited. A phone that could not be reached must
+          // never fail, slow, or abort the thing that triggered the
+          // notification: the submission is submitted either way.
+          pushService
+            .send([recipient.userId], {
+              title: payload.title,
+              body: payload.message,
+              data: {
+                actionUrl: payload.actionUrl || null,
+                type: matrix.type,
+                relatedEntityType: payload.relatedEntityType || null,
+                relatedEntityId: payload.relatedEntityId || null
+              }
+            })
+            .catch((e) => console.error('[Push] dispatch failed:', e.message));
         }
       }
     }

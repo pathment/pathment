@@ -42,8 +42,8 @@ class AuthController {
    * POST /api/auth/login
    */
   login = catchAsync(async (req, res) => {
-    const { email, password, rememberMe } = req.body;
-    const result = await authService.login(email, password, rememberMe === true);
+    const { email, password, rememberMe, client } = req.body;
+    const result = await authService.login(email, password, rememberMe === true, client);
 
     // Check if 2FA is required
     if (result.requiresTwoFactor) {
@@ -86,7 +86,12 @@ class AuthController {
       successResponse(
         AUTH_MESSAGES.TOKEN_REFRESH_SUCCESS,
         {
-          accessToken: result.accessToken
+          accessToken: result.accessToken,
+          // Refresh tokens rotate: the presented one is now spent. A client that
+          // ignores this field keeps replaying a dead token and will be signed
+          // out at the next refresh, so store it.
+          refreshToken: result.refreshToken,
+          refreshTokenExpiresAt: result.expiresAt
         }
       )
     );
@@ -102,6 +107,18 @@ class AuthController {
 
     res.status(200).json(
       successResponse(AUTH_MESSAGES.LOGOUT_SUCCESS)
+    );
+  });
+
+  /**
+   * Sign out on every device
+   * POST /api/auth/logout-all
+   */
+  logoutAll = catchAsync(async (req, res) => {
+    const result = await authService.logoutAll(req.user.id);
+
+    res.status(200).json(
+      successResponse('Signed out on all devices', result)
     );
   });
 
@@ -301,7 +318,12 @@ class AuthController {
       throw new AuthenticationError('Invalid temporary token');
     }
 
-    const result = await authService.verify2FADuringLogin(userId, code, req.body.rememberMe === true);
+    const result = await authService.verify2FADuringLogin(
+      userId,
+      code,
+      req.body.rememberMe === true,
+      req.body.client
+    );
 
     res.status(200).json(
       successResponse('2FA verified successfully', {

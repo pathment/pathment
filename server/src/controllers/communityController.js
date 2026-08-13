@@ -46,13 +46,15 @@ const leaderboard = catchAsync(async (req, res) => {
 
 // ── feed ────────────────────────────────────────────────────────────────
 const feed = catchAsync(async (req, res) => {
-  const { scopeType, scopeId, type, tag, q } = req.query;
+  const { scopeType, scopeId, type, tag, q, before, limit } = req.query;
   const data = await communityService.feed(req.user, {
     scopeType: scopeType || 'global',
     scopeId: scopeId || null,
     type: type || null,
     tag: tag || null,
-    q: q || null
+    q: q || null,
+    before: before || null,
+    limit
   });
   res.status(200).json(successResponse('Community feed retrieved', data));
 });

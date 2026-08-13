@@ -40,32 +40,62 @@ class AnnouncementService {
     return { caps, clanIds, programIds: [...programIds] };
   }
 
-  async list(user) {
-    const all = await models.Announcement.findAll({
+  /**
+   * Translate the audience rules into a WHERE clause.
+   *
+   * This used to be a JS `.filter()` over every announcement in the org, which
+   * meant each request loaded the whole table — plus each row's author and its
+   * full reactions array — to then discard most of it. Expressed as SQL, the
+   * database returns only what this person may see, and LIMIT actually limits.
+   *
+   * Returns undefined for admins, who see everything for oversight.
+   */
+  async _visibilityWhere(user) {
+    const caps = this._caps(user);
+    if (caps.includes('admin')) return undefined;
+
+    const { clanIds, programIds } = await this._scope(user);
+
+    const or = [
+      { authorId: user.id },      // you always see your own
+      { audience: 'all' }
+    ];
+    if (caps.includes('mentor')) or.push({ audience: 'mentors' });
+    if (caps.includes('mentee')) or.push({ audience: 'mentees' });
+    if (programIds.length) or.push({ audience: 'program', audienceId: { [Op.in]: programIds } });
+    if (clanIds.length) or.push({ audience: 'clan', audienceId: { [Op.in]: clanIds } });
+
+    return { [Op.or]: or };
+  }
+
+  /**
+   * @param {Object} user
+   * @param {Object} [options]
+   * @param {number} [options.limit=30]  capped at 100
+   * @param {number} [options.offset=0]
+   */
+  async list(user, { limit = 30, offset = 0 } = {}) {
+    const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 30, 1), 100);
+    const safeOffset = Math.max(parseInt(offset, 10) || 0, 0);
+
+    const where = await this._visibilityWhere(user);
+
+    const { rows: visible, count: totalItems } = await models.Announcement.findAndCountAll({
+      where,
       include: [
         { model: models.User, as: 'author', attributes: ['firstName', 'lastName', 'role'] },
         { model: models.AnnouncementReaction, as: 'reactions', attributes: ['userId', 'type'] }
       ],
-      order: [['pinned', 'DESC'], ['created_at', 'DESC']]
+      order: [['pinned', 'DESC'], ['created_at', 'DESC']],
+      limit: safeLimit,
+      offset: safeOffset,
+      // `reactions` is a hasMany, so the join multiplies rows: without distinct,
+      // COUNT returns reaction rows rather than announcements. Sequelize also
+      // needs its default subQuery behaviour here so LIMIT applies to
+      // announcements — forcing subQuery:false would cut a page off mid-way
+      // through one announcement's reactions.
+      distinct: true
     });
-
-    const caps = this._caps(user);
-    const isAdmin = caps.includes('admin');
-    let visible = all;
-    if (!isAdmin) {
-      const { clanIds, programIds } = await this._scope(user);
-      visible = all.filter((a) => {
-        if (a.authorId === user.id) return true;
-        switch (a.audience) {
-          case 'all': return true;
-          case 'mentors': return caps.includes('mentor');
-          case 'mentees': return caps.includes('mentee');
-          case 'program': return programIds.includes(a.audienceId);
-          case 'clan': return clanIds.includes(a.audienceId);
-          default: return false;
-        }
-      });
-    }
 
     // Resolve names for program/clan audience labels.
     const progIds = [...new Set(visible.filter((a) => a.audience === 'program').map((a) => a.audienceId).filter(Boolean))];
@@ -87,7 +117,7 @@ class AnnouncementService {
       }
     };
 
-    return visible.map((a) => {
+    const announcements = visible.map((a) => {
       const reactions = a.reactions || [];
       const count = (t) => reactions.filter((r) => r.type === t).length;
       const mine = reactions.filter((r) => r.userId === user.id).map((r) => r.type);
@@ -106,6 +136,16 @@ class AnnouncementService {
         myReactions: mine
       };
     });
+
+    return {
+      items: announcements,
+      pagination: {
+        limit: safeLimit,
+        offset: safeOffset,
+        totalItems,
+        hasMore: safeOffset + announcements.length < totalItems
+      }
+    };
   }
 
   /** Clans a mentor leads (for the mentor compose dropdown). */

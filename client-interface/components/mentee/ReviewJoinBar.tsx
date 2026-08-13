@@ -32,7 +32,7 @@ export function ReviewJoinBar() {
   const [dismissed, setDismissed] = useState<string | null>(null);
   const autoJoinedRef = useRef(false);
 
-  const { startCall, leaveGuestCall, registerDock, isLive } = useCall();
+  const { startCall, updateCall, call, leaveGuestCall, registerDock, isLive } = useCall();
   const inCall = isLive(active?.sessionId);
 
   const poll = useCallback(async () => {
@@ -81,6 +81,19 @@ export function ReviewJoinBar() {
     params.delete('join');
     router.replace(`${pathname}${params.toString() ? `?${params.toString()}` : ''}`, { scroll: false });
   }, [active, searchParams, router, pathname, join]);
+
+  // Follow the session to its current room.
+  //
+  // A new call gets a NEW room (reviewMeetingService._needsFreshRoom) so it can't
+  // inherit the previous call's ghosts. A mentee who never pressed Leave would
+  // otherwise still be sitting in the old, now-empty room while the mentor talks
+  // in the new one. Same session, different room → move them across; JitsiRoom
+  // leaves the old room properly on the way out.
+  useEffect(() => {
+    if (!inCall || !active?.room || !call || call.sessionId !== active.sessionId) return;
+    if (call.room === active.room) return;
+    updateCall({ room: active.room, polls: !!active.pollsEnabled });
+  }, [inCall, active, call, updateCall]);
 
   // While the mentee is on a page that shows this bar, give the call a big home
   // to dock into; navigating elsewhere releases it to the floating window.

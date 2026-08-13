@@ -15,13 +15,15 @@ const logger = require('../utils/logger');
  * and computes the fairness signals (relativeProgress / momentum / risk) that
  * the new design leans on.
  *
- * FAIRNESS v1 (intentionally simple + documented so it can be tuned later):
- *  - relativeProgress = absoluteProgress + credit for ACCEPTED EXTERNAL delays,
- *    capped, never below absolute. Someone fighting real, logged constraints
- *    reads higher than their raw output; a coasting mentee reads ~= absolute.
+ * FAIRNESS v2:
+ *  - absoluteProgress is weighted by difficulty, so the bar says how much of the
+ *    programme is behind somebody rather than how many rows they ticked.
+ *  - relativeProgress = absoluteProgress + credit for days a mentor actually
+ *    granted. Evidence only: the credit inferred from the occupation text, and
+ *    the one for having open blockers, are both gone.
  *  - momentum from activity recency + recent completion trend (up/flat/down).
- *  - risk from how far behind the plan they are, how much of that the logged
- *    friction explains, inactivity, and open blockers.
+ *  - risk needs somebody to be BEHIND before silence escalates it. Being quiet
+ *    while ahead is a note, not an alarm.
  */
 
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
@@ -166,35 +168,35 @@ class CohortService {
   }
 
   /**
-   * Relative ("adjusted for constraints") progress = absolute output + a capped
-   * fairness credit for real-life constraints OUTSIDE the mentee's control, so a
-   * learner juggling e.g. a full-time job isn't graded as if they had 40 free
-   * hours/week. Credit sources (each capped, total capped at 30):
-   *   - Accepted EXTERNAL delays  (a mentor/admin agreed it wasn't their fault)
-   *   - Job / study load          (employed or studying → limited weekly hours)
-   *   - Actively-flagged blockers (they surfaced impediments early vs stalling)
-   * Never drops below absolute, never exceeds 100.
+   * Credited progress: raw progress, plus time a mentor actually agreed to.
+   *
+   * Only accepted external delays count, and only for the days that were
+   * granted. Two things used to be added here and are deliberately gone:
+   *
+   *   - A credit inferred from the free text occupation field by regular
+   *     expression. It read "freelance" and "between jobs" and anything not in
+   *     English as employment, gave nearly everybody the same nine points, and
+   *     was ultimately a guess about somebody's life dressed up as a
+   *     measurement. If availability should count, it has to be declared and
+   *     confirmed, not inferred.
+   *   - A credit for having open blockers. Raising a blocker is healthy, but it
+   *     is not progress, and it is already read as a risk signal. Counting it
+   *     twice, once as a worry and once as credit, meant the two numbers moved
+   *     in opposite directions for the same fact.
+   *
+   * With those gone the credit is evidence only, which is why the ceiling is
+   * lower: it no longer needs headroom for guesses. Most people now read at or
+   * near their raw progress, and the gap means something when it appears.
    */
-  computeRelativeProgress(absolute, { delays = [], occupation = null, openBlockers = 0 } = {}) {
-    const frictionDays = delays
+  computeRelativeProgress(absolute, { delays = [] } = {}) {
+    const grantedDays = delays
       .filter((d) => d.accepted && d.category === 'external')
       .reduce((sum, d) => sum + (d.days || 0), 0);
-    const delayCredit = Math.min(15, frictionDays * 1.5);
 
-    // Job/study load: someone with a day job (or full-time study) has far fewer
-    // weekly hours, so steady output deserves more credit than raw % implies.
-    const occ = (occupation || '').toLowerCase().trim();
-    const studying = /\b(student|university|college|school|studying|bs|ms|phd|degree)\b/i.test(occ);
-    const noJob = !occ || /^(none|n\/?a|unemployed|looking|job ?seeker)$/i.test(occ);
-    let loadCredit = 0;
-    if (studying) loadCredit = 5;           // full-time study (checked first)
-    else if (!noJob) loadCredit = 9;        // employed / has an occupation
-    loadCredit = Math.min(10, loadCredit);
+    // A granted day is worth roughly a day and a half of the plan, because a
+    // delay costs momentum as well as time.
+    const credit = Math.min(20, grantedDays * 1.5);
 
-    // Surfacing blockers early is healthy behaviour and represents real friction.
-    const blockerCredit = Math.min(6, Math.max(0, openBlockers) * 2);
-
-    const credit = Math.min(30, delayCredit + loadCredit + blockerCredit);
     return clamp(Math.round(absolute + credit), Math.round(absolute), 100);
   }
 
@@ -225,24 +227,48 @@ class CohortService {
     const behind = expected != null ? Math.max(0, expected - absolute) : 0;
     const gap = relative - absolute; // how much logged friction explains
 
+    // Silence is a question, not a verdict.
+    //
+    // This used to read `lastActiveDays > 10` as high risk, as the FIRST branch,
+    // so it settled the answer before progress was looked at. On a real cohort
+    // most people are quiet for more than ten days at some point, which put two
+    // thirds of the organisation at risk and left every clan red. A signal that
+    // fires for the majority carries nothing.
+    //
+    // Being quiet now only escalates alongside actually being behind. Someone at
+    // 93% who has not opened the app for a fortnight has finished their work and
+    // taken a breather; they are not the same as someone who stopped at 20%.
+    const QUIET_DAYS = 14;
+    const GONE_DAYS = 28;
+    const NEARLY_DONE = 90;
+
+    const quiet = lastActiveDays > QUIET_DAYS;
+    const gone = lastActiveDays > GONE_DAYS;
+    const unexplained = gap < 10; // logged friction does not account for it
+
     let level = 'low';
     const reasons = [];
 
-    if (lastActiveDays > 10) {
+    if (behind >= 25 && unexplained && (quiet || highSeverityBlockers >= 1)) {
       level = 'high';
-      reasons.push(Number.isFinite(lastActiveDays) ? `no activity in ${lastActiveDays} days` : 'assigned work but never started');
-    } else if (behind >= 30 && gap < 10) {
+      reasons.push('well behind the plan');
+      if (highSeverityBlockers >= 1) reasons.push('a high-severity blocker is holding them back');
+      else reasons.push(`quiet for ${lastActiveDays} days`);
+    } else if (gone && absolute < NEARLY_DONE) {
+      // A month of silence with work outstanding is worth chasing whatever the
+      // percentage says.
       level = 'high';
-      reasons.push('well behind plan with no logged reason');
-    } else if (highSeverityBlockers >= 1 && behind >= 20) {
-      level = 'high';
-      reasons.push('a high-severity blocker is holding them back');
-    } else if (behind >= 15 || openBlockers > 0 || momentum === 'down' || lastActiveDays > 5) {
+      reasons.push(
+        Number.isFinite(lastActiveDays)
+          ? `no activity in ${lastActiveDays} days`
+          : 'assigned work but never started'
+      );
+    } else if (behind >= 15 || openBlockers > 0 || momentum === 'down' || quiet) {
       level = 'watch';
-      if (behind >= 15 && gap < 10) reasons.push('slipping behind the plan');
+      if (behind >= 15 && unexplained) reasons.push('slipping behind the plan');
       if (openBlockers > 0) reasons.push(`${openBlockers} open blocker${openBlockers > 1 ? 's' : ''}`);
       if (momentum === 'down') reasons.push('momentum is dropping');
-      if (lastActiveDays > 5 && lastActiveDays <= 10) reasons.push(`quiet for ${lastActiveDays} days`);
+      if (quiet) reasons.push(`quiet for ${lastActiveDays} days`);
     }
 
     // If they're behind but friction explains it, soften the message.
@@ -318,11 +344,7 @@ class CohortService {
     const totalWeeks = enrollment?.program?.totalDurationWeeks || 0;
     const expected = totalWeeks ? clamp(Math.round((week / totalWeeks) * 100), 0, 100) : null;
 
-    const relativeProgress = this.computeRelativeProgress(absolute, {
-      delays,
-      occupation: mentee.menteeProfile?.currentOccupation || null,
-      openBlockers
-    });
+    const relativeProgress = this.computeRelativeProgress(absolute, { delays });
     const hasWork = tasks.length > 0;
     const momentum = this.computeMomentum(tasks, lastActiveDays, hasWork);
     const { risk, riskReason } = this.computeRisk({

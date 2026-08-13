@@ -6,6 +6,8 @@ const adminRoutes = require('./admin');
 const programRoutes = require('./programs');
 const enrollmentRoutes = require('./enrollments');
 const matchingRoutes = require('./matching');
+const performanceRoutes = require('./performance');
+const autoReplyRoutes = require('./autoReply');
 const mentorRoutes = require('./mentors');
 const menteeRoutes = require('./mentees');
 const taskRoutes = require('./tasks');
@@ -69,6 +71,12 @@ router.use('/programs', programRoutes);
 // Enrollment and matching routes
 router.use('/enrollments', enrollmentRoutes);
 router.use('/matches', matchingRoutes);
+
+// Performance scores: the mentee's own, a clan ranked, and what it is made of.
+router.use('/performance', performanceRoutes);
+
+// Auto reply: setup, readiness and the drafts waiting on a mentor.
+router.use('/auto-reply', autoReplyRoutes);
 
 // Mentor and Mentee routes
 router.use('/mentors', mentorRoutes);

@@ -4,8 +4,16 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: './',
   },
-    typescript: {
-    ignoreBuildErrors: true,   // ← add this
+  typescript: {
+    ignoreBuildErrors: true,
+  },
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'res.cloudinary.com',
+      },
+    ],
   },
 };
 

@@ -1,3 +1,4 @@
+const { Sequelize } = require('sequelize');
 const { models } = require('../db');
 const { NotFoundError, ValidationError } = require('../utils/errors/errorTypes');
 
@@ -15,15 +16,60 @@ class LibraryService {
       url: d.url,
       readMins: d.readMins,
       pinned: d.pinned,
-      hasContent: Boolean(d.content && d.content.trim()),
+      // list() omits the body for payload reasons and computes this flag in SQL;
+      // get() has the real content. Fall back so both paths report it correctly.
+      hasContent: d.get('hasContent') !== undefined
+        ? Boolean(d.get('hasContent'))
+        : Boolean(d.content && d.content.trim()),
       updatedAt: d.updatedAt
     };
   }
 
-  /** List = lightweight metadata (no full body) for the grid. */
-  async list() {
-    const docs = await models.Document.findAll({ order: [['pinned', 'DESC'], ['updated_at', 'DESC']] });
-    return docs.map((d) => this._meta(d));
+  /**
+   * List = lightweight metadata (no full body) for the grid.
+   *
+   * Paginated and category-filterable. This was an unbounded findAll: fine with
+   * twenty documents, and quietly worse every time someone adds one — a library
+   * only ever grows.
+   *
+   * @param {Object} [options]
+   * @param {string} [options.category] one of CATEGORIES
+   * @param {number} [options.limit=50]  capped at 100
+   * @param {number} [options.offset=0]
+   */
+  async list({ category, limit = 50, offset = 0 } = {}) {
+    const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 100);
+    const safeOffset = Math.max(parseInt(offset, 10) || 0, 0);
+
+    const where = {};
+    if (category && CATEGORIES.includes(category)) where.category = category;
+
+    const { rows, count } = await models.Document.findAndCountAll({
+      where,
+      order: [['pinned', 'DESC'], ['updated_at', 'DESC']],
+      limit: safeLimit,
+      offset: safeOffset,
+      // The body can be a long rich-text blob and the grid never shows it, so it
+      // stays out of the payload. The one thing the grid does need from it —
+      // "is there an article to read" — is computed in SQL instead.
+      attributes: {
+        exclude: ['content'],
+        include: [[
+          Sequelize.literal("(content IS NOT NULL AND btrim(content) <> '')"),
+          'hasContent'
+        ]]
+      }
+    });
+
+    return {
+      items: rows.map((d) => this._meta(d)),
+      pagination: {
+        limit: safeLimit,
+        offset: safeOffset,
+        totalItems: count,
+        hasMore: safeOffset + rows.length < count
+      }
+    };
   }
 
   /** One item with its full rich-text content (the reader). */

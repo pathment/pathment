@@ -3,8 +3,13 @@ const { successResponse } = require('../utils/responses');
 const announcementService = require('../services/announcementService');
 
 const list = catchAsync(async (req, res) => {
-  const announcements = await announcementService.list(req.user);
-  res.status(200).json(successResponse('Announcements retrieved', { announcements }));
+  const { limit, offset } = req.query;
+  const { items, pagination } = await announcementService.list(req.user, { limit, offset });
+  // `announcements` stays an array at the same path, so existing callers that
+  // ignore `pagination` keep working unchanged.
+  res.status(200).json(
+    successResponse('Announcements retrieved', { announcements: items, pagination })
+  );
 });
 
 const create = catchAsync(async (req, res) => {
