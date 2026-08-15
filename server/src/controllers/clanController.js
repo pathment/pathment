@@ -219,6 +219,31 @@ const inviteToClan = catchAsync(async (req, res) => {
   res.status(201).json(successResponse('Invite sent', { invite }, 201));
 });
 
+/**
+ * GET /api/clans/:id/invite-link
+ * Current reusable join-link state (lead mentor / mentee.add).
+ */
+const getInviteLink = catchAsync(async (req, res) => {
+  const link = await clanService.getInviteLink(req.params.id);
+  res.status(200).json(successResponse('Invite link retrieved', { link }));
+});
+
+/**
+ * POST /api/clans/:id/invite-link  — enable (mint slug on first use).
+ */
+const enableInviteLink = catchAsync(async (req, res) => {
+  const link = await clanService.enableInviteLink(req.params.id);
+  res.status(200).json(successResponse('Invite link enabled', { link }));
+});
+
+/**
+ * DELETE /api/clans/:id/invite-link  — disable (slug is kept so re-enable is stable).
+ */
+const disableInviteLink = catchAsync(async (req, res) => {
+  const link = await clanService.disableInviteLink(req.params.id);
+  res.status(200).json(successResponse('Invite link disabled', { link }));
+});
+
 module.exports = {
   listClans,
   clanHealth,
@@ -238,5 +263,8 @@ module.exports = {
   reassignClan,
   grantClanRole,
   revokeClanRole,
-  inviteToClan
+  inviteToClan,
+  getInviteLink,
+  enableInviteLink,
+  disableInviteLink
 };

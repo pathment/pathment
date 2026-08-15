@@ -1,6 +1,8 @@
 const { catchAsync } = require('../middlewares/errorHandler');
 const { successResponse } = require('../utils/responses');
 const publicIntakeService = require('../services/publicIntakeService');
+const clanService = require('../services/clanService');
+const { ConflictError } = require('../utils/errors/errorTypes');
 
 // ─── Catalog ─────────────────────────────────────────────────────────────────
 const listPrograms = catchAsync(async (req, res) => {
@@ -57,6 +59,29 @@ const uploadFile = catchAsync(async (req, res) => {
   res.status(201).json(successResponse('File uploaded', result, 201));
 });
 
+// ─── Clan join link ──────────────────────────────────────────────────────────
+const getClanInvite = catchAsync(async (req, res) => {
+  const info = await clanService.getPublicInviteInfo(req.params.slug);
+  res.status(200).json(successResponse('Clan join info retrieved', info));
+});
+
+const joinClan = catchAsync(async (req, res) => {
+  const result = await clanService.joinViaInviteLink(req.params.slug, req.user);
+  const message = result.alreadyMember ? 'You are already in this clan' : 'Joined clan';
+  res.status(200).json(successResponse(message, result));
+});
+
+const requestClanInvite = catchAsync(async (req, res) => {
+  const generic = { ok: true, message: 'If that email can join, we\'ve sent a registration link.' };
+  try {
+    await clanService.requestInviteViaLink(req.params.slug, req.body?.email);
+  } catch (err) {
+    // Don't leak whether the address already has an account or an active invite.
+    if (!(err instanceof ConflictError)) throw err;
+  }
+  res.status(200).json(successResponse('Invite requested', generic));
+});
+
 module.exports = {
   listPrograms,
   getProgram,
@@ -67,5 +92,8 @@ module.exports = {
   submitAssessment,
   updateInfo,
   withdraw,
-  uploadFile
+  uploadFile,
+  getClanInvite,
+  joinClan,
+  requestClanInvite
 };

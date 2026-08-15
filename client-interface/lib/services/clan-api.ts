@@ -49,6 +49,9 @@ export const clanApi = {
   // candidate pool for adding a co-mentor / core-team member (incl. re-adding a removed one).
   candidates: (id: string, q?: string) => apiClient.get(`/clans/${id}/candidates`, { params: q ? { q } : {} }),
   inviteToClan: (id: string, email: string) => apiClient.post(`/clans/${id}/invite`, { email }),
+  getInviteLink: (id: string) => apiClient.get(`/clans/${id}/invite-link`),
+  enableInviteLink: (id: string) => apiClient.post(`/clans/${id}/invite-link`),
+  disableInviteLink: (id: string) => apiClient.delete(`/clans/${id}/invite-link`),
   /** Move a mentee to a different clan (admin). Same program keeps progress; a
    *  different program wipes the old enrollment + tasks (clean transfer). */
   reassign: (menteeId: string, toClanId: string) => apiClient.post('/clans/reassign', { menteeId, toClanId }),

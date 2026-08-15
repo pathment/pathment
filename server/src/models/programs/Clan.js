@@ -32,6 +32,21 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
       field: 'whatsapp_group_link'
     },
+    // Reusable multi-use join link (`/join/<slug>`). Minted the first time a
+    // lead mentor enables it; `inviteEnabled` gates whether the slug currently
+    // accepts joins. Unlike RegistrationInvite this is not email-locked.
+    inviteSlug: {
+      type: DataTypes.STRING(64),
+      allowNull: true,
+      unique: true,
+      field: 'invite_slug'
+    },
+    inviteEnabled: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+      field: 'invite_enabled'
+    },
     // Optional lead mentor (the "clan leader"). Co-mentors are tracked as
     // ClanMembership rows with role 'co_mentor'.
     leadMentorId: {
@@ -92,7 +107,8 @@ module.exports = (sequelize, DataTypes) => {
     indexes: [
       { fields: ['program_id'] },
       { fields: ['lead_mentor_id'] },
-      { fields: ['status'] }
+      { fields: ['status'] },
+      { unique: true, fields: ['invite_slug'] }
     ]
   });
 

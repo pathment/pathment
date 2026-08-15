@@ -283,6 +283,8 @@ erDiagram
         int maxMentees
         string status "active | inactive | archived"
         string healthStatus "green | amber | red"
+        string inviteSlug "shareable /join/<slug>"
+        boolean inviteEnabled
     }
     CLAN_MEMBERSHIP {
         uuid id PK
@@ -962,6 +964,7 @@ with `up`/`down`, run with `--rollback` to reverse). The latest is **053**. Nota
 | 051 | Scheduling timezones (`starts_at`/`timezone` on slots & meetings; `timezone` on templates/mentee schedules) |
 | 052 | Email-queue resilience (retry/backoff, DLQ, idempotency, `provider_message_id`) + `suppressed_emails` |
 | 053 | Roadmap chaining (`roadmap_links` graph + `enrollments.auto_advance_roadmaps`) |
+| 093 | Clan reusable invite link (`invite_slug` + `invite_enabled`) |
 
 > **First deploy note:** `npm run db:sync` builds the full schema from the models in one
 > shot (the models already encode every migration's end state), so a brand-new database does

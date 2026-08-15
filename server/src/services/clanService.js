@@ -1,4 +1,5 @@
 const { models, sequelize } = require('../db');
+const crypto = require('crypto');
 const { NotFoundError, ValidationError, ConflictError, AuthorizationError } = require('../utils/errors/errorTypes');
 const { createAuditLog } = require('../utils/auditContext');
 const { ROLES } = require('../config/roles');
@@ -191,6 +192,10 @@ class ClanService {
       }
     }
     out.memberships = memberships;
+    // Join-link fields are only returned from the dedicated invite-link endpoints
+    // so a generic clan fetch doesn't advertise a shareable token.
+    delete out.inviteSlug;
+    delete out.inviteEnabled;
     return out;
   }
 
@@ -706,6 +711,145 @@ class ClanService {
       name: `${u.firstName} ${u.lastName}`.trim() || u.email,
       email: u.email, role: u.role, profilePictureUrl: u.profilePictureUrl || null
     }));
+  }
+
+  buildJoinUrl(slug) {
+    const base = (process.env.CLIENT_URL || 'http://localhost:3000').split(',')[0].replace(/\/$/, '');
+    return `${base}/join/${slug}`;
+  }
+
+  _inviteLinkPayload(clan) {
+    return {
+      enabled: Boolean(clan.inviteEnabled && clan.inviteSlug),
+      slug: clan.inviteSlug || null,
+      joinUrl: clan.inviteSlug ? this.buildJoinUrl(clan.inviteSlug) : null,
+    };
+  }
+
+  async getInviteLink(clanId) {
+    const clan = await models.Clan.findByPk(clanId);
+    if (!clan) throw new NotFoundError('Clan not found');
+    return this._inviteLinkPayload(clan);
+  }
+
+  /**
+   * Turn the reusable clan-join link on, minting a slug the first time.
+   * Re-enabling a previously disabled link keeps the same URL.
+   */
+  async enableInviteLink(clanId) {
+    const clan = await models.Clan.findByPk(clanId);
+    if (!clan) throw new NotFoundError('Clan not found');
+    if (clan.status !== 'active') throw new ValidationError('Only an active clan can share a join link');
+
+    if (!clan.inviteSlug) {
+      let slug = null;
+      for (let i = 0; i < 5; i += 1) {
+        slug = crypto.randomBytes(9).toString('base64url');
+        const clash = await models.Clan.findOne({ where: { inviteSlug: slug } });
+        if (!clash) break;
+        slug = null;
+      }
+      if (!slug) throw new ValidationError('Could not generate a unique link, try again');
+      clan.inviteSlug = slug;
+    }
+    clan.inviteEnabled = true;
+    await clan.save();
+    return this._inviteLinkPayload(clan);
+  }
+
+  async disableInviteLink(clanId) {
+    const clan = await models.Clan.findByPk(clanId);
+    if (!clan) throw new NotFoundError('Clan not found');
+    clan.inviteEnabled = false;
+    await clan.save();
+    return this._inviteLinkPayload(clan);
+  }
+
+  async _openClanByInviteSlug(slug) {
+    if (!slug) return { clan: null, reasons: ['missing'] };
+    const clan = await models.Clan.findOne({
+      where: { inviteSlug: slug },
+      include: [{ model: models.Program, as: 'program', attributes: ['id', 'name'] }],
+    });
+    if (!clan) return { clan: null, reasons: ['not_found'] };
+    const reasons = [];
+    if (!clan.inviteEnabled) reasons.push('disabled');
+    if (clan.status !== 'active') reasons.push('inactive');
+    return { clan, reasons };
+  }
+
+  async getPublicInviteInfo(slug) {
+    const { clan, reasons } = await this._openClanByInviteSlug(slug);
+    if (!clan) throw new NotFoundError('This join link is not valid');
+
+    const menteeCount = await models.ClanMembership.count({
+      where: { clanId: clan.id, role: 'mentee', status: 'active' },
+    });
+    const maxMentees = clan.maxMentees || null;
+    const full = maxMentees != null && menteeCount >= maxMentees;
+    if (full) reasons.push('full');
+
+    return {
+      open: reasons.length === 0,
+      reasons,
+      clan: { name: clan.name, description: clan.description || null },
+      program: clan.program ? { name: clan.program.name } : null,
+      menteeCount,
+      maxMentees,
+    };
+  }
+
+  /**
+   * Logged-in user joins the clan as a mentee via the shareable link.
+   */
+  async joinViaInviteLink(slug, user) {
+    if (!user?.id) throw new ValidationError('You must be logged in to join this clan');
+    const { clan, reasons } = await this._openClanByInviteSlug(slug);
+    if (!clan) throw new NotFoundError('This join link is not valid');
+    if (reasons.length) {
+      throw new ValidationError(
+        reasons.includes('disabled') ? 'This join link is currently turned off'
+          : 'This clan is not accepting join-link members right now'
+      );
+    }
+
+    const existing = await models.ClanMembership.findOne({
+      where: { clanId: clan.id, userId: user.id, role: 'mentee', status: 'active' },
+    });
+    if (existing) {
+      return { clan: { id: clan.id, name: clan.name }, alreadyMember: true };
+    }
+
+    const menteeCount = await models.ClanMembership.count({
+      where: { clanId: clan.id, role: 'mentee', status: 'active' },
+    });
+    if (clan.maxMentees != null && menteeCount >= clan.maxMentees) {
+      throw new ValidationError('This clan is full');
+    }
+
+    await this.addMember(clan.id, { userId: user.id, role: 'mentee' });
+    return { clan: { id: clan.id, name: clan.name }, alreadyMember: false };
+  }
+
+  /**
+   * Self-serve: someone without an account requests a clan-scoped registration
+   * invite from the public join page. Failures that would leak whether an email
+   * is already on the platform are swallowed by the controller.
+   */
+  async requestInviteViaLink(slug, email) {
+    if (!email || !String(email).trim()) throw new ValidationError('Email is required');
+    const { clan, reasons } = await this._openClanByInviteSlug(slug);
+    if (!clan || reasons.length) throw new NotFoundError('This join link is not valid');
+
+    const menteeCount = await models.ClanMembership.count({
+      where: { clanId: clan.id, role: 'mentee', status: 'active' },
+    });
+    if (clan.maxMentees != null && menteeCount >= clan.maxMentees) {
+      throw new ValidationError('This clan is full');
+    }
+
+    const invitedBy = clan.leadMentorId || clan.createdBy;
+    return this.inviteToClan(clan.id, email, invitedBy);
   }
 
   /**

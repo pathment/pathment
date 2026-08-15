@@ -52,6 +52,9 @@ router.post('/reassign', authenticate, requirePermissionMinScope(PERMISSIONS.CLA
 // Co-mentors with mentee.add may use these too.
 router.get('/:id/available', authenticate, requireAnyPermission([PERMISSIONS.CLAN_MANAGE_MEMBERS, PERMISSIONS.MENTEE_ADD], scope.clan('id')), clanController.availableMembers);
 router.post('/:id/invite', authenticate, requireAnyPermission([PERMISSIONS.CLAN_MANAGE_MEMBERS, PERMISSIONS.MENTEE_ADD], scope.clan('id')), clanController.inviteToClan);
+router.get('/:id/invite-link', authenticate, requireAnyPermission([PERMISSIONS.CLAN_MANAGE_MEMBERS, PERMISSIONS.MENTEE_ADD], scope.clan('id')), clanController.getInviteLink);
+router.post('/:id/invite-link', authenticate, requireAnyPermission([PERMISSIONS.CLAN_MANAGE_MEMBERS, PERMISSIONS.MENTEE_ADD], scope.clan('id')), clanController.enableInviteLink);
+router.delete('/:id/invite-link', authenticate, requireAnyPermission([PERMISSIONS.CLAN_MANAGE_MEMBERS, PERMISSIONS.MENTEE_ADD], scope.clan('id')), clanController.disableInviteLink);
 
 // Candidates for co-mentor / core-team (anyone active, not already in the clan).
 router.get('/:id/candidates', authenticate, requirePermission(PERMISSIONS.CLAN_MANAGE_MEMBERS, scope.clan('id')), clanController.candidates);

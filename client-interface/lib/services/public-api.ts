@@ -43,6 +43,15 @@ export interface ApplyInfo {
   assessment: { required: boolean } | null;
 }
 
+export interface ClanJoinInfo {
+  open: boolean;
+  reasons: string[];
+  clan: { name: string; description?: string | null };
+  program: { name: string } | null;
+  menteeCount: number;
+  maxMentees: number | null;
+}
+
 export interface PublicAssessmentQuestion {
   id: string;
   type: 'mcq' | 'multi_select' | 'short_text' | 'long_text' | 'file_upload' | 'external_link';
@@ -95,6 +104,21 @@ export const publicApi = {
 
   withdraw: (token: string) =>
     apiClient.post<any>(`/public/applications/${encodeURIComponent(token)}/withdraw`, {}).then((r) => r.data as { ok: boolean }),
+
+  getClanInvite: (slug: string) =>
+    apiClient.get<any>(`/public/clans/${encodeURIComponent(slug)}`).then((r) => r.data as ClanJoinInfo),
+
+  joinClan: (slug: string) =>
+    apiClient.post<any>(`/public/clans/${encodeURIComponent(slug)}/join`, {}).then((r) => r.data as {
+      alreadyMember?: boolean;
+      clan?: { id: string; name: string };
+    }),
+
+  requestClanInvite: (slug: string, email: string) =>
+    apiClient.post<any>(`/public/clans/${encodeURIComponent(slug)}/request-invite`, { email }).then((r) => r.data as {
+      ok: boolean;
+      message: string;
+    }),
 
   uploadFile: (token: string, file: File) => {
     const fd = new FormData();

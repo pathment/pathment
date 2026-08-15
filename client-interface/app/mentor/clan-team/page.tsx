@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Check, Crown, HeartHandshake, Loader2, Search, Shield, SlidersHorizontal, Trash2, UserPlus, Users2, X } from 'lucide-react';
+import { Check, Copy, Crown, HeartHandshake, Link2, Loader2, Search, Shield, SlidersHorizontal, Trash2, UserPlus, Users2, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { apiClient } from '@/lib/services/api-client';
@@ -230,6 +230,7 @@ function ClanTeamCard({ clanId, myRole }: { clanId: string; myRole: string }) {
       </div>
 
       <div className="mt-5 space-y-5">
+        {(canManageTeam || canAddMentees) && <ClanInviteLinkPanel clanId={clanId} />}
         <Section icon={<Crown className="w-3.5 h-3.5" />} title="Lead mentor" items={lead} removable={false} />
         <Section icon={<Shield className="w-3.5 h-3.5" />} title="Co-mentors" items={co} removable managePerms />
         <Section icon={<Users2 className="w-3.5 h-3.5" />} title="Core team" items={core} removable />
@@ -244,6 +245,79 @@ function ClanTeamCard({ clanId, myRole }: { clanId: string; myRole: string }) {
       {canManageTeam && adding && <AddTeamMemberDrawer clanId={clanId} onClose={() => setAdding(false)} onAdded={() => { setAdding(false); load(); }} />}
       {canAddMentees && addingMentees && <AddMenteesDrawer clanId={clanId} clanName={clan.name} onClose={() => setAddingMentees(false)} onChanged={() => load()} />}
       {canManageTeam && permMember && <CoMentorPermissionsDrawer clanId={clanId} userId={permMember.user.id} name={name(permMember.user)} onClose={() => setPermMember(null)} onSaved={load} />}
+    </div>
+  );
+}
+
+function ClanInviteLinkPanel({ clanId }: { clanId: string }) {
+  const [link, setLink] = useState<{ enabled: boolean; slug: string | null; joinUrl: string | null } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const load = useCallback(() => {
+    clanApi.getInviteLink(clanId)
+      .then((r: any) => setLink(r.data?.link || r.data || null))
+      .catch(() => setLink(null))
+      .finally(() => setLoading(false));
+  }, [clanId]);
+  useEffect(load, [load]);
+
+  const enable = async () => {
+    setBusy(true);
+    try {
+      const r: any = await clanApi.enableInviteLink(clanId);
+      setLink(r.data?.link || r.data);
+      toast.success('Join link enabled');
+    } catch (e) { toast.error(extractApiErrorMessage(e, 'Could not enable the join link')); }
+    finally { setBusy(false); }
+  };
+
+  const disable = async () => {
+    setBusy(true);
+    try {
+      const r: any = await clanApi.disableInviteLink(clanId);
+      setLink(r.data?.link || r.data);
+      toast.success('Join link turned off');
+    } catch (e) { toast.error(extractApiErrorMessage(e, 'Could not disable the join link')); }
+    finally { setBusy(false); }
+  };
+
+  const copy = async () => {
+    if (!link?.joinUrl) return;
+    try {
+      await navigator.clipboard.writeText(link.joinUrl);
+      setCopied(true);
+      toast.success('Join link copied');
+      setTimeout(() => setCopied(false), 1500);
+    } catch { toast.error('Could not copy'); }
+  };
+
+  if (loading) return null;
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50/60 dark:bg-slate-900/40 px-3 py-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-400 inline-flex items-center gap-1.5"><Link2 className="w-3.5 h-3.5" /> Invite via link</p>
+          <p className="text-xs text-slate-500 mt-0.5">Share one reusable link. Anyone with it can join this clan as a mentee — no per-email invite.</p>
+        </div>
+        {link?.enabled ? (
+          <button onClick={disable} disabled={busy} className="shrink-0 px-2.5 py-1 rounded-lg border border-slate-200 text-xs text-slate-600 hover:bg-white disabled:opacity-50">Turn off</button>
+        ) : (
+          <button onClick={enable} disabled={busy} className="shrink-0 px-2.5 py-1 rounded-lg bg-brand-600 text-white text-xs font-medium hover:bg-brand-700 disabled:opacity-50 inline-flex items-center gap-1">
+            {busy && <Loader2 className="w-3 h-3 animate-spin" />} Enable link
+          </button>
+        )}
+      </div>
+      {link?.enabled && link.joinUrl && (
+        <div className="mt-2 flex items-center gap-2">
+          <input readOnly value={link.joinUrl} className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-xs text-slate-700 truncate" />
+          <button onClick={copy} className="shrink-0 p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-white" aria-label="Copy join link">
+            {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

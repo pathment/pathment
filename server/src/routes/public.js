@@ -3,6 +3,7 @@ const router = express.Router();
 const publicController = require('../controllers/publicController');
 const upload = require('../middlewares/upload');
 const { publicIntakeLimiter } = require('../middlewares/rateLimiter');
+const { authenticate } = require('../middlewares/auth');
 
 /**
  * Public, UNAUTHENTICATED intake surface. Nothing here requires a login - it
@@ -35,5 +36,11 @@ router.post(
   upload.singleSafe('file'),
   publicController.uploadFile
 );
+
+// Reusable clan join link (`/join/<slug>`). Preview is public; joining requires
+// a logged-in account. New users request a clan-scoped registration invite.
+router.get('/clans/:slug', publicController.getClanInvite);
+router.post('/clans/:slug/join', authenticate, publicIntakeLimiter, publicController.joinClan);
+router.post('/clans/:slug/request-invite', publicIntakeLimiter, publicController.requestClanInvite);
 
 module.exports = router;
