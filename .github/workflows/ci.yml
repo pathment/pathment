@@ -1,0 +1,188 @@
+# Lint, build, and secrets gates for PRs into staging/main.
+# Standard `pull_request` (not pull_request_target) so fork PRs cannot read
+# repo secrets. Jobs are path-filtered; a final `CI` job is always reported
+# so it can be set as a required status check.
+name: CI
+
+on:
+  pull_request:
+    branches: [staging, main]
+  push:
+    branches: [staging, main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+env:
+  NEXT_TELEMETRY_DISABLED: '1'
+
+jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      client: ${{ steps.filter.outputs.client }}
+      server: ${{ steps.filter.outputs.server }}
+      ci: ${{ steps.filter.outputs.ci }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            client:
+              - 'client-interface/**'
+            server:
+              - 'server/**'
+            ci:
+              - '.github/**'
+              - '.gitleaks.toml'
+
+  secrets:
+    name: Secrets scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Block tracked env / key files
+        run: |
+          set -euo pipefail
+          tracked="$(git ls-files | grep -E '(^|/)\.env($|\.|rc)|(^|/).+\.pem$|(^|/)credentials\.json$|(^|/)id_rsa$' || true)"
+          # Allow committed templates only.
+          bad="$(printf '%s\n' "$tracked" | grep -vE '\.env\.example$' | grep -v '^$' || true)"
+          if [ -n "$bad" ]; then
+            echo "These secret-like files must not be committed:"
+            printf '%s\n' "$bad"
+            exit 1
+          fi
+          echo "No tracked env/key files (other than .env.example)."
+      - name: Install Gitleaks
+        env:
+          GITLEAKS_VERSION: '8.24.3'
+        run: |
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz -C /usr/local/bin gitleaks
+          gitleaks version
+      - name: Gitleaks
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            git fetch --no-tags --prune origin "${GITHUB_BASE_REF}"
+            gitleaks detect --source . --verbose --redact --no-banner \
+              --config .gitleaks.toml --exit-code 1 \
+              --log-opts="--no-merges origin/${GITHUB_BASE_REF}..HEAD"
+          else
+            BEFORE="${{ github.event.before }}"
+            if [ -z "${BEFORE}" ] || [ "${BEFORE}" = "0000000000000000000000000000000000000000" ]; then
+              gitleaks detect --source . --verbose --redact --no-banner \
+                --config .gitleaks.toml --exit-code 1 --log-opts="-1"
+            else
+              gitleaks detect --source . --verbose --redact --no-banner \
+                --config .gitleaks.toml --exit-code 1 --log-opts="${BEFORE}..${GITHUB_SHA}"
+            fi
+          fi
+
+  actionlint:
+    name: Workflow lint
+    needs: changes
+    if: github.event_name == 'push' || needs.changes.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install actionlint
+        run: bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+      - name: Lint workflow files
+        run: ./actionlint -color
+
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: critical
+          comment-summary-in-pr: false
+
+  client:
+    name: Client lint + build
+    needs: changes
+    if: github.event_name == 'push' || needs.changes.outputs.client == 'true' || needs.changes.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client-interface
+    env:
+      NEXT_PUBLIC_API_URL: http://localhost:5000/api
+      NEXT_PUBLIC_APP_NAME: Pathment
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client-interface/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Lint (advisory)
+        # The tree currently has a large ESLint debt (~400 errors). Keep the
+        # job visible in CI; do not block merge until that baseline is cleaned.
+        continue-on-error: true
+        run: npm run lint
+      - name: Build
+        run: npm run build
+      - name: Audit (critical)
+        continue-on-error: true
+        run: npm audit --audit-level=critical
+
+  server:
+    name: Server lint
+    needs: changes
+    if: github.event_name == 'push' || needs.changes.outputs.server == 'true' || needs.changes.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Syntax check
+        run: npm run lint
+      - name: Audit (critical)
+        continue-on-error: true
+        run: npm audit --audit-level=critical
+
+  ci:
+    name: CI
+    if: always() && !cancelled()
+    needs: [changes, secrets, actionlint, dependency-review, client, server]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require blocking jobs
+        env:
+          NEEDS: ${{ toJson(needs) }}
+        run: |
+          python3 - <<'PY'
+          import json, os, sys
+          needs = json.loads(os.environ['NEEDS'])
+          failed = [f"{name}={job.get('result')}" for name, job in needs.items()
+                    if job.get('result') in ('failure', 'cancelled')]
+          if failed:
+              print('Blocking jobs did not succeed:', ', '.join(failed))
+              sys.exit(1)
+          print('All jobs passed or were skipped.')
+          PY

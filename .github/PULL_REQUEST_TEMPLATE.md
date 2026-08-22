@@ -15,6 +15,8 @@
 
 ## Validation Checklist
 
+CI also runs build, a secrets scan, and (advisory) lint on the PR. Still run the impacted app(s) locally:
+
 - [ ] I ran lint checks for impacted app(s)
 - [ ] I ran build checks for impacted app(s)
 - [ ] I ran tests for impacted app(s), or confirmed no test suite exists for this change

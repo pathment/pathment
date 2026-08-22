@@ -22,7 +22,8 @@
     "check:tables": "node scripts/checkTables.js",
     "test": "jest --runInBand",
     "test:watch": "jest --runInBand --watch",
-    "test:coverage": "jest --runInBand --coverage"
+    "test:coverage": "jest --runInBand --coverage",
+    "lint": "node scripts/syntaxCheck.js"
   },
   "dependencies": {
     "axios": "^1.13.2",

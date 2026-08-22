@@ -79,6 +79,8 @@ cd client-interface
 npm install
 ```
 
+(`client-interface/.npmrc` sets `legacy-peer-deps=true` so installs match CI.)
+
 Create `.env.local`:
 
 ```env
@@ -112,7 +114,23 @@ By default:
 - Follow existing project patterns and folder structure.
 - Avoid unrelated refactors in feature/bug-fix PRs.
 - Update docs when behavior or workflow changes.
-- Run relevant lint/build/test checks for the changed app(s) before opening a PR.
+- Run relevant lint/build/test checks for the changed app(s) before opening a PR. CI repeats those gates on every pull request to `staging` / `main`.
+
+## CI
+
+GitHub Actions (`.github/workflows/ci.yml`) runs on pull requests and on pushes to `staging` and `main`. Jobs are path-filtered (`client-interface/**`, `server/**`, `.github/**`).
+
+| Check | Local command | Blocking? |
+| --- | --- | --- |
+| Client production build | `cd client-interface && npm run build` | Yes |
+| Client ESLint | `cd client-interface && npm run lint` | Advisory until the existing lint debt is cleaned up |
+| Server syntax | `cd server && npm run lint` | Yes |
+| Server tests | `cd server && npm test` (needs a `DATABASE_URL` containing `test`) | Not in CI yet |
+| Secrets scan | — (Gitleaks + a check that `.env` / `*.pem` / `credentials.json` are not tracked) | Yes |
+
+Never commit `server/.env`, `client-interface/.env.local`, or other secret files. Templates such as `server/.env.example` are fine.
+
+A final job named **CI** aggregates the others so it can be set as a required status check on `staging`.
 
 ## Architecture Notes for Contributors
 

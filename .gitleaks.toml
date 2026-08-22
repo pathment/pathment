@@ -1,0 +1,10 @@
+# Placeholders that look like secrets but are not real credentials.
+[allowlist]
+paths = [
+  '''(^|/)\.env\.example$''',
+]
+regexes = [
+  '''postgres://(USER:PASSWORD|user:password|postgres:password|pathment:pathment)@''',
+  '''your[-_ ]?(api[-_ ]?key|resend_api_key|refresh-secret-key|groq-api-key|openai-api-key)''',
+  '''fake-key''',
+]
