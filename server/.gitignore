@@ -9,3 +9,4 @@ sequelizerc
 /.idea
 /.vscode
 .env.test
+.env.development
