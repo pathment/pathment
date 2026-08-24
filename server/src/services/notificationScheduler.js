@@ -95,15 +95,16 @@ class NotificationScheduler {
     }
   }
 
-  async notifyDeadlinePassed() {
+    async notifyDeadlinePassed() {
     const now = new Date();
     const MAX_DEADLINE_EMAILS = 2;
+    const { NOTIFICATION_MATRIX } = require('../config/notificationMatrix');
+    const notificationType = NOTIFICATION_MATRIX[NOTIFICATION_EVENTS.SUBMISSION_DEADLINE_PASSED].type;
 
     const tasks = await models.AssignedTask.findAll({
       where: {
         dueDate: { [Op.lt]: now },
-        status: { [Op.in]: ['assigned', 'in_progress', 'submitted', 'revision_needed'] },
-        deadlineEmailCount: { [Op.lt]: MAX_DEADLINE_EMAILS }
+        status: { [Op.in]: ['assigned', 'in_progress', 'submitted', 'revision_needed'] }
       },
       include: [
         { model: models.RoadmapTask, as: 'roadmapTask', attributes: ['id', 'title'] }
@@ -126,31 +127,39 @@ class NotificationScheduler {
       const isMenteePaused = pausedMenteeIds.has(task.menteeId);
 
       if (!isMenteePaused) {
-    
-        await notificationOrchestrator.dispatch({
-          eventKey: NOTIFICATION_EVENTS.SUBMISSION_DEADLINE_PASSED,
-          recipients: [{ userId: task.menteeId }],
-          payload: {
-            title: 'Task deadline passed',
-            message: `Deadline passed for "${task.roadmapTask?.title || 'Task'}".`,
-            actionUrl: `/mentee/tasks/${task.id}`,
-            actionLabel: 'Open Task',
-            relatedEntityType: 'assigned_task',
-            relatedEntityId: task.id,
-            emailSubject: 'Pathment: Submission deadline passed'
-          },
-          channelOverrides: {
-            inApp: true,
-            email: true,
-          },
-          dedupe: {
+       
+        const priorNotifications = await models.Notification.count({
+          where: {
+            userId: task.menteeId,
+            type: notificationType,
             relatedEntityType: 'assigned_task',
             relatedEntityId: task.id
           }
         });
+
+        if (priorNotifications < MAX_DEADLINE_EMAILS) {
+          await notificationOrchestrator.dispatch({
+            eventKey: NOTIFICATION_EVENTS.SUBMISSION_DEADLINE_PASSED,
+            recipients: [{ userId: task.menteeId }],
+            payload: {
+              title: 'Task deadline passed',
+              message: `Deadline passed for "${task.roadmapTask?.title || 'Task'}".`,
+              actionUrl: `/mentee/tasks/${task.id}`,
+              actionLabel: 'Open Task',
+              relatedEntityType: 'assigned_task',
+              relatedEntityId: task.id,
+              emailSubject: 'Pathment: Submission deadline passed'
+            },
+            channelOverrides: {
+              inApp: true,
+              email: true,
+            },
+           
+          });
+        }
       }
 
-   
+    
       await notificationOrchestrator.dispatch({
         eventKey: NOTIFICATION_EVENTS.SUBMISSION_DEADLINE_PASSED,
         recipients: [{ userId: task.mentorId }],
@@ -168,8 +177,6 @@ class NotificationScheduler {
           relatedEntityId: task.id
         }
       });
-
-      await task.increment('deadlineEmailCount');
     }
   }
 

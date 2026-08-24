@@ -93,11 +93,6 @@ module.exports = (sequelize, DataTypes) => {
       defaultValue: false,
       field: 'is_custom_task'
     },
-    deadlineEmailCount: {
-      type: DataTypes.INTEGER,
-      defaultValue: 0,
-      field: 'deadline_email_count'
-    },
     cancelledBy: {
       type: DataTypes.UUID,
       allowNull: true,
