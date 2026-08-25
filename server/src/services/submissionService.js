@@ -202,7 +202,7 @@ class SubmissionService {
     }
 
     // Create a submission with extension request
-    const version = task.currentSubmissionVersion + 1;
+    const version = (latestSubmission ? latestSubmission.version : 0) + 1;
     const submission = await models.TaskSubmission.create({
       assignedTaskId: taskId,
       version,

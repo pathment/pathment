@@ -184,6 +184,10 @@ export default function TaskSubmission({ params }: PageProps) {
     .sort((a: { createdAt?: string }, b: { createdAt?: string }) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())[0] as
       | { feedbackText?: string; revisionNotes?: string; decision?: string; isApproved?: boolean }
       | undefined;
+  const hasPendingExtension = (task.submissions || []).some(
+    (s: { extensionRequested?: boolean; extensionStatus?: string | null }) =>
+      s.extensionRequested && s.extensionStatus === 'pending'
+  );
   const showRevisionBanner = task.status === 'revision_needed' && !!latestFeedback;
   const revisionText = latestFeedback?.revisionNotes?.trim() || latestFeedback?.feedbackText?.trim() || '';
 
@@ -412,14 +416,21 @@ export default function TaskSubmission({ params }: PageProps) {
 
             {/* Actions */}
             <div className="flex items-center justify-between pt-4 border-t">
-              <button
-                type="button"
-                onClick={() => setShowExtensionForm(true)}
-                className="text-slate-600 hover:text-slate-900 text-sm flex items-center gap-2"
-              >
-                <Clock className="w-4 h-4" />
-                Request Extension
-              </button>
+              {hasPendingExtension ? (
+                <span className="text-amber-600 text-sm flex items-center gap-2 font-medium">
+                  <Clock className="w-4 h-4 text-amber-500" />
+                  Extension pending review
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowExtensionForm(true)}
+                  className="text-slate-600 hover:text-slate-900 text-sm flex items-center gap-2"
+                >
+                  <Clock className="w-4 h-4" />
+                  Request Extension
+                </button>
+              )}
               <button
                 type="submit"
                 disabled={isSubmitting}

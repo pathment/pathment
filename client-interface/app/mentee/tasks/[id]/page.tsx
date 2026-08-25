@@ -81,9 +81,16 @@ export default function TaskDetailsPage({ params }: PageProps) {
   // The API returns submissions ordered version DESC; pick the highest version
   // robustly (don't assume array order) so we show the mentee's LATEST work.
   const submissionsList: any[] = task.submissions || []; // eslint-disable-line @typescript-eslint/no-explicit-any
-  const latestSubmission = submissionsList.length
-    ? [...submissionsList].sort((a, b) => (b.version || 0) - (a.version || 0))[0]
+  const workSubmissionsList = submissionsList.filter((s: any) => !s.extensionRequested);
+  const latestSubmission = workSubmissionsList.length
+    ? [...workSubmissionsList].sort((a, b) => (b.version || 0) - (a.version || 0))[0]
     : null;
+  const hasPendingExtension = submissionsList.some(
+    (s: any) => s.extensionRequested && s.extensionStatus === 'pending'
+  );
+  const sortedExtensions = [...submissionsList]
+    .filter((s: any) => s.extensionRequested)
+    .sort((a: any, b: any) => (b.version || 0) - (a.version || 0));
   // Show ALL mentor feedback across every version (newest first) so the mentee
   // still sees what was requested even after they re-submit a new version.
   const feedback = submissionsList
@@ -262,12 +269,12 @@ export default function TaskDetailsPage({ params }: PageProps) {
       </div>
 
       {/* Submission(s) */}
-      {task.submissions && task.submissions.length > 0 && (
+      {latestSubmission && (
         <div className="bg-card rounded-2xl border border-slate-200 p-6 space-y-5">
           <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
             <FileText className="w-5 h-5 text-brand-500" />
             Your Submission
-            {task.submissions.length > 1 && (
+            {workSubmissionsList.length > 1 && (
               <span className="text-xs text-slate-500 font-normal ml-1">(v{latestSubmission?.version})</span>
             )}
           </h2>
@@ -412,9 +419,49 @@ export default function TaskDetailsPage({ params }: PageProps) {
         </div>
       )}
 
+      {/* Extension Requests History */}
+      {sortedExtensions.length > 0 && (
+        <div className="bg-card rounded-2xl border border-slate-200 p-6 space-y-4">
+          <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+            <Calendar className="w-5 h-5 text-brand-500" />
+            Extension Requests History
+          </h2>
+          <div className="divide-y divide-slate-100">
+            {sortedExtensions.map((ext: any) => (
+              <div key={ext.id} className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 first:pt-0 last:pb-0">
+                <div>
+                  <p className="text-sm font-medium text-slate-800">
+                    Requested {ext.extensionDays} extra days
+                  </p>
+                  {ext.extensionReason && (
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Reason: &ldquo;{ext.extensionReason}&rdquo;
+                    </p>
+                  )}
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Requested on {new Date(ext.submittedAt).toLocaleDateString()}
+                  </p>
+                </div>
+                <div className="self-start sm:self-center">
+                  <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+                    ext.extensionStatus === 'approved' ? 'bg-emerald-100 text-emerald-800' :
+                    ext.extensionStatus === 'rejected' ? 'bg-rose-100 text-rose-800' :
+                    'bg-amber-100 text-amber-800'
+                  }`}>
+                    {ext.extensionStatus === 'approved' ? 'Approved' :
+                     ext.extensionStatus === 'rejected' ? 'Rejected' :
+                     'Pending Review'}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* What's getting in the way - log roadblock / delay / request extension */}
       {!['completed', 'cancelled'].includes(task.status) && (
-        <FrictionPanel taskId={task.id} />
+        <FrictionPanel taskId={task.id} hasPendingExtension={hasPendingExtension} />
       )}
 
       {/* Action: interview tasks launch the runner; everything else uses the drawer */}

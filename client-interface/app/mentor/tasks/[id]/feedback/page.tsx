@@ -79,6 +79,9 @@ export default function FeedbackProvision({ params }: PageProps) {
   const taskDeliverable = task.roadmapTask?.deliverable || task.deliverable;
   const acceptanceCriteria = task.roadmapTask?.acceptanceCriteria || task.acceptanceCriteria || [];
   const standardPoints = pointsForDifficulty(task.roadmapTask?.difficulty || task.difficulty);
+  const sortedExtensions = (task.submissions || [])
+    .filter((s: any) => s.extensionRequested)
+    .sort((a: any, b: any) => (b.version || 0) - (a.version || 0));
 
   return (
     <div className="space-y-6">
@@ -221,6 +224,46 @@ export default function FeedbackProvision({ params }: PageProps) {
           </div>
         )}
       </div>
+
+      {/* Extension Requests History */}
+      {sortedExtensions.length > 0 && (
+        <div className="bg-card rounded-2xl border border-slate-200 p-6 space-y-4">
+          <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+            <Calendar className="w-5 h-5 text-brand-500" />
+            Extension Requests History
+          </h2>
+          <div className="divide-y divide-slate-100">
+            {sortedExtensions.map((ext: any) => (
+              <div key={ext.id} className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 first:pt-0 last:pb-0">
+                <div>
+                  <p className="text-sm font-medium text-slate-800">
+                    Requested {ext.extensionDays} extra days
+                  </p>
+                  {ext.extensionReason && (
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Reason: &ldquo;{ext.extensionReason}&rdquo;
+                    </p>
+                  )}
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Requested on {new Date(ext.submittedAt).toLocaleDateString()}
+                  </p>
+                </div>
+                <div className="self-start sm:self-center">
+                  <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+                    ext.extensionStatus === 'approved' ? 'bg-emerald-100 text-emerald-800' :
+                    ext.extensionStatus === 'rejected' ? 'bg-rose-100 text-rose-800' :
+                    'bg-amber-100 text-amber-800'
+                  }`}>
+                    {ext.extensionStatus === 'approved' ? 'Approved' :
+                     ext.extensionStatus === 'rejected' ? 'Rejected' :
+                     'Pending Review'}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Review Form */}
       <form onSubmit={handleSubmit} className="bg-card rounded-2xl border border-slate-200 p-6 space-y-6">
