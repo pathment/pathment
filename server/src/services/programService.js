@@ -90,7 +90,7 @@ class ProgramService {
         payload: {
           title: 'New program available',
           message: `"${program.name}" is now available for enrollment.`,
-          actionUrl: `/mentee/programs`,
+          actionUrl: `/programs/${program.id}`,
           actionLabel: 'Browse Programs',
           relatedEntityType: 'program',
           relatedEntityId: program.id,
@@ -393,29 +393,32 @@ class ProgramService {
         type: program.type
       }
     });
-
-    if (program.status === 'published' && program.visibility === 'public') {
-      const mentees = await models.User.findAll({
-        where: { role: 'mentee', status: 'active' },
-        attributes: ['id'],
+    if (program.status === 'published') {
+      const enrollments = await models.Enrollment.findAll({
+        where: {
+          programId: program.id,
+          status: 'active'
+        },
+        attributes: ['menteeId'],
         limit: 5000
       });
 
-      await notificationOrchestrator.dispatch({
-        eventKey: NOTIFICATION_EVENTS.PROGRAM_UPDATED,
-        recipients: mentees.map((m) => ({ userId: m.id })),
-        payload: {
-          title: 'Program updated',
-          message: `"${program.name}" has been updated.`,
-          actionUrl: `/mentee/programs`,
-          actionLabel: 'View Program',
-          relatedEntityType: 'program',
-          relatedEntityId: program.id,
-          emailSubject: 'Pathment: Program update'
-        }
-      });
+      if (enrollments.length > 0) {
+        await notificationOrchestrator.dispatch({
+          eventKey: NOTIFICATION_EVENTS.PROGRAM_UPDATED,
+          recipients: enrollments.map((e) => ({ userId: e.menteeId })),
+          payload: {
+            title: 'Program updated',
+            message: `"${program.name}" has been updated.`,
+            actionUrl: `/mentee/dashboard`,
+            actionLabel: 'View Program',
+            relatedEntityType: 'program',
+            relatedEntityId: program.id,
+            emailSubject: 'Pathment: Program update'
+          }
+        });
+      }
     }
-
     return program;
   }
 

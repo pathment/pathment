@@ -201,7 +201,7 @@ class EnrollmentService {
       payload: {
         title: 'Program enrollment created',
         message: `A new enrollment was created for "${program.name}".`,
-        actionUrl: `/mentee/programs`,
+        actionUrl: `/mentee/dashboard`,
         actionLabel: 'View Programs',
         relatedEntityType: 'enrollment',
         relatedEntityId: enrollment.id,
@@ -345,7 +345,7 @@ class EnrollmentService {
       payload: {
         title: 'Program completed 🎉',
         message: `Congratulations - you've completed "${programName}"!`,
-        actionUrl: `/mentee/programs`,
+        actionUrl: `/mentee/dashboard`,
         actionLabel: 'View programs',
         relatedEntityType: 'enrollment',
         relatedEntityId: enrollment.id,

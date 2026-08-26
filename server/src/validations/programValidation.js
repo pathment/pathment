@@ -228,10 +228,14 @@ const programValidation = {
         'array.max': 'Cannot have more than 20 learning outcomes'
       }),
 
-    prerequisites: Joi.string()
-      .max(2000)
+    prerequisites: Joi.array()
+      .items(Joi.string().max(200))
+      .max(10)
       .optional()
-      .allow('', null),
+      .messages({
+        'array.max': 'Cannot have more than 10 prerequisites',
+        'string.max': 'Each prerequisite cannot exceed 200 characters'
+      }),
 
     targetAudience: Joi.string()
       .max(1000)

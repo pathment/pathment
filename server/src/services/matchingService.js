@@ -129,7 +129,7 @@ class MatchingService {
       payload: {
         title: 'Mentor assigned',
         message: `A mentor has been assigned in "${hydratedMatch.enrollment?.program?.name || 'your program'}".`,
-        actionUrl: `/mentee/programs`,
+        actionUrl: `/mentee/dashboard`,
         actionLabel: 'View Program',
         relatedEntityType: 'mentor_match',
         relatedEntityId: hydratedMatch.id,
