@@ -140,8 +140,8 @@ export default function MenteeRoadmapPage() {
                 key={r.roadmapId}
                 onClick={() => setSelectedRoadmapId(r.roadmapId)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${activeRoadmap.roadmapId === r.roadmapId
-                    ? 'bg-card text-slate-900 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-card text-slate-900 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
                   }`}
               >
                 {r.name}
@@ -172,7 +172,7 @@ export default function MenteeRoadmapPage() {
                 <p className="text-xs text-slate-500 mt-0.5">{activeRoadmap.description}</p>
               )}
             </div>
-            <span className="text-xs font-bold text-slate-600 tabular-nums bg-slate-100 px-3 py-1 rounded-full border border-slate-200">
+            <span className="text-xs font-bold text-slate-600 tabular-nums bg-slate-100 px-3 py-1 rounded-full border border-slate-200 text-center">
               {completedStepsCount} / {activeRoadmap.totalSteps} Completed
             </span>
           </div>
