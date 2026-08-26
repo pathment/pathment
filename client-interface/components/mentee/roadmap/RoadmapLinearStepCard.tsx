@@ -105,10 +105,10 @@ export function RoadmapLinearStepCard({
           type="button"
           onClick={toggleExpand}
           className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center border-2 z-10 transition-all focus:outline-hidden ${isDone
-              ? 'bg-emerald-600 border-emerald-600 text-white shadow-2xs hover:bg-emerald-700'
-              : isCurrent
-                ? 'bg-brand-600 border-brand-600 text-white shadow-md shadow-brand-500/25 ring-4 ring-brand-100 animate-pulse'
-                : 'bg-card border-slate-300 text-slate-500 hover:border-slate-400'
+            ? 'bg-emerald-600 border-emerald-600 text-white shadow-2xs hover:bg-emerald-700'
+            : isCurrent
+              ? 'bg-brand-600 border-brand-600 text-white shadow-md shadow-brand-500/25 ring-4 ring-brand-100 animate-pulse'
+              : 'bg-card border-slate-300 text-slate-500 hover:border-slate-400'
             }`}
         >
           {isDone ? (
@@ -127,11 +127,11 @@ export function RoadmapLinearStepCard({
 
       {/* Main Step Content Card */}
       <div
-        className={`flex-1 rounded-2xl border transition-all duration-200 mb-3.5 ${isCurrent
-            ? 'bg-card border-brand-300 shadow-md ring-1 ring-brand-200'
-            : isDone
-              ? 'bg-card border-slate-200'
-              : 'bg-slate-50/50 border-slate-200/80'
+        className={`flex-1 min-w-0 rounded-2xl border transition-all duration-200 mb-3.5 ${isCurrent
+          ? 'bg-card border-brand-300 shadow-md ring-1 ring-brand-200'
+          : isDone
+            ? 'bg-card border-slate-200'
+            : 'bg-slate-50/50 border-slate-200/80'
           }`}
       >
         {/* Card Header (Always Clickable Bar) */}
@@ -140,14 +140,14 @@ export function RoadmapLinearStepCard({
           className={`p-3.5 sm:p-4 flex items-center justify-between gap-3 cursor-pointer select-none ${isExpanded ? 'border-b border-slate-100' : ''
             }`}
         >
-          <div className="min-w-0 flex-1 flex items-center gap-2.5 flex-wrap sm:flex-nowrap">
+          <div className="min-w-0 flex-1 flex flex-col sm:flex-row items-start sm:items-center gap-1.5 sm:gap-2.5">
             <span
-              className={`px-2 py-0.5 rounded-full text-[11px] font-semibold tracking-wide shrink-0 ${statusBadge.style}`}
+              className={`px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-semibold tracking-wide shrink-0 ${statusBadge.style}`}
             >
               {statusBadge.text}
             </span>
 
-            <h3 className="text-sm font-bold text-slate-900 truncate hover:text-brand-700 transition-colors">
+            <h3 className="text-xs sm:text-sm  font-bold text-slate-900 truncate w-full sm:w-auto text-left hover:text-brand-700 transition-colors">
               {step.title}
             </h3>
 
@@ -172,11 +172,11 @@ export function RoadmapLinearStepCard({
               <button
                 type="button"
                 onClick={handleAction}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1 transition-all shadow-2xs ${isDone
-                    ? 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                    : isRevisionNeeded
-                      ? 'bg-rose-600 text-white hover:bg-rose-700'
-                      : 'bg-brand-600 text-white hover:bg-brand-700'
+                className={`px-2 py-1 sm:px-3 sm:py-1.5 rounded-xl text-[11px] sm:text-xs font-semibold flex items-center gap-1 transition-all shadow-2xs ${isDone
+                  ? 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  : isRevisionNeeded
+                    ? 'bg-rose-600 text-white hover:bg-rose-700'
+                    : 'bg-brand-600 text-white hover:bg-brand-700'
                   }`}
               >
                 {getActionButtonText()}
