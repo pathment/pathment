@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { UploadCloud, FileText, Trash2, Loader2, CheckCircle2, AlertCircle, Bot, BookOpenCheck, HelpCircle, Lightbulb, Circle, KeyRound, Sparkles, Lock } from 'lucide-react';
+import { UploadCloud, FileText, Trash2, Loader2, CheckCircle2, AlertCircle, Bot, BookOpenCheck, HelpCircle, Lightbulb, Circle, KeyRound, Sparkles, Lock, Zap, Plus, Minus } from 'lucide-react';
 import { useAutoReply } from '@/lib/hooks/mentor';
 import { messagingApi } from '@/lib/services/messaging-api';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '@/components/admin/ui';
+import { aiConnectionsApi } from '@/lib/services/ai-connections-api';
 
 interface Document {
   id: string;
@@ -43,6 +44,30 @@ export function DocumentsTab({ autoReplyEnabled = false, onAutoReplyChange }: Do
   const [toggling, setToggling] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [editingQuota, setEditingQuota] = useState(false);
+  const [tempQuotaLimit, setTempQuotaLimit] = useState(100);
+  const [updatingLimit, setUpdatingLimit] = useState(false);
+
+  useEffect(() => {
+    if (status?.usage) {
+      setTempQuotaLimit(status.usage.limit);
+    }
+  }, [status?.usage]);
+
+  const handleUpdateQuotaLimit = async () => {
+    setUpdatingLimit(true);
+    try {
+      await aiConnectionsApi.setQuotaLimit(tempQuotaLimit);
+      toast.success('Quota limit updated');
+      await refetchStatus();
+      setEditingQuota(false);
+    } catch {
+      toast.error('Could not update quota limit');
+    } finally {
+      setUpdatingLimit(false);
+    }
+  };
+
   const handleToggleAutoReply = async () => {
     if (!onAutoReplyChange) return;
 
@@ -66,7 +91,7 @@ export function DocumentsTab({ autoReplyEnabled = false, onAutoReplyChange }: Do
     try {
       const data = await messagingApi.getMentorDocuments();
       setDocuments(data);
-    } catch (err) {
+    } catch {
       toast.error('Failed to load documents');
     } finally {
       setLoading(false);
@@ -111,8 +136,9 @@ export function DocumentsTab({ autoReplyEnabled = false, onAutoReplyChange }: Do
       await messagingApi.uploadMentorDocument(file);
       toast.success('Document uploaded successfully. It is now processing.');
       await fetchDocuments();
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Failed to upload document.');
+    } catch (err: unknown) {
+      const message = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      toast.error(message || 'Failed to upload document.');
     } finally {
       setUploading(false);
       if (fileInputRef.current) {
@@ -128,7 +154,7 @@ export function DocumentsTab({ autoReplyEnabled = false, onAutoReplyChange }: Do
       await messagingApi.deleteMentorDocument(deleteDocumentId);
       toast.success('Document deleted');
       setDocuments(documents.filter((d) => d.id !== deleteDocumentId));
-    } catch (err) {
+    } catch {
       toast.error('Failed to delete document');
     } finally {
       setDeleting(false);
@@ -159,16 +185,16 @@ export function DocumentsTab({ autoReplyEnabled = false, onAutoReplyChange }: Do
                   AI Automatic Replies
                 </h3>
                 <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${autoReplyEnabled
-                    ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900/50'
-                    : 'bg-slate-100 text-slate-600 border border-slate-200'
+                  ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900/50'
+                  : 'bg-slate-100 text-slate-600 border border-slate-200'
                   }`}>
                   <span className={`w-1.5 h-1.5 rounded-full ${autoReplyEnabled ? 'bg-emerald-500' : 'bg-slate-400'}`} />
                   {autoReplyEnabled ? 'On' : 'Off'}
                 </span>
               </div>
               <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-                {autoReplyEnabled 
-                  ? 'AI will analyze incoming mentee messages against your uploaded documents to automatically send responses or generate drafts for your review.' 
+                {autoReplyEnabled
+                  ? 'AI will analyze incoming mentee messages against your uploaded documents to automatically send responses or generate drafts for your review.'
                   : 'AI auto-replies and draft generation are turned off. Mentee messages will not trigger automated responses.'}
               </p>
             </div>
@@ -181,9 +207,8 @@ export function DocumentsTab({ autoReplyEnabled = false, onAutoReplyChange }: Do
             disabled={toggling || (!autoReplyEnabled && !canEnable)}
             aria-label="Toggle AI Automatic Replies"
             title={!autoReplyEnabled && !canEnable ? 'Finish the setup below first' : undefined}
-            className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 ${
-              !autoReplyEnabled && !canEnable ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
-            } ${autoReplyEnabled ? 'bg-brand-600' : 'bg-slate-200'
+            className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 ${!autoReplyEnabled && !canEnable ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
+              } ${autoReplyEnabled ? 'bg-brand-600' : 'bg-slate-200'
               }`}
           >
             <span
@@ -196,6 +221,85 @@ export function DocumentsTab({ autoReplyEnabled = false, onAutoReplyChange }: Do
         </div>
       </div>
 
+      {/* AI Auto-Reply Quota */}
+      {status?.usage && (
+        <section>
+          <h2 className="text-slate-900 flex items-center gap-2 mb-2"><Zap className="w-5 h-5 text-brand-600" /> Auto-Reply Quota</h2>
+          <p className="text-slate-500 text-sm mb-4">Control how many automatic AI replies can be sent on your behalf each month.</p>
+
+          <div className="p-4 sm:p-5 rounded-xl border border-slate-200 bg-card">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-slate-800 dark:text-slate-200">
+                {status.usage.sent} of {status.usage.limit} messages used this month
+              </span>
+              <button 
+                onClick={() => setEditingQuota(!editingQuota)}
+                className="text-sm font-medium text-brand-600 hover:text-brand-700"
+              >
+                {editingQuota ? 'Cancel' : 'Edit Limit'}
+              </button>
+            </div>
+            <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2.5 mb-4">
+              <div 
+                className={`h-2.5 rounded-full ${status.usage.sent >= status.usage.limit ? 'bg-red-500' : 'bg-brand-600'}`}
+                style={{ width: `${Math.min(100, (status.usage.sent / Math.max(1, status.usage.limit)) * 100)}%` }}
+              ></div>
+            </div>
+
+            {editingQuota && (
+              <div className="flex flex-col gap-3 mt-4 pt-4 border-t border-slate-200 dark:border-slate-800 max-w-md">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                    Monthly Limit: <span className="text-slate-900 dark:text-slate-100 font-bold text-sm">{tempQuotaLimit} messages</span>
+                  </span>
+                </div>
+                <div className="flex items-center gap-4 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    {/* Decrement Button */}
+                    <button
+                      type="button"
+                      onClick={() => setTempQuotaLimit(Math.max(10, tempQuotaLimit - 50))}
+                      className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/50 text-slate-600 dark:text-slate-400 transition-colors"
+                      aria-label="Decrease limit by 50"
+                    >
+                      <Minus className="w-4 h-4" />
+                    </button>
+                    
+                    {/* Input Field */}
+                    <input 
+                      type="number"
+                      min="10"
+                      value={tempQuotaLimit}
+                      onChange={(e) => setTempQuotaLimit(Math.max(0, parseInt(e.target.value) || 0))}
+                      onBlur={() => setTempQuotaLimit(Math.max(10, tempQuotaLimit))}
+                      className="w-24 text-center bg-background border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-2 text-sm font-semibold text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    />
+
+                    {/* Increment Button */}
+                    <button
+                      type="button"
+                      onClick={() => setTempQuotaLimit(tempQuotaLimit + 50)}
+                      className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/50 text-slate-600 dark:text-slate-400 transition-colors"
+                      aria-label="Increase limit by 50"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <button 
+                    onClick={handleUpdateQuotaLimit}
+                    disabled={updatingLimit}
+                    className="px-4 py-2 bg-brand-600 hover:bg-brand-750 disabled:bg-brand-400 text-white rounded-lg text-xs font-medium shrink-0 shadow-sm transition-all flex items-center gap-1.5"
+                  >
+                    {updatingLimit && <Loader2 className="w-3 h-3 animate-spin" />}
+                    Save Limit
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
       {/* What auto reply needs, in the order it has to happen. Shown while
           anything is outstanding: a locked switch with no explanation is the
@@ -372,7 +476,7 @@ export function DocumentsTab({ autoReplyEnabled = false, onAutoReplyChange }: Do
               Direct Q&A / FAQ Format
             </div>
             <p className="text-slate-500 text-xs leading-normal">
-              Include explicit Q&A blocks (e.g. <em className="text-slate-700">"Q: How long should proposals be? A: Keep proposals between 3-5 pages focusing on architecture."</em>).
+              Include explicit Q&A blocks (e.g. <em className="text-slate-700">{"\"Q: How long should proposals be? A: Keep proposals between 3-5 pages focusing on architecture.\""}</em>).
             </p>
           </div>
           <div className="p-3 bg-card border border-slate-200 rounded-lg space-y-1">

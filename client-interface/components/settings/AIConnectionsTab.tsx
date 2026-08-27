@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { KeyRound, Plus, Trash2, Loader2, Zap, CheckCircle2, AlertTriangle, Circle } from 'lucide-react';
 import { useAIConnections } from '@/lib/hooks/admin';
 import type { AIProvider, AIFeature, AIKeyStatus } from '@/lib/services/ai-connections-api';
@@ -43,74 +43,14 @@ interface AIConnectionsTabProps {
   isMentor?: boolean;
 }
 
-export default function AIConnectionsTab({ isMentor }: AIConnectionsTabProps = {}) {
-  const { connections, routing, quota, loading, busyId, addKey, removeKey, testKey, setRoute, setQuotaLimit } = useAIConnections();
+export default function AIConnectionsTab({}: AIConnectionsTabProps = {}) {
+  const { connections, routing, loading, busyId, addKey, removeKey, testKey, setRoute } = useAIConnections();
   const [adding, setAdding] = useState(false);
-  const [editingQuota, setEditingQuota] = useState(false);
-  const [tempQuotaLimit, setTempQuotaLimit] = useState(100);
-
-  // Initialize temp quota limit when quota loads
-  useEffect(() => { 
-    if (quota) setTempQuotaLimit(quota.limit); 
-  }, [quota]);
 
   if (loading) return <div className="flex justify-center py-12"><Loader2 className="w-7 h-7 animate-spin text-brand-600" /></div>;
 
   return (
     <div className="space-y-8">
-      {/* Auto-Reply Quota */}
-      {quota && (
-        <section>
-          <h2 className="text-slate-900 flex items-center gap-2 mb-2"><Zap className="w-5 h-5 text-brand-600" /> Auto-Reply Quota</h2>
-          <p className="text-slate-500 text-sm mb-4">Control how many automatic AI replies can be sent on your behalf each month.</p>
-          
-          <div className="bg-card rounded-xl border border-slate-200 p-5">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-slate-800">
-                {quota.count} of {quota.limit} messages used this month
-              </span>
-              <button 
-                onClick={() => setEditingQuota(!editingQuota)}
-                className="text-sm font-medium text-brand-600 hover:text-brand-700"
-              >
-                {editingQuota ? 'Cancel' : 'Edit Limit'}
-              </button>
-            </div>
-            
-            <div className="w-full bg-slate-100 rounded-full h-2.5 mb-4">
-              <div 
-                className={`h-2.5 rounded-full ${quota.count >= quota.limit ? 'bg-red-500' : 'bg-brand-600'}`}
-                style={{ width: `${Math.min(100, (quota.count / Math.max(1, quota.limit)) * 100)}%` }}
-              ></div>
-            </div>
-
-            {editingQuota && (
-              <div className="flex flex-col gap-3 mt-4 pt-4 border-t border-slate-200 max-w-md">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-slate-500">Monthly Limit: <span className="text-slate-900 font-bold text-sm">{tempQuotaLimit} messages</span></span>
-                </div>
-                <div className="flex items-center gap-4">
-                  <input 
-                    type="range" 
-                    min="10" 
-                    max="500" 
-                    step="10"
-                    value={tempQuotaLimit} 
-                    onChange={(e) => setTempQuotaLimit(parseInt(e.target.value) || 10)}
-                    className="flex-1 h-1.5 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-brand-600 focus:outline-none" 
-                  />
-                  <button 
-                    onClick={() => { setQuotaLimit(tempQuotaLimit); setEditingQuota(false); }}
-                    className="px-4 py-2 bg-brand-600 hover:bg-brand-750 text-white rounded-lg text-xs font-medium shrink-0 shadow-sm transition-all"
-                  >
-                    Save Limit
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </section>
-      )}
 
       {/* Connections */}
       <section>
