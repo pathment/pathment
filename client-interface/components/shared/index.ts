@@ -32,3 +32,4 @@ export { default as OnboardingGuard } from './OnboardingGuard';
 export { RoleGuard } from './RoleGuard';
 export { default as RichTextEditor } from './RichTextEditor';
 export { FileDragDrop } from './FileDragDrop';
+export { MultiDaySelectDropdown, DAYS_LIST } from './MultiDaySelectDropdown';
