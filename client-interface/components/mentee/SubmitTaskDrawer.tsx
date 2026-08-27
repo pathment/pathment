@@ -2,13 +2,22 @@
 
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { Send, Loader2, Link as LinkIcon, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { Send, Loader2, Link as LinkIcon, ShieldCheck, CheckCircle2, Upload, X, File as FileIcon, Image, FileText } from 'lucide-react';
 import { Drawer } from '@/components/shared/Drawer';
-import FileUploader from '@/components/shared/FileUploader';
+import { FileDragDrop } from '@/components/shared/FileDragDrop';
 import RichTextEditor from '@/components/shared/RichTextEditor';
 import { submissionService } from '@/lib/services/submissionService';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { cleanHtml, isBlankHtml } from '@/lib/utils/html';
+
+// Helper to format file size
+const formatFileSize = (bytes: number): string => {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+};
 
 export interface SubmitTaskTarget {
   id: string;
@@ -141,7 +150,72 @@ export function SubmitTaskDrawer({
 
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1">Files <span className="text-slate-400 font-normal">(optional)</span></label>
-          <FileUploader files={files} onFilesAdded={(fs) => setFiles((p) => [...p, ...fs])} onFileRemoved={(i) => setFiles((p) => p.filter((_, j) => j !== i))} maxFiles={5} />
+          <FileDragDrop
+            onFilesSelected={(newFiles) => {
+              setFiles((p) => {
+                const remainingSlots = 5 - p.length;
+                const filesToAdd = newFiles.slice(0, remainingSlots);
+                return [...p, ...filesToAdd];
+              });
+            }}
+            multiple={true}
+            maxSize={10 * 1024 * 1024}
+            enablePaste={true}
+            disabled={files.length >= 5}
+          >
+            {({ isDragging, openFilePicker }) => (
+              <div className="space-y-4">
+                <div
+                  onClick={openFilePicker}
+                  className={`
+                    border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors
+                    ${isDragging ? 'border-brand-500 bg-brand-50' : 'border-slate-300 hover:border-slate-400'}
+                    ${files.length >= 5 ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''}
+                  `}
+                >
+                  <Upload className={`w-12 h-12 mx-auto mb-4 ${isDragging ? 'text-brand-500' : 'text-slate-400'}`} />
+                  <p className="text-slate-700 mb-2">
+                    {isDragging ? 'Drop files here...' : 'Drag & drop files here, or click to select'}
+                  </p>
+                  <p className="text-sm text-slate-500">
+                    Max 5 files, up to 10MB each
+                  </p>
+                </div>
+
+                {/* Selected Files List */}
+                {files.length > 0 && (
+                  <div className="space-y-2">
+                    {files.map((file, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-lg"
+                      >
+                        {file.type.startsWith('image/') ? (
+                          <Image className="w-5 h-5 text-blue-600" aria-label="Image file" />
+                        ) : file.type === 'application/pdf' ? (
+                          <FileText className="w-5 h-5 text-red-600" aria-label="PDF file" />
+                        ) : (
+                          <FileIcon className="w-5 h-5 text-slate-600" aria-label="File" />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-slate-900 truncate">{file.name}</p>
+                          <p className="text-xs text-slate-500">{formatFileSize(file.size)}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setFiles((p) => p.filter((_, j) => j !== index))}
+                          className="p-1 hover:bg-slate-200 rounded transition-colors"
+                          title="Remove file"
+                        >
+                          <X className="w-4 h-4 text-slate-600" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </FileDragDrop>
         </div>
 
         <div>
