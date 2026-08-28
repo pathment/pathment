@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef } from 'react';
-import { Loader2, Send } from 'lucide-react';
+import { Send } from 'lucide-react';
 
 interface MessageComposerProps {
   value: string;
@@ -30,8 +30,8 @@ export default function MessageComposer({
   };
 
   return (
-    <div className="p-3 md:p-4 border-t border-slate-200/80 bg-card/80 backdrop-blur-sm">
-      <div className="flex items-end gap-2 bg-slate-50 dark:bg-slate-900/50 p-2 rounded-2xl border border-slate-200/80 focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-500/20 transition-all">
+    <div className="p-3 md:p-4 border-t border-slate-200/80 bg-card/95 backdrop-blur-sm">
+      <div className="flex items-end gap-2 bg-slate-50 p-2 rounded-2xl border border-slate-200/80 focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-500/20 transition-all">
         <textarea
           ref={textareaRef}
           value={value}
@@ -40,7 +40,7 @@ export default function MessageComposer({
           rows={1}
           placeholder="Type a message... (Shift + Enter for new line)"
           disabled={disabled}
-          className="flex-1 max-h-32 resize-none bg-transparent px-2 py-1 text-sm text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none disabled:opacity-50 min-h-[36px]"
+          className="flex-1 max-h-32 resize-none bg-transparent px-2 py-1 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none disabled:opacity-50 min-h-[36px]"
           style={{ height: 'auto' }}
         />
         <button
