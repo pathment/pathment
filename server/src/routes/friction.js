@@ -22,7 +22,8 @@ router.delete('/blockers/:id', authenticate, frictionController.deleteBlocker);
 router.get('/delays', authenticate, frictionController.listDelays);
 router.post('/delays', authenticate, frictionController.createDelay);
 router.patch('/delays/:id/accept', authenticate, requirePermission(PERMISSIONS.TASK_REVIEW, scope.delay('id')), frictionController.acceptDelay);
-// Reject = remove the delay (clears duplicates). Same review gate as accept.
+// Reject marks the delay rejected (history kept). DELETE kept as an alias for older clients.
+router.patch('/delays/:id/reject', authenticate, requirePermission(PERMISSIONS.TASK_REVIEW, scope.delay('id')), frictionController.rejectDelay);
 router.delete('/delays/:id', authenticate, requirePermission(PERMISSIONS.TASK_REVIEW, scope.delay('id')), frictionController.rejectDelay);
 
 module.exports = router;
