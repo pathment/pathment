@@ -201,7 +201,7 @@ export default function ConversationList({
                 onClick={() => onSelectConversation(conversation.id)}
                 className={`w-full text-left p-3.5 transition-all flex items-start gap-3 relative cursor-pointer group ${
                   isSelected
-                    ? 'bg-brand-50/80 ring-1 ring-inset ring-brand-500/20'
+                    ? 'bg-brand-500/10 ring-1 ring-inset ring-brand-500/25'
                     : 'hover:bg-slate-50'
                 }`}
               >
