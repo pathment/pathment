@@ -94,8 +94,7 @@ class NotificationScheduler {
       });
     }
   }
-
-    async notifyDeadlinePassed() {
+  async notifyDeadlinePassed() {
     const now = new Date();
     const MAX_DEADLINE_EMAILS = 2;
     const { NOTIFICATION_MATRIX } = require('../config/notificationMatrix');
@@ -104,7 +103,8 @@ class NotificationScheduler {
     const tasks = await models.AssignedTask.findAll({
       where: {
         dueDate: { [Op.lt]: now },
-        status: { [Op.in]: ['assigned', 'in_progress', 'submitted', 'revision_needed'] }
+      
+        status: { [Op.in]: ['assigned', 'in_progress', 'revision_needed'] }
       },
       include: [
         { model: models.RoadmapTask, as: 'roadmapTask', attributes: ['id', 'title'] }
@@ -114,7 +114,6 @@ class NotificationScheduler {
 
     if (!tasks.length) return;
 
-    
     const menteeIds = [...new Set(tasks.map((t) => t.menteeId))];
     const pausedRows = await models.ClanMembership.findAll({
       where: { userId: { [Op.in]: menteeIds }, role: 'mentee', status: 'paused' },
@@ -123,19 +122,33 @@ class NotificationScheduler {
     });
     const pausedMenteeIds = new Set(pausedRows.map((r) => r.userId));
 
+    
+    const taskIds = tasks.map((t) => t.id);
+    const priorCounts = await models.Notification.findAll({
+      where: {
+        userId: { [Op.in]: menteeIds },
+        type: notificationType,
+        relatedEntityType: 'assigned_task',
+        relatedEntityId: { [Op.in]: taskIds }
+      },
+      attributes: [
+        'userId',
+        'relatedEntityId',
+        [require('sequelize').fn('COUNT', require('sequelize').col('id')), 'count']
+      ],
+      group: ['userId', 'relatedEntityId'],
+      raw: true
+    });
+    // Key by `${userId}:${taskId}` so the lookup below is O(1) per task.
+    const priorCountMap = new Map(
+      priorCounts.map((row) => [`${row.userId}:${row.relatedEntityId}`, parseInt(row.count, 10)])
+    );
+
     for (const task of tasks) {
       const isMenteePaused = pausedMenteeIds.has(task.menteeId);
 
       if (!isMenteePaused) {
-       
-        const priorNotifications = await models.Notification.count({
-          where: {
-            userId: task.menteeId,
-            type: notificationType,
-            relatedEntityType: 'assigned_task',
-            relatedEntityId: task.id
-          }
-        });
+        const priorNotifications = priorCountMap.get(`${task.menteeId}:${task.id}`) || 0;
 
         if (priorNotifications < MAX_DEADLINE_EMAILS) {
           await notificationOrchestrator.dispatch({
@@ -154,12 +167,12 @@ class NotificationScheduler {
               inApp: true,
               email: true,
             },
-           
+            
           });
         }
       }
 
-    
+     
       await notificationOrchestrator.dispatch({
         eventKey: NOTIFICATION_EVENTS.SUBMISSION_DEADLINE_PASSED,
         recipients: [{ userId: task.mentorId }],
