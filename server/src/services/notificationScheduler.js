@@ -104,14 +104,17 @@ class NotificationScheduler {
       });
     }
   }
-
   async notifyDeadlinePassed() {
     const now = new Date();
+    const MAX_DEADLINE_EMAILS = 2;
+    const { NOTIFICATION_MATRIX } = require('../config/notificationMatrix');
+    const notificationType = NOTIFICATION_MATRIX[NOTIFICATION_EVENTS.SUBMISSION_DEADLINE_PASSED].type;
 
     const tasks = await models.AssignedTask.findAll({
       where: {
         dueDate: { [Op.lt]: now },
-        status: { [Op.in]: ['assigned', 'in_progress', 'submitted', 'revision_needed'] }
+      
+        status: { [Op.in]: ['assigned', 'in_progress', 'revision_needed'] }
       },
       include: [
         { model: models.RoadmapTask, as: 'roadmapTask', attributes: ['id', 'title'] }
@@ -119,31 +122,67 @@ class NotificationScheduler {
       limit: 200
     });
 
-    for (const task of tasks) {
-      // In-app for mentee
-      await notificationOrchestrator.dispatch({
-        eventKey: NOTIFICATION_EVENTS.SUBMISSION_DEADLINE_PASSED,
-        recipients: [{ userId: task.menteeId }],
-        payload: {
-          title: 'Task deadline passed',
-          message: `Deadline passed for "${task.roadmapTask?.title || 'Task'}".`,
-          actionUrl: `/mentee/tasks/${task.id}`,
-          actionLabel: 'Open Task',
-          relatedEntityType: 'assigned_task',
-          relatedEntityId: task.id,
-          emailSubject: 'Pathment: Submission deadline passed'
-        },
-        channelOverrides: {
-          inApp: true,
-          email: false
-        },
-        dedupe: {
-          relatedEntityType: 'assigned_task',
-          relatedEntityId: task.id
-        }
-      });
+    if (!tasks.length) return;
 
-      // Full channels for mentor
+    const menteeIds = [...new Set(tasks.map((t) => t.menteeId))];
+    const pausedRows = await models.ClanMembership.findAll({
+      where: { userId: { [Op.in]: menteeIds }, role: 'mentee', status: 'paused' },
+      attributes: ['userId'],
+      raw: true
+    });
+    const pausedMenteeIds = new Set(pausedRows.map((r) => r.userId));
+
+    
+    const taskIds = tasks.map((t) => t.id);
+    const priorCounts = await models.Notification.findAll({
+      where: {
+        userId: { [Op.in]: menteeIds },
+        type: notificationType,
+        relatedEntityType: 'assigned_task',
+        relatedEntityId: { [Op.in]: taskIds }
+      },
+      attributes: [
+        'userId',
+        'relatedEntityId',
+        [require('sequelize').fn('COUNT', require('sequelize').col('id')), 'count']
+      ],
+      group: ['userId', 'relatedEntityId'],
+      raw: true
+    });
+    // Key by `${userId}:${taskId}` so the lookup below is O(1) per task.
+    const priorCountMap = new Map(
+      priorCounts.map((row) => [`${row.userId}:${row.relatedEntityId}`, parseInt(row.count, 10)])
+    );
+
+    for (const task of tasks) {
+      const isMenteePaused = pausedMenteeIds.has(task.menteeId);
+
+      if (!isMenteePaused) {
+        const priorNotifications = priorCountMap.get(`${task.menteeId}:${task.id}`) || 0;
+
+        if (priorNotifications < MAX_DEADLINE_EMAILS) {
+          await notificationOrchestrator.dispatch({
+            eventKey: NOTIFICATION_EVENTS.SUBMISSION_DEADLINE_PASSED,
+            recipients: [{ userId: task.menteeId }],
+            payload: {
+              title: 'Task deadline passed',
+              message: `Deadline passed for "${task.roadmapTask?.title || 'Task'}".`,
+              actionUrl: `/mentee/tasks/${task.id}`,
+              actionLabel: 'Open Task',
+              relatedEntityType: 'assigned_task',
+              relatedEntityId: task.id,
+              emailSubject: 'Pathment: Submission deadline passed'
+            },
+            channelOverrides: {
+              inApp: true,
+              email: true,
+            },
+            
+          });
+        }
+      }
+
+     
       await notificationOrchestrator.dispatch({
         eventKey: NOTIFICATION_EVENTS.SUBMISSION_DEADLINE_PASSED,
         recipients: [{ userId: task.mentorId }],
