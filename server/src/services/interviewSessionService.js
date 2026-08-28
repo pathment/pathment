@@ -75,7 +75,8 @@ class InterviewSessionService {
       where: { assignedTaskId: taskId, menteeId },
       order: [['attempt_number', 'DESC']],
     });
-    const active = sessions.find((s) => s.status === 'in_progress') || null;
+    const taskOpen = !['cancelled', 'completed'].includes(task.status);
+    const active = taskOpen ? (sessions.find((s) => s.status === 'in_progress') || null) : null;
     const submittedCount = sessions.filter((s) => s.status === 'submitted').length;
     const latestSubmitted = sessions.find((s) => s.status === 'submitted') || null;
 
@@ -180,7 +181,10 @@ class InterviewSessionService {
 
   /** Start a fresh attempt or resume the in-progress one. Enforces retake rules. */
   async startOrResume(taskId, menteeId) {
-    const { assignment } = await this._loadContext(taskId, menteeId);
+    const { task, assignment } = await this._loadContext(taskId, menteeId);
+    if (task.status === 'cancelled') {
+      throw new ValidationError('This interview task has been cancelled.');
+    }
 
     const existing = await models.InterviewSession.findOne({
       where: { assignedTaskId: taskId, menteeId, status: 'in_progress' },
@@ -940,6 +944,93 @@ class InterviewSessionService {
       }
       return out;
     });
+  }
+
+  /**
+   * Drop in-progress attempts for a task (e.g. mentor cancelled/unassigned). Submitted
+   * attempts are preserved for review/history.
+   */
+  async abandonInProgressForTask(taskId) {
+    await models.InterviewSession.destroy({
+      where: { assignedTaskId: taskId, status: 'in_progress' },
+    });
+  }
+
+  /** Mentor ends a live attempt without deleting submitted history. */
+  async abandonActiveForMentor(taskId, userId) {
+    await this.getAssignmentForMentor(taskId, userId);
+    await this.abandonInProgressForTask(taskId);
+    return { abandoned: true };
+  }
+
+  /** Mentor view of per-assignment options + whether a session is live. */
+  async getAssignmentForMentor(taskId, userId) {
+    const task = await models.AssignedTask.findByPk(taskId, {
+      include: [{ model: models.RoadmapTask, as: 'roadmapTask', attributes: ['type'] }],
+    });
+    if (!task) throw new NotFoundError('Task not found');
+    if (!(await authzService.canActOnTask(userId, task, PERMISSIONS.TASK_ASSIGN))) {
+      throw new ForbiddenError('You do not have permission to manage this interview');
+    }
+
+    const assignment = await models.InterviewAssignment.findOne({ where: { assignedTaskId: taskId } });
+    if (!assignment) throw new NotFoundError('This task is not an interview');
+
+    const activeSession = await models.InterviewSession.findOne({
+      where: { assignedTaskId: taskId, status: 'in_progress' },
+      attributes: ['id', 'startedAt', 'attemptNumber'],
+    });
+
+    return {
+      taskStatus: task.status,
+      options: {
+        timingMode: assignment.timingMode,
+        totalSeconds: assignment.totalSeconds,
+        allowRetake: assignment.allowRetake,
+        cameraRequired: assignment.cameraRequired,
+      },
+      activeSession: activeSession ? {
+        id: activeSession.id,
+        startedAt: activeSession.startedAt,
+        attemptNumber: activeSession.attemptNumber,
+      } : null,
+    };
+  }
+
+  /** Mentor adjusts timing on an assignment that hasn't been submitted yet. */
+  async updateAssignmentForMentor(taskId, userId, { timingMode, totalSeconds } = {}) {
+    const task = await models.AssignedTask.findByPk(taskId);
+    if (!task) throw new NotFoundError('Task not found');
+    if (!(await authzService.canActOnTask(userId, task, PERMISSIONS.TASK_ASSIGN))) {
+      throw new ForbiddenError('You do not have permission to manage this interview');
+    }
+    if (['submitted', 'completed'].includes(task.status)) {
+      throw new ValidationError('Cannot change interview timing after the mentee has submitted');
+    }
+
+    const assignment = await models.InterviewAssignment.findOne({ where: { assignedTaskId: taskId } });
+    if (!assignment) throw new NotFoundError('This task is not an interview');
+
+    const TIMING_MODES = ['per_question', 'total'];
+    const updates = {};
+    if (timingMode !== undefined) {
+      if (!TIMING_MODES.includes(timingMode)) throw new ValidationError('Invalid timing mode');
+      updates.timingMode = timingMode;
+    }
+    const mode = updates.timingMode || assignment.timingMode;
+    if (totalSeconds !== undefined) {
+      const n = Number.parseInt(totalSeconds, 10);
+      updates.totalSeconds = mode === 'total' && Number.isFinite(n) && n > 0 ? n : null;
+    } else if (updates.timingMode === 'per_question') {
+      updates.totalSeconds = null;
+    }
+
+    if (Object.keys(updates).length === 0) {
+      throw new ValidationError('No interview options to update');
+    }
+
+    await assignment.update(updates);
+    return this.getAssignmentForMentor(taskId, userId);
   }
 }
 

@@ -49,6 +49,28 @@ exports.deleteKit = catchAsync(async (req, res) => {
 
 // ── Candidate runner (Phase 2) — ownership enforced in the service ────────────
 
+// PATCH /api/interviews/assignments/:taskId/options  — mentor adjusts timing, etc.
+exports.updateAssignmentOptions = catchAsync(async (req, res) => {
+  const data = await interviewSessionService.updateAssignmentForMentor(
+    req.params.taskId,
+    req.user.id,
+    req.body
+  );
+  res.status(200).json(successResponse('Interview assignment updated', data));
+});
+
+// GET /api/interviews/assignments/:taskId/manage — mentor view of assignment state
+exports.getAssignmentForMentor = catchAsync(async (req, res) => {
+  const data = await interviewSessionService.getAssignmentForMentor(req.params.taskId, req.user.id);
+  res.status(200).json(successResponse('Interview assignment retrieved', data));
+});
+
+// POST /api/interviews/assignments/:taskId/abandon — mentor ends an in-progress attempt
+exports.abandonActiveInterview = catchAsync(async (req, res) => {
+  const data = await interviewSessionService.abandonActiveForMentor(req.params.taskId, req.user.id);
+  res.status(200).json(successResponse('Interview attempt ended', data));
+});
+
 // GET /api/interviews/assignments/:taskId
 exports.getCandidateInterview = catchAsync(async (req, res) => {
   const data = await interviewSessionService.getForCandidate(req.params.taskId, req.user.id);

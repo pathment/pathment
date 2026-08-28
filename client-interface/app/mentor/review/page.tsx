@@ -1357,10 +1357,11 @@ export default function CohortReview() {
           into the generic task drawer. */}
       {taskDetail && (() => {
         const taskType = taskDetail.roadmapTask?.type || taskDetail.type;
-        if (taskType === 'interview') {
+        const interviewManageable = ['assigned', 'not_started', 'in_progress'].includes(taskDetail.status);
+        if (taskType === 'interview' && !interviewManageable) {
           return <InterviewReviewDrawer taskId={taskDetail.id} onClose={() => setTaskDetail(null)} onFinalized={refresh} />;
         }
-        if (taskType === 'quiz') {
+        if (taskType === 'quiz' && ['submitted', 'revision_needed', 'completed'].includes(taskDetail.status)) {
           return <QuizReviewDrawer taskId={taskDetail.id} onClose={() => setTaskDetail(null)} onReviewed={refresh} />;
         }
         return <MenteeTaskDrawer task={taskDetail} onClose={() => setTaskDetail(null)} onChanged={refresh} />;
