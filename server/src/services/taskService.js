@@ -9,6 +9,7 @@ const { PERMISSIONS } = require('../config/permissions');
 const { pointsForDifficulty } = require('../config/points');
 const { difficultyWeight } = require('../config/scoring');
 const interviewKitService = require('./interviewKitService');
+const interviewSessionService = require('./interviewSessionService');
 const quizKitService = require('./quizKitService');
 const { toStringList } = require('../utils/multipartFields');
 
@@ -1165,6 +1166,12 @@ class TaskService {
     task.cancelledAt = new Date();
     task.cancellationReason = reason;
     await task.save();
+
+    // In-progress interview attempts should not stay resumable after cancellation.
+    const taskType = task.roadmapTask?.type;
+    if (taskType === 'interview') {
+      await interviewSessionService.abandonInProgressForTask(taskId);
+    }
 
     // Update enrollment stats
     await this.updateEnrollmentTaskStats(task.enrollmentId);

@@ -3,7 +3,12 @@
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Mic, ArrowRight } from 'lucide-react';
-import { getActiveInterview, ACTIVE_INTERVIEW_EVENT, type ActiveInterview } from '@/lib/utils/activeInterview';
+import {
+  getActiveInterview,
+  reconcileActiveInterview,
+  ACTIVE_INTERVIEW_EVENT,
+  type ActiveInterview,
+} from '@/lib/utils/activeInterview';
 import { fmtClock } from '@/lib/utils/interviewMedia';
 
 /**
@@ -16,23 +21,44 @@ export function InterviewResumeBar() {
   const pathname = usePathname();
   const router = useRouter();
   const [ai, setAi] = useState<ActiveInterview | null>(null);
+  const [ready, setReady] = useState(false);
   const [now, setNow] = useState<number>(0);
 
   useEffect(() => {
-    const read = () => setAi(getActiveInterview());
-    read();
+    let cancelled = false;
+
+    const sync = async () => {
+      const stored = getActiveInterview();
+      if (!stored) {
+        if (!cancelled) {
+          setAi(null);
+          setReady(true);
+        }
+        return;
+      }
+      const reconciled = await reconcileActiveInterview(stored.taskId);
+      if (!cancelled) {
+        setAi(reconciled);
+        setReady(true);
+      }
+    };
+
+    sync();
     setNow(Date.now());
-    window.addEventListener(ACTIVE_INTERVIEW_EVENT, read);
-    window.addEventListener('storage', read);
+
+    const onChange = () => { void sync(); };
+    window.addEventListener(ACTIVE_INTERVIEW_EVENT, onChange);
+    window.addEventListener('storage', onChange);
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => {
-      window.removeEventListener(ACTIVE_INTERVIEW_EVENT, read);
-      window.removeEventListener('storage', read);
+      cancelled = true;
+      window.removeEventListener(ACTIVE_INTERVIEW_EVENT, onChange);
+      window.removeEventListener('storage', onChange);
       clearInterval(t);
     };
   }, []);
 
-  if (!ai) return null;
+  if (!ready || !ai) return null;
   // Don't show while actually on the runner for this interview.
   if (pathname?.startsWith(`/mentee/interviews/${ai.taskId}`)) return null;
 
