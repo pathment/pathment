@@ -741,18 +741,18 @@ export default function MessageCenter({ role }: MessageCenterProps) {
             const draftCount = conversationDrafts.length;
 
             return isDraftsExpanded ? (
-              <div className="absolute bottom-20 right-6 z-20 w-[420px] bg-card/95 dark:bg-slate-900/95 backdrop-blur-xl border border-brand-200 dark:border-brand-500/30 shadow-2xl dark:shadow-black/40 rounded-2xl p-4 overflow-y-auto max-h-[50vh] transition-all animate-in slide-in-from-right-4">
+              <div className="absolute bottom-20 right-6 z-20 w-[420px] bg-card/95 backdrop-blur-xl border border-brand-200 dark:border-brand-500/30 shadow-2xl rounded-2xl p-4 overflow-y-auto max-h-[50vh] transition-all animate-in slide-in-from-right-4">
                 <div className="flex items-center justify-between mb-3 px-1">
                   <div className="flex items-center gap-2">
                     <div className="p-1.5 bg-brand-100 dark:bg-brand-500/20 rounded-lg">
                       <Wand2 className="w-4 h-4 text-brand-600 dark:text-brand-400" />
                     </div>
-                    <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">AI Drafts</h3>
+                    <h3 className="text-sm font-bold text-slate-800">AI Drafts</h3>
                     <span className="text-xs px-2 py-0.5 rounded-full bg-brand-100 dark:bg-brand-500/20 text-brand-700 dark:text-brand-300 font-semibold">
                       {draftCount}
                     </span>
                   </div>
-                  <button onClick={() => setIsDraftsExpanded(false)} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors">
+                  <button onClick={() => setIsDraftsExpanded(false)} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition-colors">
                     <ChevronRight className="w-4 h-4" />
                   </button>
                 </div>
@@ -766,10 +766,10 @@ export default function MessageCenter({ role }: MessageCenterProps) {
                       ? 'text-emerald-700 bg-emerald-100/50 dark:text-emerald-300 dark:bg-emerald-950/40'
                       : 'text-amber-700 bg-amber-100/50 dark:text-amber-300 dark:bg-amber-950/40';
                     return (
-                      <div key={draft.id} className="bg-white dark:bg-slate-800/80 border border-brand-200 dark:border-brand-500/25 rounded-xl p-3 shadow-sm">
+                      <div key={draft.id} className="bg-slate-50 border border-brand-200 dark:border-brand-500/25 rounded-xl p-3 shadow-sm">
                         <div className="flex items-center justify-between mb-2">
-                          <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                            Replying to: <span className="text-slate-700 dark:text-slate-200 italic">"{draft.originalMessage?.messageText}"</span>
+                          <span className="text-xs font-medium text-slate-500">
+                            Replying to: <span className="text-slate-700 italic">"{draft.originalMessage?.messageText}"</span>
                           </span>
                           <div className="flex gap-2 items-center">
                             <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${confidenceColor}`}>
@@ -787,13 +787,13 @@ export default function MessageCenter({ role }: MessageCenterProps) {
                             <textarea
                               value={draftEditorText}
                               onChange={(e) => setDraftEditorText(e.target.value)}
-                              className="w-full text-sm resize-none border border-brand-300 dark:border-brand-500/40 bg-white dark:bg-slate-900/60 text-slate-800 dark:text-slate-100 rounded-lg p-2 focus:ring-2 focus:ring-brand-500 dark:focus:ring-brand-400 focus:outline-none"
+                              className="w-full text-sm resize-none border border-brand-300 dark:border-brand-500/40 bg-card text-slate-800 rounded-lg p-2 focus:ring-2 focus:ring-brand-500 focus:outline-none"
                               rows={3}
                             />
                             <div className="flex items-center gap-2 mt-2 justify-end">
                               <button
                                 onClick={() => { setEditingDraftId(null); setDraftEditorText(''); }}
-                                className="text-xs px-3 py-1.5 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-md font-medium"
+                                className="text-xs px-3 py-1.5 text-slate-600 hover:bg-slate-100 rounded-md font-medium"
                                 disabled={isApprovingDraft}
                               >
                                 Cancel
@@ -810,7 +810,7 @@ export default function MessageCenter({ role }: MessageCenterProps) {
                           </div>
                         ) : (
                           <div className="mt-1">
-                            <p className="text-sm text-slate-800 dark:text-slate-100 whitespace-pre-wrap">{draft.draftContent}</p>
+                            <p className="text-sm text-slate-800 whitespace-pre-wrap">{draft.draftContent}</p>
                             <div className="flex justify-end gap-2 mt-2">
                               <button
                                 onClick={() => handleRejectDraft(draft.id)}
