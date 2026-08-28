@@ -534,6 +534,8 @@ class CohortService {
         kind: d.kind,
         days: d.days,
         accepted: d.accepted,
+        reviewStatus: d.reviewStatus || (d.accepted ? 'accepted' : 'pending'),
+        rejectionReason: d.rejectionReason || null,
         category: d.category,
         aiRationale: d.aiRationale,
         occurredAt: d.occurredAt

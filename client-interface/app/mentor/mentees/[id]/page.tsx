@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import {
   BookOpen, Calendar, CalendarCheck, CheckCircle2, Clock, Mail, Phone, MessageSquare, Plus, PauseCircle, PlayCircle,
   Target, TrendingUp, TrendingDown, Minus, Flag, Check, User, Loader2,
-  Star, ThumbsUp, ThumbsDown, AlertCircle, ChevronLeft, Trash2,
+  Star, ThumbsUp, ThumbsDown, AlertCircle, ChevronLeft, Trash2, XCircle,
 } from 'lucide-react';
 import { useMenteeDetailPage, useMenteeProfile, type CohortRisk, type CohortMomentum } from '@/lib/hooks/mentor';
 import { useAuth } from '@/lib/context/AuthContext';
@@ -109,6 +109,8 @@ export default function MenteeDetail() {
   const confirm = useConfirm();
   const selfName = `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || 'You';
   const [frictionBusy, setFrictionBusy] = useState<string | null>(null);
+  const [delayRejectingId, setDelayRejectingId] = useState<string | null>(null);
+  const [delayRejectReason, setDelayRejectReason] = useState('');
 
   const onAcceptDelay = async (id: string) => {
     try {
@@ -122,17 +124,19 @@ export default function MenteeDetail() {
 
   const onRejectDelay = async (id: string) => {
     const ok = await confirm({
-      title: 'Reject this delay?',
-      description: 'It will be removed from the list and earn no fairness credit. Use this to clear duplicate or invalid requests.',
+      title: 'Reject this delay request?',
+      description: 'The mentee will be notified. The request stays in history as rejected and earns no fairness credit.',
       confirmLabel: 'Reject',
       variant: 'danger',
     });
     if (!ok) return;
     try {
       setFrictionBusy(id);
-      await frictionApi.rejectDelay(id);
+      await frictionApi.rejectDelay(id, delayRejectReason.trim() || undefined);
+      setDelayRejectingId(null);
+      setDelayRejectReason('');
       await refetchProfile();
-      toast.success('Delay rejected and removed');
+      toast.success('Delay request rejected');
     } catch { toast.error('Could not reject the delay'); }
     finally { setFrictionBusy(null); }
   };
@@ -501,7 +505,7 @@ export default function MenteeDetail() {
           <div className="bg-card rounded-2xl border border-slate-200">
             <div className="px-6 py-5 border-b border-slate-200 flex items-center gap-2">
               <Clock className="w-4 h-4 text-amber-500" />
-              <h2 className="text-slate-900">Logged delays</h2>
+              <h2 className="text-slate-900">Delay requests</h2>
             </div>
             <div className="p-6">
               {insights.sectionErrors?.delays ? (
@@ -510,8 +514,13 @@ export default function MenteeDetail() {
                 <p className="text-sm text-slate-500">No delays logged.</p>
               ) : (
                 <div className="space-y-2">
-                  {insights.delays.map((d) => (
-                    <div key={d.id} className="flex items-start justify-between gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                  {insights.delays.map((d) => {
+                    const status = d.reviewStatus || (d.accepted ? 'accepted' : 'pending');
+                    const isPending = status === 'pending';
+                    const isRejected = status === 'rejected';
+                    return (
+                    <div key={d.id} className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                      <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="text-sm text-slate-900">{d.reason}</p>
                         <div className="flex items-center gap-2 mt-1 text-xs text-slate-500 flex-wrap">
@@ -519,12 +528,18 @@ export default function MenteeDetail() {
                           <span>{d.days}d</span><span>·</span><span className="capitalize">{d.category}</span>
                         </div>
                         {d.aiRationale && <p className="text-xs text-slate-400 mt-1">{d.aiRationale}</p>}
+                        {isRejected && d.rejectionReason && (
+                          <p className="text-xs text-red-600 mt-1">Rejection note: {d.rejectionReason}</p>
+                        )}
                       </div>
                       <div className="shrink-0 flex items-center gap-1.5">
-                        {d.accepted ? (
-                          // Accepted = credited toward fair progress, so it's locked (no reject).
+                        {status === 'accepted' ? (
                           <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-emerald-700 bg-emerald-50 rounded-lg">
                             <Check className="w-3 h-3" />Accepted
+                          </span>
+                        ) : isRejected ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-red-700 bg-red-50 rounded-lg">
+                            <XCircle className="w-3 h-3" />Rejected
                           </span>
                         ) : (
                           <>
@@ -532,16 +547,43 @@ export default function MenteeDetail() {
                               className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-brand-700 bg-brand-50 hover:bg-brand-100 rounded-lg disabled:opacity-50">
                               {frictionBusy === d.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}Accept
                             </button>
-                            <button onClick={() => onRejectDelay(d.id)} disabled={frictionBusy === d.id}
-                              title="Reject and remove this pending delay" aria-label="Reject delay"
-                              className="grid h-7 w-7 place-items-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50">
-                              <Trash2 className="w-3.5 h-3.5" />
+                            <button
+                              onClick={() => { setDelayRejectingId(delayRejectingId === d.id ? null : d.id); setDelayRejectReason(''); }}
+                              disabled={frictionBusy === d.id}
+                              title="Reject this delay request"
+                              aria-label="Reject delay request"
+                              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 rounded-lg disabled:opacity-50"
+                            >
+                              <XCircle className="w-3 h-3" />Reject
                             </button>
                           </>
                         )}
                       </div>
+                      </div>
+                      {isPending && delayRejectingId === d.id && (
+                        <div className="rounded-lg border border-red-200 bg-white p-2.5 space-y-2">
+                          <textarea
+                            value={delayRejectReason}
+                            onChange={(e) => setDelayRejectReason(e.target.value)}
+                            placeholder="Optional reason for the mentee"
+                            rows={2}
+                            className="w-full rounded-md border border-slate-200 px-2 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-red-300"
+                          />
+                          <div className="flex gap-2">
+                            <button type="button" onClick={() => onRejectDelay(d.id)} disabled={frictionBusy === d.id}
+                              className="px-2.5 py-1 rounded-md bg-red-600 hover:bg-red-700 text-white text-xs font-medium disabled:opacity-50">
+                              Confirm reject
+                            </button>
+                            <button type="button" onClick={() => { setDelayRejectingId(null); setDelayRejectReason(''); }}
+                              className="px-2.5 py-1 rounded-md border border-slate-200 text-xs text-slate-600 hover:bg-slate-50">
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
