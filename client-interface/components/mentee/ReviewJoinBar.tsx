@@ -6,6 +6,7 @@ import { Video, X, ExternalLink } from 'lucide-react';
 import { menteeApi } from '@/lib/services/mentee-api';
 import { getSocket } from '@/lib/services/socket-client';
 import { useCall } from '@/lib/context/CallContext';
+import { ReviewCameraPrompt } from '@/components/mentee/ReviewCameraPrompt';
 
 interface ActiveReview {
   sessionId: string;
@@ -30,7 +31,8 @@ export function ReviewJoinBar() {
   const pathname = usePathname();
   const [active, setActive] = useState<ActiveReview | null>(null);
   const [dismissed, setDismissed] = useState<string | null>(null);
-  const autoJoinedRef = useRef(false);
+  const [pendingJoin, setPendingJoin] = useState<ActiveReview | null>(null);
+  const autoPromptedRef = useRef(false);
 
   const { startCall, updateCall, call, leaveGuestCall, registerDock, isLive } = useCall();
   const inCall = isLive(active?.sessionId);
@@ -54,7 +56,8 @@ export function ReviewJoinBar() {
     return () => { clearInterval(t); socket?.off('review:started', onStarted); };
   }, [poll]);
 
-  const join = useCallback((review: ActiveReview) => {
+  const join = useCallback((review: ActiveReview, cameraOn: boolean) => {
+    setPendingJoin(null);
     startCall({
       sessionId: review.sessionId,
       domain: review.domain,
@@ -66,21 +69,26 @@ export function ReviewJoinBar() {
       returnHref: '/mentee/dashboard',
       polls: !!review.pollsEnabled,
       externalUrl: review.externalUrl,
+      startWithVideoMuted: !cameraOn,
     });
   }, [startCall]);
 
-  // Deep-link from the "Join review" notification (`?join=review`): the moment the
-  // active review loads, join directly instead of just landing on the dashboard.
-  // Fires once, then strips the param so a refresh doesn't re-join.
+  const openJoinPrompt = useCallback((review: ActiveReview) => {
+    setPendingJoin(review);
+  }, []);
+
+  // Deep-link from the "Join review" notification (`?join=review`): show the
+  // camera prompt as soon as the active review loads. Fires once, then strips
+  // the param so a refresh doesn't re-prompt.
   useEffect(() => {
-    if (autoJoinedRef.current || searchParams.get('join') !== 'review' || !active) return;
-    autoJoinedRef.current = true;
+    if (autoPromptedRef.current || searchParams.get('join') !== 'review' || !active) return;
+    autoPromptedRef.current = true;
     setDismissed(null);
-    join(active);
+    openJoinPrompt(active);
     const params = new URLSearchParams(Array.from(searchParams.entries()));
     params.delete('join');
     router.replace(`${pathname}${params.toString() ? `?${params.toString()}` : ''}`, { scroll: false });
-  }, [active, searchParams, router, pathname, join]);
+  }, [active, searchParams, router, pathname, openJoinPrompt]);
 
   // Follow the session to its current room.
   //
@@ -104,6 +112,14 @@ export function ReviewJoinBar() {
 
   return (
     <>
+      {pendingJoin && (
+        <ReviewCameraPrompt
+          clanName={pendingJoin.clanName}
+          onChoose={(cameraOn) => join(pendingJoin, cameraOn)}
+          onCancel={() => setPendingJoin(null)}
+        />
+      )}
+
       {!inCall && !isDismissed && (
         <div className="mb-4 flex items-center gap-3 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3">
           <span className="relative flex h-2.5 w-2.5">
@@ -114,7 +130,7 @@ export function ReviewJoinBar() {
             <p className="text-sm font-medium text-slate-900">Live review in {active.clanName}</p>
             <p className="text-xs text-slate-500">Your mentor started the clan review — hop in.</p>
           </div>
-          <button onClick={() => join(active)} className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3.5 py-2 text-sm font-medium text-white hover:bg-brand-700">
+          <button onClick={() => openJoinPrompt(active)} className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3.5 py-2 text-sm font-medium text-white hover:bg-brand-700">
             <Video className="h-4 w-4" /> Join review
           </button>
           <button onClick={() => setDismissed(active.sessionId)} aria-label="Dismiss" className="p-1.5 text-slate-400 hover:text-slate-600"><X className="h-4 w-4" /></button>

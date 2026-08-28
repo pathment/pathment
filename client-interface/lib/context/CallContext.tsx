@@ -46,6 +46,8 @@ export interface CallSpec {
   polls?: boolean;
   /** Backup join link, surfaced to a guest who can't get the embed working. */
   externalUrl?: string | null;
+  /** Guest-only: initial Jitsi camera state chosen on the pre-join prompt. */
+  startWithVideoMuted?: boolean;
 }
 
 interface CallContextValue {

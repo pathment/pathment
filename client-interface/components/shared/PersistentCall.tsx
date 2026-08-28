@@ -119,6 +119,7 @@ export function PersistentCall({
           role={call.role}
           privateChat={call.privateChat}
           polls={call.polls}
+          startWithVideoMuted={call.startWithVideoMuted}
           onJoined={onJoined}
           onParticipantJoined={onParticipantJoined}
           onDominantSpeaker={onDominantSpeaker}
