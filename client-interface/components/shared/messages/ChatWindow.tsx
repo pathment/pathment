@@ -157,7 +157,7 @@ export default function ChatWindow({
   return (
     <div className="flex flex-col h-full bg-card rounded-2xl border border-slate-200/90 dark:border-slate-800 overflow-hidden shadow-xs">
       {/* Header */}
-      <div className="p-3 sm:p-4 border-b border-slate-200/80 dark:border-slate-800 flex items-center justify-between bg-card/80 backdrop-blur-sm z-10">
+      <div className="p-3 sm:p-4 border-b border-slate-200/80 dark:border-slate-800 flex items-center justify-between bg-card/95 dark:bg-slate-900/60 backdrop-blur-sm z-10">
         <div className="flex items-center gap-3 min-w-0">
           {/* Mobile back button */}
           {onBackToList && (
@@ -249,7 +249,7 @@ export default function ChatWindow({
       <div
         ref={scrollContainerRef}
         onScroll={handleScroll}
-        className="flex-1 min-h-0 p-4 overflow-y-auto bg-slate-50/60 dark:bg-slate-950/40 space-y-1"
+        className="flex-1 min-h-0 p-4 overflow-y-auto bg-slate-50/70 dark:bg-slate-950/70 space-y-1"
       >
         {!selectedConversation ? (
           <div className="h-full flex flex-col items-center justify-center p-6 text-center text-slate-500">

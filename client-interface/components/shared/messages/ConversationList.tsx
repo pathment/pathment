@@ -97,7 +97,7 @@ export default function ConversationList({
         <div className="flex items-center justify-between gap-2">
           <div>
             <h1 className="text-lg font-bold text-slate-900 dark:text-slate-100">Messages</h1>
-            <p className="text-xs text-slate-500 capitalize">{role} workspace</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 capitalize">{role} workspace</p>
           </div>
           <div className="flex items-center gap-1.5">
             <UserSearchCombobox onSelect={onStartConversation} />
@@ -201,8 +201,8 @@ export default function ConversationList({
                 onClick={() => onSelectConversation(conversation.id)}
                 className={`w-full text-left p-3.5 transition-all flex items-start gap-3 relative cursor-pointer group ${
                   isSelected
-                    ? 'bg-brand-50/80 dark:bg-brand-500/10'
-                    : 'hover:bg-slate-50 dark:hover:bg-slate-900/40'
+                    ? 'bg-brand-50/80 dark:bg-brand-500/15 ring-1 ring-inset ring-brand-500/15 dark:ring-brand-400/25'
+                    : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'
                 }`}
               >
                 {/* Active Indicator Bar */}

@@ -19,7 +19,7 @@ interface MessageItemProps {
  * Parses raw text to automatically render URLs as clickable links
  * and simple markdown (`**bold**`, `*italic*`, `` `code` ``).
  */
-function FormattedMessageText({ text }: { text: string }) {
+function FormattedMessageText({ text, isMine }: { text: string; isMine: boolean }) {
   const parts = useMemo(() => {
     // Regex for matching URLs
     const urlRegex = /(https?:\/\/[^\s]+)/g;
@@ -33,7 +33,9 @@ function FormattedMessageText({ text }: { text: string }) {
             href={segment}
             target="_blank"
             rel="noopener noreferrer"
-            className="underline underline-offset-2 hover:opacity-80 transition-opacity break-all font-medium"
+            className={`underline underline-offset-2 hover:opacity-80 transition-opacity break-all font-medium ${
+              isMine ? 'text-white' : 'text-brand-700 dark:text-brand-300'
+            }`}
             onClick={(e) => e.stopPropagation()}
           >
             {segment}
@@ -68,7 +70,7 @@ function FormattedMessageText({ text }: { text: string }) {
         </Fragment>
       );
     });
-  }, [text]);
+  }, [text, isMine]);
 
   return <p className="text-sm whitespace-pre-wrap leading-relaxed">{parts}</p>;
 }
@@ -121,8 +123,8 @@ export default function MessageItem({
         <div
           className={`px-4 py-2.5 shadow-xs ${bubbleCornersClass} ${
             isMine
-              ? 'bg-brand-600 text-white shadow-brand-600/10'
-              : 'bg-card border border-slate-200/90 dark:border-slate-800 text-slate-800 dark:text-slate-100'
+              ? 'bg-brand-600 dark:bg-brand-500 text-white shadow-brand-600/10 dark:shadow-brand-900/30'
+              : 'bg-white dark:bg-slate-800/95 border border-slate-200/90 dark:border-slate-700/80 text-slate-800 dark:text-slate-100 shadow-xs dark:shadow-slate-950/40'
           } ${message.id.startsWith('temp-') ? 'opacity-70 animate-pulse' : ''}`}
         >
           {startsRun && !isMine && (
@@ -131,7 +133,7 @@ export default function MessageItem({
             </p>
           )}
 
-          <FormattedMessageText text={message.messageText} />
+          <FormattedMessageText text={message.messageText} isMine={isMine} />
 
           <div className={`flex items-center gap-1.5 mt-1 ${isMine ? 'justify-end' : 'justify-start'}`}>
             <span className={`text-[10px] ${isMine ? 'text-white/70' : 'text-slate-400 dark:text-slate-500'}`}>
