@@ -155,7 +155,7 @@ export default function ChatWindow({
   const recipient = selectedConversation?.participants?.[0];
 
   return (
-    <div className="flex flex-col h-full bg-card rounded-2xl border border-slate-200/90 dark:border-slate-800 overflow-hidden shadow-xs">
+    <div className="flex flex-col h-full bg-card dark:bg-slate-900 rounded-2xl border border-slate-200/90 dark:border-slate-800 overflow-hidden shadow-xs">
       {/* Header */}
       <div className="p-3 sm:p-4 border-b border-slate-200/80 dark:border-slate-800 flex items-center justify-between bg-card/95 dark:bg-slate-900/60 backdrop-blur-sm z-10">
         <div className="flex items-center gap-3 min-w-0">
@@ -249,17 +249,17 @@ export default function ChatWindow({
       <div
         ref={scrollContainerRef}
         onScroll={handleScroll}
-        className="flex-1 min-h-0 p-4 overflow-y-auto bg-slate-50/70 dark:bg-slate-950/70 space-y-1"
+        className="flex-1 min-h-0 p-4 overflow-y-auto bg-slate-50/70 dark:bg-slate-900 space-y-1"
       >
         {!selectedConversation ? (
-          <div className="h-full flex flex-col items-center justify-center p-6 text-center text-slate-500">
-            <div className="w-16 h-16 rounded-full bg-brand-50 dark:bg-brand-500/10 text-brand-600 flex items-center justify-center mb-3">
+          <div className="h-full flex flex-col items-center justify-center p-6 text-center text-slate-500 dark:text-slate-400">
+            <div className="w-16 h-16 rounded-full bg-brand-50 dark:bg-brand-500/10 text-brand-600 dark:text-brand-400 flex items-center justify-center mb-3">
               <MessageSquare className="w-8 h-8" />
             </div>
             <h3 className="text-base font-semibold text-slate-800 dark:text-slate-200 mb-1">
               Your Messages
             </h3>
-            <p className="text-sm text-slate-500 max-w-sm">
+            <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm">
               Select a conversation from the sidebar or start a new message to chat with your mentors, mentees, or clan members.
             </p>
           </div>
@@ -279,11 +279,11 @@ export default function ChatWindow({
             </div>
           </div>
         ) : messages.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center text-center p-6 text-slate-500">
-            <p className="text-sm font-medium text-slate-600 dark:text-slate-400 mb-1">
+          <div className="h-full flex flex-col items-center justify-center text-center p-6 text-slate-500 dark:text-slate-400">
+            <p className="text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">
               No messages in this chat yet.
             </p>
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-slate-400 dark:text-slate-500">
               Say hi to break the ice! 👋
             </p>
           </div>

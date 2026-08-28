@@ -91,7 +91,7 @@ export default function ConversationList({
   }, [conversations, activeTab, searchQuery]);
 
   return (
-    <div className="flex flex-col h-full bg-card rounded-2xl border border-slate-200/90 dark:border-slate-800 overflow-hidden shadow-xs">
+    <div className="flex flex-col h-full bg-card dark:bg-slate-900 rounded-2xl border border-slate-200/90 dark:border-slate-800 overflow-hidden shadow-xs">
       {/* Sidebar Header */}
       <div className="p-3 sm:p-4 border-b border-slate-200/80 dark:border-slate-800 space-y-3">
         <div className="flex items-center justify-between gap-2">
