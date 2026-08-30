@@ -32,12 +32,23 @@ const prefersDark = () =>
 
 const resolve = (mode: ThemeMode): Theme => (mode === 'system' ? (prefersDark() ? 'dark' : 'light') : mode);
 
+function sanitizeAccent(theme: Theme, accent: AccentKey): AccentKey {
+  if (theme === 'dark' && ['violet', 'rose', 'sky', 'graphite'].includes(accent)) {
+    return DEFAULT_ACCENT;
+  }
+  if (theme === 'light' && accent === 'graphite') {
+    return DEFAULT_ACCENT;
+  }
+  return accent;
+}
+
 function applyToRoot(theme: Theme, accent: AccentKey) {
   const root = document.documentElement;
   root.classList.toggle('dark', theme === 'dark');
   root.setAttribute('data-theme', theme);
-  if (accent === DEFAULT_ACCENT) root.removeAttribute('data-accent');
-  else root.setAttribute('data-accent', accent);
+  const sanitized = sanitizeAccent(theme, accent);
+  if (sanitized === DEFAULT_ACCENT) root.removeAttribute('data-accent');
+  else root.setAttribute('data-accent', sanitized);
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
@@ -62,21 +73,32 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     } catch { /* ignore */ }
 
     modeRef.current = initialMode;
-    accentRef.current = initialAccent;
     const resolved = resolve(initialMode);
-    applyToRoot(resolved, initialAccent);
+    const sanitizedAccent = sanitizeAccent(resolved, initialAccent);
+    accentRef.current = sanitizedAccent;
+    applyToRoot(resolved, sanitizedAccent);
     setModeState(initialMode);
     setThemeStateResolved(resolved);
-    setAccentState(initialAccent);
+    setAccentState(sanitizedAccent);
     setMounted(true);
+    if (sanitizedAccent !== initialAccent) {
+      try { localStorage.setItem(ACCENT_STORAGE_KEY, sanitizedAccent); } catch {}
+    }
 
     // Follow the OS when in system mode.
     const mq = window.matchMedia('(prefers-color-scheme: dark)');
     const onChange = () => {
       if (modeRef.current !== 'system') return;
       const r = prefersDark() ? 'dark' : 'light';
+      const currentAccent = accentRef.current;
+      const sanitized = sanitizeAccent(r, currentAccent);
       setThemeStateResolved(r);
-      applyToRoot(r, accentRef.current);
+      if (sanitized !== currentAccent) {
+        accentRef.current = sanitized;
+        setAccentState(sanitized);
+        persist({ accent: sanitized });
+      }
+      applyToRoot(r, sanitized);
     };
     mq.addEventListener?.('change', onChange);
 
@@ -85,11 +107,15 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       if (getToken()) {
         appearanceApi.get().then((res: any) => {
           const data = res?.data ?? res ?? {};
-          if (isAccentKey(data.colorTheme) && data.colorTheme !== accentRef.current) {
-            accentRef.current = data.colorTheme;
-            setAccentState(data.colorTheme);
-            applyToRoot(resolve(modeRef.current), data.colorTheme);
-            localStorage.setItem(ACCENT_STORAGE_KEY, data.colorTheme);
+          if (isAccentKey(data.colorTheme)) {
+            const resolvedTheme = resolve(modeRef.current);
+            const sanitized = sanitizeAccent(resolvedTheme, data.colorTheme);
+            if (sanitized !== accentRef.current) {
+              accentRef.current = sanitized;
+              setAccentState(sanitized);
+              applyToRoot(resolvedTheme, sanitized);
+              localStorage.setItem(ACCENT_STORAGE_KEY, sanitized);
+            }
           }
         }).catch(() => { /* offline - cache wins */ });
       }
@@ -116,7 +142,14 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     setModeState(m);
     const r = resolve(m);
     setThemeStateResolved(r);
-    applyToRoot(r, accent);
+    const currentAccent = accentRef.current;
+    const sanitized = sanitizeAccent(r, currentAccent);
+    if (sanitized !== currentAccent) {
+      accentRef.current = sanitized;
+      setAccentState(sanitized);
+      persist({ accent: sanitized });
+    }
+    applyToRoot(r, sanitized);
     persist({ mode: m, resolvedTheme: r });
   };
 
@@ -125,6 +158,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const setAccent = (key: AccentKey) => {
     if (!isAccentKey(key)) return;
+    const sanitized = sanitizeAccent(theme, key);
+    if (sanitized !== key) return;
     accentRef.current = key;
     setAccentState(key);
     applyToRoot(theme, key);

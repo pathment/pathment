@@ -16,7 +16,15 @@ const MODES: { key: ThemeMode; label: string; Icon: typeof Sun }[] = [
  * neutrals and status colors are always safe.
  */
 export function AppearanceTab() {
-  const { accent, setAccent, presets, mode, setMode } = useTheme();
+  const { accent, setAccent, presets, mode, setMode, theme } = useTheme();
+
+  const filteredPresets = presets.filter((p) => {
+    if (theme === 'dark') {
+      return p.key !== 'violet' && p.key !== 'rose' && p.key !== 'sky' && p.key !== 'graphite';
+    } else {
+      return p.key !== 'graphite';
+    }
+  });
 
   return (
     <div className="space-y-8">
@@ -44,7 +52,7 @@ export function AppearanceTab() {
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-        {presets.map((p) => {
+        {filteredPresets.map((p) => {
           const selected = accent === p.key;
           return (
             <button
