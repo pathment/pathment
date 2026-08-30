@@ -855,7 +855,7 @@ class MessagingService {
   }
 
   async searchUsers(currentUserId, query = '', options = {}) {
-    const limit = Math.min(Math.max(Number(options.limit || 10), 1), 25);
+    const limit = Math.min(Math.max(Number(options.limit || 200), 1), 500);
     const roleFilter = options.role;
 
     const where = {
@@ -868,11 +868,25 @@ class MessagingService {
       where.role = roleFilter;
     }
 
-    // Restrict a mentee's recipient picker to their mentor(s) + clan members.
+    // Determine the user's clan members
+    const myClans = await models.ClanMembership.findAll({
+      where: { userId: currentUserId, status: 'active' },
+      attributes: ['clanId']
+    });
+    const myClanIds = myClans.map((c) => c.clanId);
+
     const allowed = await this.getAllowedRecipientIds(currentUserId);
     if (allowed !== null) {
       if (!allowed.length) return [];
       where.id = { [Op.ne]: currentUserId, [Op.in]: allowed };
+    } else if (!query.trim() && myClanIds.length) {
+      // Mentor/Admin with a clan: restrict/filter to their clan members when query is empty
+      const clanMembers = await models.ClanMembership.findAll({
+        where: { clanId: { [Op.in]: myClanIds }, status: 'active' },
+        attributes: ['userId']
+      });
+      const clanUserIds = clanMembers.map((m) => m.userId).filter((id) => id !== currentUserId);
+      where.id = { [Op.ne]: currentUserId, [Op.in]: clanUserIds };
     }
 
     if (query.trim()) {

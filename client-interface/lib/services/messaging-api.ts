@@ -93,8 +93,8 @@ export const messagingApi = {
     return response.data;
   },
 
-  async searchUsers(query: string, role?: string): Promise<SearchableUser[]> {
-    const params = new URLSearchParams({ q: query, limit: '10' });
+  async searchUsers(query: string, page: number = 1, role?: string): Promise<SearchableUser[]> {
+    const params = new URLSearchParams({ q: query, page: String(page), limit: '25' });
     if (role) {
       params.set('role', role);
     }

@@ -35,31 +35,65 @@ export default function UserSearchCombobox({ onSelect }: UserSearchComboboxProps
   const [roleFilter, setRoleFilter] = useState<string | undefined>();
   const [results, setResults] = useState<SearchableUser[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [isFetchingNextPage, setIsFetchingNextPage] = useState(false);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const fetchUsers = useCallback(async (searchTerm: string, role?: string) => {
-    setIsLoading(true);
+  const fetchUsers = useCallback(async (searchTerm: string, currentPage: number, role?: string) => {
+    if (currentPage === 1) {
+      setIsLoading(true);
+    } else {
+      setIsFetchingNextPage(true);
+    }
     try {
-      const users = await messagingApi.searchUsers(searchTerm, role);
-      setResults(users);
+      const users = await messagingApi.searchUsers(searchTerm, currentPage, role);
+      setResults((prev) => {
+        if (currentPage === 1) return users;
+        const ids = new Set(prev.map((u) => u.id));
+        return [...prev, ...users.filter((u) => !ids.has(u.id))];
+      });
+      setHasMore(users.length === 25);
     } catch {
-      setResults([]);
+      if (currentPage === 1) {
+        setResults([]);
+      }
     } finally {
       setIsLoading(false);
+      setIsFetchingNextPage(false);
     }
   }, []);
 
-  // Debounced search when query or role changes
+  // Reset pagination on query or roleFilter change
+  useEffect(() => {
+    setPage(1);
+    setResults([]);
+    setHasMore(true);
+  }, [query, roleFilter]);
+
+  // Reset state completely when popover closes
+  useEffect(() => {
+    if (!open) {
+      setQuery('');
+      setRoleFilter(undefined);
+      setPage(1);
+      setResults([]);
+      setHasMore(true);
+    }
+  }, [open]);
+
+  // Debounced search for query/role changes (page=1)
   useEffect(() => {
     if (!open) return;
+    if (page !== 1) return;
 
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
     }
 
     debounceRef.current = setTimeout(() => {
-      fetchUsers(query, roleFilter);
+      fetchUsers(query, 1, roleFilter);
     }, DEBOUNCE_MS);
 
     return () => {
@@ -67,19 +101,32 @@ export default function UserSearchCombobox({ onSelect }: UserSearchComboboxProps
         clearTimeout(debounceRef.current);
       }
     };
-  }, [query, roleFilter, open, fetchUsers]);
+  }, [query, roleFilter, open, fetchUsers, page]);
 
-  // Load initial results when popover opens
+  // Load next page when page changes (> 1)
   useEffect(() => {
-    if (open) {
-      fetchUsers('', roleFilter);
+    if (open && page > 1) {
+      fetchUsers(query, page, roleFilter);
     }
-  }, [open, fetchUsers, roleFilter]);
+  }, [page, open, fetchUsers]);
 
   const handleSelect = (user: SearchableUser) => {
     onSelect(user);
     setOpen(false);
     setQuery('');
+  };
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.currentTarget;
+    const tolerance = 20; // px before reaching bottom
+    if (
+      target.scrollHeight - target.scrollTop <= target.clientHeight + tolerance &&
+      hasMore &&
+      !isLoading &&
+      !isFetchingNextPage
+    ) {
+      setPage((prev) => prev + 1);
+    }
   };
 
   const roleOptions = [
@@ -123,7 +170,7 @@ export default function UserSearchCombobox({ onSelect }: UserSearchComboboxProps
             ))}
           </div>
 
-          <CommandList>
+          <CommandList onScroll={handleScroll}>
             {isLoading ? (
               <div className="flex items-center justify-center py-6">
                 <Loader2 className="w-4 h-4 animate-spin text-brand-600" />
@@ -184,6 +231,12 @@ export default function UserSearchCombobox({ onSelect }: UserSearchComboboxProps
                     );
                   })}
                 </CommandGroup>
+
+                {isFetchingNextPage && (
+                  <div className="flex items-center justify-center py-4 border-t border-slate-50">
+                    <Loader2 className="w-4 h-4 animate-spin text-brand-600" />
+                  </div>
+                )}
               </>
             )}
           </CommandList>
