@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { CheckCircle2, Clock, Award, Pencil, RotateCcw, Trash2, Loader2, StickyNote, ClipboardCheck } from 'lucide-react';
+import { CheckCircle2, Clock, Award, Pencil, RotateCcw, Trash2, Loader2, StickyNote, ClipboardCheck, Star } from 'lucide-react';
 import { Drawer } from '@/components/shared/Drawer';
 import { ResourceLink } from '@/components/shared/ResourceLink';
 import { TaskEditDrawer } from '@/components/mentor/TaskEditDrawer';
@@ -12,6 +12,7 @@ import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { useConfirm } from '@/lib/context/ConfirmContext';
 import { pointsForDifficulty } from '@/lib/config/points';
 import { isMissingDescription, looksLikeHtml } from '@/lib/utils/html';
+import { taskReviewSummary } from '@/lib/utils/task-feedback';
 
 const STATUS_CLS: Record<string, string> = {
   assigned: 'bg-slate-100 text-slate-600', not_started: 'bg-slate-100 text-slate-600',
@@ -33,9 +34,9 @@ const DIFF_CLS: Record<string, string> = {
 export function MenteeTaskDrawer({ task, onClose, onChanged }: { task: any; onClose: () => void; onChanged: () => void }) {
   const router = useRouter();
   const confirm = useConfirm();
-  // Open in the edit form directly (one click from the review list). Closing
-  // the editor returns to this read-only view so Unassign / Review stay available.
-  const [editing, setEditing] = useState(true);
+  // Completed tasks open read-only so review summary is visible first; others
+  // open the edit form (one click from the review list).
+  const [editing, setEditing] = useState(task.status !== 'completed');
   const [busy, setBusy] = useState(false);
   const rt = task.roadmapTask || {};
   const title = rt.title || task.title || 'Task';
@@ -45,6 +46,11 @@ export function MenteeTaskDrawer({ task, onClose, onChanged }: { task: any; onCl
   const criteria: string[] = rt.acceptanceCriteria || task.acceptanceCriteria || [];
   const resources: any[] = rt.resources || [];
   const due = task.dueDate ? new Date(task.dueDate) : null;
+  const maxPoints = task.points ?? task.pointsBase ?? pointsForDifficulty(rt.difficulty);
+  const { rating, note: feedbackNote, pointsAwarded } = taskReviewSummary(task);
+  const latestSub = task.submissions?.[0];
+  const submittedAt = latestSub?.submittedAt || task.submittedAt;
+  const reviewedAt = latestSub?.reviewedAt || task.completedAt;
 
   const reassign = async () => {
     try { setBusy(true); await taskApi.reassignTask(task.id); toast.success('Task reassigned'); onChanged(); onClose(); }
@@ -111,8 +117,51 @@ export function MenteeTaskDrawer({ task, onClose, onChanged }: { task: any; onCl
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
             {due && <span className="inline-flex items-center gap-1"><Clock className="w-3.5 h-3.5" />due {due.toLocaleDateString()}</span>}
             {rt.estimatedHours != null && <span>{rt.estimatedHours}h est.</span>}
-            <span className="inline-flex items-center gap-1"><Award className="w-3.5 h-3.5" />{pointsForDifficulty(rt.difficulty)} pts</span>
+            <span className="inline-flex items-center gap-1">
+              <Award className="w-3.5 h-3.5" />
+              {task.status === 'completed' && pointsAwarded != null && maxPoints != null
+                ? `${pointsAwarded} / ${maxPoints} pts earned`
+                : `${maxPoints ?? pointsForDifficulty(rt.difficulty)} pts`}
+            </span>
           </div>
+
+          {task.status === 'completed' && (rating != null || pointsAwarded != null || submittedAt || reviewedAt || feedbackNote) && (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 dark:bg-emerald-500/10 dark:border-emerald-500/30 px-4 py-3 space-y-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-800 dark:text-emerald-300">Review summary</p>
+              {rating != null && (
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-0.5">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <Star
+                        key={star}
+                        className={`w-4 h-4 ${star <= rating ? 'fill-amber-400 text-amber-400' : 'text-slate-200'}`}
+                      />
+                    ))}
+                  </div>
+                  <span className="text-sm text-slate-700 dark:text-slate-200">{rating.toFixed(1)} / 5</span>
+                </div>
+              )}
+              {pointsAwarded != null && (
+                <p className="text-sm text-slate-700 dark:text-slate-200 inline-flex items-center gap-1.5">
+                  <Award className="w-4 h-4 text-brand-500" />
+                  <span className="font-medium">{pointsAwarded}</span>
+                  {maxPoints != null && <span className="text-slate-500">/ {maxPoints} points earned</span>}
+                </p>
+              )}
+              {(submittedAt || reviewedAt) && (
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600 dark:text-slate-300">
+                  {submittedAt && <span>Submitted {new Date(submittedAt).toLocaleDateString()}</span>}
+                  {reviewedAt && <span>Reviewed {new Date(reviewedAt).toLocaleDateString()}</span>}
+                </div>
+              )}
+              {feedbackNote && (
+                <div>
+                  <p className="text-[11px] font-medium text-slate-500 mb-0.5">Your feedback</p>
+                  <p className="text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap">{feedbackNote}</p>
+                </div>
+              )}
+            </div>
+          )}
 
           {task.status === 'cancelled' && task.cancellationReason && (
             <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2">
