@@ -3,6 +3,24 @@ const { models } = require('../db');
 const notificationOrchestrator = require('./notificationOrchestrator');
 const { NOTIFICATION_EVENTS } = require('../config/notificationMatrix');
 
+const formatDueDate = (date) => {
+  try {
+    const d = new Date(date);
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const month = months[d.getUTCMonth()];
+    const day = d.getUTCDate();
+    const year = d.getUTCFullYear();
+    let hours = d.getUTCHours();
+    const minutes = String(d.getUTCMinutes()).padStart(2, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    hours = hours ? hours : 12;
+    return `${month} ${day}, ${year} at ${hours}:${minutes} ${ampm} UTC`;
+  } catch (e) {
+    return date ? String(date) : 'N/A';
+  }
+};
+
 class NotificationScheduler {
   start() {
     const intervalMs = Number(process.env.NOTIFICATION_SCHEDULER_INTERVAL_MS || 60 * 60 * 1000);
@@ -85,17 +103,63 @@ class NotificationScheduler {
     });
 
     for (const task of tasks) {
+      const taskTitle = task.titleOverride || task.roadmapTask?.title || 'Task';
+      const dueDateFormatted = formatDueDate(task.dueDate);
+      const menteeName = task.mentee?.firstName || 'there';
+
+      const emailBodyHtml = `
+<table cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;margin:0 0 20px;">
+  <tr>
+    <td style="padding:16px 20px;background:#fffbeb;border:1px solid #fef3c7;border-radius:10px;">
+      <!-- Status Badge -->
+      <table cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:0 0 12px;">
+        <tr>
+          <td style="padding:4px 8px;background:#fef3c7;border-radius:4px;color:#d97706;font-size:12px;font-weight:bold;text-transform:uppercase;letter-spacing:0.5px;">
+            Approaching
+          </td>
+        </tr>
+      </table>
+      
+      <!-- Task Title -->
+      <h3 style="margin:0 0 8px;font-size:16px;color:#0f172a;font-weight:700;">
+        ${taskTitle}
+      </h3>
+      
+      <!-- Details -->
+      <table cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;font-size:14px;color:#475569;">
+        <tr>
+          <td width="80" style="padding:4px 0;font-weight:600;color:#64748b;">Deadline:</td>
+          <td style="padding:4px 0;color:#0f172a;">${dueDateFormatted}</td>
+        </tr>
+        <tr>
+          <td width="80" style="padding:4px 0;font-weight:600;color:#64748b;">Status:</td>
+          <td style="padding:4px 0;color:#d97706;font-weight:600;">Due Soon</td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+
+<p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#475569;">
+  Hi ${menteeName}, the deadline for this task is approaching. Please make sure to complete your work and submit it before the deadline to keep your progress on track.
+</p>
+      `;
+
+      const emailPlainBody = `Task: ${taskTitle}\nDeadline: ${dueDateFormatted}\nStatus: Due Soon\n\nHi ${menteeName}, the deadline for this task is approaching. Please make sure to complete your work and submit it before the deadline to keep your progress on track.`;
+
       await notificationOrchestrator.dispatch({
         eventKey: NOTIFICATION_EVENTS.TASK_DEADLINE_APPROACHING,
         recipients: [{ userId: task.menteeId }],
         payload: {
           title: 'Task deadline approaching',
-          message: `"${task.roadmapTask?.title || 'Task'}" is due soon.`,
+          message: `"${taskTitle}" is due soon.`,
           actionUrl: `/mentee/tasks/${task.id}`,
           actionLabel: 'Open Task',
           relatedEntityType: 'assigned_task',
           relatedEntityId: task.id,
-          emailSubject: 'Pathment: Task deadline approaching'
+          emailSubject: 'Pathment: Task deadline approaching',
+          emailBodyHtml,
+          emailPlainBody
         },
         dedupe: {
           relatedEntityType: 'assigned_task',
@@ -114,28 +178,71 @@ class NotificationScheduler {
         status: { [Op.in]: ['assigned', 'in_progress', 'submitted', 'revision_needed'] }
       },
       include: [
+        { model: models.User, as: 'mentee', attributes: ['id', 'firstName'] },
         { model: models.RoadmapTask, as: 'roadmapTask', attributes: ['id', 'title'] }
       ],
       limit: 200
     });
 
     for (const task of tasks) {
-      // In-app for mentee
+      const taskTitle = task.titleOverride || task.roadmapTask?.title || 'Task';
+      const dueDateFormatted = formatDueDate(task.dueDate);
+      const menteeName = task.mentee?.firstName || 'there';
+
+      const emailBodyHtml = `
+<table cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;margin:0 0 20px;">
+  <tr>
+    <td style="padding:16px 20px;background:#fef2f2;border:1px solid #fee2e2;border-radius:10px;">
+      <!-- Status Badge -->
+      <table cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:0 0 12px;">
+        <tr>
+          <td style="padding:4px 8px;background:#fee2e2;border-radius:4px;color:#dc2626;font-size:12px;font-weight:bold;text-transform:uppercase;letter-spacing:0.5px;">
+            Overdue
+          </td>
+        </tr>
+      </table>
+      
+      <!-- Task Title -->
+      <h3 style="margin:0 0 8px;font-size:16px;color:#0f172a;font-weight:700;">
+        ${taskTitle}
+      </h3>
+      
+      <!-- Details -->
+      <table cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;font-size:14px;color:#475569;">
+        <tr>
+          <td width="80" style="padding:4px 0;font-weight:600;color:#64748b;">Deadline:</td>
+          <td style="padding:4px 0;color:#0f172a;">${dueDateFormatted}</td>
+        </tr>
+        <tr>
+          <td width="80" style="padding:4px 0;font-weight:600;color:#64748b;">Status:</td>
+          <td style="padding:4px 0;color:#dc2626;font-weight:600;">Passed</td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+
+<p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#475569;">
+  Hi ${menteeName}, the deadline for this task has passed. If you need more time, please request an extension in Pathment or reach out to your mentor.
+</p>
+      `;
+
+      const emailPlainBody = `Task: ${taskTitle}\nDeadline: ${dueDateFormatted}\nStatus: Passed\n\nHi ${menteeName}, the deadline for this task has passed. If you need more time, please request an extension in Pathment or reach out to your mentor.`;
+
+      // In-app & Email for mentee
       await notificationOrchestrator.dispatch({
         eventKey: NOTIFICATION_EVENTS.SUBMISSION_DEADLINE_PASSED,
         recipients: [{ userId: task.menteeId }],
         payload: {
           title: 'Task deadline passed',
-          message: `Deadline passed for "${task.roadmapTask?.title || 'Task'}".`,
+          message: `Deadline passed for "${taskTitle}".`,
           actionUrl: `/mentee/tasks/${task.id}`,
           actionLabel: 'Open Task',
           relatedEntityType: 'assigned_task',
           relatedEntityId: task.id,
-          emailSubject: 'Pathment: Submission deadline passed'
-        },
-        channelOverrides: {
-          inApp: true,
-          email: false
+          emailSubject: 'Pathment: Submission deadline passed',
+          emailBodyHtml,
+          emailPlainBody
         },
         dedupe: {
           relatedEntityType: 'assigned_task',
@@ -149,7 +256,7 @@ class NotificationScheduler {
         recipients: [{ userId: task.mentorId }],
         payload: {
           title: 'Task deadline passed',
-          message: `Deadline passed for "${task.roadmapTask?.title || 'Task'}".`,
+          message: `Deadline passed for "${taskTitle}".`,
           actionUrl: `/mentor/tasks/${task.id}/feedback`,
           actionLabel: 'Review Task',
           relatedEntityType: 'assigned_task',

@@ -162,14 +162,14 @@ class NotificationOrchestrator {
             const cta = { label: 'Open Pathment', url: pageLink(payload.actionUrl) };
             const html = payload.emailHtml || renderEmail({
               heading,
-              bodyHtml: `<p style="margin:0 0 14px;">${escHtml(bodyText)}</p>`,
+              bodyHtml: payload.emailBodyHtml || `<p style="margin:0 0 14px;">${escHtml(bodyText)}</p>`,
               cta,
-              preheader: bodyText,
+              preheader: payload.emailPlainBody || bodyText,
               unsubscribeUrl: unsub,
             });
             const text = payload.emailText
               ? payload.emailText
-              : plainText({ heading, bodyText, cta, unsubscribeUrl: unsub });
+              : plainText({ heading, bodyText: payload.emailPlainBody || bodyText, cta, unsubscribeUrl: unsub });
             await emailService.enqueue({
               to: user.email,
               subject: payload.emailSubject || payload.title,
