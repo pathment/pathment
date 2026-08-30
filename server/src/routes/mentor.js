@@ -111,6 +111,7 @@ router.post('/approvals/bulk-review', authenticate, authorize(['mentor', 'admin'
 
 // Nudge a mentee.
 router.post('/nudge', authenticate, authorize(['mentor', 'admin']), cohortController.nudge);
+router.post('/nudge/bulk', authenticate, authorize(['mentor', 'admin']), cohortController.bulkNudge);
 
 // Linear roadmaps (author / import / assign).
 router.get('/roadmaps', mentorOnly, linearRoadmapController.list);
