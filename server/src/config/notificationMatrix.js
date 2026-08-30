@@ -25,6 +25,7 @@ EXTENSION_HANDLED: 'extension_handled',
   MENTOR_FEEDBACK_REQUESTED: 'mentor_feedback_requested',
   MEETING_CANCELLED: 'meeting_cancelled',
   MEETING_BOOKED: 'meeting_booked',
+  MEETING_REMINDER: 'meeting_reminder',
   CROSS_CLAN_ASSIGNED: 'cross_clan_assigned',
   NEW_MENTEE_IN_CLAN: 'new_mentee_in_clan',
   MENTEE_TRANSFER_REQUESTED: 'mentee_transfer_requested',
@@ -246,6 +247,12 @@ const NOTIFICATION_MATRIX = {
     preferenceKey: 'meeting_booked',
     channels: { inApp: true, email: true, chat: false }
   },
+  [NOTIFICATION_EVENTS.MEETING_REMINDER]: {
+    type: 'system',
+    audience: 'any',
+    preferenceKey: 'meeting_reminder',
+    channels: { inApp: true, email: true, chat: false }
+  },
   [NOTIFICATION_EVENTS.CROSS_CLAN_ASSIGNED]: {
     type: 'system',
     audience: 'mentor',
@@ -403,6 +410,7 @@ const EMAIL_PREFERENCE_CATEGORIES = [
   { group: 'Program', key: 'program_updates', label: 'Program updates' },
   { group: 'Program', key: 'meeting_booked', label: 'A 1:1 is booked' },
   { group: 'Program', key: 'meeting_cancelled', label: 'A 1:1 is cancelled' },
+  { group: 'Program', key: 'meeting_reminder', label: 'A 1:1 meeting reminder is sent (30m before)' },
   { group: 'Program', key: 'cross_clan_assigned', label: 'I\'m asked to cover or help another clan' },
   { group: 'Program', key: 'new_mentee_in_clan', label: 'A new mentee joins my clan' },
   { group: 'Program', key: 'promotion_nominated', label: 'A mentee is nominated for promotion (admins)' },
