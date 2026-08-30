@@ -47,7 +47,9 @@ const proposeContribution = catchAsync(async (req, res) => {
   res.status(200).json(successResponse('Proposed contribution', { proposed }));
 });
 const finalizeContribution = catchAsync(async (req, res) => {
-  const result = await svc.finalizeContribution(req.user.id, req.params.id, req.body?.menteeIds || []);
+  const result = await svc.finalizeContribution(req.user.id, req.params.id, req.body?.menteeIds || [], {
+    sendAbsentEmails: req.body?.sendAbsentEmails === true
+  });
   res.status(200).json(successResponse('Contribution awarded', result));
 });
 

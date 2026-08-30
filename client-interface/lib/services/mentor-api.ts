@@ -120,8 +120,8 @@ export const mentorApi = {
   recordReviewTalkTime: (id: string, items: { menteeId: string; seconds: number }[]) =>
     apiClient.post(`/mentor/review/sessions/${id}/meeting/talk-time`, { items }),
   proposeReviewContribution: (id: string) => apiClient.get(`/mentor/review/sessions/${id}/meeting/contribution`),
-  finalizeReviewContribution: (id: string, menteeIds: string[]) =>
-    apiClient.post(`/mentor/review/sessions/${id}/meeting/contribution`, { menteeIds }),
+  finalizeReviewContribution: (id: string, menteeIds: string[], sendAbsentEmails?: boolean) =>
+    apiClient.post(`/mentor/review/sessions/${id}/meeting/contribution`, { menteeIds, sendAbsentEmails }),
 
   // Recurring review schedules (weekly / biweekly). Each occurrence auto-creates
   // a session, opens its room at the scheduled time, and emails timezone-correct

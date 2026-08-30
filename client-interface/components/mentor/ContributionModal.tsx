@@ -24,15 +24,25 @@ export function ContributionModal({ proposed, sessionId, onClose, onDone }: {
 }) {
   // Pre-check the speakers; the mentor can add anyone else who contributed.
   const [picked, setPicked] = useState<Set<string>>(new Set(proposed.filter((p) => p.proposed && !p.alreadyAwarded).map((p) => p.menteeId)));
+  const [sendAbsentEmails, setSendAbsentEmails] = useState(true);
   const [busy, setBusy] = useState(false);
 
   const award = async () => {
     setBusy(true);
     try {
-      const res = await mentorApi.finalizeReviewContribution(sessionId, [...picked]) as { data?: { awarded: number } };
+      const res = await mentorApi.finalizeReviewContribution(sessionId, [...picked], sendAbsentEmails) as { data?: { awarded: number } };
       toast.success(`Awarded a contribution point to ${res?.data?.awarded ?? 0} mentee(s)`);
       onDone();
     } catch { toast.error('Could not award points'); }
+    finally { setBusy(false); }
+  };
+
+  const skip = async () => {
+    setBusy(true);
+    try {
+      await mentorApi.finalizeReviewContribution(sessionId, [], sendAbsentEmails);
+      onDone();
+    } catch { toast.error('Could not complete review'); }
     finally { setBusy(false); }
   };
 
@@ -58,8 +68,19 @@ export function ContributionModal({ proposed, sessionId, onClose, onDone }: {
             </label>
           ))}
         </div>
+        <div className="mt-4 border-t border-slate-100 pt-3">
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={sendAbsentEmails}
+              onChange={(e) => setSendAbsentEmails(e.target.checked)}
+              className="mt-0.5 rounded text-brand-600 focus:ring-brand-500"
+            />
+            <span className="text-xs text-slate-600">Send &quot;We missed you at today&apos;s review&quot; email to absent mentees</span>
+          </label>
+        </div>
         <div className="mt-4 flex justify-end gap-2">
-          <button onClick={onClose} disabled={busy} className="px-4 py-2 rounded-lg border border-slate-200 text-sm text-slate-700">Skip</button>
+          <button onClick={skip} disabled={busy} className="px-4 py-2 rounded-lg border border-slate-200 text-sm text-slate-700">Skip</button>
           <button onClick={award} disabled={busy || picked.size === 0} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700 disabled:opacity-50">
             {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trophy className="w-4 h-4" />} Award {picked.size}
           </button>

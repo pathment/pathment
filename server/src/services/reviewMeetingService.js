@@ -202,7 +202,6 @@ class ReviewMeetingService {
       patch.finishedAt = session.finishedAt || new Date();
     }
     if (Object.keys(patch).length) await session.update(patch);
-    require('./cohortReviewService')._notifyAbsentMentees(session).catch(() => {});
     return this._joinConfig(session, null);
   }
 
@@ -223,21 +222,16 @@ class ReviewMeetingService {
       const session = await require('./reviewScheduleService')._findOrCreateSession(s, occ);
       // Deliberately ended AFTER this occurrence started → stays closed.
       if (session.meetingEndedAt && new Date(session.meetingEndedAt).getTime() >= occ.start.getTime()) continue;
-      const openForThis = session.meetingStartedAt
-        && new Date(session.meetingStartedAt).getTime() === occ.start.getTime()
-        && !session.meetingEndedAt;
-      if (!openForThis) {
+
+      const isConfiguredForOcc = session.scheduledAt
+        && new Date(session.scheduledAt).getTime() === occ.start.getTime();
+      if (!isConfiguredForOcc) {
         // Fresh occurrence — clean the attendance slate so it doesn't inherit an
-        // earlier call's / seeded marks, then open (or re-open over an earlier call).
+        // earlier call's / seeded marks, then configure for this occurrence.
         await this._wipePerCallAttendance(session.id);
-        const patch = { scheduledAt: occ.start, reviewScheduleId: s.id, meetingStartedAt: occ.start, meetingEndedAt: null, status: 'in_progress' };
-        // A new occurrence is a new call, so it gets a new room — but only if the
-        // previous one was ended. If a call is live right now (an ad-hoc review the
-        // mentor started before the window opened) rotating would strand everyone
-        // already in it, so leave that room alone.
+        const patch = { scheduledAt: occ.start, reviewScheduleId: s.id };
         if (this._needsFreshRoom(session)) Object.assign(patch, this._roomPatch(session));
         await session.update(patch);
-        this._notifyMenteesStarted(session).catch((err) => console.error('scheduled review start notify failed (non-fatal):', err.message));
       }
       return { schedule: s, occ, session };
     }
@@ -314,69 +308,34 @@ class ReviewMeetingService {
 
     const now = new Date();
     // (0) SCHEDULE-DRIVEN liveness (the reliable path): if any active recurring
-    //     schedule for the mentee's clan is live right now, open + return it. This
-    //     is window-based off the SCHEDULE, so it works even when the shared
-    //     day-session's frozen `scheduled_at` points at a different schedule (e.g.
-    //     two reviews the same day) — the exact bug where nothing showed at 4:10.
+    //     schedule for the mentee's clan is live right now, AND has been explicitly started.
     try {
       const live = await this._liveScheduleForClans(clanIds, now);
-      if (live) {
+      if (live && live.session.meetingStartedAt && !live.session.meetingEndedAt) {
         const u = await models.User.findByPk(userId, { attributes: ['id', 'firstName', 'lastName', 'profilePictureUrl'] });
         const clan = await models.Clan.findByPk(live.session.clanId, { attributes: ['name'] });
         return { ...this._joinConfig(live.session, this._fullName(u), u && u.profilePictureUrl), clanName: clan?.name || 'your clan' };
       }
     } catch (e) { console.error('[activeForMentee] schedule-live check failed:', e.message); }
 
-    // Staleness guard: a meeting the mentor never cleanly ended (closed the tab
-    // / hung up in Jitsi instead of "End & score") would otherwise leave
-    // meetingEndedAt null forever and show the "Join review" banner to mentees
-    // indefinitely. Only treat a meeting as live if it started recently.
+    // (1) Ad-hoc / manual: the mentor started a call recently and hasn't ended it.
     const freshCutoff = new Date(Date.now() - MEETING_STALE_HOURS * 60 * 60 * 1000);
     const session = await models.CohortReviewSession.findOne({
       where: {
         clanId: { [Op.in]: clanIds },
-        [Op.or]: [
-          // (a) Ad-hoc / manual: the mentor started a call recently and hasn't
-          //     ended it. Liveness tracks the CALL (started + not ended), NOT the
-          //     review's workflow status — a mentor can run a live call on a
-          //     'finished' review (reopen / "start a new call"), and mentees must
-          //     still see the Join banner.
-          { meetingStartedAt: { [Op.gt]: freshCutoff }, meetingEndedAt: null },
-          // (b) SCHEDULED review whose time has arrived. Deliberately does NOT
-          //     depend on `status` or on any earlier call that day: the day's
-          //     session is shared with ad-hoc reviews, so a prior finish/end must
-          //     never suppress the scheduled occurrence. It's live during its
-          //     window unless it was ended AFTER its own scheduled start.
-          {
-            reviewScheduleId: { [Op.ne]: null },
-            scheduledAt: { [Op.gt]: freshCutoff, [Op.lte]: now },
-            [Op.or]: [
-              { meetingEndedAt: null },
-              { meetingEndedAt: { [Op.lt]: col('scheduled_at') } },
-            ],
-          },
-        ],
+        meetingStartedAt: { [Op.gt]: freshCutoff },
+        meetingEndedAt: null,
       },
       order: [['scheduled_at', 'DESC'], ['meeting_started_at', 'DESC']],
     });
-    // Opt-in diagnostics (set REVIEW_DEBUG=true): explains WHY a scheduled review
-    // is / isn't surfacing to a mentee, straight from the actual rows.
-    if (process.env.REVIEW_DEBUG === 'true') {
-      const recent = await models.CohortReviewSession.findAll({
-        where: { clanId: { [Op.in]: clanIds }, [Op.or]: [{ scheduledAt: { [Op.ne]: null } }, { meetingStartedAt: { [Op.ne]: null } }] },
-        order: [['createdAt', 'DESC']], limit: 5,
-        attributes: ['id', 'clanId', 'status', 'scheduledAt', 'meetingStartedAt', 'meetingEndedAt', 'reviewScheduleId'],
-      });
-      console.log('[REVIEW_DEBUG] activeForMentee', {
-        userId, clanIds, now: now.toISOString(), freshCutoff: freshCutoff.toISOString(),
-        matched: session ? session.id : null,
-        candidates: recent.map((r) => ({ id: r.id, status: r.status, scheduledAt: r.scheduledAt, startedAt: r.meetingStartedAt, endedAt: r.meetingEndedAt, sched: !!r.reviewScheduleId })),
-      });
+
+    if (session) {
+      const u = await models.User.findByPk(userId, { attributes: ['id', 'firstName', 'lastName', 'profilePictureUrl'] });
+      const clan = await models.Clan.findByPk(session.clanId, { attributes: ['name'] });
+      return { ...this._joinConfig(session, this._fullName(u), u && u.profilePictureUrl), clanName: clan?.name || 'your clan' };
     }
-    if (!session) return null;
-    const user = await models.User.findByPk(userId, { attributes: ['id', 'firstName', 'lastName', 'profilePictureUrl'] });
-    const clan = await models.Clan.findByPk(session.clanId, { attributes: ['name'] });
-    return { ...this._joinConfig(session, this._fullName(user), user && user.profilePictureUrl), clanName: clan?.name || 'your clan' };
+
+    return null;
   }
 
   /** Mark the AUTHENTICATED mentee present (self-report). Only marks themselves. */
@@ -460,8 +419,8 @@ class ReviewMeetingService {
    * Award the contribution point to the confirmed mentees. Idempotent per
    * (session, mentee) — a re-finalize never double-awards.
    */
-  async finalizeContribution(mentorId, sessionId, menteeIds = []) {
-    await this._hostSession(mentorId, sessionId);
+  async finalizeContribution(mentorId, sessionId, menteeIds = [], { sendAbsentEmails } = {}) {
+    const session = await this._hostSession(mentorId, sessionId);
     if (!Array.isArray(menteeIds)) throw new ValidationError('menteeIds must be an array');
     const gamificationService = require('./gamificationService');
     let awarded = 0;
@@ -477,6 +436,11 @@ class ReviewMeetingService {
         console.warn('[reviewMeeting] contribution award failed for', menteeId, e.message);
       }
     }
+
+    if (sendAbsentEmails) {
+      require('./cohortReviewService')._notifyAbsentMentees(session).catch(() => {});
+    }
+
     return { awarded };
   }
 }
