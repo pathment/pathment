@@ -2,7 +2,8 @@ import { apiClient } from './api-client';
 
 export type AIProvider = 'groq' | 'openai' | 'anthropic' | 'gemini' | 'openrouter' | 'custom';
 export type AIKeyStatus = 'connected' | 'error' | 'untested';
-export type AIFeature = 'summary' | 'delay' | 'atrisk' | 'nudge' | 'stall' | 'coaching' | 'feedback' | 'roadmap' | 'rag_generation' | 'rag_grounding' | 'rag_embedding' | 'auto_reply';
+export type AIFeature = 'summary' | 'delay' | 'atrisk' | 'nudge' | 'stall' | 'coaching' | 'feedback' | 'roadmap' | 'rag_generation' | 'rag_grounding' | 'rag_embedding' | 'auto_reply' | 'certificates';
+
 export type AIRouting = Partial<Record<Exclude<AIFeature, 'auto_reply'>, string | null>>;
 
 export interface AIConnection {

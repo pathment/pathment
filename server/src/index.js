@@ -157,6 +157,11 @@ async function start() {
     // Initialize RAG subsystem (Workers & Event Listeners)
     const { initializeRag } = require('./features/rag');
     initializeRag();
+
+    // Initialize Certificate Queue Workers (PDF & AI Evaluation)
+    if (process.env.CERTIFICATE_WORKER_DISABLED !== 'true') {
+      require('./workers/certificateWorker').start();
+    }
     if (process.env.NOTIFICATION_SCHEDULER_DISABLED !== 'true') {
       notificationScheduler.start();
     }

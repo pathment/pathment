@@ -28,14 +28,15 @@ const PROVIDERS = Object.keys(PROVIDER_BASE);
 // Per-provider default model used when a connection doesn't specify one. Each id
 // is valid FOR THAT PROVIDER — never cross a Groq id into OpenRouter/OpenAI/etc.
 const PROVIDER_DEFAULT_MODEL = {
-  groq: 'llama-3.3-70b-versatile',
+  groq: 'llama-3.1-8b-instant',
   openai: 'gpt-4o-mini',
+
   gemini: 'gemini-3.1-flash-lite',
   openrouter: 'meta-llama/llama-3.3-70b-instruct',
   anthropic: 'claude-3-5-haiku-latest',
   // custom: no safe default — the connection should set one.
 };
-const FEATURES = ['summary', 'delay', 'atrisk', 'nudge', 'stall', 'coaching', 'feedback', 'roadmap', 'assessment', 'rag_embedding', 'rag_generation', 'rag_grounding'];
+const FEATURES = ['summary', 'delay', 'atrisk', 'nudge', 'stall', 'coaching', 'feedback', 'roadmap', 'assessment', 'rag_embedding', 'rag_generation', 'rag_grounding', 'certificates'];
 
 const isAdmin = (user) => {
   const caps = Array.isArray(user?.capabilities) && user.capabilities.length ? user.capabilities : [user?.role];
@@ -216,6 +217,18 @@ class AIConnectionService {
    * (the caller falls back to env). `userId` enables the personal path.
    */
   async resolveActiveConfig(feature = null, userId = null) {
+    // Check if caller is non-admin mentor
+    let isMentorCaller = false;
+    if (userId) {
+      const callerUser = await models.User.findByPk(userId, { attributes: ['id', 'role', 'capabilities'] });
+      if (callerUser) {
+        const caps = Array.isArray(callerUser.capabilities) && callerUser.capabilities.length ? callerUser.capabilities : [callerUser.role];
+        if (!caps.includes('admin') && callerUser.role === 'mentor') {
+          isMentorCaller = true;
+        }
+      }
+    }
+
     // 1) Personal routing for this user + feature.
     if (userId && feature) {
       const personal = await this._readRouting(userId);
@@ -223,8 +236,21 @@ class AIConnectionService {
         const row = await models.AIConnection.findOne({ where: { id: personal[feature], ownerId: userId } });
         if (row) return this._toConfig(row);
       }
+      // Check if mentor has any connected personal key
+      const personalRows = await models.AIConnection.findAll({ where: { ownerId: userId }, order: [['created_at', 'DESC']] });
+      if (personalRows.length) {
+        const chosen = personalRows.find((r) => r.status === 'connected') || personalRows[0];
+        return this._toConfig(chosen);
+      }
     }
-    // 2) Org routing for the feature.
+
+    // Strict BYOK rule: mentors MUST have their own personal AI key configured.
+    // If a mentor has no personal key, do NOT fall back to admin/org keys!
+    if (isMentorCaller) {
+      return null;
+    }
+
+    // 2) Org routing for the feature (for admins).
     if (feature) {
       const org = await this._readRouting(null);
       if (org[feature]) {
@@ -240,6 +266,7 @@ class AIConnectionService {
     }
     return null;
   }
+
 }
 
 module.exports = new AIConnectionService();

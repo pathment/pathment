@@ -42,6 +42,7 @@
     "pdf-parse": "^1.1.1",
     "pg": "^8.11.0",
     "pg-hstore": "^2.3.4",
+    "puppeteer": "^25.9.0",
     "qrcode": "^1.5.4",
     "resend": "^6.12.0",
     "sequelize": "^6.32.1",

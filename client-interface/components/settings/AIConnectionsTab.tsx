@@ -14,7 +14,6 @@ const PROVIDER_META: Record<AIProvider, { label: string; hint: string; keyPrefix
   openrouter: { label: 'OpenRouter', hint: 'One key, hundreds of models (vendor/model). Type any model id.', keyPrefix: 'sk-or-', models: ['openai/gpt-4o-mini', 'anthropic/claude-3.5-sonnet', 'google/gemini-flash-1.5', 'meta-llama/llama-3.3-70b-instruct', 'deepseek/deepseek-chat'] },
   custom: { label: 'Custom / self-hosted', hint: 'Any OpenAI-compatible endpoint.', keyPrefix: '', models: ['custom'] },
 };
-// Providers whose model is a free-text id (a fixed dropdown can't list them all).
 const FREE_MODEL_PROVIDERS: AIProvider[] = ['openrouter', 'custom'];
 
 const FEATURE_META: { key: AIFeature; label: string; hint: string }[] = [
@@ -29,7 +28,9 @@ const FEATURE_META: { key: AIFeature; label: string; hint: string }[] = [
   { key: 'rag_generation', label: 'RAG Reply Drafts', hint: 'Generate drafted mentor replies' },
   { key: 'rag_grounding', label: 'RAG Fact-Checking', hint: 'Verify drafted replies' },
   { key: 'rag_embedding', label: 'RAG Vectors (Gemini Only)', hint: 'Generate embeddings for documents' },
+  { key: 'certificates', label: 'Certificate AI Evaluation', hint: 'Evaluate mentee criteria & assign certificate tiers' },
 ];
+
 
 const STATUS_META: Record<AIKeyStatus, { label: string; cls: string; Icon: typeof CheckCircle2 }> = {
   connected: { label: 'Connected', cls: 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400', Icon: CheckCircle2 },
@@ -49,7 +50,6 @@ export default function AIConnectionsTab({ isMentor }: AIConnectionsTabProps = {
   const [editingQuota, setEditingQuota] = useState(false);
   const [tempQuotaLimit, setTempQuotaLimit] = useState(100);
 
-  // Initialize temp quota limit when quota loads
   useEffect(() => { 
     if (quota) setTempQuotaLimit(quota.limit); 
   }, [quota]);
@@ -58,7 +58,7 @@ export default function AIConnectionsTab({ isMentor }: AIConnectionsTabProps = {
 
   return (
     <div className="space-y-8">
-      {/* Auto-Reply Quota */}
+      {}
       {quota && (
         <section>
           <h2 className="text-slate-900 flex items-center gap-2 mb-2"><Zap className="w-5 h-5 text-brand-600" /> Auto-Reply Quota</h2>
@@ -112,7 +112,7 @@ export default function AIConnectionsTab({ isMentor }: AIConnectionsTabProps = {
         </section>
       )}
 
-      {/* Connections */}
+      {}
       <section>
         <div className="flex items-start justify-between gap-3 mb-4">
           <div>
@@ -157,7 +157,7 @@ export default function AIConnectionsTab({ isMentor }: AIConnectionsTabProps = {
         )}
       </section>
 
-      {/* Feature routing */}
+      {}
       <section>
         <h2 className="text-slate-900">Feature routing</h2>
         <p className="text-slate-500 text-sm mt-0.5 mb-4">Choose which connection powers each AI feature, or turn it off.</p>

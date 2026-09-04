@@ -33,6 +33,7 @@ import {
   Mic,
   ListChecks,
   Video,
+  Award,
   type LucideIcon
 } from 'lucide-react';
 import { UserRole } from '@/lib/types';
@@ -41,7 +42,6 @@ export interface NavChildLink {
   path: string;
   icon: LucideIcon;
   label: string;
-  /** Hide unless the user holds this permission (any scope). Omit = always show. */
   permission?: string;
 }
 
@@ -49,24 +49,14 @@ export interface NavLink {
   path: string;
   icon: LucideIcon;
   label: string;
-  /** Which live counter to show as a badge on this item. */
   badge?: 'messages' | 'approvals';
-  /** Hide unless the user holds this permission (any scope). Omit = always show. */
   permission?: string;
-  /** Hide unless the user holds ANY of these permissions. */
   anyOf?: string[];
-  /** Show only when the user can access the admin area (scoped RBAC). */
   requiresAdminArea?: boolean;
-  /** If present, renders as a collapsible group with these child links */
   children?: NavChildLink[];
 }
 
 export const navigationConfig: Record<string, NavLink[]> = {
-  // Default order = most-used-first (adaptive frecency reordering layers on top
-  // of this; see navPreferences.ts). Keep the highest-traffic items at the top.
-  // Daily-driver items stay standalone at the top (and still float via adaptive
-  // frecency); the rest are clustered into collapsible sections. Group parents use
-  // a synthetic `group:*` path - they only expand/collapse, they never navigate.
   admin: [
     { path: '/admin/dashboard', icon: LayoutDashboard, label: 'Dashboard', permission: 'analytics.view' },
     { path: '/admin/messages', icon: MessageSquare, label: 'Messages', badge: 'messages' },
@@ -95,6 +85,7 @@ export const navigationConfig: Record<string, NavLink[]> = {
         { path: '/admin/programs/list', icon: BookOpen, label: 'Programs', permission: 'program.manage' },
         { path: '/admin/roadmaps', icon: Route, label: 'Roadmaps', permission: 'roadmap.author' },
         { path: '/admin/schedules', icon: CalendarClock, label: 'Schedules', permission: 'program.manage' },
+        { path: '/admin/certificates', icon: Award, label: 'Certificates', permission: 'program.manage' },
       ],
     },
     {
@@ -146,6 +137,7 @@ export const navigationConfig: Record<string, NavLink[]> = {
         { path: '/mentor/schedules', icon: CalendarClock, label: 'Schedules' },
         { path: '/mentor/reports', icon: FileText, label: 'Reports' },
         { path: '/mentor/scores', icon: Gauge, label: 'Progress Scores' },
+        { path: '/mentor/certificates', icon: Award, label: 'Certificates' },
       ],
     },
     {
@@ -174,6 +166,7 @@ export const navigationConfig: Record<string, NavLink[]> = {
         { path: '/mentee/blockers', icon: Flag, label: 'Blockers' },
         { path: '/mentee/progress', icon: BarChart2, label: 'My Progress' },
         { path: '/mentee/gamification', icon: Trophy, label: 'Points & Badges' },
+        { path: '/mentee/certificates', icon: Award, label: 'My Certificates' },
       ],
     },
     {
@@ -192,23 +185,16 @@ export function getNavigationLinks(role: UserRole): NavLink[] {
   return navigationConfig[role] || [];
 }
 
-/** A single navigable destination, flattened out of groups - used by the search palette. */
 export interface FlatNavItem {
   path: string;
   label: string;
   icon: LucideIcon;
-  /** Parent group label (for context/breadcrumb), if this item lived in a group. */
   group?: string;
   permission?: string;
   anyOf?: string[];
   requiresAdminArea?: boolean;
 }
 
-/**
- * Flatten a role's navigation (standalone links + every group child) into a single
- * list of destinations. Synthetic `group:*` parents are dropped - only real pages
- * remain. Permission filtering is applied by the caller (same rules as the sidebar).
- */
 export function getFlatNavItems(role: UserRole): FlatNavItem[] {
   const links = navigationConfig[role] || [];
   const out: FlatNavItem[] = [];

@@ -1,3 +1,4 @@
+
 /**
  * One shared, deliverability‑friendly email template.
  *
@@ -5,7 +6,7 @@
  *  - table‑based layout + inline CSS (Outlook and most clients ignore <style>),
  *  - a hidden **preheader** (preview text) so inboxes don't show raw HTML,
  *  - a real **plain‑text** alternative is always sent alongside (see `plainText`),
- *  - a light, high‑contrast design (no image‑only emails, no link shorteners),
+ *  - a light, high‑contrast design (no image−only emails, no link shorteners),
  *  - `color-scheme` meta so dark‑mode clients don't invert it oddly,
  *  - a footer with sender identity + (for non‑transactional mail) an unsubscribe.
  *
@@ -85,7 +86,6 @@ function renderEmail({ heading, bodyHtml, cta, preheader, footerNote, unsubscrib
 </html>`;
 }
 
-/** Build the plain-text alternative — always send this alongside the HTML. */
 function plainText({ heading, bodyText, cta, unsubscribeUrl } = {}) {
   const lines = [];
   if (heading) lines.push(heading, '');
@@ -96,4 +96,69 @@ function plainText({ heading, bodyText, cta, unsubscribeUrl } = {}) {
   return lines.join('\n');
 }
 
-module.exports = { renderEmail, plainText };
+const escHtml = (str) => String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+function certificateAwardedEmail({ firstName, lastName, templateName, tier, tierDisplayName, imageUrl, certificateLink }) {
+  const tierBg = tier === 'gold' ? '#f59e0b' : tier === 'silver' ? '#64748b' : '#b45309';
+  return {
+    subject: `Congratulations! Your certificate for "${templateName}" is ready`,
+    html: `
+      <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f8fafc; padding: 40px 20px; color: #1e293b;">
+        <div style="max-width: 580px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+          <div style="background-color: #4f46e5; padding: 24px; text-align: center;">
+            <span style="font-size: 20px; font-weight: 800; color: #ffffff; letter-spacing: 0.5px;">PATHMENT</span>
+          </div>
+
+          <div style="padding: 32px 24px; text-align: center;">
+            <div style="margin-bottom: 24px;">
+              <span style="font-size: 24px; font-weight: 800; color: #1e293b; display: block; margin-bottom: 8px;">Congratulations, ${escHtml(firstName)}! 🎉</span>
+              <p style="font-size: 14px; color: #64748b; margin: 0; font-weight: 500;">You have successfully earned a new program credential.</p>
+            </div>
+
+            ${imageUrl ? `
+            <div style="margin: 24px 0; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);">
+              <img src="${imageUrl}" alt="Certificate Preview" style="width: 100%; max-width: 100%; display: block; height: auto;" />
+            </div>
+            ` : ''}
+
+            <div style="background-color: #f1f5f9; border-radius: 12px; padding: 16px; margin-bottom: 24px; text-align: left;">
+              <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                <tr>
+                  <td style="color: #64748b; font-weight: 600; padding: 4px 0;">Credential Name:</td>
+                  <td style="color: #1e293b; font-weight: 700; padding: 4px 0; text-align: right;">${escHtml(templateName)}</td>
+                </tr>
+                <tr>
+                  <td style="color: #64748b; font-weight: 600; padding: 4px 0;">Awarded Tier:</td>
+                  <td style="color: #1e293b; font-weight: 700; padding: 4px 0; text-align: right; text-transform: uppercase; font-size: 11px;">
+                    <span style="background-color: ${tierBg}; color: #ffffff; padding: 2px 6px; border-radius: 4px; font-weight: 800;">${escHtml(tierDisplayName)}</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="color: #64748b; font-weight: 600; padding: 4px 0;">Recipient:</td>
+                  <td style="color: #1e293b; font-weight: 700; padding: 4px 0; text-align: right;">${escHtml(firstName)} ${escHtml(lastName)}</td>
+                </tr>
+              </table>
+            </div>
+
+            <div style="margin: 32px 0 16px 0;">
+              <a href="${certificateLink}" target="_blank" style="background-color: #4f46e5; color: #ffffff; text-decoration: none; padding: 12px 32px; border-radius: 12px; font-size: 13px; font-weight: 700; box-shadow: 0 4px 6px rgba(79, 70, 229, 0.2); display: inline-block;">
+                View in Dashboard
+              </a>
+            </div>
+
+            <p style="font-size: 12px; color: #94a3b8; margin-top: 24px; font-weight: 500;">
+              A print-ready official PDF version of your certificate is also attached to this email.
+            </p>
+          </div>
+
+          <div style="background-color: #f8fafc; padding: 24px; text-align: center; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; font-weight: 500;">
+            <p style="margin: 0 0 8px 0;">© ${new Date().getFullYear()} Pathment Platform. All rights reserved.</p>
+            <p style="margin: 0;">Keep pushing forward, build your roadmap, achieve greatness!</p>
+          </div>
+        </div>
+      </div>
+    `
+  };
+}
+
+module.exports = { renderEmail, plainText, certificateAwardedEmail };

@@ -52,8 +52,12 @@ function loadModelsFromDirectory(directory) {
     if (stat.isDirectory()) {
       loadModelsFromDirectory(fullPath);
     } else if (file.endsWith('.js') && file !== 'index.js') {
-      const model = require(fullPath)(sequelize, Sequelize.DataTypes);
-      models[model.name] = model;
+      const result = require(fullPath)(sequelize, Sequelize.DataTypes);
+      if (Array.isArray(result)) {
+        result.forEach(m => { if (m && m.name) models[m.name] = m; });
+      } else if (result && result.name) {
+        models[result.name] = result;
+      }
     }
   });
 }
