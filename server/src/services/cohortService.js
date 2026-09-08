@@ -7,7 +7,7 @@ const frictionService = require('./frictionService');
 const insightService = require('./insightService');
 const dailyLogService = require('./dailyLogService');
 const { NOTIFICATION_EVENTS } = require('../config/notificationMatrix');
-const { NotFoundError, ValidationError } = require('../utils/errors/errorTypes');
+const { NotFoundError, ValidationError, ForbiddenError } = require('../utils/errors/errorTypes');
 const logger = require('../utils/logger');
 
 /**
@@ -584,26 +584,58 @@ class CohortService {
    * At-Risk view for someone going quiet.
    */
   async sendNudge(mentorId, menteeId, message) {
+    const allowed = await this.resolveMenteeIds(mentorId);
+    if (!allowed.includes(menteeId)) throw new ForbiddenError('Not authorized to nudge this mentee');
+
     const mentee = await models.User.findByPk(menteeId, { attributes: ['id', 'firstName'] });
     if (!mentee) throw new NotFoundError('Mentee not found');
 
     const body = (message && message.trim())
       || `Just checking in, ${mentee.firstName} - how's it going? Let me know if anything's blocking you.`;
 
-    await notificationOrchestrator.dispatch({
+    const { delivered } = await notificationOrchestrator.dispatch({
       eventKey: NOTIFICATION_EVENTS.MENTOR_NUDGE,
       recipients: [{ userId: menteeId }],
+      // Each nudge is its own notification — do not pass relatedEntity* on the
+      // payload or the orchestrator dedupes on (mentee, system, mentor) and
+      // blocks every nudge after the first from the same mentor.
       payload: {
         title: 'A nudge from your mentor',
         message: body,
         actionUrl: '/mentee/tasks',
         actionLabel: 'Open my tasks',
-        relatedEntityType: 'user',
-        relatedEntityId: mentorId
       }
     });
 
-    return { sent: true };
+    return { sent: delivered > 0 };
+  }
+
+  /**
+   * Nudge several mentees with the same message. Only mentees in the mentor's
+   * cohort are sent; others are reported in results without failing the batch.
+   */
+  async bulkNudge(mentorId, menteeIds, message) {
+    const ids = [...new Set((Array.isArray(menteeIds) ? menteeIds : []).filter(Boolean))];
+    if (!ids.length) throw new ValidationError('menteeIds is required');
+
+    const allowed = new Set(await this.resolveMenteeIds(mentorId));
+    const results = [];
+
+    for (const menteeId of ids) {
+      if (!allowed.has(menteeId)) {
+        results.push({ menteeId, sent: false, error: 'Not authorized for this mentee' });
+        continue;
+      }
+      try {
+        await this.sendNudge(mentorId, menteeId, message);
+        results.push({ menteeId, sent: true });
+      } catch (err) {
+        results.push({ menteeId, sent: false, error: err.message || 'Failed to send' });
+      }
+    }
+
+    const sent = results.filter((r) => r.sent).length;
+    return { sent, failed: results.length - sent, results };
   }
 
   /** Set a mentee's working-style read (0-100 dims). */

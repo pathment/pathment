@@ -142,6 +142,20 @@ const nudge = catchAsync(async (req, res) => {
 });
 
 /**
+ * POST /api/mentor/nudge/bulk  { menteeIds, message? }
+ * Send the same nudge message to multiple mentees in the mentor's cohort.
+ */
+const bulkNudge = catchAsync(async (req, res) => {
+  const { menteeIds, message } = req.body;
+  const ids = Array.isArray(menteeIds) ? menteeIds : [];
+  if (!ids.length) {
+    return res.status(400).json({ success: false, message: 'menteeIds is required', statusCode: 400 });
+  }
+  const result = await cohortService.bulkNudge(req.user.id, ids, message);
+  res.status(200).json(successResponse('Bulk nudge processed', result));
+});
+
+/**
  * GET /api/mentee/progress
  * The logged-in mentee's own fairness read (self-facing My Progress).
  */
@@ -207,4 +221,4 @@ const getMenteeAttendanceHistory = catchAsync(async (req, res) => {
   res.status(200).json(successResponse('Attendance history', { history }));
 });
 
-module.exports = { getCohort, getCohortActivity, getCohortReportSummary, getMenteeProfile, getApprovals, getApprovalsCount, getChangesRequested, getReviewed, bulkApprove, bulkReview, nudge, getMyProgress, updatePersonality, addInsight, logMeetingNote, addCollaborator, removeCollaborator, setAttendance, getReviewAttendance, getMenteeAttendanceHistory };
+module.exports = { getCohort, getCohortActivity, getCohortReportSummary, getMenteeProfile, getApprovals, getApprovalsCount, getChangesRequested, getReviewed, bulkApprove, bulkReview, nudge, bulkNudge, getMyProgress, updatePersonality, addInsight, logMeetingNote, addCollaborator, removeCollaborator, setAttendance, getReviewAttendance, getMenteeAttendanceHistory };

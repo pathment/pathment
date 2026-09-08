@@ -174,6 +174,11 @@ export const mentorApi = {
 
   // Send a gentle nudge to a mentee.
   nudge: (menteeId: string, message?: string) => apiClient.post('/mentor/nudge', { menteeId, message }),
+  nudgeBulk: (menteeIds: string[], message?: string) =>
+    apiClient.post<{ data: { sent: number; failed: number; results: { menteeId: string; sent: boolean; error?: string }[] } }>(
+      '/mentor/nudge/bulk',
+      { menteeIds, message },
+    ),
 
   // AI-draft constructive feedback for a submitted task (uses the mentor's AI
   // connection). Throws with the server message when AI is not configured.

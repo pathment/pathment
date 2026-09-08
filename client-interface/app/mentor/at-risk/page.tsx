@@ -2,13 +2,12 @@
 
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { toast } from 'sonner';
 import {
   Bell, MessageSquare, ArrowUpRight, Clock, TrendingUp, TrendingDown, Minus, Loader2,
 } from 'lucide-react';
 import { useMentorCohort, type CohortMentee, type CohortMomentum } from '@/lib/hooks/mentor';
-import { mentorApi } from '@/lib/services/mentor-api';
 import { DualProgress } from '@/components/mentor/DualProgress';
+import { BulkNudgeDrawer } from '@/components/mentor/BulkNudgeDrawer';
 
 const GAP_THRESHOLD = 15; // relative−absolute gap that signals "real constraints"
 
@@ -46,13 +45,24 @@ function MomentumIcon({ momentum }: { momentum: CohortMomentum }) {
   return <Minus className="w-4 h-4 text-slate-400" />;
 }
 
-function RiskCard({ m, onNudge, onOpen, nudging }: {
-  m: CohortMentee; onNudge: () => void; onOpen: () => void; nudging: boolean;
+function RiskCard({ m, selected, onToggle, onNudge, onOpen }: {
+  m: CohortMentee;
+  selected: boolean;
+  onToggle: () => void;
+  onNudge: () => void;
+  onOpen: () => void;
 }) {
   const router = useRouter();
   return (
-    <div className="bg-card rounded-2xl border border-slate-200 p-5">
+    <div className={`bg-card rounded-2xl border p-5 transition-colors ${selected ? 'border-brand-300 ring-1 ring-brand-200' : 'border-slate-200'}`}>
       <div className="flex items-start gap-3">
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={onToggle}
+          aria-label={`Select ${m.name}`}
+          className="mt-1 h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+        />
         <div className="w-11 h-11 bg-brand-100 rounded-full flex items-center justify-center shrink-0">
           <span className="text-brand-700 font-medium text-sm">{m.avatar}</span>
         </div>
@@ -71,40 +81,41 @@ function RiskCard({ m, onNudge, onOpen, nudging }: {
         </span>
       </div>
 
-      <div className="my-4">
+      <div className="my-4 ml-7">
         <DualProgress absolute={m.absoluteProgress} relative={m.relativeProgress} compact />
       </div>
 
       {m.riskReason && (
-        <p className="flex items-start gap-1.5 text-sm leading-relaxed text-slate-600 border-t border-slate-100 pt-3">
+        <p className="ml-7 flex items-start gap-1.5 text-sm leading-relaxed text-slate-600 border-t border-slate-100 pt-3">
           <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-brand-500 shrink-0" />{m.riskReason}
         </p>
       )}
 
-      {/* Concrete signal chips - the "why", computed from real stats (no AI). */}
       {(m.signals?.length ?? 0) > 0 && (
-        <div className="mt-2 flex flex-wrap gap-1.5">
+        <div className="mt-2 ml-7 flex flex-wrap gap-1.5">
           {m.signals!.map((s, i) => (
             <span key={i} className="px-2 py-0.5 rounded-md border border-slate-200 bg-slate-50 text-[11px] text-slate-600 font-mono">{s}</span>
           ))}
         </div>
       )}
 
-      <div className="mt-3 flex items-center gap-2">
+      <div className="mt-3 ml-7 flex items-center gap-2">
         <button
+          type="button"
           onClick={onNudge}
-          disabled={nudging}
-          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-brand-50 text-brand-700 text-xs font-medium hover:bg-brand-100 disabled:opacity-50"
+          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-brand-50 text-brand-700 text-xs font-medium hover:bg-brand-100"
         >
-          {nudging ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bell className="w-3.5 h-3.5" />}Nudge
+          <Bell className="w-3.5 h-3.5" />Nudge
         </button>
         <button
+          type="button"
           onClick={() => router.push(`/mentor/messages?participantId=${m.id}`)}
           className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-700 text-xs font-medium hover:border-brand-300"
         >
           <MessageSquare className="w-3.5 h-3.5" />Message
         </button>
         <button
+          type="button"
           onClick={onOpen}
           className="ml-auto inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-700"
         >
@@ -118,7 +129,8 @@ function RiskCard({ m, onNudge, onOpen, nudging }: {
 export default function MentorAtRisk() {
   const router = useRouter();
   const { cohort, loading, error, refetch } = useMentorCohort();
-  const [nudging, setNudging] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [nudgeTargets, setNudgeTargets] = useState<CohortMentee[] | null>(null);
 
   const groups = useMemo(() => {
     const out: Record<GroupKey, CohortMentee[]> = { struggling: [], disengaged: [], watch: [] };
@@ -129,35 +141,85 @@ export default function MentorAtRisk() {
     return out;
   }, [cohort]);
 
-  const totalAtRisk = groups.struggling.length + groups.disengaged.length + groups.watch.length;
+  const allAtRisk = useMemo(
+    () => [...groups.disengaged, ...groups.struggling, ...groups.watch],
+    [groups],
+  );
 
-  const onNudge = async (m: CohortMentee) => {
-    try {
-      setNudging(m.id);
-      await mentorApi.nudge(m.id);
-      toast.success(`Nudge sent to ${m.name.split(' ')[0]}`);
-    } catch {
-      toast.error('Could not send the nudge');
-    } finally {
-      setNudging(null);
-    }
+  const totalAtRisk = allAtRisk.length;
+  const allSelected = totalAtRisk > 0 && allAtRisk.every((m) => selected.has(m.id));
+
+  const toggle = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+
+  const selectAll = () => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allSelected) allAtRisk.forEach((m) => next.delete(m.id));
+      else allAtRisk.forEach((m) => next.add(m.id));
+      return next;
+    });
   };
+
+  const openNudge = (mentees: CohortMentee[]) => setNudgeTargets(mentees);
+
+  const selectedMentees = useMemo(
+    () => allAtRisk.filter((m) => selected.has(m.id)),
+    [allAtRisk, selected],
+  );
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-slate-900 mb-2">At risk</h1>
-        <p className="text-slate-600">
-          {loading ? 'Loading…' : `${totalAtRisk} mentee${totalAtRisk === 1 ? '' : 's'} need a closer look - separated by whether real constraints explain it.`}
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-slate-900 mb-2">At risk</h1>
+          <p className="text-slate-600">
+            {loading ? 'Loading…' : `${totalAtRisk} mentee${totalAtRisk === 1 ? '' : 's'} need a closer look - separated by whether real constraints explain it.`}
+          </p>
+        </div>
+        {!loading && totalAtRisk > 0 && (
+          <button
+            type="button"
+            onClick={() => openNudge(selectedMentees)}
+            disabled={selected.size === 0}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium disabled:opacity-40 disabled:pointer-events-none"
+          >
+            <Bell className="w-4 h-4" />
+            Nudge{selected.size > 0 ? ` ${selected.size}` : ''} selected
+          </button>
+        )}
       </div>
+
+      {!loading && totalAtRisk > 0 && (
+        <div className="flex flex-wrap items-center gap-4 text-sm text-slate-500">
+          <button type="button" onClick={selectAll} className="inline-flex items-center gap-2 hover:text-slate-700">
+            <input
+              type="checkbox"
+              readOnly
+              checked={allSelected}
+              className="h-4 w-4 rounded border-slate-300 text-brand-600 pointer-events-none"
+              aria-hidden
+            />
+            {allSelected ? 'Deselect all' : `Select all (${totalAtRisk})`}
+          </button>
+          {selected.size > 0 && (
+            <button type="button" onClick={() => setSelected(new Set())} className="hover:text-slate-700">
+              Clear selection ({selected.size})
+            </button>
+          )}
+        </div>
+      )}
 
       {loading ? (
         <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-brand-600" /></div>
       ) : error ? (
         <div className="bg-card rounded-2xl border border-slate-200 py-16 text-center">
           <p className="text-slate-600 mb-3">{error}</p>
-          <button onClick={refetch} className="text-brand-600 hover:text-brand-700 text-sm font-medium">Try again</button>
+          <button type="button" onClick={refetch} className="text-brand-600 hover:text-brand-700 text-sm font-medium">Try again</button>
         </div>
       ) : totalAtRisk === 0 ? (
         <div className="bg-card rounded-2xl border border-slate-200 py-16 text-center">
@@ -179,8 +241,9 @@ export default function MentorAtRisk() {
                   <RiskCard
                     key={m.id}
                     m={m}
-                    nudging={nudging === m.id}
-                    onNudge={() => onNudge(m)}
+                    selected={selected.has(m.id)}
+                    onToggle={() => toggle(m.id)}
+                    onNudge={() => openNudge([m])}
                     onOpen={() => router.push(`/mentor/mentees/${m.id}`)}
                   />
                 ))}
@@ -188,6 +251,14 @@ export default function MentorAtRisk() {
             </section>
           );
         })
+      )}
+
+      {nudgeTargets && nudgeTargets.length > 0 && (
+        <BulkNudgeDrawer
+          mentees={nudgeTargets.map((m) => ({ id: m.id, name: m.name }))}
+          onClose={() => setNudgeTargets(null)}
+          onSent={() => setSelected(new Set())}
+        />
       )}
     </div>
   );
