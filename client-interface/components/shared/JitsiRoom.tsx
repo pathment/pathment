@@ -45,7 +45,7 @@ const GUEST_TOOLBAR = [
 const HOST_TOOLBAR = [...GUEST_TOOLBAR, 'invite', 'security', 'mute-everyone', 'mute-video-everyone'];
 
 export function JitsiRoom({
-  domain, room, displayName, avatarUrl, role = 'guest', privateChat = false, polls = false, onJoined, onLeft, onReadyToClose, onParticipantJoined, onParticipantLeft, onDominantSpeaker, onSelfDominantChange, onError,
+  domain, room, displayName, avatarUrl, role = 'guest', privateChat = false, polls = false, startWithVideoMuted = false, onJoined, onLeft, onReadyToClose, onParticipantJoined, onParticipantLeft, onDominantSpeaker, onSelfDominantChange, onError,
 }: {
   domain: string;
   room: string;
@@ -58,6 +58,8 @@ export function JitsiRoom({
   privateChat?: boolean;
   /** Enable in-call polls (create + vote). OFF by default; the host toggles it. */
   polls?: boolean;
+  /** Join with the local camera off (mentee pre-join choice). */
+  startWithVideoMuted?: boolean;
   onJoined?: () => void;
   onLeft?: () => void;
   /** Fires when the user hangs up in the Jitsi toolbar (red button, "end for me"
@@ -203,6 +205,7 @@ export function JitsiRoom({
             p2p: { enabled: false },
             disableDeepLinking: true,
             startWithAudioMuted: false,
+            startWithVideoMuted,
             // ── Voice quality: stop the echo / noise the mentor reported. ──
             // Keep the full audio-processing chain ON (these flags DISABLE when
             // true, so false = enabled): acoustic echo cancellation, noise
@@ -352,7 +355,7 @@ export function JitsiRoom({
     };
     // Only room identity + the config knobs Jitsi can't change after construction
     // rebuild the call. Callbacks and identity are read through refs.
-  }, [domain, room, role, privateChat, polls, superseded, joinNonce, tabId]);
+  }, [domain, room, role, privateChat, polls, startWithVideoMuted, superseded, joinNonce, tabId]);
 
   if (superseded) {
     return (
