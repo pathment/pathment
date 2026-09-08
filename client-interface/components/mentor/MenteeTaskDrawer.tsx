@@ -3,10 +3,13 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { CheckCircle2, Clock, Award, Pencil, RotateCcw, Trash2, Loader2, StickyNote, ClipboardCheck } from 'lucide-react';
+import {
+  CheckCircle2, Clock, Award, Pencil, RotateCcw, Trash2, Loader2, StickyNote, ClipboardCheck, XCircle,
+} from 'lucide-react';
 import { Drawer } from '@/components/shared/Drawer';
 import { ResourceLink } from '@/components/shared/ResourceLink';
 import { TaskEditDrawer } from '@/components/mentor/TaskEditDrawer';
+import { InterviewAssignmentPanel } from '@/components/mentor/InterviewAssignmentPanel';
 import taskApi from '@/lib/services/task-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { useConfirm } from '@/lib/context/ConfirmContext';
@@ -35,8 +38,10 @@ export function MenteeTaskDrawer({ task, onClose, onChanged }: { task: any; onCl
   const confirm = useConfirm();
   // Open in the edit form directly (one click from the review list). Closing
   // the editor returns to this read-only view so Unassign / Review stay available.
-  const [editing, setEditing] = useState(true);
+  const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
   const rt = task.roadmapTask || {};
   const title = rt.title || task.title || 'Task';
   const description = rt.description || task.description || '';
@@ -45,6 +50,9 @@ export function MenteeTaskDrawer({ task, onClose, onChanged }: { task: any; onCl
   const criteria: string[] = rt.acceptanceCriteria || task.acceptanceCriteria || [];
   const resources: any[] = rt.resources || [];
   const due = task.dueDate ? new Date(task.dueDate) : null;
+  const isInterview = (rt.type || task.type) === 'interview';
+  const canCancel = !['completed', 'cancelled'].includes(task.status);
+  const canUnassign = !['submitted', 'completed', 'cancelled'].includes(task.status);
 
   const reassign = async () => {
     try { setBusy(true); await taskApi.reassignTask(task.id); toast.success('Task reassigned'); onChanged(); onClose(); }
@@ -58,7 +66,32 @@ export function MenteeTaskDrawer({ task, onClose, onChanged }: { task: any; onCl
     finally { setBusy(false); }
   };
 
-  const canUnassign = !['submitted', 'completed', 'cancelled'].includes(task.status);
+  const cancelTask = async () => {
+    const reason = cancelReason.trim() || 'Cancelled by mentor';
+    const interviewNote = isInterview
+      ? ' Any in-progress interview attempt will end and the mentee will no longer see a resume prompt.'
+      : '';
+    if (!(await confirm({
+      title: 'Cancel this task?',
+      description: `The task will be marked cancelled for this mentee.${interviewNote}`,
+      variant: 'danger',
+      confirmLabel: 'Cancel task',
+    }))) return;
+    try {
+      setBusy(true);
+      await taskApi.cancelTask(task.id, reason);
+      toast.success('Task cancelled');
+      setCancelOpen(false);
+      setCancelReason('');
+      onChanged();
+      onClose();
+    } catch (e) {
+      toast.error(extractApiErrorMessage(e, 'Could not cancel the task'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   // Submitted / revision tasks open the review; an already-reviewed (completed)
   // task opens the same page in edit mode so the mentor can correct feedback.
   const canReview = ['submitted', 'revision_needed'].includes(task.status);
@@ -70,6 +103,16 @@ export function MenteeTaskDrawer({ task, onClose, onChanged }: { task: any; onCl
       {!editing && <Drawer open onClose={onClose} title={title} subtitle="Assigned task · this mentee"
         footer={
           <div className="flex flex-wrap justify-end gap-2">
+            {canCancel && (
+              <button
+                type="button"
+                onClick={() => setCancelOpen((v) => !v)}
+                disabled={busy}
+                className="px-3 py-2 rounded-lg border border-slate-200 text-amber-700 hover:bg-amber-50 text-sm font-medium inline-flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <XCircle className="w-4 h-4" />Cancel task
+              </button>
+            )}
             {canUnassign && (
               <button onClick={unassign} disabled={busy} className="px-3 py-2 rounded-lg border border-slate-200 text-red-600 hover:bg-red-50 text-sm font-medium inline-flex items-center gap-1.5 disabled:opacity-50">
                 <Trash2 className="w-4 h-4" />Unassign
@@ -113,6 +156,46 @@ export function MenteeTaskDrawer({ task, onClose, onChanged }: { task: any; onCl
             {rt.estimatedHours != null && <span>{rt.estimatedHours}h est.</span>}
             <span className="inline-flex items-center gap-1"><Award className="w-3.5 h-3.5" />{pointsForDifficulty(rt.difficulty)} pts</span>
           </div>
+
+          {isInterview && (
+            <InterviewAssignmentPanel taskId={task.id} taskStatus={task.status} onChanged={onChanged} />
+          )}
+
+          {cancelOpen && canCancel && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 space-y-2">
+              <p className="text-sm font-medium text-amber-900">Cancel this task for the mentee</p>
+              <p className="text-xs text-amber-800">
+                {isInterview
+                  ? 'Ends any live interview attempt. The mentee keeps the task on their list as cancelled (unlike unassign, which removes it).'
+                  : 'The task stays on the mentee\'s list with a cancelled status.'}
+              </p>
+              <textarea
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                placeholder="Reason (optional)"
+                rows={2}
+                className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-400"
+              />
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={cancelTask}
+                  disabled={busy}
+                  className="px-3 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-800 text-white text-xs font-medium disabled:opacity-50"
+                >
+                  {busy ? 'Cancelling…' : 'Confirm cancel'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setCancelOpen(false); setCancelReason(''); }}
+                  disabled={busy}
+                  className="px-3 py-1.5 rounded-lg border border-amber-300 text-amber-900 text-xs font-medium hover:bg-white disabled:opacity-50"
+                >
+                  Back
+                </button>
+              </div>
+            </div>
+          )}
 
           {task.status === 'cancelled' && task.cancellationReason && (
             <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2">

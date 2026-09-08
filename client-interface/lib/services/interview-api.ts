@@ -176,6 +176,20 @@ export const interviewApi = {
   submitInterview: (sessionId: string) =>
     apiClient.post(`/interviews/sessions/${sessionId}/submit`, {}),
 
+  // Mentor assignment management (active interview tasks)
+  getAssignmentForMentor: (taskId: string) =>
+    apiClient.get<{
+      taskStatus: string;
+      options: { timingMode: InterviewTimingMode; totalSeconds: number | null; allowRetake: boolean; cameraRequired: boolean };
+      activeSession: { id: string; startedAt: string; attemptNumber: number } | null;
+    }>(`/interviews/assignments/${taskId}/manage`),
+
+  updateAssignmentOptions: (taskId: string, data: { timingMode?: InterviewTimingMode; totalSeconds?: number | null }) =>
+    apiClient.patch(`/interviews/assignments/${taskId}/options`, data),
+
+  abandonActiveInterview: (taskId: string) =>
+    apiClient.post(`/interviews/assignments/${taskId}/abandon`, {}),
+
   // Mentor review
   getReview: (taskId: string) => apiClient.get(`/interviews/review/${taskId}`),
   gradeAnswer: (taskId: string, questionId: string, data: { pointsAwarded?: number; scoreNote?: string | null }) =>

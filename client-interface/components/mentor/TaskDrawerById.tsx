@@ -33,13 +33,12 @@ export function TaskDrawerById({ taskId, onClose, onChanged }: { taskId: string;
   if (!task) {
     return <Drawer open onClose={onClose} title="Task"><p className="text-sm text-slate-500">Could not load this task.</p></Drawer>;
   }
-  // Interview / quiz tasks show their own review UI (answers + scoring), not the
-  // generic task drawer.
   const taskType = task.roadmapTask?.type || task.type;
-  if (taskType === 'interview') {
+  const interviewManageable = ['assigned', 'not_started', 'in_progress'].includes(task.status);
+  if (taskType === 'interview' && !interviewManageable) {
     return <InterviewReviewDrawer taskId={task.id} onClose={onClose} onFinalized={onChanged} />;
   }
-  if (taskType === 'quiz') {
+  if (taskType === 'quiz' && ['submitted', 'revision_needed', 'completed'].includes(task.status)) {
     return <QuizReviewDrawer taskId={task.id} onClose={onClose} onReviewed={onChanged} />;
   }
   return <MenteeTaskDrawer task={task} onClose={onClose} onChanged={onChanged} />;

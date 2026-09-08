@@ -19,7 +19,11 @@ import { useProctor } from '@/lib/hooks/mentee/useProctor';
 import { useAudioLevel } from '@/lib/hooks/mentee/useAudioLevel';
 import { CodeEditor } from '@/components/shared/CodeEditor';
 import { InterviewerOrb, Waveform, RingTimer, MicCheck } from '@/components/mentee/interviewStudio';
-import { setActiveInterview, clearActiveInterview } from '@/lib/utils/activeInterview';
+import {
+  setActiveInterview,
+  clearActiveInterview,
+  isResumableInterview,
+} from '@/lib/utils/activeInterview';
 
 type Phase = 'loading' | 'intro' | 'lobby' | 'countdown' | 'active' | 'submitting' | 'done' | 'error';
 interface Draft { transcript: string; code: string; answerText: string; seconds: number; audioBlob: Blob | null }
@@ -107,7 +111,7 @@ export default function InterviewRunnerPage({ params }: { params: Promise<{ task
         setData(d);
         if (d?.serverNow) clockSkewRef.current = Date.parse(d.serverNow) - Date.now();
         setSessionStartedAt(d?.state?.sessionStartedAt || null);
-        if (!d?.state?.activeSessionId) clearActiveInterview();
+        if (!isResumableInterview(d)) clearActiveInterview();
         const seed: Record<string, Draft> = {};
         d.questions.forEach((qq) => {
           const saved = d.state.savedAnswers.find((a) => a.questionId === qq.id);
@@ -122,7 +126,12 @@ export default function InterviewRunnerPage({ params }: { params: Promise<{ task
         setDrafts(seed);
         setPhase('intro');
       })
-      .catch((e: any) => { if (active) { setErrorMsg(extractApiErrorMessage(e, 'Could not load this interview')); setPhase('error'); } });
+      .catch((e: any) => {
+        if (!active) return;
+        if (e?.response?.status === 404) clearActiveInterview();
+        setErrorMsg(extractApiErrorMessage(e, 'Could not load this interview'));
+        setPhase('error');
+      });
     return () => { active = false; };
   }, [taskId]);
 

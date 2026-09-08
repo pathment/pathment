@@ -1,3 +1,5 @@
+import { interviewApi, type CandidateInterview } from '@/lib/services/interview-api';
+
 /**
  * Tiny cross-page marker for an in-progress interview. The runner writes it when a
  * session is live and clears it on submit; a mentee-wide floating bar reads it to
@@ -36,6 +38,37 @@ export function getActiveInterview(): ActiveInterview | null {
     const s = localStorage.getItem(KEY);
     return s ? (JSON.parse(s) as ActiveInterview) : null;
   } catch { return null; }
+}
+
+/** True when the server still has an in-progress session for this assignment. */
+export function isResumableInterview(data: CandidateInterview | null | undefined): boolean {
+  return !!data?.state?.activeSessionId;
+}
+
+/**
+ * Drop a stale local marker when the task/session is gone or no longer resumable.
+ * Returns the marker when still valid; null when cleared or never set.
+ */
+export async function reconcileActiveInterview(taskId: string): Promise<ActiveInterview | null> {
+  const stored = getActiveInterview();
+  if (!stored || stored.taskId !== taskId) return stored;
+
+  try {
+    const res = await interviewApi.getCandidateInterview(taskId) as { data?: CandidateInterview };
+    if (!isResumableInterview(res?.data)) {
+      clearActiveInterview();
+      return null;
+    }
+    return stored;
+  } catch (e: unknown) {
+    const status = (e as { response?: { status?: number } })?.response?.status;
+    if (status === 404 || status === 403) {
+      clearActiveInterview();
+      return null;
+    }
+    // Transient/network errors — keep the nudge rather than clearing optimistically.
+    return stored;
+  }
 }
 
 export const ACTIVE_INTERVIEW_EVENT = EVENT;

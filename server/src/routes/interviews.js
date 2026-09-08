@@ -19,6 +19,9 @@ router.patch('/kits/:id', authenticate, canAuthor, interviewController.updateKit
 router.delete('/kits/:id', authenticate, canAuthor, interviewController.deleteKit);
 
 // Candidate runner — any authenticated user; the service asserts task ownership.
+router.get('/assignments/:taskId/manage', authenticate, canAuthor, interviewController.getAssignmentForMentor);
+router.patch('/assignments/:taskId/options', authenticate, canAuthor, interviewController.updateAssignmentOptions);
+router.post('/assignments/:taskId/abandon', authenticate, canAuthor, interviewController.abandonActiveInterview);
 router.get('/assignments/:taskId', authenticate, interviewController.getCandidateInterview);
 router.post('/assignments/:taskId/start', authenticate, interviewController.startInterview);
 router.post('/sessions/:sessionId/question/start', authenticate, interviewController.startQuestion);
