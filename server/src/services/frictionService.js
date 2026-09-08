@@ -1,5 +1,7 @@
 const { models } = require('../db');
 const authzService = require('./authzService');
+const notificationOrchestrator = require('./notificationOrchestrator');
+const { NOTIFICATION_EVENTS } = require('../config/notificationMatrix');
 const { PERMISSIONS: P } = require('../config/permissions');
 const { NotFoundError, ValidationError, ForbiddenError } = require('../utils/errors/errorTypes');
 
@@ -181,6 +183,7 @@ class FrictionService {
       days: data.days || 0,
       category: data.category || 'external',
       accepted: false,
+      reviewStatus: 'pending',
       aiRationale: data.aiRationale || null,
       createdBy: createdBy || null
     });
@@ -191,28 +194,66 @@ class FrictionService {
     if (!delay) throw new NotFoundError('Delay event not found');
     await this.#assertCanAccessMentee(currentUser, delay.menteeId);
     await this.#assertNotSelfReview(currentUser, delay.menteeId);
+    if (delay.reviewStatus === 'rejected') {
+      throw new ValidationError('This delay was rejected and cannot be approved unless it is reopened.');
+    }
+    if (delay.reviewStatus === 'accepted') {
+      throw new ValidationError('This delay was already accepted.');
+    }
     delay.accepted = accepted;
+    delay.reviewStatus = 'accepted';
+    delay.reviewedAt = new Date();
+    delay.reviewedBy = currentUser.id;
+    delay.rejectionReason = null;
     if (category) delay.category = category;
     await delay.save();
     return delay;
   }
 
   /**
-   * Reject (remove) a PENDING logged delay, so a mentor can clear a duplicate or
-   * bogus request. An already-accepted delay is locked: it has been credited
-   * toward the mentee's fair progress, and removing it would retroactively
-   * change standings. The route also gates on TASK_REVIEW at the delay's scope.
+   * Reject a PENDING logged delay — keeps the record for history, clears any
+   * fairness credit, and notifies the mentee. Accepted delays stay locked.
    */
-  async rejectDelay(id, currentUser) {
+  async rejectDelay(id, { reason } = {}, currentUser) {
     const delay = await models.DelayEvent.findByPk(id);
     if (!delay) throw new NotFoundError('Delay event not found');
     await this.#assertCanAccessMentee(currentUser, delay.menteeId);
     await this.#assertNotSelfReview(currentUser, delay.menteeId);
-    if (delay.accepted) {
+    if (delay.reviewStatus === 'accepted' || delay.accepted) {
       throw new ValidationError('This delay was already accepted and credited — it can no longer be rejected.');
     }
-    await delay.destroy();
-    return { deleted: true, id };
+    if (delay.reviewStatus === 'rejected') {
+      throw new ValidationError('This delay was already rejected.');
+    }
+
+    const trimmed = typeof reason === 'string' ? reason.trim() : '';
+    delay.reviewStatus = 'rejected';
+    delay.accepted = false;
+    delay.rejectionReason = trimmed || null;
+    delay.reviewedAt = new Date();
+    delay.reviewedBy = currentUser.id;
+    await delay.save();
+
+    const reviewer = await models.User.findByPk(currentUser.id, { attributes: ['firstName', 'lastName'] });
+    const reviewerName = reviewer ? `${reviewer.firstName || ''} ${reviewer.lastName || ''}`.trim() : 'Your mentor';
+    const reasonNote = trimmed ? ` Reason: ${trimmed}` : '';
+
+    await notificationOrchestrator.dispatch({
+      eventKey: NOTIFICATION_EVENTS.DELAY_REJECTED,
+      recipients: [{ userId: delay.menteeId }],
+      payload: {
+        title: 'Delay request not accepted',
+        message: `${reviewerName} did not accept your logged delay.${reasonNote}`,
+        actionUrl: '/mentee/progress',
+        actionLabel: 'View progress',
+        relatedEntityType: 'delay_event',
+        relatedEntityId: delay.id,
+        emailSubject: 'Pathment: Your delay request was not accepted',
+      },
+      dedupe: { relatedEntityType: 'delay_rejected', relatedEntityId: delay.id },
+    }).catch((e) => console.error('[friction] delay rejected notification failed:', e.message));
+
+    return delay;
   }
 }
 

@@ -61,8 +61,8 @@ const acceptDelay = catchAsync(async (req, res) => {
 });
 
 const rejectDelay = catchAsync(async (req, res) => {
-  const result = await frictionService.rejectDelay(req.params.id, req.user);
-  res.status(200).json(successResponse('Delay rejected', result));
+  const delay = await frictionService.rejectDelay(req.params.id, req.body, req.user);
+  res.status(200).json(successResponse('Delay rejected', { delay }));
 });
 
 module.exports = {

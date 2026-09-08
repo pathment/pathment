@@ -25,6 +25,6 @@ export const frictionApi = {
   }) => apiClient.post('/delays', data),
   acceptDelay: (id: string, accepted = true, category?: string) =>
     apiClient.patch(`/delays/${id}/accept`, { accepted, category }),
-  // Reject removes the delay (used to clear duplicate / bogus requests).
-  rejectDelay: (id: string) => apiClient.delete(`/delays/${id}`),
+  rejectDelay: (id: string, reason?: string) =>
+    apiClient.patch(`/delays/${id}/reject`, reason ? { reason } : {}),
 };

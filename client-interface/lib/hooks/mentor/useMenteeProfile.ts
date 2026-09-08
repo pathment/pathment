@@ -18,6 +18,8 @@ export interface ProfileDelay {
   kind: string;
   days: number;
   accepted: boolean;
+  reviewStatus: 'pending' | 'accepted' | 'rejected';
+  rejectionReason: string | null;
   category: 'external' | 'scope' | 'avoidance';
   aiRationale: string | null;
   occurredAt: string;

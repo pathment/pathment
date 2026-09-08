@@ -4,8 +4,6 @@ node_modules/
 .pnp.js
 
 # Environment / secrets
-.env
-.env.local
 .env.*.local
 *.pem
 
@@ -52,3 +50,4 @@ promote.sh
 # changelog.json is the paste buffer for the admin "What's New" JSON import.
 changelog.json
 create-github-issues-*.sh
+config.bat

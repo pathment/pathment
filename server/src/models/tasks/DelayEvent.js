@@ -45,6 +45,29 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       defaultValue: false
     },
+    // pending → awaiting mentor review; accepted/rejected are terminal for that review.
+    reviewStatus: {
+      type: DataTypes.STRING(20),
+      allowNull: false,
+      defaultValue: 'pending',
+      field: 'review_status',
+      validate: { isIn: [['pending', 'accepted', 'rejected']] }
+    },
+    rejectionReason: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      field: 'rejection_reason'
+    },
+    reviewedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      field: 'reviewed_at'
+    },
+    reviewedBy: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      field: 'reviewed_by'
+    },
     // The fairness category (how the delay is read).
     category: {
       type: DataTypes.STRING(20),
@@ -77,7 +100,8 @@ module.exports = (sequelize, DataTypes) => {
     indexes: [
       { fields: ['mentee_id'] },
       { fields: ['assigned_task_id'] },
-      { fields: ['accepted'] }
+      { fields: ['accepted'] },
+      { fields: ['review_status'] }
     ]
   });
 

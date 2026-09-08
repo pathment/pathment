@@ -132,7 +132,7 @@ describe('friction scoping does not key off the base role column', () => {
   it('will not let them accept their own delay', async () => {
     const own = await models.DelayEvent.create({ menteeId: dual.id, reason: 'internet died', kind: 'other', days: 2 });
     await expect(frictionService.acceptDelay(own.id, { accepted: true }, dual)).rejects.toThrow(/your own delay/i);
-    await expect(frictionService.rejectDelay(own.id, dual)).rejects.toThrow(/your own delay/i);
+    await expect(frictionService.rejectDelay(own.id, {}, dual)).rejects.toThrow(/your own delay/i);
     // Their lead reviews it instead.
     await expect(frictionService.acceptDelay(own.id, { accepted: true }, lead)).resolves.toBeTruthy();
   });

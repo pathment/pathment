@@ -15,6 +15,7 @@ const NOTIFICATION_EVENTS = {
   WEEKLY_PROGRESS_REPORT: 'weekly_progress_report',
   EXTENSION_REQUESTED: 'extension_requested',
 EXTENSION_HANDLED: 'extension_handled',
+  DELAY_REJECTED: 'delay_rejected',
   MENTOR_NUDGE: 'mentor_nudge',
   COMMUNITY_MENTION: 'community_mention',
   COMMUNITY_REPLY: 'community_reply',
@@ -186,6 +187,12 @@ const NOTIFICATION_MATRIX = {
   preferenceKey: 'extension_handled',
   channels: { inApp: true, email: true, chat: false }
 },
+  [NOTIFICATION_EVENTS.DELAY_REJECTED]: {
+    type: 'task',
+    audience: 'mentee',
+    preferenceKey: 'delay_rejected',
+    channels: { inApp: true, email: true, chat: false }
+  },
   [NOTIFICATION_EVENTS.MENTOR_NUDGE]: {
     type: 'system',
     audience: 'mentee',
@@ -396,6 +403,7 @@ const EMAIL_PREFERENCE_CATEGORIES = [
   { group: 'Tasks', key: 'deadline_passed', label: 'A task deadline has passed' },
   { group: 'Tasks', key: 'extension_requested', label: 'An extension is requested' },
   { group: 'Tasks', key: 'extension_handled', label: 'My extension request is handled' },
+  { group: 'Tasks', key: 'delay_rejected', label: 'My delay request is rejected' },
   { group: 'Feedback', key: 'submission_reviewed', label: 'My submission is reviewed' },
   { group: 'Feedback', key: 'feedback_sent', label: 'I receive feedback' },
   { group: 'Program', key: 'enrollment_updates', label: 'Enrollment updates' },

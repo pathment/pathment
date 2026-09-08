@@ -155,21 +155,37 @@ export default function MenteeProgress() {
               <p className="text-sm text-slate-500">No delays logged.</p>
             ) : (
               <div className="space-y-2">
-                {progress.delays.map((d) => (
+                {progress.delays.map((d) => {
+                  const status = d.reviewStatus || (d.accepted ? 'accepted' : 'pending');
+                  return (
                   <div key={d.id} className="p-3 bg-slate-50 rounded-xl border border-slate-200">
                     <div className="flex items-start justify-between gap-2">
                       <p className="text-sm text-slate-900">{d.reason}</p>
-                      {d.accepted && (
+                      {status === 'accepted' && (
                         <span className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-xs">
                           <Check className="w-3 h-3" />Counted
+                        </span>
+                      )}
+                      {status === 'rejected' && (
+                        <span className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-50 text-red-700 text-xs">
+                          Rejected
+                        </span>
+                      )}
+                      {status === 'pending' && (
+                        <span className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-xs">
+                          Pending review
                         </span>
                       )}
                     </div>
                     <div className="flex items-center gap-2 mt-1 text-xs text-slate-500">
                       <span className="capitalize">{d.kind}</span><span>·</span><span>{d.days}d</span>
                     </div>
+                    {status === 'rejected' && d.rejectionReason && (
+                      <p className="text-xs text-red-600 mt-1">{d.rejectionReason}</p>
+                    )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
