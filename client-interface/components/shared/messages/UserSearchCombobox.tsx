@@ -18,9 +18,9 @@ import {
 } from '@/components/ui/command';
 
 const ROLE_COLORS: Record<string, string> = {
-  admin: 'bg-red-100 text-red-700',
-  mentor: 'bg-brand-100 text-brand-700',
-  mentee: 'bg-emerald-100 text-emerald-700',
+  admin: 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-300',
+  mentor: 'bg-brand-100 text-brand-700 dark:bg-brand-500/20 dark:text-brand-300',
+  mentee: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300',
 };
 
 const DEBOUNCE_MS = 300;
@@ -158,7 +158,7 @@ export default function UserSearchCombobox({ onSelect }: UserSearchComboboxProps
                             className="w-8 h-8 rounded-full object-cover shrink-0"
                           />
                         ) : (
-                          <div className="w-8 h-8 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-xs font-semibold shrink-0">
+                          <div className="w-8 h-8 rounded-full bg-brand-100 dark:bg-brand-500/20 text-brand-700 dark:text-brand-300 flex items-center justify-center text-xs font-semibold shrink-0">
                             {(user.firstName?.[0] || '').toUpperCase()}
                             {(user.lastName?.[0] || '').toUpperCase()}
                           </div>
