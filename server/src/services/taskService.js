@@ -11,6 +11,7 @@ const { difficultyWeight } = require('../config/scoring');
 const interviewKitService = require('./interviewKitService');
 const quizKitService = require('./quizKitService');
 const { toStringList } = require('../utils/multipartFields');
+const crypto = require('crypto');
 
 /**
  * The statuses a mentee may set on their own task.
@@ -132,6 +133,117 @@ class TaskService {
     const isMentor = await this._isMentorForMentee(mentorId, menteeId);
     if (!isMentor) {
       throw new ForbiddenError('You are not the mentor for this mentee');
+    }
+
+    if (type === 'recurring') {
+      const rec = data.recurring;
+      if (!rec) {
+        throw new ValidationError('Recurring task configuration is required');
+      }
+
+      if (!rec.type || !['discussion', 'project', 'reading', 'exercise'].includes(rec.type)) {
+        throw new ValidationError('Invalid or missing recurring task type');
+      }
+
+      let daysOfWeek = [];
+      if (Array.isArray(rec.daysOfWeek) && rec.daysOfWeek.length > 0) {
+        daysOfWeek = rec.daysOfWeek.map(Number).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6);
+      }
+      if (!daysOfWeek.length) daysOfWeek = [1];
+      const dayOfWeek = daysOfWeek[0];
+
+      const timeLocal = rec.timeLocal || '09:00';
+      if (!/^\d{2}:\d{2}$/.test(timeLocal)) {
+        throw new ValidationError('timeLocal must be in HH:mm format');
+      }
+
+      const startsOn = rec.startsOn || new Date().toISOString().split('T')[0];
+      const endsOn = rec.endsOn ? String(rec.endsOn).split('T')[0] : null;
+
+      const dueOffsetDays = Number.isInteger(Number(rec.dueOffsetDays)) && Number(rec.dueOffsetDays) > 0
+        ? Number(rec.dueOffsetDays)
+        : 7;
+
+      const intervalWeeks = Number.isInteger(Number(rec.intervalWeeks)) && Number(rec.intervalWeeks) >= 1
+        ? Math.min(52, Number(rec.intervalWeeks))
+        : 1;
+
+      let ms = await models.MenteeSchedule.findOne({ where: { menteeId } });
+      if (!ms) {
+        ms = await models.MenteeSchedule.create({
+          menteeId,
+          schedule: [],
+          assignedBy: mentorId,
+          timezone: 'UTC'
+        });
+      }
+
+      const schedule = Array.isArray(ms.schedule) ? ms.schedule : [];
+      const slotId = `slot-recurring-${crypto.randomUUID()}`;
+
+      const newSlot = {
+        id: slotId,
+        label: title || 'Recurring Task',
+        time: timeLocal,
+        days: daysOfWeek.includes(0) || daysOfWeek.includes(6) ? 'everyday' : 'weekdays',
+        kind: 'recurring',
+        recurring: {
+          title: title || 'Recurring Task',
+          type: rec.type,
+          recurrence: 'weekly',
+          dayOfWeek,
+          daysOfWeek,
+          timeLocal,
+          timezone: ms.timezone || 'UTC',
+          startsOn,
+          endsOn,
+          dueOffsetDays,
+          intervalWeeks
+        }
+      };
+
+      schedule.push(newSlot);
+      ms.schedule = schedule;
+      ms.changed('schedule', true);
+      await ms.save();
+
+      // Dispatch a single notification for the recurring task schedule assignment
+      try {
+        const mentorUser = await models.User.findByPk(mentorId, { attributes: ['firstName', 'lastName'] });
+        const mentorFirst = mentorUser?.firstName || 'Your mentor';
+        const mentorName = mentorUser ? `${mentorUser.firstName} ${mentorUser.lastName}`.trim() : 'Your mentor';
+        const slotTitle = title || 'Recurring Task';
+        const cleanSlotId = slotId.replace('slot-recurring-', '');
+
+        await notificationOrchestrator.dispatch({
+          eventKey: NOTIFICATION_EVENTS.TASK_ASSIGNED,
+          recipients: [{ userId: menteeId }],
+          payload: {
+            title: `${mentorFirst} assigned you a recurring task`,
+            message: `“${slotTitle}” has been scheduled. Upcoming tasks will appear on your list automatically.`,
+            actionUrl: '/mentee/dashboard',
+            actionLabel: 'Go to dashboard',
+            emailSubject: `New recurring schedule from ${mentorName}: ${slotTitle}`,
+            relatedEntityType: 'mentee_schedule',
+            relatedEntityId: cleanSlotId
+          },
+          dedupe: {
+            relatedEntityType: 'recurring_schedule_assigned',
+            relatedEntityId: cleanSlotId
+          }
+        });
+      } catch (err) {
+        console.error('[taskService] Failed to dispatch recurring notification:', err.message);
+      }
+
+      // Fire-and-forget: materialize tasks in the background so the API
+      // responds instantly. The next scheduler tick will catch any missed
+      // materializations if this fails.
+      const recurringSlotMaterializer = require('./recurringSlotMaterializer');
+      recurringSlotMaterializer.activateSlotForMentor(mentorId, slotId, [menteeId])
+        .catch((err) => console.error('[recurringSlotMaterializer] Background activation failed:', err.message));
+
+      return newSlot;
     }
 
     // Interview tasks carry a kit + options (retake / camera / AI / timing) under
@@ -261,23 +373,25 @@ class TaskService {
       ? new Date(fullTask.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: menteeTz })
       : null;
 
-    await notificationOrchestrator.dispatch({
-      eventKey: NOTIFICATION_EVENTS.TASK_ASSIGNED,
-      recipients: [{ userId: fullTask.menteeId }],
-      payload: {
-        title: `${mentorFirst} assigned you a task`,
-        message: `“${taskTitle}” is now on your list${dueStr ? ` · due ${dueStr}` : ''}. Open it to get started.`,
-        actionUrl: `/mentee/tasks/${fullTask.id}`,
-        actionLabel: 'Open task',
-        relatedEntityType: 'assigned_task',
-        relatedEntityId: fullTask.id,
-        emailSubject: `New task from ${mentorName}: ${taskTitle}`
-      },
-      dedupe: {
-        relatedEntityType: 'task_assigned',
-        relatedEntityId: fullTask.id
-      }
-    });
+    if (!data.skipNotification) {
+      await notificationOrchestrator.dispatch({
+        eventKey: NOTIFICATION_EVENTS.TASK_ASSIGNED,
+        recipients: [{ userId: fullTask.menteeId }],
+        payload: {
+          title: `${mentorFirst} assigned you a task`,
+          message: `“${taskTitle}” is now on your list${dueStr ? ` · due ${dueStr}` : ''}. Open it to get started.`,
+          actionUrl: `/mentee/tasks/${fullTask.id}`,
+          actionLabel: 'Open task',
+          relatedEntityType: 'assigned_task',
+          relatedEntityId: fullTask.id,
+          emailSubject: `New task from ${mentorName}: ${taskTitle}`
+        },
+        dedupe: {
+          relatedEntityType: 'task_assigned',
+          relatedEntityId: fullTask.id
+        }
+      });
+    }
 
     return fullTask;
   }

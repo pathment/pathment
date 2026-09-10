@@ -11,6 +11,7 @@ import { scheduleApi, type ScheduleSlot } from '@/lib/services/schedule-api';
 import { mentorApi } from '@/lib/services/mentor-api';
 import { Drawer } from '@/components/shared/Drawer';
 import { ScheduleJsonPanel } from '@/components/shared/ScheduleJsonPanel';
+import { MultiDaySelectDropdown, DAYS_LIST } from '@/components/shared';
 import { downloadScheduleTemplateJson } from '@/lib/utils/schedule-json';
 import { getBrowserTimeZone, formatMeeting } from '@/lib/utils/datetime';
 import { useConfirm } from '@/lib/context/ConfirmContext';
@@ -20,15 +21,6 @@ const DURATIONS = [15, 30, 45, 60];
 const SLOT_DAYS = ['everyday', 'weekdays', 'weekends'];
 const TASK_TYPES = ['discussion', 'project', 'reading', 'assignment', 'exercise'];
 const RECURRENCES = ['daily', 'weekly', 'once'];
-const DAYS_LIST = [
-  { value: 1, label: 'Monday' },
-  { value: 2, label: 'Tuesday' },
-  { value: 3, label: 'Wednesday' },
-  { value: 4, label: 'Thursday' },
-  { value: 5, label: 'Friday' },
-  { value: 6, label: 'Saturday' },
-  { value: 0, label: 'Sunday' },
-];
 const field = 'border border-slate-300 rounded-lg px-3 py-2 text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500';
 
 // ───────────────────────── Templates tab ─────────────────────────
@@ -381,135 +373,13 @@ function RoadmapSlotEditor({ slot, menteeId, roadmaps, onPatch, refreshTick }: {
   );
 }
 
-function MultiDaySelectDropdown({
-  selectedDays,
-  onChange,
-}: {
-  selectedDays: number[];
-  onChange: (days: number[]) => void;
-}) {
-  const [open, setOpen] = useState(false);
 
-  const isAll = selectedDays.length === 7;
-  const isWeekdays = selectedDays.length === 5 && [1, 2, 3, 4, 5].every((d) => selectedDays.includes(d));
-  const isWeekends = selectedDays.length === 2 && [6, 0].every((d) => selectedDays.includes(d));
-
-  let labelText = '';
-  if (isAll) labelText = 'Every day (Mon-Sun)';
-  else if (isWeekdays) labelText = 'Weekdays (Mon-Fri)';
-  else if (isWeekends) labelText = 'Weekends (Sat-Sun)';
-  else if (selectedDays.length === 0) labelText = 'Select days...';
-  else {
-    const order = [1, 2, 3, 4, 5, 6, 0];
-    const sorted = [...selectedDays].sort((a, b) => order.indexOf(a) - order.indexOf(b));
-    labelText = sorted.map((val) => DAYS_LIST.find((d) => d.value === val)?.label.slice(0, 3)).join(', ');
-  }
-
-  const toggleDay = (val: number) => {
-    const isSelected = selectedDays.includes(val);
-    const next = isSelected ? selectedDays.filter((d) => d !== val) : [...selectedDays, val];
-    onChange(next.length > 0 ? next : [val]);
-  };
-
-  const applyPreset = (preset: 'all' | 'weekdays' | 'weekends' | 'mon-wed-fri') => {
-    if (preset === 'all') onChange([1, 2, 3, 4, 5, 6, 0]);
-    else if (preset === 'weekdays') onChange([1, 2, 3, 4, 5]);
-    else if (preset === 'weekends') onChange([6, 0]);
-    else if (preset === 'mon-wed-fri') onChange([1, 3, 5]);
-  };
-
-  return (
-    <div className="relative inline-block w-full">
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between gap-2 px-3 py-2 text-xs font-medium bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/80 transition-colors"
-      >
-        <span className="truncate flex items-center gap-1.5 font-semibold text-slate-900 dark:text-slate-100">
-          <CalendarRange className="w-3.5 h-3.5 text-brand-600 shrink-0" />
-          {labelText}
-        </span>
-        <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
-      </button>
-
-      {open && (
-        <>
-          <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
-
-          <div className="absolute left-0 top-full mt-1.5 w-64 z-30 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-lg p-2.5 space-y-2.5">
-            <div>
-              <span className="block text-[10px] uppercase font-semibold text-slate-400 tracking-wider mb-1">Quick Presets</span>
-              <div className="flex flex-wrap gap-1">
-                <button
-                  type="button"
-                  onClick={() => applyPreset('weekdays')}
-                  className="px-2 py-1 text-[11px] rounded-md bg-slate-100 dark:bg-slate-800 hover:bg-brand-50 hover:text-brand-600 dark:hover:bg-brand-500/20 dark:hover:text-brand-300 text-slate-600 dark:text-slate-300 font-medium transition-colors"
-                >
-                  Weekdays
-                </button>
-                <button
-                  type="button"
-                  onClick={() => applyPreset('mon-wed-fri')}
-                  className="px-2 py-1 text-[11px] rounded-md bg-slate-100 dark:bg-slate-800 hover:bg-brand-50 hover:text-brand-600 dark:hover:bg-brand-500/20 dark:hover:text-brand-300 text-slate-600 dark:text-slate-300 font-medium transition-colors"
-                >
-                  Mon/Wed/Fri
-                </button>
-                <button
-                  type="button"
-                  onClick={() => applyPreset('weekends')}
-                  className="px-2 py-1 text-[11px] rounded-md bg-slate-100 dark:bg-slate-800 hover:bg-brand-50 hover:text-brand-600 dark:hover:bg-brand-500/20 dark:hover:text-brand-300 text-slate-600 dark:text-slate-300 font-medium transition-colors"
-                >
-                  Weekends
-                </button>
-                <button
-                  type="button"
-                  onClick={() => applyPreset('all')}
-                  className="px-2 py-1 text-[11px] rounded-md bg-slate-100 dark:bg-slate-800 hover:bg-brand-50 hover:text-brand-600 dark:hover:bg-brand-500/20 dark:hover:text-brand-300 text-slate-600 dark:text-slate-300 font-medium transition-colors"
-                >
-                  Every day
-                </button>
-              </div>
-            </div>
-
-            <div className="border-t border-slate-100 dark:border-slate-800 pt-2 space-y-1">
-              <span className="block text-[10px] uppercase font-semibold text-slate-400 tracking-wider mb-1">Select Days</span>
-              {DAYS_LIST.map((d) => {
-                const checked = selectedDays.includes(d.value);
-                return (
-                  <label
-                    key={d.value}
-                    onClick={() => toggleDay(d.value)}
-                    className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-colors ${
-                      checked
-                        ? 'bg-brand-50/70 dark:bg-brand-500/15 text-brand-700 dark:text-brand-300 font-semibold'
-                        : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        readOnly
-                        className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 w-3.5 h-3.5"
-                      />
-                      <span>{d.label}</span>
-                    </div>
-                    {checked && <Check className="w-3.5 h-3.5 text-brand-600 shrink-0" />}
-                  </label>
-                );
-              })}
-            </div>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
 
 // ───────────────────────── Fill schedules tab ─────────────────────────
 function FillTab() {
   const { cohort } = useMentorCohort();
   const { local } = useMentorRoadmaps();
+  const confirm = useConfirm();
   const [scope, setScope] = useState<'all' | 'selected' | 'single'>('all');
   const [selectedMenteeIds, setSelectedMenteeIds] = useState<Set<string>>(new Set());
   const [menteeId, setMenteeId] = useState('');
@@ -551,6 +421,12 @@ function FillTab() {
   // Save/Apply slot config across target mentees
   const saveSlotConfig = async (slot: ScheduleSlot, slotId: string) => {
     if (!slotId) return;
+    if (slot.kind === 'recurring' && slot.recurring?.startsOn && slot.recurring?.endsOn) {
+      if (new Date(slot.recurring.endsOn) < new Date(slot.recurring.startsOn)) {
+        toast.error("Ends On date must be after Starts On date");
+        return;
+      }
+    }
     try {
       setBusy(slotId);
       if (scope === 'single') {
@@ -729,7 +605,7 @@ function FillTab() {
                       </div>
                     </div>
 
-                    <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="grid gap-3 sm:grid-cols-4">
                       <div>
                         <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Frequency</label>
                         <select
@@ -771,11 +647,44 @@ function FillTab() {
                           className="w-full rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-2 text-xs bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 shadow-2xs"
                         />
                       </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Ends On</label>
+                        <input
+                          type="date"
+                          value={s.recurring?.endsOn || ''}
+                          onChange={(e) => patchSlot(s.id, {
+                            recurring: { ...(s.recurring || { title: '', type: 'discussion' }), endsOn: e.target.value || undefined }
+                          })}
+                          className="w-full rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-2 text-xs bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 shadow-2xs"
+                        />
+                      </div>
                     </div>
                   </div>
                 )}
 
                 <div className="flex items-center justify-end gap-2.5 mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80">
+                  {s.kind !== 'empty' && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!(await confirm({
+                          title: 'Clear this slot?',
+                          description: `This will change the slot "${s.label}" to Empty, stopping any active schedules.`,
+                          variant: 'danger',
+                          confirmLabel: 'Clear Slot'
+                        }))) return;
+
+                        const clearedSlot: ScheduleSlot = { ...s, kind: 'empty', roadmapChain: [], startStep: 0, recurring: null };
+                        patchSlot(slotId, clearedSlot);
+                        await saveSlotConfig(clearedSlot, slotId);
+                      }}
+                      disabled={busy === slotId}
+                      className="mr-auto text-xs font-semibold text-red-600 hover:text-red-700 hover:underline transition-colors disabled:opacity-50"
+                    >
+                      Clear Slot
+                    </button>
+                  )}
                   {s.kind === 'recurring' && (
                     <button
                       type="button"
