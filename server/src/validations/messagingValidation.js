@@ -6,7 +6,7 @@ const messagingSchemas = {
   searchUsersQuery: Joi.object({
     q: Joi.string().trim().max(100).allow('').optional(),
     role: Joi.string().valid('admin', 'mentor', 'mentee').optional(),
-    limit: Joi.number().integer().min(1).max(25).default(10)
+    limit: Joi.number().integer().min(1).max(500).default(200)
   }),
 
   createDirectConversation: Joi.object({
