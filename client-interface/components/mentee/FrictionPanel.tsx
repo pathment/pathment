@@ -18,7 +18,7 @@ const FRICTION_KINDS = ['job', 'domestic', 'electricity', 'hardware', 'health', 
  * count in their favour). Three actions: log a blocker, log a delay, ask for
  * more time.
  */
-export function FrictionPanel({ taskId }: { taskId: string }) {
+export function FrictionPanel({ taskId, hasPendingExtension = false }: { taskId: string; hasPendingExtension?: boolean }) {
   const [open, setOpen] = useState<Panel>(null);
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState<Panel>(null);
@@ -135,16 +135,25 @@ export function FrictionPanel({ taskId }: { taskId: string }) {
 
       {open === 'extension' && (
         <div className="mt-4 rounded-xl border border-slate-200 p-4 space-y-3">
-          <input value={eReason} onChange={(e) => setEReason(e.target.value)} placeholder="Why do you need more time?" className={field} />
-          <div className="flex items-center gap-2">
-            <input type="number" min={1} value={eDays} onChange={(e) => setEDays(Number(e.target.value))} className={`${field} w-24`} />
-            <span className="text-sm text-slate-500">extra days</span>
-          </div>
-          <div className="flex justify-end">
-            <button onClick={requestExtension} disabled={saving} className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm inline-flex items-center gap-2 disabled:opacity-50">
-              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}Request extension
-            </button>
-          </div>
+          {hasPendingExtension ? (
+            <p className="text-sm text-amber-800 bg-amber-50 border border-amber-100 p-3 rounded-lg flex items-center gap-2 font-medium">
+              <Clock className="w-4 h-4 shrink-0 text-amber-600" />
+              You already have a pending extension request. Your mentor will review it shortly.
+            </p>
+          ) : (
+            <>
+              <input value={eReason} onChange={(e) => setEReason(e.target.value)} placeholder="Why do you need more time?" className={field} />
+              <div className="flex items-center gap-2">
+                <input type="number" min={1} value={eDays} onChange={(e) => setEDays(Number(e.target.value))} className={`${field} w-24`} />
+                <span className="text-sm text-slate-500">extra days</span>
+              </div>
+              <div className="flex justify-end">
+                <button onClick={requestExtension} disabled={saving} className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm inline-flex items-center gap-2 disabled:opacity-50">
+                  {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}Request extension
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>
