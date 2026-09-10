@@ -20,6 +20,7 @@ class NotificationScheduler {
   }
 
   async run() {
+    await this.sendMeetingReminders();
     await this.notifyDeadlineApproaching();
     await this.notifyDeadlinePassed();
     await this.sendWeeklyProgressReports();
@@ -65,6 +66,79 @@ class NotificationScheduler {
       if (sent) console.log(`[scheduler] sent ${sent} re-engagement reminder(s)`);
     } catch (error) {
       console.error('re-engagement reminder run failed:', error.message);
+    }
+  }
+
+  async sendMeetingReminders() {
+    try {
+      const now = new Date();
+      // Look for meetings starting in ~30 minutes (covering [29m, 31m] to ensure overlap with 1m scheduler interval)
+      const minTime = new Date(now.getTime() + 29 * 60 * 1000);
+      const maxTime = new Date(now.getTime() + 31 * 60 * 1000);
+
+      const meetings = await models.ScheduledMeeting.findAll({
+        where: {
+          startsAt: {
+            [Op.gte]: minTime,
+            [Op.lte]: maxTime
+          },
+          status: 'scheduled'
+        },
+        include: [
+          { model: models.User, as: 'mentor', attributes: ['id', 'firstName', 'lastName'] },
+          { model: models.User, as: 'mentee', attributes: ['id', 'firstName', 'lastName'] }
+        ]
+      });
+
+      for (const meeting of meetings) {
+        const mentor = meeting.mentor;
+        const mentee = meeting.mentee;
+        if (!mentor || !mentee) continue;
+
+        const formattedTime = `${meeting.day} at ${meeting.time}`;
+
+        // Send to Mentee
+        await notificationOrchestrator.dispatch({
+          eventKey: NOTIFICATION_EVENTS.MEETING_REMINDER,
+          recipients: [{ userId: mentee.id }],
+          payload: {
+            title: 'Your review meeting starts in 30 minutes!',
+            message: `Your Pathment review meeting is about to begin. Join on time so you don't miss it.`,
+            actionUrl: '/mentee/meetings',
+            actionLabel: 'Join Meeting',
+            relatedEntityType: 'scheduled_meeting',
+            relatedEntityId: meeting.id,
+            emailSubject: 'Pathment: Your review meeting starts in 30 minutes!',
+            emailText: `Hi ${mentee.firstName || ''}, your Pathment review meeting with ${mentor.firstName} ${mentor.lastName} is booked for ${formattedTime}. Join on time so you don't miss it.`
+          },
+          dedupe: {
+            relatedEntityType: 'meeting_reminder',
+            relatedEntityId: meeting.id
+          }
+        });
+
+        // Send to Mentor
+        await notificationOrchestrator.dispatch({
+          eventKey: NOTIFICATION_EVENTS.MEETING_REMINDER,
+          recipients: [{ userId: mentor.id }],
+          payload: {
+            title: 'Your review meeting starts in 30 minutes!',
+            message: `Your Pathment review meeting is about to begin. Join on time so you don't miss it.`,
+            actionUrl: '/mentor/schedules',
+            actionLabel: 'Join Meeting',
+            relatedEntityType: 'scheduled_meeting',
+            relatedEntityId: meeting.id,
+            emailSubject: 'Pathment: Your review meeting starts in 30 minutes!',
+            emailText: `Hi ${mentor.firstName || ''}, your Pathment review meeting with ${mentee.firstName} ${mentee.lastName} is booked for ${formattedTime}. Join on time so you don't miss it.`
+          },
+          dedupe: {
+            relatedEntityType: 'meeting_reminder',
+            relatedEntityId: meeting.id
+          }
+        });
+      }
+    } catch (error) {
+      console.error('[scheduler] send meeting reminders failed:', error.message);
     }
   }
 
