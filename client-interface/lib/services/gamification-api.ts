@@ -31,13 +31,18 @@ interface UserBadgeApiItem {
 
 export interface PointsHistoryEntry {
   id: string;
+  userId?: string;
   pointsChange: number;
   pointsBefore: number;
   pointsAfter: number;
   sourceType: string;
-  reason?: string;
+  sourceId?: string | null;
+  reason?: string | null;
+  acknowledged?: boolean;
   createdAt: string;
 }
+
+export type PointHistoryItem = PointsHistoryEntry;
 
 export interface LeaderboardEntry {
   id: string;

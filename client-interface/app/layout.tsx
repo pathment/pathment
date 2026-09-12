@@ -1,4 +1,4 @@
-﻿import type { Metadata, Viewport } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Plus_Jakarta_Sans, JetBrains_Mono } from 'next/font/google';
 import '../styles/globals.css';
 import { QueryProvider } from '@/lib/query';
@@ -8,6 +8,7 @@ import { ClanProvider } from '@/lib/context/ClanContext';
 import { ConfirmProvider } from '@/lib/context/ConfirmContext';
 import { CallProvider } from '@/lib/context/CallContext';
 import { Toaster } from '@/components/ui/sonner';
+import { PointsEarnedNotifier } from '@/components/shared/PointsEarnedNotifier';
 
 const jakarta = Plus_Jakarta_Sans({ subsets: ['latin'], variable: '--font-jakarta', display: 'swap' });
 const jetbrains = JetBrains_Mono({ subsets: ['latin'], variable: '--font-jetbrains', display: 'swap' });
@@ -48,6 +49,7 @@ export default function RootLayout({
                   <CallProvider>
                     {children}
                   </CallProvider>
+                  <PointsEarnedNotifier />
                   <Toaster />
                 </ConfirmProvider>
               </ClanProvider>
