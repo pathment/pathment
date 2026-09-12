@@ -235,14 +235,17 @@ export const certificatesApi = {
     const qs = runId ? `?runId=${encodeURIComponent(runId)}` : '';
     return apiClient.get<{
       success: boolean;
-      runId: string | null;
-      isDone: boolean;
-      total: number;
-      completed: number;
-      failed: number;
-      pending: number;
-      data: AIEvaluationResult[];
-      ranAt: string | null;
+      message?: string;
+      data: {
+        runId: string | null;
+        isDone: boolean;
+        total: number;
+        completed: number;
+        failed: number;
+        pending: number;
+        data: AIEvaluationResult[];
+        ranAt: string | null;
+      };
     }>(`/certificates/templates/${id}/ai-evaluate/status${qs}`, { timeout: 60000 });
   }
 };

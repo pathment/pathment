@@ -148,5 +148,15 @@ export const qk = {
     program: (id: string) => ['public', 'program', id] as const,
   },
 
+  certificates: {
+    all: ['certificates'] as const,
+    templates: ['certificates', 'templates'] as const,
+    template: (id: string) => ['certificates', 'template', id] as const,
+    qualifications: (templateId: string, programId: string) =>
+      ['certificates', 'qualifications', templateId, programId] as const,
+    aiStatus: (templateId: string, runId?: string | null) =>
+      ['certificates', 'ai-status', templateId, runId ?? 'latest'] as const,
+  },
+
   announcements: ['announcements'] as const,
 } as const;

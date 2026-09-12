@@ -95,7 +95,7 @@ export default function MentorCertificatesPage() {
   const [aiDetailMentee, setAiDetailMentee] = useState<any | null>(null);
 
   const {
-    aiResults, setAiResults, aiRanAt, setAiRanAt, runningAI,
+    aiResults, aiRanAt, setAiRanAt, runningAI,
     aiProgressCount, aiTotalCount, runAIEvaluation
   } = useAIEvaluationProgress({
     templateId: activeTemplateId,
@@ -134,7 +134,6 @@ export default function MentorCertificatesPage() {
     allSelectedRecipients: []
   });
 
-  const [refreshKey, setRefreshKey] = useState(0);
 
   const [activeTab, setActiveTab] = useState<'issue' | 'my'>('issue');
 
@@ -207,17 +206,13 @@ export default function MentorCertificatesPage() {
       .finally(() => setLoadingTemplates(false));
   }, []);
 
-  useEffect(() => {
+  const fetchQualifications = useCallback(() => {
     if (!activeTemplateId || !user) {
       setQualifiedData({});
       setMentorTiers({});
       return;
     }
-
     setLoadingQualifications(true);
-    setSearch('');
-    setSelectedIds(new Set());
-
     certificatesApi.getQualification(activeTemplateId, { mentorId: user.id })
       .then(res => {
         if (res.success && res.data) {
@@ -238,10 +233,7 @@ export default function MentorCertificatesPage() {
           criteria.forEach(c => {
             const list = data[c.id] || [];
             list.forEach((m: any) => {
-              if (!seenIds.has(m.id)) {
-                seenIds.add(m.id);
-                activeList.push(m);
-              }
+              if (!seenIds.has(m.id)) { seenIds.add(m.id); activeList.push(m); }
             });
           });
 
@@ -249,10 +241,7 @@ export default function MentorCertificatesPage() {
             if (key === 'mentors' || key === 'paused') return;
             const list = data[key] || [];
             list.forEach((m: any) => {
-              if (!seenIds.has(m.id)) {
-                seenIds.add(m.id);
-                activeList.push(m);
-              }
+              if (!seenIds.has(m.id)) { seenIds.add(m.id); activeList.push(m); }
             });
           });
 
@@ -266,33 +255,18 @@ export default function MentorCertificatesPage() {
               let bestTierId = criteria[criteria.length - 1]?.id || 'participation';
               criteria.forEach(c => {
                 const match = m.tierMatches?.[c.id] ?? 0;
-                if (match > maxMatch) {
-                  maxMatch = match;
-                  bestTierId = c.id;
-                }
+                if (match > maxMatch) { maxMatch = match; bestTierId = c.id; }
               });
               defTier = bestTierId;
             }
             initialTiers[m.id] = defTier;
-
             const matchPercent = m.tierMatches?.[defTier] ?? 0;
-            if (matchPercent >= 90) {
-              autoSelected.add(m.id);
-            }
+            if (matchPercent >= 90) autoSelected.add(m.id);
           });
 
-          if (activeTemplate?.aiEvaluation?.results) {
-            const aiRes = activeTemplate.aiEvaluation.results;
-            setAiResults(aiRes);
-            setAiRanAt(activeTemplate.aiEvaluation.ranAt ?? null);
-            aiRes.forEach((r: any) => {
-              if (r.mentee_id && r.certificate_tier && seenIds.has(r.mentee_id)) {
-                initialTiers[r.mentee_id] = r.certificate_tier;
-                autoSelected.add(r.mentee_id);
-              }
-            });
+          if (activeTemplate?.aiEvaluation?.ranAt) {
+            setAiRanAt(activeTemplate.aiEvaluation.ranAt);
           } else {
-            setAiResults([]);
             setAiRanAt(null);
           }
 
@@ -302,7 +276,13 @@ export default function MentorCertificatesPage() {
       })
       .catch(() => toast.error('Failed to load qualification details'))
       .finally(() => setLoadingQualifications(false));
-  }, [activeTemplateId, user, refreshKey]);
+  }, [activeTemplateId, user, templates, setAiRanAt]);
+
+  useEffect(() => {
+    setSearch('');
+    setSelectedIds(new Set());
+    fetchQualifications();
+  }, [activeTemplateId, user]);
 
   const activeMentees = useMemo<MenteeRow[]>(() => {
     const list: MenteeRow[] = [];
@@ -497,7 +477,7 @@ export default function MentorCertificatesPage() {
       if (res.success) {
         toast.success(`Queued ${recipientsList.length} certificate(s) for issuance`);
         setSelectedIds(new Set());
-        setRefreshKey(prev => prev + 1);
+        fetchQualifications();
       }
     } catch (err: any) {
       toast.error(err.message || 'Failed to issue certificates');

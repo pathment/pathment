@@ -10,7 +10,14 @@ export interface UseRecipientSelectionOptions {
   aiResults?: Record<string, any>;
 }
 
-export function useRecipientSelection({ criteria, qualifiedData, aiResults }: UseRecipientSelectionOptions) {
+const EMPTY_ARRAY: any[] = [];
+const EMPTY_OBJECT: Record<string, any> = {};
+
+export function useRecipientSelection({
+  criteria = EMPTY_ARRAY,
+  qualifiedData = EMPTY_OBJECT,
+  aiResults = EMPTY_OBJECT,
+}: UseRecipientSelectionOptions) {
   const [recipientSearch, setRecipientSearch] = useState('');
   const [badgeFilter, setBadgeFilter] = useState('all');
   const [sortBy, setSortBy] = useState<'none' | 'score_desc' | 'score_asc'>('none');
@@ -21,15 +28,21 @@ export function useRecipientSelection({ criteria, qualifiedData, aiResults }: Us
   const recipientMenteesList = useMemo(() => {
     const seen = new Set<string>();
     const list: any[] = [];
-    criteria.forEach(c => {
+    criteria.forEach((c) => {
       (qualifiedData[c.id] ?? []).forEach((m: any) => {
-        if (!seen.has(m.id)) { seen.add(m.id); list.push({ ...m, role: 'mentee', isPaused: false }); }
+        if (!seen.has(m.id)) {
+          seen.add(m.id);
+          list.push({ ...m, role: 'mentee', isPaused: false });
+        }
       });
     });
-    Object.keys(qualifiedData).forEach(key => {
+    Object.keys(qualifiedData).forEach((key) => {
       if (key === 'mentors' || key === 'paused') return;
       (qualifiedData[key] ?? []).forEach((m: any) => {
-        if (!seen.has(m.id)) { seen.add(m.id); list.push({ ...m, role: 'mentee', isPaused: false }); }
+        if (!seen.has(m.id)) {
+          seen.add(m.id);
+          list.push({ ...m, role: 'mentee', isPaused: false });
+        }
       });
     });
     return list;
@@ -51,19 +64,22 @@ export function useRecipientSelection({ criteria, qualifiedData, aiResults }: Us
     return recipientPausedList;
   }, [recipientType, recipientMenteesList, recipientMentorsList, recipientPausedList]);
 
-  const getEffectiveTier = useCallback((mOrId: any): string => {
-    const defaultTier = criteria[criteria.length - 1]?.id ?? 'participation';
-    const id = typeof mOrId === 'string' ? mOrId : mOrId?.id;
-    if (!id) return defaultTier;
+  const getEffectiveTier = useCallback(
+    (mOrId: any): string => {
+      const defaultTier = criteria[criteria.length - 1]?.id ?? 'participation';
+      const id = typeof mOrId === 'string' ? mOrId : mOrId?.id;
+      if (!id) return defaultTier;
 
-    if (assignedTiers[id]) return assignedTiers[id];
-    if (aiResults?.[id]?.certificate_tier) return aiResults[id].certificate_tier;
+      if (assignedTiers[id]) return assignedTiers[id];
+      if (aiResults?.[id]?.certificate_tier) return aiResults[id].certificate_tier;
 
-    const m = typeof mOrId === 'object' ? mOrId : activeList.find((x: any) => x.id === id);
-    if (m?.assignedTier) return m.assignedTier;
+      const m = typeof mOrId === 'object' ? mOrId : activeList.find((x: any) => x.id === id);
+      if (m?.assignedTier) return m.assignedTier;
 
-    return defaultTier;
-  }, [assignedTiers, aiResults, activeList, criteria]);
+      return defaultTier;
+    },
+    [assignedTiers, aiResults, activeList, criteria]
+  );
 
   const filtered = useMemo(() => {
     let result = [...activeList];
@@ -108,14 +124,16 @@ export function useRecipientSelection({ criteria, qualifiedData, aiResults }: Us
   const allFilteredIds = useMemo(() => filtered.map((m: any) => m.id), [filtered]);
 
   const allSelected = useMemo(
-    () => allFilteredIds.length > 0 && allFilteredIds.every(id => selectedMenteeIds.has(id)),
+    () => allFilteredIds.length > 0 && allFilteredIds.every((id) => selectedMenteeIds.has(id)),
     [allFilteredIds, selectedMenteeIds]
   );
 
   const selectedSummary = useMemo(() => {
     const summary: Record<string, number> = {};
-    criteria.forEach(c => { summary[c.id] = 0; });
-    selectedMenteeIds.forEach(id => {
+    criteria.forEach((c) => {
+      summary[c.id] = 0;
+    });
+    selectedMenteeIds.forEach((id) => {
       const tier = getEffectiveTier(id);
       if (summary[tier] !== undefined) {
         summary[tier] = (summary[tier] ?? 0) + 1;
@@ -127,21 +145,21 @@ export function useRecipientSelection({ criteria, qualifiedData, aiResults }: Us
   }, [criteria, selectedMenteeIds, getEffectiveTier]);
 
   const toggleAll = useCallback(() => {
-    setSelectedMenteeIds(prev => {
+    setSelectedMenteeIds((prev) => {
       const next = new Set(prev);
       const selectableIds = filtered.filter((m: any) => !m.isPaused).map((m: any) => m.id);
-      const allSelectableSelected = selectableIds.length > 0 && selectableIds.every(id => next.has(id));
+      const allSelectableSelected = selectableIds.length > 0 && selectableIds.every((id) => next.has(id));
       if (allSelectableSelected) {
-        selectableIds.forEach(id => next.delete(id));
+        selectableIds.forEach((id) => next.delete(id));
       } else {
-        selectableIds.forEach(id => next.add(id));
+        selectableIds.forEach((id) => next.add(id));
       }
       return next;
     });
   }, [filtered]);
 
   const toggleOne = useCallback((id: string) => {
-    setSelectedMenteeIds(prev => {
+    setSelectedMenteeIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -150,58 +168,64 @@ export function useRecipientSelection({ criteria, qualifiedData, aiResults }: Us
   }, []);
 
   const handleTierChange = useCallback((menteeId: string, value: string) => {
-    setAssignedTiers(prev => ({ ...prev, [menteeId]: value }));
+    setAssignedTiers((prev) => ({ ...prev, [menteeId]: value }));
   }, []);
 
-  const bulkSetBadge = useCallback((badge: string, getTierNameFn?: (b: string) => string) => {
-    const updatedTiers = { ...assignedTiers };
-    const nextSelected = new Set(selectedMenteeIds);
-    filtered.forEach((m: any) => {
-      updatedTiers[m.id] = badge;
-      if (m.isPaused) {
-        nextSelected.delete(m.id);
-        return;
-      }
-      const match = m.tierMatches?.[badge] ?? 0;
-      if (match >= 90) nextSelected.add(m.id);
-      else nextSelected.delete(m.id);
-    });
-    setAssignedTiers(updatedTiers);
-    setSelectedMenteeIds(nextSelected);
-    const tierName = getTierNameFn ? getTierNameFn(badge) : badge;
-    toast.info(`Set all filtered recipients to ${tierName}`);
-  }, [assignedTiers, selectedMenteeIds, filtered]);
-
-  const resetToAIRecommendations = useCallback((aiResults: any[]) => {
-    if (!aiResults || aiResults.length === 0) return;
-    const updatedTiers = { ...assignedTiers };
-    const nextSelected = new Set(selectedMenteeIds);
-    const aiMap: Record<string, string> = {};
-
-    aiResults.forEach(r => {
-      if (r.mentee_id && r.certificate_tier) {
-        aiMap[r.mentee_id] = r.certificate_tier;
-      }
-    });
-
-    filtered.forEach((m: any) => {
-      if (m.isPaused) {
-        nextSelected.delete(m.id);
-        return;
-      }
-      const aiTier = aiMap[m.id];
-      if (aiTier) {
-        updatedTiers[m.id] = aiTier;
-        const match = m.tierMatches?.[aiTier] ?? 0;
+  const bulkSetBadge = useCallback(
+    (badge: string, getTierNameFn?: (b: string) => string) => {
+      const updatedTiers = { ...assignedTiers };
+      const nextSelected = new Set(selectedMenteeIds);
+      filtered.forEach((m: any) => {
+        updatedTiers[m.id] = badge;
+        if (m.isPaused) {
+          nextSelected.delete(m.id);
+          return;
+        }
+        const match = m.tierMatches?.[badge] ?? 0;
         if (match >= 90) nextSelected.add(m.id);
         else nextSelected.delete(m.id);
-      }
-    });
+      });
+      setAssignedTiers(updatedTiers);
+      setSelectedMenteeIds(nextSelected);
+      const tierName = getTierNameFn ? getTierNameFn(badge) : badge;
+      toast.info(`Set all filtered recipients to ${tierName}`);
+    },
+    [assignedTiers, selectedMenteeIds, filtered]
+  );
 
-    setAssignedTiers(updatedTiers);
-    setSelectedMenteeIds(nextSelected);
-    toast.success('Reset all filtered recipients to AI recommendations.');
-  }, [assignedTiers, selectedMenteeIds, filtered]);
+  const resetToAIRecommendations = useCallback(
+    (aiResultsList: any[]) => {
+      if (!aiResultsList || aiResultsList.length === 0) return;
+      const updatedTiers = { ...assignedTiers };
+      const nextSelected = new Set(selectedMenteeIds);
+      const aiMap: Record<string, string> = {};
+
+      aiResultsList.forEach((r) => {
+        if (r.mentee_id && r.certificate_tier) {
+          aiMap[r.mentee_id] = r.certificate_tier;
+        }
+      });
+
+      filtered.forEach((m: any) => {
+        if (m.isPaused) {
+          nextSelected.delete(m.id);
+          return;
+        }
+        const aiTier = aiMap[m.id];
+        if (aiTier) {
+          updatedTiers[m.id] = aiTier;
+          const match = m.tierMatches?.[aiTier] ?? 0;
+          if (match >= 90) nextSelected.add(m.id);
+          else nextSelected.delete(m.id);
+        }
+      });
+
+      setAssignedTiers(updatedTiers);
+      setSelectedMenteeIds(nextSelected);
+      toast.success('Reset all filtered recipients to AI recommendations.');
+    },
+    [assignedTiers, selectedMenteeIds, filtered]
+  );
 
   return {
     recipientSearch,

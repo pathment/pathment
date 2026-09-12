@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback } from 'react';
-import { qk, useApiQuery, STALE } from '@/lib/query';
+import { qk, useApiQuery, useInvalidate, STALE } from '@/lib/query';
 import { orgRoadmapApi, type RoadmapStepInput } from '@/lib/services/roadmap-api';
 
 export interface OrgRoadmapStep {
@@ -54,11 +54,12 @@ export function useOrgRoadmaps(): UseOrgRoadmapsReturn {
     errorMessage: 'Failed to load org roadmaps',
   });
 
-  // Every mutation is write-then-refetch; `after` keeps that in one place.
+  const invalidate = useInvalidate();
+
   const after = useCallback(async (call: Promise<unknown>) => {
     await call;
-    await refetch();
-  }, [refetch]);
+    await invalidate(qk.admin.orgRoadmaps);
+  }, [invalidate]);
 
   return {
     roadmaps: data ?? EMPTY,

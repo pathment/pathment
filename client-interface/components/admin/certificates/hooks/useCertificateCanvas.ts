@@ -34,7 +34,7 @@ export function useCertificateCanvas({ elements, setElements }: UseCertificateCa
     }
   }, [bgImageUrl]);
 
-  const selectedElement = elements.find(el => el.id === selectedId) || null;
+  const selectedElement = elements.find((el) => el.id === selectedId) || null;
 
   const handleMouseMove = (e: React.MouseEvent) => {
     if (!activeDragId || !canvasRef.current) return;
@@ -49,9 +49,9 @@ export function useCertificateCanvas({ elements, setElements }: UseCertificateCa
     xPercent = Math.max(0, Math.min(100, xPercent));
     yPercent = Math.max(0, Math.min(100, yPercent));
 
-    setElements(prev => prev.map(el =>
-      el.id === activeDragId ? { ...el, xPercent, yPercent } : el
-    ));
+    setElements((prev) =>
+      prev.map((el) => (el.id === activeDragId ? { ...el, xPercent, yPercent } : el))
+    );
   };
 
   const handleMouseUp = () => {
@@ -72,8 +72,8 @@ export function useCertificateCanvas({ elements, setElements }: UseCertificateCa
   };
 
   const addVariableElement = (key: string, label: string) => {
-    if (elements.some(el => el.dynamicKey === key)) {
-      const match = elements.find(el => el.dynamicKey === key);
+    if (elements.some((el) => el.dynamicKey === key)) {
+      const match = elements.find((el) => el.dynamicKey === key);
       if (match) setSelectedId(match.id);
       toast.info(`${label} variable is already added to workspace`);
       return;
@@ -91,10 +91,10 @@ export function useCertificateCanvas({ elements, setElements }: UseCertificateCa
       color: '#1e293b',
       fontWeight: 'bold',
       alignment: 'center',
-      fontStyle: 'Montserrat, sans-serif'
+      fontStyle: 'Montserrat, sans-serif',
     };
 
-    setElements(prev => [...prev, newEl]);
+    setElements((prev) => [...prev, newEl]);
     setSelectedId(id);
     toast.success(`Added ${label} variable to template canvas!`);
   };
@@ -111,14 +111,14 @@ export function useCertificateCanvas({ elements, setElements }: UseCertificateCa
       color: '#1e293b',
       fontWeight: 'normal',
       alignment: 'center',
-      fontStyle: 'Montserrat, sans-serif'
+      fontStyle: 'Montserrat, sans-serif',
     };
-    setElements(prev => [...prev, newEl]);
+    setElements((prev) => [...prev, newEl]);
     setSelectedId(id);
   };
 
   const addBadgeElement = () => {
-    if (elements.some(el => el.type === 'badge')) {
+    if (elements.some((el) => el.type === 'badge')) {
       toast.warning('A dynamic badge element is already added to canvas layout.');
       return;
     }
@@ -134,9 +134,9 @@ export function useCertificateCanvas({ elements, setElements }: UseCertificateCa
       color: '#000000',
       fontWeight: 'normal',
       alignment: 'center',
-      fontStyle: 'Montserrat, sans-serif'
+      fontStyle: 'Montserrat, sans-serif',
     };
-    setElements(prev => [...prev, newEl]);
+    setElements((prev) => [...prev, newEl]);
     setSelectedId(id);
   };
 
@@ -154,44 +154,52 @@ export function useCertificateCanvas({ elements, setElements }: UseCertificateCa
       fontSizePercent: 1,
       color: '#000000',
       fontWeight: 'normal',
-      alignment: 'center'
+      alignment: 'center',
     };
-    setElements(prev => [...prev, newEl]);
+    setElements((prev) => [...prev, newEl]);
     setSelectedId(id);
     toast.success('Pathment Logo added to canvas!');
   };
 
   const deleteElement = (id: string) => {
-    setElements(prev => prev.filter(el => el.id !== id));
+    setElements((prev) => prev.filter((el) => el.id !== id));
     if (selectedId === id) setSelectedId(null);
   };
 
   const updateSelectedElement = (key: keyof CertificateElement, val: any) => {
     if (!selectedId) return;
-    setElements(prev => prev.map(el =>
-      el.id === selectedId ? { ...el, [key]: val } : el
-    ));
+    setElements((prev) => prev.map((el) => (el.id === selectedId ? { ...el, [key]: val } : el)));
   };
 
   return {
-    name, setName,
-    selectedProgramId, setSelectedProgramId,
-    bgImageUrl, setBgImageUrl,
-    logoUrl, setLogoUrl,
-    logoConfig, setLogoConfig,
-    activePresetId, setActivePresetId,
-    selectedId, setSelectedId,
+    name,
+    setName,
+    selectedProgramId,
+    setSelectedProgramId,
+    bgImageUrl,
+    setBgImageUrl,
+    logoUrl,
+    setLogoUrl,
+    logoConfig,
+    setLogoConfig,
+    activePresetId,
+    setActivePresetId,
+    selectedId,
+    setSelectedId,
     selectedElement,
-    activeDragId, setActiveDragId,
-    uploadingLogo, setUploadingLogo,
+    activeDragId,
+    setActiveDragId,
+    uploadingLogo,
+    setUploadingLogo,
     canvasRef,
-    handleMouseMove, handleMouseUp,
+    handleMouseMove,
+    handleMouseUp,
     applyPresetBackground,
     addVariableElement,
     addStaticTextElement,
     addBadgeElement,
     addPathmentLogoElement,
     deleteElement,
-    updateSelectedElement
+    updateSelectedElement,
   };
 }

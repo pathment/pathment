@@ -2,7 +2,7 @@
 
 import { useCallback } from 'react';
 import { tracksApi, type Track } from '@/lib/services/tracks-api';
-import { qk, useApiQuery } from '@/lib/query';
+import { qk, useApiQuery, useInvalidate } from '@/lib/query';
 
 export interface UseTracksReturn {
   tracks: Track[];
@@ -18,7 +18,6 @@ export interface UseTracksReturn {
 
 const EMPTY: Track[] = [];
 
-/** Mentor-facing tracks for one mentee (personal lanes + their tasks). */
 export function useTracks(menteeId: string | null): UseTracksReturn {
   const { data, loading, error, refetch } = useApiQuery<Track[]>({
     queryKey: qk.mentor.tracks(menteeId ?? ''),
@@ -27,10 +26,12 @@ export function useTracks(menteeId: string | null): UseTracksReturn {
     errorMessage: 'Failed to load tracks',
   });
 
+  const invalidate = useInvalidate();
+
   const after = useCallback(async (call: Promise<unknown>) => {
     await call;
-    await refetch();
-  }, [refetch]);
+    await invalidate(qk.mentor.tracks(menteeId ?? ''));
+  }, [invalidate, menteeId]);
 
   return {
     tracks: data ?? EMPTY,
