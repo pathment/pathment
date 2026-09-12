@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Loader2, Plus, Search, ShieldCheck, SlidersHorizontal, Trash2, UserPlus, X, Pencil } from 'lucide-react';
+import { Loader2, Plus, Search, ShieldCheck, SlidersHorizontal, Trash2, UserPlus, X, Pencil, Ban, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { apiClient } from '@/lib/services/api-client';
@@ -80,11 +80,12 @@ export default function RolesAccessPage() {
 }
 
 /* ─────────────────────────── People ─────────────────────────── */
-const ROLE_TABS: { key: string; label: string }[] = [
+const ROLE_TABS: { key: string; label: string; role?: string; status?: string }[] = [
   { key: '', label: 'All' },
-  { key: 'admin', label: 'Admins' },
-  { key: 'mentor', label: 'Mentors' },
-  { key: 'mentee', label: 'Mentees' },
+  { key: 'admin', label: 'Admins', role: 'admin' },
+  { key: 'mentor', label: 'Mentors', role: 'mentor' },
+  { key: 'mentee', label: 'Mentees', role: 'mentee' },
+  { key: 'blocked', label: 'Blocked', status: 'suspended' },
 ];
 
 function PeopleTab() {
@@ -97,6 +98,8 @@ function PeopleTab() {
   const [inviting, setInviting] = useState(false);
   const pagination = usePagination({ initialPage: 1, initialLimit: 20 });
 
+  const activeTab = ROLE_TABS.find((t) => t.key === roleFilter) || ROLE_TABS[0];
+
   // Monotonic request token — only the latest in-flight fetch is allowed to
   // write state, so an earlier (e.g. page-3) response can never overwrite a
   // later (page-1) one. This is what kills the pagination "glitch".
@@ -107,7 +110,8 @@ function PeopleTab() {
     try {
       const res = await accessApi.directory({
         search: debouncedSearch.trim() || undefined,
-        role: roleFilter || undefined,
+        role: activeTab.role,
+        status: activeTab.status,
         page: pagination.page,
         limit: pagination.limit,
       });
@@ -117,7 +121,7 @@ function PeopleTab() {
     } catch { if (token === reqRef.current) setUsers([]); }
     finally { if (token === reqRef.current) setLoading(false); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedSearch, roleFilter, pagination.page, pagination.limit]);
+  }, [debouncedSearch, activeTab.role, activeTab.status, pagination.page, pagination.limit]);
 
   // Single load effect. When the search/role filter changes we snap back to
   // page 1 FIRST (and skip this run) so we never fetch a now-out-of-range page;
@@ -150,15 +154,15 @@ function PeopleTab() {
             </button>
           </div>
 
-          {/* Role filter */}
-          <div className="mt-3 flex items-center gap-1">
+          {/* Role & Status filter */}
+          <div className="mt-3 flex items-center gap-1 overflow-x-auto">
             {ROLE_TABS.map((t) => (
               <button key={t.key} onClick={() => setRoleFilter(t.key)}
-                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${roleFilter === t.key ? 'bg-brand-100 text-brand-700' : 'text-slate-500 hover:bg-slate-100'}`}>
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors shrink-0 ${roleFilter === t.key ? (t.key === 'blocked' ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400' : 'bg-brand-100 text-brand-700 dark:bg-brand-500/20 dark:text-brand-300') : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
                 {t.label}
               </button>
             ))}
-            <span className="ml-auto text-xs text-slate-400 tabular-nums">{pagination.total} {pagination.total === 1 ? 'person' : 'people'}</span>
+            <span className="ml-auto text-xs text-slate-400 tabular-nums shrink-0">{pagination.total} {pagination.total === 1 ? 'person' : 'people'}</span>
           </div>
 
           {/* Adaptive height: the list grows with its content but is capped to the
@@ -171,16 +175,26 @@ function PeopleTab() {
               <div className="py-8 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-brand-600" /></div>
             ) : users.length === 0 ? (
               <p className="py-8 text-center text-sm text-slate-400">{query.trim() || roleFilter ? 'No matches.' : 'No users yet — invite someone to get started.'}</p>
-            ) : users.map((u) => (
-              <button
-                key={u.id}
-                onClick={() => setSelected(u)}
-                className={`w-full text-left px-2 py-2.5 rounded-lg ${selected?.id === u.id ? 'bg-brand-50 dark:bg-brand-500/15' : 'hover:bg-slate-50'}`}
-              >
-                <p className="text-sm font-medium text-slate-900">{`${u.firstName} ${u.lastName}`.trim() || u.email}</p>
-                <p className="text-xs text-slate-500">{u.email} · {u.role}</p>
-              </button>
-            ))}
+            ) : users.map((u) => {
+              const isBlocked = u.status === 'suspended';
+              return (
+                <button
+                  key={u.id}
+                  onClick={() => setSelected(u)}
+                  className={`w-full text-left px-2 py-2.5 rounded-lg flex items-center justify-between gap-2 ${selected?.id === u.id ? 'bg-brand-50 dark:bg-brand-500/15' : 'hover:bg-slate-50'}`}
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-slate-900 truncate">{`${u.firstName} ${u.lastName}`.trim() || u.email}</p>
+                    <p className="text-xs text-slate-500 truncate">{u.email} · {u.role}</p>
+                  </div>
+                  {isBlocked && (
+                    <span className="shrink-0 px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide uppercase bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400 border border-rose-200 dark:border-rose-800/50">
+                      Blocked
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
 
           {pagination.total > pagination.limit && (
@@ -189,7 +203,7 @@ function PeopleTab() {
         </div>
       </div>
       <div className="lg:col-span-7">
-        {selected ? <AccessPanel user={selected} /> : (
+        {selected ? <AccessPanel user={selected} onUpdated={load} /> : (
           <div className="rounded-2xl border border-dashed border-slate-200 bg-card p-12 text-center text-slate-400">
             Select someone to view and manage their roles - or <button onClick={() => setInviting(true)} className="text-brand-600 font-medium">invite a new person</button> with a role.
           </div>
@@ -294,10 +308,12 @@ function InviteWithAccessDrawer({ onClose, onInvited }: { onClose: () => void; o
   );
 }
 
-function AccessPanel({ user }: { user: DirectoryUser }) {
+function AccessPanel({ user, onUpdated }: { user: DirectoryUser; onUpdated?: () => void }) {
+  const confirm = useConfirm();
   const [access, setAccess] = useState<UserAccess | null>(null);
   const [loading, setLoading] = useState(true);
   const [granting, setGranting] = useState(false);
+  const [blocking, setBlocking] = useState(false);
   const [permClanId, setPermClanId] = useState<string | null>(null);
   const userName = `${user.firstName} ${user.lastName}`.trim() || user.email;
 
@@ -312,16 +328,91 @@ function AccessPanel({ user }: { user: DirectoryUser }) {
     catch (e) { toast.error(extractApiErrorMessage(e, 'Could not revoke')); }
   };
 
+  const currentStatus = access?.user?.status || user.status || 'active';
+  const isBlocked = currentStatus === 'suspended';
+
+  const handleToggleBlock = async () => {
+    if (isBlocked) {
+      if (!(await confirm({
+        title: `Unblock ${userName}?`,
+        description: 'This user will be able to log in and access Pathment again.',
+        confirmLabel: 'Unblock user',
+        variant: 'default',
+      }))) return;
+
+      setBlocking(true);
+      try {
+        await accessApi.unblockUser(user.id);
+        toast.success(`${userName} has been unblocked`);
+        load();
+        onUpdated?.();
+      } catch (e) {
+        toast.error(extractApiErrorMessage(e, 'Could not unblock user'));
+      } finally {
+        setBlocking(false);
+      }
+    } else {
+      if (!(await confirm({
+        title: `Block ${userName}?`,
+        description: 'They will be logged out immediately and prevented from logging in or using Pathment until unblocked.',
+        confirmLabel: 'Block user',
+        variant: 'danger',
+      }))) return;
+
+      setBlocking(true);
+      try {
+        await accessApi.blockUser(user.id);
+        toast.success(`${userName} has been blocked`);
+        load();
+        onUpdated?.();
+      } catch (e) {
+        toast.error(extractApiErrorMessage(e, 'Could not block user'));
+      } finally {
+        setBlocking(false);
+      }
+    }
+  };
+
   return (
     <div className="rounded-2xl border border-slate-200 bg-card p-5">
-      <div className="flex items-start justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-100 pb-4">
         <div>
-          <h2 className="font-semibold text-slate-900">{`${user.firstName} ${user.lastName}`.trim() || user.email}</h2>
-          <p className="text-sm text-slate-500">{user.email}</p>
+          <div className="flex items-center gap-2.5">
+            <h2 className="font-semibold text-slate-900 text-base">{userName}</h2>
+            {isBlocked ? (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400 border border-rose-200 dark:border-rose-800/50">
+                <Ban className="w-3.5 h-3.5" /> Blocked
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50">
+                <CheckCircle2 className="w-3.5 h-3.5" /> Active
+              </span>
+            )}
+          </div>
+          <p className="text-sm text-slate-500 mt-0.5">{user.email}</p>
         </div>
-        <button onClick={() => setGranting(true)} className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700">
-          <UserPlus className="w-4 h-4" /> Grant role
-        </button>
+        <div className="flex items-center gap-2">
+          {isBlocked ? (
+            <button
+              onClick={handleToggleBlock}
+              disabled={blocking}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 dark:bg-slate-800 dark:border-slate-700 dark:text-emerald-400 dark:hover:bg-emerald-950/30 transition-colors disabled:opacity-50"
+            >
+              {blocking ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4 text-emerald-600" />} Unblock user
+            </button>
+          ) : (
+            <button
+              onClick={handleToggleBlock}
+              disabled={blocking}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50/50 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100/70 dark:bg-rose-950/20 dark:border-rose-900/50 dark:text-rose-400 dark:hover:bg-rose-950/50 transition-colors disabled:opacity-50"
+            >
+              {blocking ? <Loader2 className="w-4 h-4 animate-spin" /> : <Ban className="w-4 h-4 text-rose-600" />} Block user
+            </button>
+          )}
+          <button onClick={() => setGranting(true)} className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700 shrink-0">
+            <UserPlus className="w-4 h-4" /> Grant role
+          </button>
+        </div>
       </div>
 
       {loading ? (

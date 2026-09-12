@@ -713,36 +713,36 @@ class AdminService {
   }
 
   /**
-   * Suspend a user - sets status to 'suspended', immediately invalidates all sessions.
+   * Block a user - sets status to 'suspended', immediately invalidates all sessions.
    */
   async suspendUser(targetUserId, adminUserId) {
     if (targetUserId === adminUserId) {
-      throw new ValidationError('You cannot suspend your own account');
+      throw new ValidationError('You cannot block your own account');
     }
     const user = await models.User.findByPk(targetUserId);
     if (!user) throw new NotFoundError('User not found');
-    if (user.role === 'admin') throw new ValidationError('Admin accounts cannot be suspended through this endpoint');
-    if (user.status === 'suspended') throw new ValidationError('User is already suspended');
+    if (user.role === 'admin') throw new ValidationError('Admin accounts cannot be blocked through this endpoint');
+    if (user.status === 'suspended') throw new ValidationError('User is already blocked');
 
     await user.update({ status: 'suspended' });
     // Invalidate all active sessions so they are kicked out immediately
     await models.UserSession.destroy({ where: { userId: targetUserId } });
     await models.RefreshToken.destroy({ where: { userId: targetUserId } });
 
-    return { message: `${user.firstName} ${user.lastName} has been suspended` };
+    return { message: `${user.firstName} ${user.lastName} has been blocked` };
   }
 
   /**
-   * Unsuspend a user - restores status to 'active'.
+   * Unblock a user - restores status to 'active'.
    */
   async unsuspendUser(targetUserId, adminUserId) {
     const user = await models.User.findByPk(targetUserId);
     if (!user) throw new NotFoundError('User not found');
-    if (user.status !== 'suspended') throw new ValidationError('User is not suspended');
+    if (user.status !== 'suspended') throw new ValidationError('User is not blocked');
 
     await user.update({ status: 'active' });
 
-    return { message: `${user.firstName} ${user.lastName} has been unsuspended` };
+    return { message: `${user.firstName} ${user.lastName} has been unblocked` };
   }
 
   /**

@@ -317,7 +317,9 @@ class AuthService {
     }
 
     // Check if account is active
-    if (user.status !== 'active') {
+    if (user.status === 'suspended') {
+      throw new AuthenticationError('Your account has been blocked. Please contact an administrator.');
+    } else if (user.status !== 'active') {
       throw new AuthenticationError(AUTH_MESSAGES.ACCOUNT_DISABLED);
     }
 

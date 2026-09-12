@@ -11,7 +11,7 @@ export interface RoleCatalogEntry {
 }
 
 export interface UserAccess {
-  user: { id: string; firstName: string; lastName: string; email: string };
+  user: { id: string; firstName: string; lastName: string; email: string; role: string; status?: 'active' | 'suspended' | 'pending' | 'inactive' };
   explicit: { id: string; role: string; roleLabel: string; scopeType: string; scopeId: string | null; scopeLabel: string; createdAt: string }[];
   derived: { role: string; roleLabel: string; scopeType: string; scopeId: string | null; scopeLabel: string }[];
 }
@@ -31,6 +31,7 @@ export interface DirectoryUser {
   lastName: string;
   email: string;
   role: string;
+  status?: 'active' | 'suspended' | 'pending' | 'inactive';
 }
 
 /** IAM admin API + the current user's effective permissions (for UI gating). */
@@ -44,11 +45,16 @@ export const accessApi = {
     apiClient.get<any>('/access/roles').then((r) => (r.data?.roles || []) as RoleCatalogEntry[]),
   userAccess: (userId: string) =>
     apiClient.get<any>(`/access/users/${userId}`).then((r) => r.data as UserAccess),
+  blockUser: (userId: string) =>
+    apiClient.put<any>(`/access/users/${userId}/block`),
+  unblockUser: (userId: string) =>
+    apiClient.put<any>(`/access/users/${userId}/unblock`),
   /** Paginated org-wide user directory for the IAM People tab (all roles, searchable). */
-  directory: (params: { search?: string; role?: string; page?: number; limit?: number } = {}) => {
+  directory: (params: { search?: string; role?: string; status?: string; page?: number; limit?: number } = {}) => {
     const qs = new URLSearchParams();
     if (params.search) qs.set('search', params.search);
     if (params.role) qs.set('role', params.role);
+    if (params.status) qs.set('status', params.status);
     if (params.page) qs.set('page', String(params.page));
     if (params.limit) qs.set('limit', String(params.limit));
     return apiClient.get<any>(`/access/directory?${qs.toString()}`).then((r) => r.data as { users: DirectoryUser[]; total: number; page: number; limit: number });

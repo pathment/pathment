@@ -86,7 +86,17 @@ const getAuditLogs = catchAsync(async (req, res) => {
   res.status(200).json(successResponse('Audit logs', result));
 });
 
+const blockUser = catchAsync(async (req, res) => {
+  const result = await accessService.blockUser(req.params.userId, req.user.id);
+  res.status(200).json(successResponse('User blocked', result));
+});
+
+const unblockUser = catchAsync(async (req, res) => {
+  const result = await accessService.unblockUser(req.params.userId, req.user.id);
+  res.status(200).json(successResponse('User unblocked', result));
+});
+
 module.exports = {
   getPermissionCatalogue, getRoleCatalog, getUserAccess, getDirectory, grantRole, revokeRole, myPermissions, inviteWithRole,
-  listCustomRoles, createCustomRole, updateCustomRole, deleteCustomRole, getAuditLogs
+  listCustomRoles, createCustomRole, updateCustomRole, deleteCustomRole, getAuditLogs, blockUser, unblockUser
 };

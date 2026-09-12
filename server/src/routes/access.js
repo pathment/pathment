@@ -15,6 +15,8 @@ router.get('/permissions', requirePermission(PERMISSIONS.ACCESS_MANAGE), accessC
 router.get('/roles', requirePermission(PERMISSIONS.ACCESS_MANAGE), accessController.getRoleCatalog);
 router.get('/directory', requirePermission(PERMISSIONS.ACCESS_MANAGE), accessController.getDirectory);
 router.get('/users/:userId', requirePermission(PERMISSIONS.ACCESS_MANAGE), accessController.getUserAccess);
+router.put('/users/:userId/block', requirePermission(PERMISSIONS.ACCESS_MANAGE), accessController.blockUser);
+router.put('/users/:userId/unblock', requirePermission(PERMISSIONS.ACCESS_MANAGE), accessController.unblockUser);
 router.post('/grants', requirePermission(PERMISSIONS.ACCESS_MANAGE), accessController.grantRole);
 router.delete('/grants/:id', requirePermission(PERMISSIONS.ACCESS_MANAGE), accessController.revokeRole);
 

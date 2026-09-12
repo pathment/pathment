@@ -40,7 +40,9 @@ const authenticate = catchAsync(async (req, res, next) => {
     throw new AuthenticationError('User no longer exists');
   }
 
-  if (user.status !== 'active') {
+  if (user.status === 'suspended') {
+    throw new AuthenticationError('Your account has been blocked. Please contact an administrator.');
+  } else if (user.status !== 'active') {
     throw new AuthenticationError('Your account has been disabled');
   }
 
@@ -103,6 +105,7 @@ const authenticateTemporary = catchAsync(async (req, res, next) => {
   });
 
   if (!user) throw new AuthenticationError('User no longer exists');
+  if (user.status === 'suspended') throw new AuthenticationError('Your account has been blocked. Please contact an administrator.');
   if (user.status !== 'active') throw new AuthenticationError('Your account has been disabled');
 
   req.user = user;

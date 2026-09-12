@@ -7,6 +7,7 @@ const { NotFoundError, ValidationError, ConflictError } = require('../utils/erro
 const { generateRandomToken, hashToken } = require('../utils/jwt');
 const { inviteLink } = require('../utils/links');
 const authzService = require('./authzService');
+const adminService = require('./adminService');
 const notificationOrchestrator = require('./notificationOrchestrator');
 
 const SCOPE_LEVELS = ['org', 'program', 'clan', 'self'];
@@ -113,12 +114,15 @@ class AccessService {
    * not recipient-scoped (unlike the messaging search), so an admin can browse
    * the whole org. Includes the user themselves.
    */
-  async listDirectory({ search, role, page = 1, limit = 25 } = {}) {
+  async listDirectory({ search, role, status, page = 1, limit = 25 } = {}) {
     const { Op } = require('sequelize');
     const parsedLimit = Math.min(50, Math.max(1, Number(limit) || 25));
     const parsedPage = Math.max(1, Number(page) || 1);
 
     const where = { status: { [Op.in]: ['active', 'suspended'] } };
+    if (status && ['active', 'suspended', 'pending', 'inactive'].includes(status)) {
+      where.status = status;
+    }
     if (role && ['admin', 'mentor', 'mentee'].includes(role)) where.role = role;
     const term = (search || '').trim();
     if (term) {
@@ -143,7 +147,7 @@ class AccessService {
   /** A user's explicit (revocable) + derived (read-only) assignments. */
   async listUserAccess(userId) {
     const user = await models.User.findByPk(userId, {
-      attributes: ['id', 'firstName', 'lastName', 'email', 'role', 'capabilities']
+      attributes: ['id', 'firstName', 'lastName', 'email', 'role', 'status', 'capabilities']
     });
     if (!user) throw new NotFoundError('User not found');
 
@@ -185,10 +189,18 @@ class AccessService {
     ];
 
     return {
-      user: { id: user.id, firstName: user.firstName, lastName: user.lastName, email: user.email, role: user.role },
+      user: { id: user.id, firstName: user.firstName, lastName: user.lastName, email: user.email, role: user.role, status: user.status },
       explicit,
       derived: derivedWithBase
     };
+  }
+
+  async blockUser(targetUserId, adminUserId) {
+    return adminService.suspendUser(targetUserId, adminUserId);
+  }
+
+  async unblockUser(targetUserId, adminUserId) {
+    return adminService.unsuspendUser(targetUserId, adminUserId);
   }
 
   /**
