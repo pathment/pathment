@@ -104,7 +104,7 @@ class EnrollmentService {
       const memberships = await models.ClanMembership.findAll({
         where: { userId: { [Op.in]: menteeIds }, role: 'mentee', status: 'active' },
         include: [{
-          model: models.Clan, as: 'clan', attributes: ['id', 'name', 'programId'],
+          model: models.Clan, as: 'clan', attributes: ['id', 'name', 'programId', 'whatsappGroupLink'],
           include: [{ model: models.User, as: 'leadMentor', attributes: ['id', 'firstName', 'lastName', 'email', 'profilePictureUrl'] }],
         }]
       });
@@ -114,7 +114,7 @@ class EnrollmentService {
         const lead = clan?.leadMentor
           ? { id: clan.leadMentor.id, firstName: clan.leadMentor.firstName, lastName: clan.leadMentor.lastName, email: clan.leadMentor.email, profilePictureUrl: clan.leadMentor.profilePictureUrl }
           : null;
-        r.setDataValue('clan', clan ? { id: clan.id, name: clan.name, leadMentor: lead } : null);
+        r.setDataValue('clan', clan ? { id: clan.id, name: clan.name, leadMentor: lead, whatsappGroupLink: clan.whatsappGroupLink } : null);
       });
     }
 
