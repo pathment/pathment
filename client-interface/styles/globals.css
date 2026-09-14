@@ -336,6 +336,7 @@ html[data-accent='graphite'] {
 .ProseMirror {
   padding: 0.5rem;
   min-height: 200px;
+  color: var(--color-slate-900);
 }
 
 .ProseMirror:focus {
@@ -344,30 +345,35 @@ html[data-accent='graphite'] {
 
 .ProseMirror p {
   margin: 0.75rem 0;
+  color: var(--color-slate-900);
 }
 
 .ProseMirror h1 {
   font-size: 1.875rem;
   font-weight: 700;
   margin: 1rem 0;
+  color: var(--color-slate-950);
 }
 
 .ProseMirror h2 {
   font-size: 1.5rem;
   font-weight: 600;
   margin: 0.875rem 0;
+  color: var(--color-slate-950);
 }
 
 .ProseMirror h3 {
   font-size: 1.25rem;
   font-weight: 600;
   margin: 0.75rem 0;
+  color: var(--color-slate-950);
 }
 
 .ProseMirror ul,
 .ProseMirror ol {
   padding-left: 1.5rem;
   margin: 0.75rem 0;
+  color: var(--color-slate-900);
 }
 
 .ProseMirror ul {
@@ -380,11 +386,12 @@ html[data-accent='graphite'] {
 
 .ProseMirror li {
   margin: 0.25rem 0;
+  color: var(--color-slate-900);
 }
 
 .ProseMirror code {
-  background-color: #f3f4f6;
-  color: #1f2937;
+  background-color: var(--color-slate-100);
+  color: var(--color-slate-900);
   padding: 0.125rem 0.25rem;
   border-radius: 0.25rem;
   font-family: 'Courier New', monospace;
@@ -392,8 +399,8 @@ html[data-accent='graphite'] {
 }
 
 .ProseMirror pre {
-  background-color: #1f2937;
-  color: #f3f4f6;
+  background-color: var(--color-slate-100);
+  color: var(--color-slate-900);
   padding: 1rem;
   border-radius: 0.5rem;
   margin: 1rem 0;
@@ -408,25 +415,25 @@ html[data-accent='graphite'] {
 }
 
 .ProseMirror blockquote {
-  border-left: 3px solid #d1d5db;
+  border-left: 3px solid var(--color-slate-300);
   padding-left: 1rem;
   margin: 1rem 0;
-  color: #6b7280;
+  color: var(--color-slate-600);
   font-style: italic;
 }
 
 .ProseMirror a {
-  color: #2563eb;
+  color: var(--brand-600);
   text-decoration: underline;
   cursor: pointer;
 }
 
 .ProseMirror a:hover {
-  color: #1d4ed8;
+  color: var(--brand-700);
 }
 
 .ProseMirror p.is-editor-empty:first-child::before {
-  color: #9ca3af;
+  color: var(--color-slate-400);
   content: attr(data-placeholder);
   float: left;
   height: 0;
@@ -435,6 +442,7 @@ html[data-accent='graphite'] {
 
 .ProseMirror strong {
   font-weight: 700;
+  color: var(--color-slate-950);
 }
 
 .ProseMirror em {

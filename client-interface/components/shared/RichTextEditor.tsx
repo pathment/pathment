@@ -50,7 +50,7 @@ export default function RichTextEditor({
     },
     editorProps: {
       attributes: {
-        class: 'prose prose-sm max-w-none focus:outline-none'
+        class: 'prose prose-sm prose-slate max-w-none focus:outline-none text-slate-900'
       }
     }
   });
