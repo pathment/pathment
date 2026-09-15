@@ -93,14 +93,14 @@ export function BulkReviewDrawer({
           <button
             onClick={onClose}
             disabled={busy}
-            className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50"
+            className="px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition-colors"
           >
             Cancel
           </button>
           <button
             onClick={submit}
             disabled={busy || (mode === 'changes' && !feedback.trim())}
-            className={`inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium text-white disabled:opacity-50 ${
+            className={`inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium text-white disabled:opacity-50 transition-colors ${
               mode === 'approve' ? 'bg-brand-600 hover:bg-brand-700' : 'bg-amber-600 hover:bg-amber-700'
             }`}
           >
@@ -118,15 +118,15 @@ export function BulkReviewDrawer({
     >
       <div className="space-y-6">
         {taskCount > 1 && (
-          <p className="text-sm text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50 rounded-lg px-3 py-2 border border-slate-100 dark:border-slate-700">
+          <p className="text-sm text-slate-600 bg-slate-50 rounded-lg px-3 py-2 border border-slate-200">
             Applies the same feedback to {count} submission{count === 1 ? '' : 's'} across {taskCount} tasks.
           </p>
         )}
 
         {/* Decision — segmented control */}
         <div>
-          <h3 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Decision</h3>
-          <div className="inline-flex rounded-xl border border-slate-200 dark:border-slate-700 p-1 bg-slate-50 dark:bg-slate-800/50">
+          <h3 className="text-sm font-medium text-slate-700 mb-2">Decision</h3>
+          <div className="inline-flex rounded-xl border border-slate-200 p-1 bg-slate-50">
             {(['approve', 'changes'] as const).map((m) => (
               <button
                 key={m}
@@ -134,9 +134,9 @@ export function BulkReviewDrawer({
                 className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                   mode === m
                     ? m === 'approve'
-                      ? 'bg-brand-600 text-white'
-                      : 'bg-amber-600 text-white'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'bg-amber-600 text-white shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 {m === 'approve' ? 'Approve' : 'Request changes'}
@@ -149,11 +149,11 @@ export function BulkReviewDrawer({
         {mode === 'approve' && (
           <>
             <div>
-              <h3 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Quality rating</h3>
+              <h3 className="text-sm font-medium text-slate-700 mb-2">Quality rating</h3>
               <div className="flex items-center gap-1" role="radiogroup" aria-label="Quality rating">
                 {[1, 2, 3, 4, 5].map((n) => (
                   <button key={n} onClick={() => setRating(n)} className="p-0.5" aria-label={`${n} star${n > 1 ? 's' : ''}`} aria-pressed={n === rating}>
-                    <Star className={`w-6 h-6 ${n <= rating ? 'fill-amber-400 text-amber-400' : 'text-slate-300 dark:text-slate-600'}`} />
+                    <Star className={`w-6 h-6 ${n <= rating ? 'fill-amber-400 text-amber-400' : 'text-slate-300'}`} />
                   </button>
                 ))}
               </div>
@@ -161,7 +161,7 @@ export function BulkReviewDrawer({
 
             <div>
               <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-medium text-slate-700 dark:text-slate-300">Points</h3>
+                <h3 className="text-sm font-medium text-slate-700">Points</h3>
                 {!mixedMax
                   ? <button onClick={() => setPoints(singleMax)} className="text-xs font-medium text-brand-600 hover:text-brand-700">Full ({singleMax})</button>
                   : <button onClick={() => setPointsPct(100)} className="text-xs font-medium text-brand-600 hover:text-brand-700">Full (100%)</button>}
@@ -173,7 +173,7 @@ export function BulkReviewDrawer({
                     <input type="range" min={0} max={singleMax} value={points} onChange={(e) => setPoints(Number(e.target.value))} className="flex-1 accent-brand-600" />
                     <input type="number" min={0} max={singleMax} value={points}
                       onChange={(e) => setPoints(Math.max(0, Math.min(singleMax, Number(e.target.value) || 0)))}
-                      className="w-16 border border-slate-300 dark:border-slate-700 dark:bg-slate-800 rounded-lg px-2 py-1 text-sm text-center tabular-nums focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                      className="w-16 bg-transparent border border-slate-200 text-slate-900 rounded-lg px-2 py-1 text-sm text-center tabular-nums focus:outline-none focus:ring-2 focus:ring-brand-500" />
                     <span className="text-sm text-slate-400">/ {singleMax}</span>
                   </div>
                   <p className="mt-1 text-xs text-slate-400">Awarded to every selected task. Defaults to full; lower it if the work fell short.</p>
@@ -182,7 +182,7 @@ export function BulkReviewDrawer({
                 <>
                   <div className="flex items-center gap-3">
                     <input type="range" min={0} max={100} step={5} value={pointsPct} onChange={(e) => setPointsPct(Number(e.target.value))} className="flex-1 accent-brand-600" />
-                    <span className="w-12 text-sm text-right tabular-nums text-slate-700 dark:text-slate-300">{pointsPct}%</span>
+                    <span className="w-12 text-sm text-right tabular-nums text-slate-700">{pointsPct}%</span>
                   </div>
                   <p className="mt-1 text-xs text-slate-400">
                     {pointsPct}% of each task&apos;s full points → {Math.round(Math.min(...maxima) * pointsPct / 100)}–{Math.round(Math.max(...maxima) * pointsPct / 100)} pts (clamped to each task&apos;s max).
@@ -195,7 +195,7 @@ export function BulkReviewDrawer({
 
         {/* Shared feedback */}
         <div>
-          <h3 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+          <h3 className="text-sm font-medium text-slate-700 mb-2">
             Feedback {mode === 'changes' && <span className="text-rose-500">*</span>}
           </h3>
           <FeedbackAssist
@@ -218,7 +218,7 @@ export function BulkReviewDrawer({
             onChange={(e) => setFeedback(e.target.value)}
             rows={4}
             placeholder={mode === 'approve' ? 'Optional note sent to every mentee…' : 'What needs to change (required)…'}
-            className="mt-2 w-full border border-slate-300 dark:border-slate-700 dark:bg-slate-800 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none"
+            className="mt-2 w-full bg-transparent border border-slate-200 text-slate-900 placeholder:text-slate-400 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none"
           />
           <p className="mt-1 text-xs text-slate-400">
             This same note goes to all {count} selected mentee{count === 1 ? '' : 's'}.

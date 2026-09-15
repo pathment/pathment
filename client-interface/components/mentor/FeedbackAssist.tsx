@@ -126,7 +126,7 @@ export function FeedbackAssist({
             <button
               type="button"
               onClick={toggle}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-600 dark:text-slate-300 hover:border-brand-300 hover:text-brand-700"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-700 hover:border-slate-300 hover:text-slate-900"
             >
               <MessageSquareText className="w-3.5 h-3.5" />
               Snippets
@@ -143,7 +143,7 @@ export function FeedbackAssist({
                       key={t}
                       type="button"
                       onClick={() => { onInsert(t); close(); }}
-                      className="block w-full text-left px-3 py-1.5 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
+                      className="block w-full text-left px-3 py-1.5 text-slate-700 hover:bg-slate-50"
                     >
                       {t}
                     </button>
@@ -158,20 +158,20 @@ export function FeedbackAssist({
                 <p className="px-3 py-1.5 text-xs text-slate-400">No saved snippets yet.</p>
               ) : (
                 snippets.map((s) => (
-                  <div key={s.id} className="group flex items-start gap-1 px-1.5 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg">
+                  <div key={s.id} className="group flex items-start gap-1 px-1.5 hover:bg-slate-50 rounded-lg">
                     <button
                       type="button"
                       onClick={() => { onInsert(s.body); close(); }}
                       className="flex-1 min-w-0 text-left px-1.5 py-1.5"
                     >
-                      <span className="block text-slate-800 dark:text-slate-200 font-medium truncate">{s.label}</span>
+                      <span className="block text-slate-800 font-medium truncate">{s.label}</span>
                       <span className="block text-xs text-slate-400 truncate">{s.body}</span>
                     </button>
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); removeSnippet(s.id); }}
                       aria-label={`Delete snippet ${s.label}`}
-                      className="mt-1.5 p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/15"
+                      className="mt-1.5 p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -186,7 +186,7 @@ export function FeedbackAssist({
           <button
             type="button"
             onClick={saveSnippet}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-600 dark:text-slate-300 hover:border-brand-300 hover:text-brand-700"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-700 hover:border-brand-300 hover:text-brand-700"
           >
             <BookmarkPlus className="w-3.5 h-3.5" />
             Save current as snippet
@@ -195,7 +195,7 @@ export function FeedbackAssist({
       </div>
 
       {savingOpen && (
-        <div className="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-2">
+        <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
           <input
             autoFocus
             value={label}
@@ -203,7 +203,7 @@ export function FeedbackAssist({
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); saveSnippet(); } if (e.key === 'Escape') setSavingOpen(false); }}
             maxLength={80}
             placeholder="Short label for this snippet…"
-            className="flex-1 border border-slate-300 dark:border-slate-700 dark:bg-slate-900 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+            className="flex-1 bg-transparent border border-slate-200 text-slate-900 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
           />
           <button
             type="button"
@@ -218,7 +218,7 @@ export function FeedbackAssist({
             type="button"
             onClick={() => setSavingOpen(false)}
             aria-label="Cancel saving snippet"
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"
           >
             <X className="w-3.5 h-3.5" />
           </button>
