@@ -10,6 +10,7 @@ const { pointsForDifficulty } = require('../config/points');
 const { difficultyWeight } = require('../config/scoring');
 const interviewKitService = require('./interviewKitService');
 const quizKitService = require('./quizKitService');
+const { resolveMenteeClanId, listMenteeClans, clanScopedWhere } = require('./menteeClanScope');
 const { toStringList } = require('../utils/multipartFields');
 const crypto = require('crypto');
 
@@ -107,6 +108,7 @@ class TaskService {
       trackId, // Optional: personal lane this task belongs to
       scheduleSlotId, // Optional: schedule slot origin for recurring tasks
       occurrenceDate, // Optional: specific occurrence date (YYYY-MM-DD)
+      clanId: requestedClanId,
       title,
       description,
       type,
@@ -119,12 +121,22 @@ class TaskService {
     } = data;
     let { enrollmentId } = data;
 
+    const clanId = await resolveMenteeClanId(menteeId, requestedClanId, { actorId: mentorId });
+    if (!clanId) throw new ValidationError('Mentee has no clan membership to attach this task to');
+
     // Resolve the active enrollment if the caller didn't supply one (the assign
     // drawer only knows the mentee). Falls back to most-recent enrollment.
     if (!enrollmentId) {
-      const enrollment = await this._activeEnrollmentForMentee(menteeId);
-      if (!enrollment) throw new NotFoundError('Mentee has no enrollment to attach this task to');
-      enrollmentId = enrollment.id;
+      const membership = await models.ClanMembership.findOne({
+        where: { userId: menteeId, clanId, role: 'mentee' },
+        attributes: ['enrollmentId']
+      });
+      enrollmentId = membership?.enrollmentId || null;
+      if (!enrollmentId) {
+        const enrollment = await this._activeEnrollmentForMentee(menteeId);
+        if (!enrollment) throw new NotFoundError('Mentee has no enrollment to attach this task to');
+        enrollmentId = enrollment.id;
+      }
     }
 
     // Verify the mentor is responsible for this mentee - via a legacy 1:1 match
@@ -331,6 +343,7 @@ class TaskService {
       menteeId,
       mentorId,
       enrollmentId,
+      clanId,
       status: 'assigned',
       dueDate: resolvedDueDate,
       isCustomTask: roadmapTaskId ? false : true, // Roadmap tasks are not custom
@@ -384,6 +397,7 @@ class TaskService {
           actionLabel: 'Open task',
           relatedEntityType: 'assigned_task',
           relatedEntityId: fullTask.id,
+          clanId: fullTask.clanId || null,
           emailSubject: `New task from ${mentorName}: ${taskTitle}`
         },
         dedupe: {
@@ -461,10 +475,15 @@ class TaskService {
    * Kept separate from getMenteeTasks so that heavy consumer isn't penalised
    * by this view, and vice-versa.
    */
-  async listMenteeProfileTasks(menteeId) {
+  async listMenteeProfileTasks(menteeId, clanId = null) {
+    const where = { menteeId };
+    if (clanId) {
+      const rows = await listMenteeClans(menteeId);
+      Object.assign(where, clanScopedWhere({}, clanId, rows.length));
+    }
     return models.AssignedTask.findAll({
-      where: { menteeId },
-      attributes: ['id', 'status', 'dueDate', 'submittedAt', 'completedAt', 'isLate', 'finalRating', 'enrollmentId'],
+      where,
+      attributes: ['id', 'status', 'dueDate', 'submittedAt', 'completedAt', 'isLate', 'finalRating', 'enrollmentId', 'clanId'],
       include: [{ model: models.RoadmapTask, as: 'roadmapTask', attributes: ['title', 'type'] }],
       order: [['dueDate', 'ASC']]
     });
@@ -474,7 +493,9 @@ class TaskService {
    * Get tasks for a mentee
    */
   async getMenteeTasks(menteeId, filters = {}) {
-    const where = { menteeId };
+    const clanId = await resolveMenteeClanId(menteeId, filters.clanId, { actorId: filters.actorId });
+    const memberships = await listMenteeClans(menteeId);
+    const where = clanScopedWhere({ menteeId }, clanId, memberships.length);
 
     if (filters.status) {
       where.status = filters.status;
@@ -1099,8 +1120,10 @@ class TaskService {
   /**
    * Get task statistics for mentee dashboard
    */
-  async getMenteeTaskStats(menteeId, enrollmentId) {
-    const where = { menteeId };
+  async getMenteeTaskStats(menteeId, enrollmentId, clanId = null) {
+    const resolvedClanId = await resolveMenteeClanId(menteeId, clanId);
+    const memberships = await listMenteeClans(menteeId);
+    const where = clanScopedWhere({ menteeId }, resolvedClanId, memberships.length);
     if (enrollmentId) {
       where.enrollmentId = enrollmentId;
     }

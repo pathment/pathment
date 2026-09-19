@@ -7,6 +7,7 @@ import { Bell, X, Check, Trash2, Clock, ListTodo, MessageSquare, Award, Trophy, 
 import { useAuth } from '@/lib/context/AuthContext';
 import { matchesRole, roleFromPathname, type NotificationRole } from '@/lib/utils/notification-audience';
 import { useNotificationFeed, toMessageText } from '@/lib/hooks/shared/useNotificationFeed';
+import { useClan, ALL_CLANS } from '@/lib/context/ClanContext';
 
 interface Notification {
   id: string;
@@ -19,6 +20,7 @@ interface Notification {
   actionLabel?: string;
   relatedEntityType?: string;
   relatedEntityId?: string;
+  clanId?: string | null;
   createdAt: string;
   readAt?: string;
 }
@@ -55,6 +57,7 @@ export default function NotificationDrawer({
   const router = useRouter();
   const pathname = usePathname();
   const { activeRole } = useAuth();
+  const { activeClanId, menteeActiveClanId } = useClan();
   const [isOpen, setIsOpen] = useState(false);
   const [showAllRoles, setShowAllRoles] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
@@ -79,12 +82,15 @@ export default function NotificationDrawer({
     () => notifications.filter((n) => matchesRole(n.audience, role)),
     [notifications, role]
   );
-  // The list can be un-scoped via the "All" toggle, but the BELL BADGE always
-  // reflects the current role — that's the "count based on the tab I opened".
-  const visibleNotifications = showAllRoles ? notifications : roleScoped;
+  const clanScoped = useMemo(() => {
+    const portalClan = role === 'mentee' ? menteeActiveClanId : role === 'mentor' ? activeClanId : null;
+    if (!portalClan || portalClan === ALL_CLANS) return roleScoped;
+    return roleScoped.filter((n) => !n.clanId || n.clanId === portalClan);
+  }, [roleScoped, role, menteeActiveClanId, activeClanId]);
+  const visibleNotifications = showAllRoles ? notifications : clanScoped;
   const unreadCount = useMemo(
-    () => roleScoped.filter((item) => item.status === 'unread').length,
-    [roleScoped]
+    () => clanScoped.filter((item) => item.status === 'unread').length,
+    [clanScoped]
   );
   const hiddenOtherRoleCount = notifications.length - roleScoped.length;
 

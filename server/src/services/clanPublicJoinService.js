@@ -251,9 +251,6 @@ class ClanPublicJoinService {
     });
     if (pending) return 'pending';
 
-    const other = await this._findOtherMenteePlacement(userId, clanId);
-    if (other) return 'member_elsewhere';
-
     // Mentors of this clan should not join as mentee via public link.
     if (await this._isMentorOfClan(userId, clanId)) return 'mentor_of_clan';
     return 'eligible';
@@ -339,13 +336,6 @@ class ClanPublicJoinService {
 
     if (await this._isActiveMenteeOfClan(user.id, clan.id)) {
       throw new ConflictError('You are already a member of this clan.');
-    }
-
-    const other = await this._findOtherMenteePlacement(user.id, clan.id);
-    if (other) {
-      throw new ConflictError(
-        `You are already a mentee of "${other.clan?.name || 'another clan'}". A person can be a mentee of only one clan at a time.`
-      );
     }
 
     if (await this._isMentorOfClan(user.id, clan.id)) {
@@ -455,8 +445,7 @@ class ClanPublicJoinService {
         : null;
 
       let blockedReason = null;
-      if (elsewhere) blockedReason = 'member_elsewhere';
-      else if (atCapacity && row.status === 'pending') blockedReason = 'clan_full';
+      if (atCapacity && row.status === 'pending') blockedReason = 'clan_full';
       else if (row.user && row.user.status !== 'active') blockedReason = 'user_inactive';
 
       return this._serializeRequest(row, {
@@ -494,13 +483,6 @@ class ClanPublicJoinService {
       request.resolutionNote = request.resolutionNote || 'Already a member';
       await request.save();
       return { request: this._serializeRequest(request), membership: null, alreadyMember: true };
-    }
-
-    const other = await this._findOtherMenteePlacement(user.id, clanId);
-    if (other) {
-      throw new ConflictError(
-        `This person is already a mentee of "${other.clan?.name || 'another clan'}". Reassign them instead.`
-      );
     }
 
     const menteeCount = await this._countMentees(clanId);
@@ -788,19 +770,6 @@ class ClanPublicJoinService {
       transaction
     });
     return Boolean(row);
-  }
-
-  async _findOtherMenteePlacement(userId, clanId, transaction) {
-    return models.ClanMembership.findOne({
-      where: {
-        userId,
-        role: 'mentee',
-        status: { [Op.in]: ACTIVE_MENTEE_STATUSES },
-        clanId: { [Op.ne]: clanId }
-      },
-      include: [{ model: models.Clan, as: 'clan', attributes: ['id', 'name'] }],
-      transaction
-    });
   }
 
   async _isMentorOfClan(userId, clanId, transaction) {

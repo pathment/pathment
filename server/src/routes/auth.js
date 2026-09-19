@@ -32,6 +32,12 @@ router.get(
   authController.validateInvite
 );
 
+router.post(
+  '/invites/:token/accept',
+  authenticate,
+  authController.acceptInvite
+);
+
 // Validate public clan join slug for registration continuation
 router.get(
   '/clan-join/:token',

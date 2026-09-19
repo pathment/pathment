@@ -2,6 +2,7 @@ const taskService = require('../services/taskService');
 const authzService = require('../services/authzService');
 const { successResponse } = require('../utils/responses');
 const { catchAsync } = require('../middlewares/errorHandler');
+const { requestedClanId } = require('../middlewares/portalScope');
 
 /**
  * Auto-assign week tasks to mentee
@@ -21,7 +22,7 @@ exports.autoAssignWeekTasks = catchAsync(async (req, res) => {
 exports.createCustomTask = catchAsync(async (req, res) => {
   const mentorId = req.user.id;
 
-  const task = await taskService.createCustomTask(req.body, mentorId);
+  const task = await taskService.createCustomTask({ ...req.body, clanId: requestedClanId(req) }, mentorId);
   res.status(201).json(successResponse('Custom task created successfully', { task }, 201));
 });
 
@@ -31,7 +32,7 @@ exports.createCustomTask = catchAsync(async (req, res) => {
  */
 exports.bulkCreateCustomTasks = catchAsync(async (req, res) => {
   const mentorId = req.user.id;
-  const result = await taskService.bulkCreateCustomTasks(req.body, mentorId);
+  const result = await taskService.bulkCreateCustomTasks({ ...req.body, clanId: requestedClanId(req) }, mentorId);
   res.status(201).json(successResponse(`Assigned to ${result.assigned} mentee(s)`, result, 201));
 });
 
@@ -42,6 +43,7 @@ exports.bulkCreateCustomTasks = catchAsync(async (req, res) => {
 exports.getMenteeTasks = catchAsync(async (req, res) => {
   const { menteeId } = req.params;
   const { status, enrollmentId, isCustomTask } = req.query;
+  const clanId = requestedClanId(req);
 
   // Authorization (scoped, derived): the mentee themselves, an admin, the matched
   // mentor, OR any lead/co-mentor of the mentee's clan. This is mentee-centric —
@@ -55,6 +57,8 @@ exports.getMenteeTasks = catchAsync(async (req, res) => {
   const tasks = await taskService.getMenteeTasks(menteeId, {
     status,
     enrollmentId,
+    clanId,
+    actorId: req.user.id,
     isCustomTask: isCustomTask === 'true' ? true : isCustomTask === 'false' ? false : undefined
   });
   
@@ -177,7 +181,7 @@ exports.getMenteeTaskStats = catchAsync(async (req, res) => {
     return res.status(403).json({ success: false, message: 'Forbidden' });
   }
   
-  const stats = await taskService.getMenteeTaskStats(menteeId, enrollmentId);
+  const stats = await taskService.getMenteeTaskStats(menteeId, enrollmentId, requestedClanId(req));
   res.status(200).json(successResponse('Stats retrieved', { stats }));
 });
 

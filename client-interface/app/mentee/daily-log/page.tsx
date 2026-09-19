@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { CalendarCheck, Check, Loader2, Route, Repeat, Sun } from 'lucide-react';
 import { useDailyLog, useMenteeTasks } from '@/lib/hooks/mentee';
+import { useClan } from '@/lib/context/ClanContext';
 import { scheduleApi, type ScheduleSlot } from '@/lib/services/schedule-api';
 
 function toKey(d: Date): string {
@@ -11,6 +12,7 @@ function toKey(d: Date): string {
 }
 
 export default function MenteeDailyLog() {
+  const { menteeActiveClanId } = useClan();
   const { entries, loading, save } = useDailyLog();
   const { tasks } = useMenteeTasks();
 
@@ -41,7 +43,7 @@ export default function MenteeDailyLog() {
   const [slots, setSlots] = useState<ScheduleSlot[]>([]);
   useEffect(() => {
     scheduleApi.getMySchedule().then((r: any) => setSlots(r?.data?.schedule?.schedule ?? [])).catch(() => {});
-  }, []);
+  }, [menteeActiveClanId]);
 
   // The slots that apply to the selected day (weekday vs weekend).
   const activeIsWeekend = useMemo(() => {

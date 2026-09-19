@@ -2,6 +2,7 @@ const { Op } = require('sequelize');
 const { models } = require('../db');
 const { NotFoundError, ValidationError } = require('../utils/errors/errorTypes');
 const linearRoadmapService = require('./linearRoadmapService');
+const { resolveMenteeClanId, listMenteeClans, clanScopedWhere } = require('./menteeClanScope');
 
 /**
  * scheduleTemplateService - reusable day-shape templates + per-mentee filled
@@ -120,8 +121,19 @@ class ScheduleTemplateService {
     });
   }
 
+  async _findSchedule(menteeId, requestedClanId, actorId) {
+    const clanId = await resolveMenteeClanId(menteeId, requestedClanId, { actorId });
+    const memberships = await listMenteeClans(menteeId);
+    const where = clanScopedWhere({ menteeId }, clanId, memberships.length);
+    const ms = await models.MenteeSchedule.findOne({
+      where,
+      include: [{ model: models.ScheduleTemplate, as: 'template', attributes: ['id', 'name'] }]
+    });
+    return { ms, clanId };
+  }
+
   // ── Assignment + per-mentee schedule ───────────────────────────────────────
-  async assignToMentees(templateId, menteeIds, assignedBy) {
+  async assignToMentees(templateId, menteeIds, assignedBy, clanId = null) {
     const t = await models.ScheduleTemplate.findByPk(templateId);
     if (!t) throw new NotFoundError('Template not found');
     if (!Array.isArray(menteeIds) || !menteeIds.length) throw new ValidationError('menteeIds required');
@@ -146,26 +158,32 @@ class ScheduleTemplateService {
 
     const results = [];
     for (const menteeId of menteeIds) {
-      let ms = await models.MenteeSchedule.findOne({ where: { menteeId } });
+      const resolvedClanId = await resolveMenteeClanId(menteeId, clanId, { actorId: assignedBy });
+      if (!resolvedClanId) throw new ValidationError('Mentee has no clan membership to attach this schedule to');
+      let ms = await models.MenteeSchedule.findOne({ where: { menteeId, clanId: resolvedClanId } });
+      if (!ms) {
+        const memberships = await listMenteeClans(menteeId);
+        if (memberships.length === 1) {
+          ms = await models.MenteeSchedule.findOne({ where: { menteeId, clanId: null } });
+        }
+      }
       if (ms) {
         ms.templateId = templateId;
         ms.schedule = slots;
         ms.assignedBy = assignedBy;
         ms.assignedAt = new Date();
+        ms.clanId = resolvedClanId;
         await ms.save();
       } else {
-        ms = await models.MenteeSchedule.create({ menteeId, templateId, schedule: slots, assignedBy });
+        ms = await models.MenteeSchedule.create({ menteeId, clanId: resolvedClanId, templateId, schedule: slots, assignedBy });
       }
       results.push({ menteeId, ok: true });
     }
     return results;
   }
 
-  async getMenteeSchedule(menteeId) {
-    const ms = await models.MenteeSchedule.findOne({
-      where: { menteeId },
-      include: [{ model: models.ScheduleTemplate, as: 'template', attributes: ['id', 'name'] }]
-    });
+  async getMenteeSchedule(menteeId, clanId = null, actorId = null) {
+    const { ms } = await this._findSchedule(menteeId, clanId, actorId);
     if (!ms) return null;
 
     let rawSchedule = Array.isArray(ms.schedule) ? ms.schedule : [];
@@ -234,8 +252,8 @@ class ScheduleTemplateService {
   }
 
   /** Fill/clear one slot: kind 'roadmap' (roadmapChain) | 'recurring' (recurring) | 'empty'. */
-  async updateSlot(menteeId, slotId, patch, mentorId = null) {
-    const ms = await models.MenteeSchedule.findOne({ where: { menteeId } });
+  async updateSlot(menteeId, slotId, patch, mentorId = null, clanId = null) {
+    const { ms } = await this._findSchedule(menteeId, clanId, mentorId);
     if (!ms) throw new NotFoundError('Mentee has no schedule assigned');
     const schedule = Array.isArray(ms.schedule) ? ms.schedule : [];
     let idx = schedule.findIndex((s, i) => (s.id || slug(s.label) || `block-${i}`) === slotId);

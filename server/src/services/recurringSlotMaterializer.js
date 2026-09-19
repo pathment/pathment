@@ -32,7 +32,7 @@ class RecurringSlotMaterializer {
             // so the "materialized N task(s)" line never printed however much
             // work the tick actually did, and any caller reading the count got
             // a string. `activateSlotForMentor` already unwraps it this way.
-            const result = await this._processSlotForMentee(ms.menteeId, mentorId, slot.id, rec);
+            const result = await this._processSlotForMentee(ms.menteeId, mentorId, slot.id, rec, ms.clanId);
             createdCount += Number(result?.createdForSlot) || 0;
             updatedCount += Number(result?.updatedForSlot) || 0;
           } catch (err) {
@@ -79,7 +79,7 @@ class RecurringSlotMaterializer {
       if (!rec.title || !rec.startsOn || rec.dayOfWeek == null || !rec.timeLocal) continue;
 
       appliedMentees++;
-      const res = await this._processSlotForMentee(ms.menteeId, mentorId, slot.id || slotId, rec);
+      const res = await this._processSlotForMentee(ms.menteeId, mentorId, slot.id || slotId, rec, ms.clanId);
       createdTasks += (res?.createdForSlot || 0);
       updatedTasks += (res?.updatedForSlot || 0);
     }
@@ -91,7 +91,7 @@ class RecurringSlotMaterializer {
    * Process a single recurring slot for a mentee and create missing occurrence tasks.
    * Uses a batch query for existing tasks to minimise DB round-trips.
    */
-  async _processSlotForMentee(menteeId, mentorId, slotId, recConfig) {
+  async _processSlotForMentee(menteeId, mentorId, slotId, recConfig, clanId = null) {
     const taskService = require('./taskService');
     const now = new Date();
     const horizon = new Date(now.getTime() + HORIZON_DAYS * 86400000);
@@ -132,7 +132,8 @@ class RecurringSlotMaterializer {
       where: {
         menteeId,
         scheduleSlotId: slotId,
-        occurrenceDate: occurrences.map((o) => o.dateStr)
+        occurrenceDate: occurrences.map((o) => o.dateStr),
+        ...(clanId ? { clanId } : {}),
       },
       include: [{ model: models.RoadmapTask, as: 'roadmapTask' }]
     });
@@ -188,6 +189,7 @@ class RecurringSlotMaterializer {
             dueDate,
             scheduleSlotId: slotId,
             occurrenceDate,
+            clanId: clanId || undefined,
             skipNotification: true,
           },
           mentorId

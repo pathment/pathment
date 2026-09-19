@@ -4,17 +4,10 @@
  * The "Add member" picker must never make a person simply VANISH.
  *
  * The bug: `listAvailableMembers` (role = Mentee) dropped anyone already placed
- * as a mentee in another clan, and dropped platform admins. Both rules are
- * correct — one mentee placement per person; an admin isn't someone's mentee —
- * but silently omitting them made the search look broken: you'd type someone's
- * exact email, get nothing, and have no idea why. The co-mentor picker
- * (listCandidates) has no such filter, so the SAME person appeared the moment
- * you switched the role dropdown, which is what made it look like a search bug
- * rather than a rule.
- *
- * Now an admin (who can reassign) sees them annotated with where they are, so
- * the picker can offer to MOVE them. A mentor still doesn't — taking someone out
- * of another mentor's clan is a transfer request the other side accepts.
+ * as a mentee in another clan, and dropped platform admins. Silently omitting
+ * them made the search look broken. Multi-clan mentees are additive: both admin
+ * and mentor pickers return other-clan mentees annotated with where they already
+ * are. Platform admins still only appear for callers who can reassign.
  */
 
 const { models } = require('../../src/db');
@@ -78,13 +71,21 @@ describe('clan add-member picker (mentee role)', () => {
     expect(find(byEmail, 'midhat@test.com')).toBeDefined();
   });
 
-  // ── what a mentor sees (unchanged) ────────────────────────────────────────
-  it('hides placed people from a caller who cannot reassign', async () => {
+  // ── what a mentor sees ────────────────────────────────────────────────────
+  it('finds someone already in another clan so they can be added here too', async () => {
     const people = await clanService.listAvailableMembers({ q: 'midhat@test.com', clanId: clanA.id });
-    expect(find(people, 'midhat@test.com')).toBeUndefined();
-    // …but an unplaced person is still offered, exactly as before.
+    const row = find(people, 'midhat@test.com');
+    expect(row).toBeDefined();
+    expect(row.placedClanId).toBe(clanB.id);
+    // …and an unplaced person is still offered, exactly as before.
     const free = await clanService.listAvailableMembers({ q: 'free@test.com', clanId: clanA.id });
     expect(find(free, 'free@test.com')).toBeDefined();
+  });
+
+  it('lists other-clan mentees first so they are not lost to the unassigned cap', async () => {
+    const people = await clanService.listAvailableMembers({ clanId: clanA.id });
+    expect(people[0].email).toBe('midhat@test.com');
+    expect(people[0].placedClanName).toBe('Grumpy Node Clan 2026');
   });
 
   it('hides platform admins from a caller who cannot reassign', async () => {
@@ -94,9 +95,16 @@ describe('clan add-member picker (mentee role)', () => {
   });
 
   // ── the rule the picker exists to respect ─────────────────────────────────
-  it('still refuses a straight add for someone placed elsewhere', async () => {
-    await expect(clanService.addMember(clanA.id, { userId: placedMentee.id, role: 'mentee' }))
-      .rejects.toThrow(/already a mentee of/i);
+  it('adds a second-clan membership without removing the first', async () => {
+    await clanService.addMember(clanA.id, { userId: placedMentee.id, role: 'mentee' });
+    const a = await models.ClanMembership.findOne({
+      where: { userId: placedMentee.id, clanId: clanB.id, role: 'mentee', status: 'active' },
+    });
+    const b = await models.ClanMembership.findOne({
+      where: { userId: placedMentee.id, clanId: clanA.id, role: 'mentee', status: 'active' },
+    });
+    expect(a).toBeTruthy();
+    expect(b).toBeTruthy();
   });
 
   it('moves them cleanly via reassignMentee — the picker’s "Move here"', async () => {

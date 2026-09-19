@@ -14,6 +14,7 @@ export const apiConfig = {
     me: '/auth/me',
     verify2FALogin: '/auth/verify-2fa-login',
     validateInvite: (token: string) => `/auth/invites/${encodeURIComponent(token)}`,
+    acceptInvite: (token: string) => `/auth/invites/${encodeURIComponent(token)}/accept`,
     validateClanJoin: (token: string) => `/auth/clan-join/${encodeURIComponent(token)}`,
     
     // Profile

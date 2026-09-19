@@ -967,10 +967,10 @@ function AddCoverDrawer({ clanId, clanName, onClose, onAdded }: { clanId: string
   );
 }
 
-/** Lead-mentor: pull in unassigned mentees, or invite a new one straight into the clan. */
+/** Lead-mentor: pull in people (including mentees of other clans), or invite a new one. */
 function AddMenteesDrawer({ clanId, clanName, onClose, onChanged }: { clanId: string; clanName: string; onClose: () => void; onChanged: () => void }) {
   const [query, setQuery] = useState('');
-  const [people, setPeople] = useState<{ id: string; name: string; email: string; role?: string }[]>([]);
+  const [people, setPeople] = useState<{ id: string; name: string; email: string; role?: string; placedClanId?: string | null; placedClanName?: string | null }[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [inviteEmail, setInviteEmail] = useState('');
@@ -1029,7 +1029,7 @@ function AddMenteesDrawer({ clanId, clanName, onClose, onChanged }: { clanId: st
         </div>
 
         <div className="pt-4 border-t border-slate-100">
-          <label className="block text-sm font-medium text-slate-700 mb-1">Available people <span className="text-slate-400 font-normal">(anyone not already a mentee)</span></label>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Available people <span className="text-slate-400 font-normal">(including mentees of other clans)</span></label>
           <div className="relative">
             <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
             <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search by name or email…" className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500" />
@@ -1038,7 +1038,7 @@ function AddMenteesDrawer({ clanId, clanName, onClose, onChanged }: { clanId: st
             {loading ? (
               <div className="py-6 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-brand-600" /></div>
             ) : people.length === 0 ? (
-              <p className="py-6 text-center text-sm text-slate-400">No unassigned people{query ? ' match your search' : ' right now'}.</p>
+              <p className="py-6 text-center text-sm text-slate-400">No people{query ? ' match your search' : ' to add right now'}.</p>
             ) : people.map((p) => (
               <div key={p.id} className="flex items-center justify-between gap-3 py-2">
                 <div className="min-w-0">
@@ -1046,6 +1046,9 @@ function AddMenteesDrawer({ clanId, clanName, onClose, onChanged }: { clanId: st
                     {p.name}
                     {p.role === 'mentor' && (
                       <span className="ml-2 align-middle rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">Mentor — will also learn here</span>
+                    )}
+                    {p.placedClanId && (
+                      <span className="ml-2 align-middle rounded-full bg-brand-50 px-1.5 py-0.5 text-[10px] font-medium text-brand-700">Also in {p.placedClanName}</span>
                     )}
                   </p>
                   <p className="text-xs text-slate-500 truncate">{p.email}</p>

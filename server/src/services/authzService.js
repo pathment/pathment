@@ -348,23 +348,27 @@ class AuthzService {
 
   /** An assigned task: covers the mentee (self), their clan, and the program. */
   async scopeOfAssignedTask(taskId) {
-    const task = await models.AssignedTask.findByPk(taskId, { attributes: ['id', 'menteeId', 'enrollmentId'] });
+    const task = await models.AssignedTask.findByPk(taskId, { attributes: ['id', 'menteeId', 'enrollmentId', 'clanId'] });
     if (!task) return null;
     const out = { userId: task.menteeId };
+    if (task.clanId) out.clanId = task.clanId;
     if (task.enrollmentId) {
       const enr = await models.Enrollment.findByPk(task.enrollmentId, { attributes: ['programId'] });
       if (enr) out.programId = enr.programId;
     }
-    const membership = await models.ClanMembership.findOne({
-      where: {
+    if (!out.clanId) {
+      const where = {
         userId: task.menteeId,
         status: { [Op.in]: VISIBLE_MEMBERSHIP_STATUSES },
         role: 'mentee'
-      },
-      attributes: ['clanId'],
-      order: [['status', 'ASC']]
-    });
-    if (membership) out.clanId = membership.clanId;
+      };
+      if (task.enrollmentId) where.enrollmentId = task.enrollmentId;
+      const memberships = await models.ClanMembership.findAll({
+        where,
+        attributes: ['clanId']
+      });
+      if (memberships.length === 1) out.clanId = memberships[0].clanId;
+    }
     return out;
   }
 

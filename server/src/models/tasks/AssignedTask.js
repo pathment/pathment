@@ -123,6 +123,11 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
       field: 'occurrence_date'
     },
+    clanId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      field: 'clan_id'
+    },
     // ── Per-mentee overrides (null = use the RoadmapTask default) ────────────
     titleOverride: { type: DataTypes.STRING(255), allowNull: true, field: 'title_override' },
     descriptionOverride: { type: DataTypes.TEXT, allowNull: true, field: 'description_override' },
@@ -141,7 +146,8 @@ module.exports = (sequelize, DataTypes) => {
       { fields: ['due_date'] },
       { fields: ['roadmap_task_id'] },
       { fields: ['track_id'] },
-      { fields: ['schedule_slot_id'] }
+      { fields: ['schedule_slot_id'] },
+      { fields: ['mentee_id', 'clan_id'] }
     ]
   });
 
@@ -151,6 +157,7 @@ module.exports = (sequelize, DataTypes) => {
     AssignedTask.belongsTo(models.User, { foreignKey: 'mentor_id', as: 'mentor' });
     AssignedTask.belongsTo(models.Enrollment, { foreignKey: 'enrollment_id', as: 'enrollment' });
     AssignedTask.belongsTo(models.Track, { foreignKey: 'track_id', as: 'track' });
+    if (models.Clan) AssignedTask.belongsTo(models.Clan, { foreignKey: 'clan_id', as: 'clan' });
     AssignedTask.hasMany(models.TaskSubmission, { foreignKey: 'assigned_task_id', as: 'submissions' });
     AssignedTask.hasMany(models.TaskFeedback, { foreignKey: 'assigned_task_id', as: 'feedback' });
     AssignedTask.hasMany(models.Message, { foreignKey: 'related_task_id', as: 'messages' });

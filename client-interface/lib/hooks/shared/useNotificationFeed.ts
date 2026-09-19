@@ -2,9 +2,12 @@
 
 import { useCallback, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { messagingApi } from '@/lib/services/messaging-api';
 import { acquireSocket } from '@/lib/services/socket-client';
 import { qk, useApiQuery, STALE } from '@/lib/query';
+import { useClan } from '@/lib/context/ClanContext';
+import { roleFromPathname } from '@/lib/utils/notification-audience';
 
 export interface FeedNotification {
   id: string;
@@ -17,6 +20,7 @@ export interface FeedNotification {
   actionLabel?: string;
   relatedEntityType?: string;
   relatedEntityId?: string;
+  clanId?: string | null;
   createdAt: string;
   readAt?: string;
 }
@@ -48,6 +52,7 @@ const isNonMessage = (n: { type?: string }) => n.type !== 'message';
 export function useNotificationFeed(userId: string | undefined) {
   const client = useQueryClient();
   const key = qk.messaging.notifications;
+  const { activeClanId, menteeActiveClanId } = useClan();
 
   const { data, loading, refetch } = useApiQuery<FeedNotification[]>({
     queryKey: key,
@@ -65,8 +70,13 @@ export function useNotificationFeed(userId: string | undefined) {
     if (!socket) return;
 
     const invalidate = () => client.invalidateQueries({ queryKey: key });
-    const onNew = (payload: { type?: string }) => {
+    const onNew = (payload: { type?: string; title?: string; clanId?: string | null }) => {
       if ((payload?.type || 'message') === 'message') return;
+      const portal = typeof window !== 'undefined' ? roleFromPathname(window.location.pathname) : null;
+      const active = portal === 'mentee' ? menteeActiveClanId : (portal === 'mentor' ? activeClanId : null);
+      const scoped = Boolean(payload?.clanId);
+      const isActiveClan = !scoped || payload.clanId === active;
+      if (isActiveClan && payload?.title) toast.message(payload.title);
       invalidate();
     };
 
@@ -77,7 +87,7 @@ export function useNotificationFeed(userId: string | undefined) {
       socket.off('notification:new', onNew);
       socket.off('notification:unread-count', invalidate);
     };
-  }, [userId, client, key]);
+  }, [userId, client, key, activeClanId, menteeActiveClanId]);
 
   const patch = useCallback(
     (fn: (list: FeedNotification[]) => FeedNotification[]) =>

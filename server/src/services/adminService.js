@@ -72,7 +72,7 @@ class AdminService {
     const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000);
 
     const existingUser = await models.User.findOne({ where: { email: normalizedEmail } });
-    if (existingUser) {
+    if (existingUser && !(inviteData.clanId || inviteData.clan)) {
       throw new ConflictError('User already exists for this email');
     }
 

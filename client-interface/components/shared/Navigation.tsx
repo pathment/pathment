@@ -50,7 +50,7 @@ export default function Navigation({ role }: NavigationProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { logout, user, availableRoles, setActiveRole } = useAuth();
-  const { clans, activeClanId, setActiveClanId } = useClan();
+  const { clans, activeClanId, setActiveClanId, menteeClans, menteeActiveClanId, setMenteeActiveClanId } = useClan();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
 
@@ -158,20 +158,33 @@ export default function Navigation({ role }: NavigationProps) {
   // ── Clan scope (multi-clan mentors) ───────────────────────────────────────
   // Only meaningful in the mentor view, and only when the user mentors 2+ clans.
   const renderClanScope = () => {
-    if (role !== 'mentor' || clans.length < 2) return null;
-    const options = [
-      { value: ALL_CLANS, label: 'All clans' },
-      ...clans.map((c) => ({ value: c.id, label: c.name })),
-    ];
-    return (
-      <SelectMenu
-        value={activeClanId}
-        onChange={setActiveClanId}
-        options={options}
-        ariaLabel="Filter by clan"
-        className="w-full"
-      />
-    );
+    if (role === 'mentor' && clans.length >= 2) {
+      const options = [
+        { value: ALL_CLANS, label: 'All clans' },
+        ...clans.map((c) => ({ value: c.id, label: c.name })),
+      ];
+      return (
+        <SelectMenu
+          value={activeClanId}
+          onChange={setActiveClanId}
+          options={options}
+          ariaLabel="Filter by clan"
+          className="w-full"
+        />
+      );
+    }
+    if (role === 'mentee' && menteeClans.length >= 2) {
+      return (
+        <SelectMenu
+          value={menteeActiveClanId || menteeClans[0].id}
+          onChange={setMenteeActiveClanId}
+          options={menteeClans.map((c) => ({ value: c.id, label: c.name }))}
+          ariaLabel="Switch clan"
+          className="w-full"
+        />
+      );
+    }
+    return null;
   };
 
   // ── Shared render helpers ─────────────────────────────────────────────────

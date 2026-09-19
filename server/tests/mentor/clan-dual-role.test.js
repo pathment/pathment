@@ -161,10 +161,14 @@ describe('adding a mentor as a mentee of another clan', () => {
     expect(asMenteeOfB.enrollmentId).toBeTruthy();
   });
 
-  it('drops them from the available pool once they are a mentee somewhere (one placement)', async () => {
+  it('still lists them for another clan after they are a mentee elsewhere', async () => {
     await clanService.addMember(clanB.id, { userId: mentorPerson.id, role: 'mentee' });
-    const pool = await clanService.listAvailableMembers({ q: 'wearer' });
-    expect(pool.find((p) => p.id === mentorPerson.id)).toBeFalsy();
+    const forA = await clanService.listAvailableMembers({ q: 'wearer', clanId: clanA.id });
+    const hit = forA.find((p) => p.id === mentorPerson.id);
+    expect(hit).toBeTruthy();
+    expect(hit.placedClanId).toBe(clanB.id);
+    const forB = await clanService.listAvailableMembers({ q: 'wearer', clanId: clanB.id });
+    expect(forB.find((p) => p.id === mentorPerson.id)).toBeFalsy();
   });
 
   it('never lists a platform admin as an available mentee', async () => {
@@ -189,10 +193,13 @@ describe('single mentee placement is enforced with a clear message', () => {
     person = await createMentee({ email: 'p@test.com', firstName: 'Pat', lastName: 'Lee' });
   });
 
-  it('refuses to add someone already a mentee of ANOTHER clan, naming it', async () => {
+  it('lets the same person be a mentee of two clans at once', async () => {
     await clanService.addMember(clanA.id, { userId: person.id, role: 'mentee' });
-    await expect(clanService.addMember(clanB.id, { userId: person.id, role: 'mentee' }))
-      .rejects.toThrow(/Pat Lee is already a mentee of "Alpha"/);
+    await expect(clanService.addMember(clanB.id, { userId: person.id, role: 'mentee' })).resolves.toBeTruthy();
+    const a = await models.ClanMembership.findOne({ where: { userId: person.id, clanId: clanA.id, role: 'mentee' } });
+    const b = await models.ClanMembership.findOne({ where: { userId: person.id, clanId: clanB.id, role: 'mentee' } });
+    expect(a.status).toBe('active');
+    expect(b.status).toBe('active');
   });
 
   it('refuses to re-add someone already a mentee of THIS clan', async () => {

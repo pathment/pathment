@@ -194,7 +194,7 @@ describe('clan public join — requests & approval', () => {
     expect(again.id).not.toBe(request.id);
   });
 
-  it('blocks users who are already mentees elsewhere', async () => {
+  it('lets users who are already mentees elsewhere request to join this clan', async () => {
     const mentee = await createMentee({ email: `elsewhere-${Date.now()}@test.com` });
     const other = await models.Clan.create({
       programId: clan.programId,
@@ -204,9 +204,8 @@ describe('clan public join — requests & approval', () => {
     });
     await clanService.addMember(other.id, { userId: mentee.id, role: 'mentee' });
 
-    await expect(
-      clanPublicJoinService.createJoinRequest(slug, mentee)
-    ).rejects.toBeInstanceOf(ConflictError);
+    const request = await clanPublicJoinService.createJoinRequest(slug, mentee);
+    expect(request.status).toBe('pending');
   });
 
   it('moves lead authority when the lead mentor changes', async () => {

@@ -36,6 +36,11 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING(60),
       allowNull: true
     },
+    clanId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      field: 'clan_id'
+    },
     completed: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
@@ -51,7 +56,7 @@ module.exports = (sequelize, DataTypes) => {
     underscored: true,
     timestamps: true,
     indexes: [
-      { unique: true, fields: ['roadmap_id', 'mentee_id'] },
+      { fields: ['roadmap_id', 'mentee_id', 'clan_id'] },
       { fields: ['mentee_id'] }
     ]
   });
@@ -59,6 +64,7 @@ module.exports = (sequelize, DataTypes) => {
   RoadmapProgress.associate = (models) => {
     RoadmapProgress.belongsTo(models.Roadmap, { foreignKey: 'roadmap_id', as: 'roadmap' });
     RoadmapProgress.belongsTo(models.User, { foreignKey: 'mentee_id', as: 'mentee' });
+    if (models.Clan) RoadmapProgress.belongsTo(models.Clan, { foreignKey: 'clan_id', as: 'clan' });
     models.User.hasMany(RoadmapProgress, { foreignKey: 'mentee_id', as: 'roadmapProgress' });
   };
 

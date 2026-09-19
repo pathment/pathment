@@ -5,7 +5,8 @@ const {
   AuthenticationError, 
   ConflictError, 
   NotFoundError,
-  ValidationError 
+  ValidationError,
+  AuthorizationError
 } = require('../utils/errors/errorTypes');
 const { AUTH_MESSAGES } = require('../utils/responses/messages');
 const {
@@ -75,15 +76,49 @@ class AuthService {
       models.Application.findOne({ where: { inviteId: invite.id }, attributes: ['firstName', 'lastName'] })
     ]);
 
+    const existingUser = await models.User.findOne({ where: { email: invite.email } });
+
     return {
       id: invite.id,
       email: invite.email,
       role: invite.role,
       expiresAt: invite.expiresAt,
+      existingAccount: Boolean(existingUser),
       program: program ? { id: program.id, name: program.name } : null,
       clan: clan ? { id: clan.id, name: clan.name } : null,
       applicant: application ? { firstName: application.firstName || '', lastName: application.lastName || '' } : null
     };
+  }
+
+  /**
+   * Logged-in user accepts a clan invite for their existing account.
+   * Email on the invite must match the authenticated user; client cannot pick userId.
+   */
+  async acceptRegistrationInvite(actor, inviteToken) {
+    if (!actor?.id) throw new AuthenticationError('Authentication required');
+    if (!inviteToken) throw new ValidationError('Invite token is required');
+
+    const invite = await this.getActiveInviteByToken(inviteToken);
+    if (invite.email.toLowerCase() !== String(actor.email || '').toLowerCase()) {
+      throw new AuthorizationError('This invite is for a different account');
+    }
+    if (!invite.clanId) {
+      throw new ValidationError('This invite has no clan to join');
+    }
+
+    const clanService = require('./clanService');
+    const role = invite.role === 'mentor' ? 'co_mentor' : 'mentee';
+    const membership = await clanService.addMember(
+      invite.clanId,
+      { userId: actor.id, role },
+      actor
+    );
+
+    invite.usedAt = new Date();
+    invite.usedBy = actor.id;
+    await invite.save();
+
+    return { membership, clanId: invite.clanId, role: invite.role };
   }
 
   /**

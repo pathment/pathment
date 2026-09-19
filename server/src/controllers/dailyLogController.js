@@ -2,6 +2,7 @@ const { catchAsync } = require('../middlewares/errorHandler');
 const { successResponse } = require('../utils/responses');
 const dailyLogService = require('../services/dailyLogService');
 const gamificationService = require('../services/gamificationService');
+const { requestedClanId } = require('../middlewares/portalScope');
 
 /**
  * GET /api/mentee/daily-log
@@ -15,7 +16,7 @@ const gamificationService = require('../services/gamificationService');
  */
 const getMyDailyLogs = catchAsync(async (req, res) => {
   const [entries, streak] = await Promise.all([
-    dailyLogService.list(req.user.id, Number(req.query.limit) || 14),
+    dailyLogService.list(req.user.id, Number(req.query.limit) || 14, requestedClanId(req)),
     gamificationService.readStreak(req.user.id)
   ]);
 
@@ -27,7 +28,7 @@ const getMyDailyLogs = catchAsync(async (req, res) => {
 
 /** POST /api/mentee/daily-log  { dateKey, tasksDone, note } */
 const saveMyDailyLog = catchAsync(async (req, res) => {
-  const entry = await dailyLogService.upsert(req.user.id, req.body);
+  const entry = await dailyLogService.upsert(req.user.id, { ...req.body, clanId: requestedClanId(req) });
   const streak = await gamificationService.readStreak(req.user.id);
 
   res.status(200).json(successResponse('Daily log saved', {

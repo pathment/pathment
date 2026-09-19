@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Repeat, Sun, Moon, Clock } from 'lucide-react';
+import { useClan } from '@/lib/context/ClanContext';
 import { scheduleApi, type ScheduleSlot } from '@/lib/services/schedule-api';
 
 const RECUR_LABEL: Record<string, string> = { daily: 'Daily', weekly: 'Weekly', once: '' };
@@ -12,6 +13,7 @@ const RECUR_LABEL: Record<string, string> = { daily: 'Daily', weekly: 'Weekly', 
  * what recurs and when; ticking happens in the Daily Log.
  */
 export function RecurringRitualsCard() {
+  const { menteeActiveClanId } = useClan();
   const [slots, setSlots] = useState<ScheduleSlot[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -23,7 +25,7 @@ export function RecurringRitualsCard() {
       setSlots((Array.isArray(all) ? all : []).filter((s) => s.kind === 'recurring' && s.recurring));
     }).catch(() => setSlots([])).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, []);
+  }, [menteeActiveClanId]);
 
   if (loading || slots.length === 0) return null;
 

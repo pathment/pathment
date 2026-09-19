@@ -5,6 +5,7 @@ import { useCallback, useState } from 'react';
 import { matchingApi, enrollmentApi } from '@/lib/services/enrollment-api';
 import { taskApi } from '@/lib/services/task-api';
 import { useAuth } from '@/lib/context/AuthContext';
+import { useClan } from '@/lib/context/ClanContext';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { qk, useApiQuery, useInvalidate } from '@/lib/query';
 import { toast } from 'sonner';
@@ -36,6 +37,7 @@ const NO_TASKS: any[] = [];
 
 export function useMenteeDetailPage(menteeId: string): UseMenteeDetailPageReturn {
   const { user } = useAuth();
+  const { activeClanId } = useClan();
   const invalidate = useInvalidate();
 
   const [completionLoading, setCompletionLoading] = useState(false);
@@ -65,7 +67,7 @@ export function useMenteeDetailPage(menteeId: string): UseMenteeDetailPageReturn
   // Independent of the match query, so the two run in parallel rather than the
   // tasks waiting on a request they do not depend on.
   const tasksQuery = useApiQuery<any[]>({
-    queryKey: qk.mentee.tasks(menteeId),
+    queryKey: qk.mentee.tasks(menteeId, activeClanId),
     queryFn: async () => {
       const res = await taskApi.getMenteeTasks(menteeId);
       return res?.data?.tasks || [];
@@ -88,8 +90,8 @@ export function useMenteeDetailPage(menteeId: string): UseMenteeDetailPageReturn
   const enrollment = matchQuery.data?.enrollment;
 
   const refreshAfterCompletion = useCallback(
-    () => invalidate(qk.mentee.matches(user?.id ?? '', menteeId), qk.mentee.tasks(menteeId), qk.mentor.cohort),
-    [invalidate, user?.id, menteeId]
+    () => invalidate(qk.mentee.matches(user?.id ?? '', menteeId), qk.mentee.tasks(menteeId, activeClanId), qk.mentor.cohort),
+    [invalidate, user?.id, menteeId, activeClanId]
   );
 
   const handleApproveCompletion = useCallback(async () => {

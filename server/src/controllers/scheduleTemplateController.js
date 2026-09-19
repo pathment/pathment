@@ -1,6 +1,7 @@
 const { catchAsync } = require('../middlewares/errorHandler');
 const { successResponse } = require('../utils/responses');
 const svc = require('../services/scheduleTemplateService');
+const { requestedClanId } = require('../middlewares/portalScope');
 
 const listTemplates = catchAsync(async (req, res) => {
   const data = await svc.listForMentor(req.user.id);
@@ -27,22 +28,22 @@ const importTemplate = catchAsync(async (req, res) => {
 });
 
 const assign = catchAsync(async (req, res) => {
-  const results = await svc.assignToMentees(req.params.id, req.body.menteeIds, req.user.id);
+  const results = await svc.assignToMentees(req.params.id, req.body.menteeIds, req.user.id, requestedClanId(req));
   res.status(200).json(successResponse('Schedule assigned', { results }));
 });
 
 const getMenteeSchedule = catchAsync(async (req, res) => {
-  const schedule = await svc.getMenteeSchedule(req.params.id);
+  const schedule = await svc.getMenteeSchedule(req.params.id, requestedClanId(req), req.user.id);
   res.status(200).json(successResponse('Schedule retrieved', { schedule }));
 });
 
 const getMySchedule = catchAsync(async (req, res) => {
-  const schedule = await svc.getMenteeSchedule(req.user.id);
+  const schedule = await svc.getMenteeSchedule(req.user.id, requestedClanId(req), req.user.id);
   res.status(200).json(successResponse('Schedule retrieved', { schedule }));
 });
 
 const updateSlot = catchAsync(async (req, res) => {
-  const slot = await svc.updateSlot(req.params.id, req.params.slotId, req.body, req.user.id);
+  const slot = await svc.updateSlot(req.params.id, req.params.slotId, req.body, req.user.id, requestedClanId(req));
   res.status(200).json(successResponse('Slot updated', { slot }));
 });
 

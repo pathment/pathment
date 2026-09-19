@@ -156,15 +156,11 @@ const setMemberPermissions = catchAsync(async (req, res) => {
 
 /**
  * GET /api/clans/:id/available  (admin / lead mentor of the clan)
- * People who can be placed in THIS clan as a mentee. Anyone already placed
- * elsewhere comes back annotated with that clan (so the picker offers to move
- * them) rather than being silently omitted — see listAvailableMembers.
+ * People who can be placed in THIS clan as a mentee. Anyone already a mentee
+ * of another clan comes back annotated (so the picker can add them here too).
+ * `includePlaced` only gates platform admins, not other-clan mentees.
  */
 const availableMembers = catchAsync(async (req, res) => {
-  // Only a caller who can reassign gets the placed-elsewhere rows (and the
-  // "move them here" affordance). A lead mentor still sees just the people they
-  // can add outright — pulling someone out of another clan is a request the
-  // receiving side accepts, not something to offer in a picker.
   const canReassign = await authzService.canAtMinScope(req.user, PERMISSIONS.CLAN_MANAGE_MEMBERS, 'program');
   const people = await clanService.listAvailableMembers({
     q: req.query.q, clanId: req.params.id, includePlaced: canReassign,

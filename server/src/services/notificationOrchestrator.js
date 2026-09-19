@@ -95,6 +95,7 @@ class NotificationOrchestrator {
             actionLabel: payload.actionLabel || null,
             relatedEntityType: payload.relatedEntityType || null,
             relatedEntityId: payload.relatedEntityId || null,
+            clanId: payload.clanId || null,
             status: 'unread'
           });
           delivered += 1;
@@ -114,6 +115,7 @@ class NotificationOrchestrator {
               actionLabel: created.actionLabel,
               relatedEntityType: created.relatedEntityType,
               relatedEntityId: created.relatedEntityId,
+              clanId: created.clanId || null,
               createdAt: created.createdAt
             });
           } catch (e) {

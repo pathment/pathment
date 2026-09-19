@@ -45,19 +45,25 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       defaultValue: DataTypes.NOW,
       field: 'logged_at'
+    },
+    clanId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      field: 'clan_id'
     }
   }, {
     tableName: 'daily_log_entries',
     underscored: true,
     timestamps: true,
     indexes: [
-      { unique: true, fields: ['mentee_id', 'date_key'] },
+      { fields: ['mentee_id', 'date_key', 'clan_id'] },
       { fields: ['mentee_id'] }
     ]
   });
 
   DailyLogEntry.associate = (models) => {
     DailyLogEntry.belongsTo(models.User, { foreignKey: 'mentee_id', as: 'mentee' });
+    if (models.Clan) DailyLogEntry.belongsTo(models.Clan, { foreignKey: 'clan_id', as: 'clan' });
     models.User.hasMany(DailyLogEntry, { foreignKey: 'mentee_id', as: 'dailyLogs' });
   };
 

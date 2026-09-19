@@ -39,6 +39,14 @@ function portalScope(req, res, next) {
 /** The portal off a request, safe on requests that never went through the middleware. */
 const portalOf = (req) => (req && req.portal) || { role: null, clanId: null };
 
+/** Explicit query/body wins; otherwise the parsed X-Active-Clan header. */
+function requestedClanId(req) {
+  const fromBody = req && req.body && req.body.clanId;
+  const fromQuery = req && req.query && req.query.clanId;
+  return parseClanId(fromBody || fromQuery || portalOf(req).clanId);
+}
+
 module.exports = portalScope;
 module.exports.portalOf = portalOf;
+module.exports.requestedClanId = requestedClanId;
 module.exports.PORTAL_ROLES = PORTAL_ROLES;

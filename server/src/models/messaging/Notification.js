@@ -60,6 +60,11 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.UUID,
       field: 'related_entity_id'
     },
+    clanId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      field: 'clan_id'
+    },
     readAt: {
       type: DataTypes.DATE,
       field: 'read_at'
@@ -85,6 +90,7 @@ module.exports = (sequelize, DataTypes) => {
     indexes: [
       { fields: ['user_id'] },
       { fields: ['user_id', 'status'] },
+      { fields: ['user_id', 'clan_id'] },
       { fields: ['type'] },
       { fields: ['created_at'] }
     ]
@@ -92,6 +98,7 @@ module.exports = (sequelize, DataTypes) => {
 
   Notification.associate = (models) => {
     Notification.belongsTo(models.User, { foreignKey: 'user_id', as: 'user' });
+    if (models.Clan) Notification.belongsTo(models.Clan, { foreignKey: 'clan_id', as: 'clan' });
   };
 
   return Notification;

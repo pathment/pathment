@@ -1,6 +1,7 @@
 const { catchAsync } = require('../middlewares/errorHandler');
 const { successResponse } = require('../utils/responses');
 const linearRoadmapService = require('../services/linearRoadmapService');
+const { requestedClanId } = require('../middlewares/portalScope');
 
 const list = catchAsync(async (req, res) => {
   const data = await linearRoadmapService.listForMentor(req.user.id);
@@ -50,7 +51,7 @@ const assign = catchAsync(async (req, res) => {
     const assigned = results.filter((r) => r.ok).length;
     return res.status(200).json(successResponse('Roadmap assigned', { results, assigned, failed: results.length - assigned }));
   }
-  const progress = await linearRoadmapService.assignToMentee(req.user.id, req.params.id, menteeId, startStep, null, dueDate, stepIndexes, stepOverrides);
+  const progress = await linearRoadmapService.assignToMentee(req.user.id, req.params.id, menteeId, startStep, null, dueDate, stepIndexes, stepOverrides, requestedClanId(req));
   res.status(200).json(successResponse('Roadmap assigned', { progress }));
 });
 
@@ -110,7 +111,7 @@ const generate = catchAsync(async (req, res) => {
 
 // ── Mentee progress view ─────────────────────────────────────────────────────
 const myRoadmaps = catchAsync(async (req, res) => {
-  const roadmaps = await linearRoadmapService.getMenteeRoadmaps(req.user.id);
+  const roadmaps = await linearRoadmapService.getMenteeRoadmaps(req.user.id, requestedClanId(req));
   res.status(200).json(successResponse('Roadmaps retrieved', { roadmaps }));
 });
 

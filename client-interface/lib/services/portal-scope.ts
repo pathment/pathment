@@ -19,8 +19,9 @@ import { roleFromPathname, type NotificationRole } from '@/lib/utils/notificatio
  * user's real roles and a portal they do not hold resolves to nothing extra.
  */
 
-/** Must match ClanContext's STORAGE_KEY / ALL_CLANS — the mentor clan selector. */
-const CLAN_STORAGE_KEY = 'pathment-active-clan';
+/** Must match ClanContext storage keys. Mentor and mentee workspaces are independent. */
+const MENTOR_CLAN_STORAGE_KEY = 'pathment-active-clan';
+const MENTEE_CLAN_STORAGE_KEY = 'pathment-active-mentee-clan';
 const ALL_CLANS = 'all';
 
 export const PORTAL_ROLE_HEADER = 'X-Portal-Role';
@@ -34,7 +35,9 @@ function currentPortalRole(): NotificationRole | null {
 function currentClanId(): string | null {
   if (typeof window === 'undefined') return null;
   try {
-    const saved = window.localStorage.getItem(CLAN_STORAGE_KEY);
+    const role = currentPortalRole();
+    const key = role === 'mentee' ? MENTEE_CLAN_STORAGE_KEY : MENTOR_CLAN_STORAGE_KEY;
+    const saved = window.localStorage.getItem(key);
     return saved && saved !== ALL_CLANS ? saved : null;
   } catch {
     // Private mode / blocked storage: no clan filter is a fine answer.

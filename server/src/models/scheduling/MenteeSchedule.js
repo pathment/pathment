@@ -9,7 +9,8 @@ module.exports = (sequelize, DataTypes) => {
    */
   const MenteeSchedule = sequelize.define('MenteeSchedule', {
     id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
-    menteeId: { type: DataTypes.UUID, allowNull: false, unique: true, field: 'mentee_id' },
+    menteeId: { type: DataTypes.UUID, allowNull: false, field: 'mentee_id' },
+    clanId: { type: DataTypes.UUID, allowNull: true, field: 'clan_id' },
     templateId: { type: DataTypes.UUID, allowNull: true, field: 'template_id' },
     schedule: { type: DataTypes.JSONB, allowNull: false, defaultValue: [] },
     assignedBy: { type: DataTypes.UUID, allowNull: true, field: 'assigned_by' },
@@ -20,12 +21,16 @@ module.exports = (sequelize, DataTypes) => {
     tableName: 'mentee_schedules',
     underscored: true,
     timestamps: true,
-    indexes: [{ unique: true, fields: ['mentee_id'] }]
+    indexes: [
+      { fields: ['mentee_id', 'clan_id'] },
+      { fields: ['mentee_id'] }
+    ]
   });
 
   MenteeSchedule.associate = (models) => {
     MenteeSchedule.belongsTo(models.User, { foreignKey: 'mentee_id', as: 'mentee' });
     MenteeSchedule.belongsTo(models.ScheduleTemplate, { foreignKey: 'template_id', as: 'template' });
+    if (models.Clan) MenteeSchedule.belongsTo(models.Clan, { foreignKey: 'clan_id', as: 'clan' });
   };
 
   return MenteeSchedule;

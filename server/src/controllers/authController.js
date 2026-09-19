@@ -39,6 +39,15 @@ class AuthController {
   });
 
   /**
+   * Accept a clan invite onto an existing account.
+   * POST /api/auth/invites/:token/accept
+   */
+  acceptInvite = catchAsync(async (req, res) => {
+    const result = await authService.acceptRegistrationInvite(req.user, req.params.token);
+    res.status(200).json(successResponse('Invitation accepted', result));
+  });
+
+  /**
    * Validate a public clan join slug for registration
    * GET /api/auth/clan-join/:token
    */

@@ -313,22 +313,17 @@ class ClanService {
     const user = await models.User.findByPk(userId);
     if (!user) throw new NotFoundError('User not found');
 
-    // One mentee placement per person. If they're already an active/paused mentee
-    // — of this clan or another — refuse with a message that names where, instead
-    // of silently creating a second placement. Re-adding a REMOVED mentee is fine
-    // (that row isn't active), and this never touches mentor-role grants.
+    // One mentee placement per clan. The same person may be a mentee of several
+    // clans at once; adding clan B must not touch clan A. Duplicate same-clan
+    // mentee membership is still refused. Reassign/transfer remains replacement.
     if (role === 'mentee') {
       const placed = await models.ClanMembership.findOne({
-        where: { userId, role: 'mentee', status: { [Op.in]: ['active', 'paused'] } },
+        where: { userId, clanId, role: 'mentee', status: { [Op.in]: ['active', 'paused'] } },
         include: [{ model: models.Clan, as: 'clan', attributes: ['id', 'name'] }],
       });
       if (placed) {
         const who = `${user.firstName} ${user.lastName}`.trim() || user.email;
-        throw new ConflictError(
-          placed.clanId === clanId
-            ? `${who} is already a mentee of this clan.`
-            : `${who} is already a mentee of "${placed.clan?.name || 'another clan'}". A person can be a mentee of only one clan at a time — reassign them instead.`
-        );
+        throw new ConflictError(`${who} is already a mentee of this clan.`);
       }
     }
 
@@ -643,22 +638,11 @@ class ClanService {
   /**
    * People who can be pulled into a clan AS A MENTEE, for the add-member picker.
    *
-   * This used to silently DROP anyone already placed as a mentee elsewhere (and
-   * platform admins). The rule itself is right — one mentee placement per person
-   * — but hiding them made the picker look broken: you'd search someone's exact
-   * email, get nothing back, and have no idea why. Meanwhile the co-mentor picker
-   * (listCandidates) found them instantly, which made it look like a search bug.
-   *
-   * So they're RETURNED now, annotated with why they can't just be added:
-   *   - `placedClanId/placedClanName` → already a mentee there. The caller offers
-   *     to MOVE them (reassignMentee) instead of a dead end.
-   *   - `blockedReason: 'admin'` → a platform admin as someone's mentee is never
-   *     intended, so it's shown greyed with the reason rather than vanishing.
-   * Anyone already an active mentee of THIS clan is still omitted — adding them
-   * here is a genuine no-op with nothing to explain.
-   *
-   * Mentors appear (a mentor can learn in one clan while mentoring another), and
-   * so does a co-mentor of this clan — that's the supported dual role.
+   * Anyone already an active mentee of THIS clan is omitted — adding them here
+   * is a no-op. People placed in OTHER clans are returned first (annotated) so
+   * they can be added here as a second membership and are not lost to the
+   * unassigned-user cap. `includePlaced` still controls whether platform admins
+   * appear (admin picker only). Reassign/transfer remains a separate action.
    */
   async listAvailableMembers({ q, clanId = null, includePlaced = false } = {}) {
     const { Op } = require('sequelize');
@@ -667,38 +651,57 @@ class ClanService {
       attributes: ['userId', 'clanId'],
       include: [{ model: models.Clan, as: 'clan', attributes: ['id', 'name'] }],
     });
-    // userId → where they're currently placed.
+    // Prefer a placement that is NOT this clan, so the annotation names "elsewhere".
     const placedBy = new Map();
-    placements.forEach((m) => { if (m.userId) placedBy.set(m.userId, { clanId: m.clanId, clanName: m.clan?.name || 'another clan' }); });
-    // Already a mentee HERE → nothing to offer, leave them out.
+    placements.forEach((m) => {
+      if (!m.userId) return;
+      if (clanId && m.clanId === clanId) return;
+      if (!placedBy.has(m.userId)) placedBy.set(m.userId, { clanId: m.clanId, clanName: m.clan?.name || 'another clan' });
+    });
     const hereIds = clanId
       ? placements.filter((m) => m.clanId === clanId).map((m) => m.userId).filter(Boolean)
       : [];
-    // `includePlaced` is for callers who can actually ACT on a placed person —
-    // i.e. an admin, who can reassign. A mentor must not be offered someone in
-    // another mentor's clan: taking them is a transfer REQUEST the other side
-    // accepts (see menteeTransferService), never a unilateral grab. So for
-    // everyone else this keeps the original behaviour and omits them.
     const excludeIds = new Set(hereIds);
-    if (!includePlaced) {
-      placedBy.forEach((_v, userId) => excludeIds.add(userId));
-    }
+    const placedElsewhereIds = [...placedBy.keys()].filter((id) => !excludeIds.has(id));
 
-    const where = { status: 'active' };
-    if (!includePlaced) where.role = { [Op.ne]: 'admin' };
-    if (excludeIds.size) where.id = { [Op.notIn]: [...excludeIds] };
-    if (q && q.trim()) {
-      const like = { [Op.iLike]: `%${q.trim()}%` };
-      where[Op.and] = [{ [Op.or]: [{ firstName: like }, { lastName: like }, { email: like }] }];
-    }
-    const users = await models.User.findAll({
-      where,
-      attributes: ['id', 'firstName', 'lastName', 'email', 'role'],
+    const attributes = ['id', 'firstName', 'lastName', 'email', 'role'];
+    const nameFilter = (q && q.trim())
+      ? (() => {
+        const like = { [Op.iLike]: `%${q.trim()}%` };
+        return { [Op.or]: [{ firstName: like }, { lastName: like }, { email: like }] };
+      })()
+      : null;
+
+    const baseWhere = { status: 'active' };
+    if (!includePlaced) baseWhere.role = { [Op.ne]: 'admin' };
+
+    // Other-clan mentees first, uncapped by the unassigned-user page size, so
+    // Omar adding to Node Guild still sees Aisha's MERN Fellows (and vice versa).
+    const elsewhereWhere = { ...baseWhere };
+    if (placedElsewhereIds.length) elsewhereWhere.id = { [Op.in]: placedElsewhereIds };
+    if (nameFilter) elsewhereWhere[Op.and] = [nameFilter];
+    const otherClanMentees = placedElsewhereIds.length
+      ? await models.User.findAll({
+        where: elsewhereWhere,
+        attributes,
+        order: [['firstName', 'ASC']],
+        limit: 200,
+      })
+      : [];
+
+    const seen = new Set(otherClanMentees.map((u) => u.id));
+    const restExclude = [...excludeIds, ...seen];
+    const restWhere = { ...baseWhere };
+    if (restExclude.length) restWhere.id = { [Op.notIn]: restExclude };
+    if (nameFilter) restWhere[Op.and] = [nameFilter];
+    const rest = await models.User.findAll({
+      where: restWhere,
+      attributes,
       order: [['firstName', 'ASC']],
-      limit: 50
+      limit: 50,
     });
 
-    return users.map((u) => {
+    return [...otherClanMentees, ...rest].map((u) => {
       const placed = placedBy.get(u.id) || null;
       return {
         id: u.id,
@@ -707,7 +710,6 @@ class ClanService {
         lastName: u.lastName,
         email: u.email,
         role: u.role,
-        // Placed elsewhere → addMember would throw; the picker moves them instead.
         placedClanId: placed ? placed.clanId : null,
         placedClanName: placed ? placed.clanName : null,
         blockedReason: u.role === 'admin' ? 'admin' : null,

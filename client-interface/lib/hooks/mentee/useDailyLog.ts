@@ -3,6 +3,7 @@
 import { useCallback } from 'react';
 import { menteeApi } from '@/lib/services/mentee-api';
 import { qk, useApiQuery, STALE } from '@/lib/query';
+import { useClan } from '@/lib/context/ClanContext';
 
 export interface DailyLogEntry {
   id: string;
@@ -24,8 +25,9 @@ export interface UseDailyLogReturn {
 const EMPTY: DailyLogEntry[] = [];
 
 export function useDailyLog(): UseDailyLogReturn {
+  const { menteeActiveClanId } = useClan();
   const { data, loading, error, refetch } = useApiQuery<DailyLogEntry[]>({
-    queryKey: qk.me.dailyLog,
+    queryKey: qk.me.dailyLog(menteeActiveClanId),
     queryFn: async () => (await menteeApi.getDailyLog())?.data?.entries ?? [],
     staleTime: STALE.short,
     errorMessage: 'Failed to load your daily log',

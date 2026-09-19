@@ -17,6 +17,7 @@ type InviteDetails = {
   email: string;
   role: 'mentor' | 'mentee';
   expiresAt: string;
+  existingAccount?: boolean;
   program?: { id: string; name: string } | null;
   clan?: { id: string; name: string } | null;
   applicant?: { firstName: string; lastName: string } | null;
@@ -52,16 +53,18 @@ export default function RegisterPage() {
   const [inviteDetails, setInviteDetails] = useState<InviteDetails | null>(null);
   const [clanJoinDetails, setClanJoinDetails] = useState<ClanJoinDetails | null>(null);
 
+  const [accepting, setAccepting] = useState(false);
+
   const inviteToken = searchParams.get('invite')?.trim() || '';
   const clanJoinSlug = searchParams.get('clanJoin')?.trim() || '';
   const joinReturnPath = clanJoinSlug ? `/clan/join/${encodeURIComponent(clanJoinSlug)}` : '';
 
-  // Redirect if already logged in — preserve clan join continuation when present.
+  // Redirect if already logged in — unless this is an existing-account clan invite.
   useEffect(() => {
-    if (!isLoading && user) {
-      router.push(joinReturnPath || `/${user.role}/dashboard`);
-    }
-  }, [user, isLoading, router, joinReturnPath]);
+    if (isLoading || !user) return;
+    if (inviteToken && inviteDetails?.existingAccount) return;
+    router.push(joinReturnPath || `/${user.role}/dashboard`);
+  }, [user, isLoading, router, joinReturnPath, inviteToken, inviteDetails]);
 
   // Validate invite token OR public clan join slug before allowing registration
   useEffect(() => {
@@ -130,9 +133,23 @@ export default function RegisterPage() {
     );
   }
 
-  if (user) {
+  if (user && !(inviteToken && inviteDetails?.existingAccount)) {
     return null;
   }
+
+  const handleAcceptInvite = async () => {
+    if (!inviteToken || !user) return;
+    setAccepting(true);
+    try {
+      await apiClient.post(apiConfig.endpoints.acceptInvite(inviteToken));
+      toast.success('You joined the clan.');
+      router.push(`/${inviteDetails?.role === 'mentor' ? 'mentor' : 'mentee'}/dashboard`);
+    } catch (error: any) {
+      toast.error(extractApiErrorMessage(error, 'Could not accept this invite'));
+    } finally {
+      setAccepting(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -232,6 +249,25 @@ export default function RegisterPage() {
                 {inviteDetails.clan ? <> · clan <span className="font-semibold">{inviteDetails.clan.name}</span></> : ''}
               </p>
             )}
+            {inviteDetails.existingAccount && !user && (
+              <p className="text-brand-700 text-sm mt-2">
+                You already have an account.{' '}
+                <Link href={`/login?next=${encodeURIComponent(`/register?invite=${inviteToken}`)}`} className="underline font-medium">
+                  Sign in to join this clan
+                </Link>
+              </p>
+            )}
+            {inviteDetails.existingAccount && user && (
+              <button
+                type="button"
+                onClick={handleAcceptInvite}
+                disabled={accepting}
+                className="mt-3 w-full inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-white text-sm font-medium disabled:opacity-50"
+              >
+                {accepting ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
+                Join {inviteDetails.clan?.name || 'this clan'}
+              </button>
+            )}
           </div>
         )}
 
@@ -263,6 +299,7 @@ export default function RegisterPage() {
           <div className="mb-4 text-sm text-red-600">{errors.general}</div>
         )}
 
+        {!inviteDetails?.existingAccount && (
         <form onSubmit={handleSubmit} className="space-y-5">
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -391,6 +428,7 @@ export default function RegisterPage() {
             Create account
           </button>
         </form>
+        )}
 
         <p className="text-center text-sm text-slate-500 mt-6">
           Already have an account?{' '}

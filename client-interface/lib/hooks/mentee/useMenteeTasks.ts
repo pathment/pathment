@@ -7,6 +7,7 @@ import { enrollmentApi } from '@/lib/services/enrollment-api';
 import { toast } from 'sonner';
 import { qk, useApiQuery } from '@/lib/query';
 import { useAuth } from '@/lib/context/AuthContext';
+import { useClan } from '@/lib/context/ClanContext';
 
 export type TaskView = 'active' | 'completed';
 
@@ -35,6 +36,7 @@ const NO_ENROLLMENTS: any[] = [];
 
 export function useMenteeTasks(): UseMenteeTasksReturn {
   const { user } = useAuth();
+  const { menteeActiveClanId } = useClan();
   const menteeId = user?.id ?? '';
 
   const [enrollmentOverride, setSelectedEnrollmentId] = useState<string | null>(null);
@@ -64,13 +66,13 @@ export function useMenteeTasks(): UseMenteeTasksReturn {
   const selectedEnrollmentId = enrollmentOverride ?? defaultEnrollmentId;
 
   const statsQuery = useApiQuery<any>({
-    queryKey: qk.me.taskStats(selectedEnrollmentId),
+    queryKey: qk.me.taskStats(selectedEnrollmentId, menteeActiveClanId),
     queryFn: async () => (await taskApi.getMenteeTaskStats(menteeId, selectedEnrollmentId ?? undefined))?.data?.stats,
     enabled: !!menteeId && enrollmentsReady,
   });
 
   const tasksQuery = useApiQuery<any[]>({
-    queryKey: qk.me.tasks({ menteeId, filterStatus, enrollmentId: selectedEnrollmentId }),
+    queryKey: qk.me.tasks({ menteeId, filterStatus, enrollmentId: selectedEnrollmentId, clanId: menteeActiveClanId }),
     queryFn: async () => {
       const params: any = {};
       if (filterStatus !== 'all') params.status = filterStatus;
