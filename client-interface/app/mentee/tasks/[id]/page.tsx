@@ -1,5 +1,6 @@
 'use client';
 
+import { OpenSourceOrgAvatar } from '@/components/shared/OpenSourceOrgAvatar';
 import { use, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
@@ -19,6 +20,7 @@ import {
   StickyNote,
   Mic,
   ListChecks,
+  Code2,
 } from 'lucide-react';
 import { ResourceLink } from '@/components/shared/ResourceLink';
 import { SubmissionFileList } from '@/components/shared/SubmissionFileList';
@@ -239,6 +241,31 @@ export default function TaskDetailsPage({ params }: PageProps) {
       {/* Task Requirements */}
       <div className="bg-card rounded-2xl border border-slate-200 p-6 space-y-5">
         <h2 className="text-lg font-semibold text-slate-900">Task Requirements</h2>
+
+        {/* Open Source Organizations */}
+        {Array.isArray(task.openSourceOrgs) && task.openSourceOrgs.length > 0 && (
+          <div className="p-4 bg-brand-50/60 dark:bg-brand-500/10 border border-brand-200 dark:border-brand-500/20 rounded-xl space-y-3">
+            <div className="flex items-center gap-2 text-sm font-semibold text-brand-900 dark:text-brand-200">
+              <Code2 className="w-4 h-4 text-brand-600 dark:text-brand-400" />
+              Open Source Organization{task.openSourceOrgs.length > 1 ? 's' : ''}
+            </div>
+            <div className="flex flex-wrap gap-2.5">
+              {task.openSourceOrgs.map((org: any) => (
+                <a
+                  key={org.id || org.name}
+                  href={org.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-brand-200 dark:border-brand-500/30 bg-white dark:bg-slate-900 hover:bg-brand-50 dark:hover:bg-slate-800 text-sm font-medium text-slate-900 dark:text-slate-100 shadow-xs transition-colors group"
+                >
+                  <OpenSourceOrgAvatar name={org.name} url={org.url} avatar={org.avatar} className="w-4 h-4 rounded-full object-cover shrink-0 border border-slate-200 dark:border-slate-700" />
+                  <span>{org.name}</span>
+                  <ExternalLink className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400 group-hover:underline" />
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
 
         {taskDeliverable && (
           <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">

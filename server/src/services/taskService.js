@@ -115,7 +115,8 @@ class TaskService {
       pointsBase,
       deliverable,
       acceptanceCriteria,
-      resources // Optional: learning resources (links) attached to the task
+      resources, // Optional: learning resources (links) attached to the task
+      openSourceOrgIds
     } = data;
     let { enrollmentId } = data;
 
@@ -131,8 +132,11 @@ class TaskService {
     // OR (the current model) a shared clan where the mentor leads/co-mentors and
     // the mentee is an active member.
     const isMentor = await this._isMentorForMentee(mentorId, menteeId);
-    if (!isMentor) {
-      throw new ForbiddenError('You are not the mentor for this mentee');
+    if (!isMentor) throw new ForbiddenError('You are not the mentor for this mentee');
+
+    const orgIds = Array.isArray(openSourceOrgIds) ? openSourceOrgIds : (data.openSourceOrgId ? [data.openSourceOrgId] : []);
+    if (type === 'open_source' && !orgIds.length) {
+      throw new ValidationError('At least one open source organization is required for open source tasks');
     }
 
     if (type === 'recurring') {
@@ -336,7 +340,8 @@ class TaskService {
       isCustomTask: roadmapTaskId ? false : true, // Roadmap tasks are not custom
       trackId: trackId || null,
       scheduleSlotId: scheduleSlotId || null,
-      occurrenceDate: occurrenceDate || null
+      occurrenceDate: occurrenceDate || null,
+      openSourceOrgIds: orgIds
     });
 
     // Link the interview kit + snapshot the per-assignment options.
@@ -479,7 +484,7 @@ class TaskService {
     if (filters.status) {
       where.status = filters.status;
     }
-    
+
     if (filters.enrollmentId) {
       where.enrollmentId = filters.enrollmentId;
     }
@@ -534,7 +539,18 @@ class TaskService {
         ['assignedAt', 'DESC']
       ]
     });
-    return rows.map(applyTaskOverrides);
+    const tasks = rows.map(applyTaskOverrides);
+    if (models.OpenSourceOrg) {
+      const allOrgIds = [...new Set(tasks.flatMap((t) => t.openSourceOrgIds || []))];
+      if (allOrgIds.length > 0) {
+        const orgs = await models.OpenSourceOrg.findAll({ where: { id: allOrgIds } });
+        const orgMap = new Map(orgs.map((o) => [o.id, o.toJSON ? o.toJSON() : o]));
+        for (const t of tasks) {
+          t.openSourceOrgs = (t.openSourceOrgIds || []).map((id) => orgMap.get(id)).filter(Boolean);
+        }
+      }
+    }
+    return tasks;
   }
 
   /**
@@ -542,7 +558,7 @@ class TaskService {
    */
   async getMentorTasks(mentorId, filters = {}) {
     const where = { mentorId };
-    
+
     if (filters.status) {
       where.status = filters.status;
     }
@@ -599,7 +615,18 @@ class TaskService {
         ['dueDate', 'ASC']
       ]
     });
-    return rows.map(applyTaskOverrides);
+    const tasks = rows.map(applyTaskOverrides);
+    if (models.OpenSourceOrg) {
+      const allOrgIds = [...new Set(tasks.flatMap((t) => t.openSourceOrgIds || []))];
+      if (allOrgIds.length > 0) {
+        const orgs = await models.OpenSourceOrg.findAll({ where: { id: allOrgIds } });
+        const orgMap = new Map(orgs.map((o) => [o.id, o.toJSON ? o.toJSON() : o]));
+        for (const t of tasks) {
+          t.openSourceOrgs = (t.openSourceOrgIds || []).map((id) => orgMap.get(id)).filter(Boolean);
+        }
+      }
+    }
+    return tasks;
   }
 
   /**
@@ -666,7 +693,14 @@ class TaskService {
       throw new NotFoundError('Task not found');
     }
 
-    return applyTaskOverrides(task);
+    const res = applyTaskOverrides(task);
+    if (models.OpenSourceOrg && Array.isArray(res.openSourceOrgIds) && res.openSourceOrgIds.length > 0) {
+      const orgRows = await models.OpenSourceOrg.findAll({ where: { id: res.openSourceOrgIds } });
+      res.openSourceOrgs = orgRows.map((o) => (o.toJSON ? o.toJSON() : o));
+    } else {
+      res.openSourceOrgs = [];
+    }
+    return res;
   }
 
   /**
@@ -1081,8 +1115,8 @@ class TaskService {
     // Get tasks reviewed today
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
-    const reviewedToday = allTasks.filter(t => 
+
+    const reviewedToday = allTasks.filter(t =>
       t.completedAt && new Date(t.completedAt) >= today
     ).length;
 
@@ -1115,9 +1149,9 @@ class TaskService {
 
     // Count overdue tasks
     const now = new Date();
-    const overdue = allTasks.filter(t => 
-      t.dueDate && 
-      new Date(t.dueDate) < now && 
+    const overdue = allTasks.filter(t =>
+      t.dueDate &&
+      new Date(t.dueDate) < now &&
       !['completed', 'submitted', 'cancelled'].includes(t.status)
     ).length;
 
@@ -1248,8 +1282,8 @@ class TaskService {
     const task = await models.AssignedTask.findByPk(taskId, {
       include: [
         { model: models.RoadmapTask, as: 'roadmapTask' },
-        { 
-          model: models.Enrollment, 
+        {
+          model: models.Enrollment,
           as: 'enrollment',
           include: [
             { model: models.User, as: 'mentee' }

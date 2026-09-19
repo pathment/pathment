@@ -14,6 +14,7 @@ export interface RoadmapStepInput {
   deliverable?: string;
   pointsBase?: number;
   resources?: RoadmapResourceInput[];
+  openSourceOrgIds?: string[];
 }
 
 /** Admin org-roadmap authoring (the shared library mentors import + assign). */

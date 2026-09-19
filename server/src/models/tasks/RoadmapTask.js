@@ -27,7 +27,7 @@ module.exports = (sequelize, DataTypes) => {
         // 'assignment' added to match the new-design TaskType
         // (assignment/project/quiz/reading/video/discussion). 'interview' =
         // structured voice/code/text interview backed by an InterviewKit.
-        isIn: [['reading', 'video', 'exercise', 'project', 'quiz', 'discussion', 'practical', 'assessment', 'custom', 'assignment', 'interview']]
+        isIn: [['reading', 'video', 'exercise', 'project', 'quiz', 'discussion', 'practical', 'assessment', 'custom', 'assignment', 'interview', 'open_source']]
       }
     },
     difficulty: {
@@ -80,6 +80,11 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.INTEGER,
       defaultValue: 10,
       field: 'points_base'
+    },
+    openSourceOrgIds: {
+      type: DataTypes.ARRAY(DataTypes.UUID),
+      defaultValue: [],
+      field: 'open_source_org_ids'
     }
   }, {
     tableName: 'roadmap_tasks',

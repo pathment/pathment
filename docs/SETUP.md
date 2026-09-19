@@ -195,8 +195,12 @@ CLOUDINARY_API_SECRET=your-api-secret
 GROQ_API_KEY=your-groq-api-key
 OPENAI_API_KEY=your-openai-api-key
 
+# GitHub Integration (optional, increases search rate limits)
+GITHUB_TOKEN=your-github-personal-access-token
+
 # Frontend URL (for CORS)
 CLIENT_URL=http://localhost:3000
+
 ```
 
 #### 2.5 Initialize Database
@@ -998,6 +1002,8 @@ Check browser console for client-side errors.
 | OPENAI_API_KEY | Optional | OpenAI key | sk-xxx |
 | CLOUDINARY_CLOUD_NAME | Optional | Cloudinary name | your-cloud |
 | EMAIL_HOST | Optional | Email server | smtp.gmail.com |
+| GITHUB_TOKEN | Optional | GitHub Access Token (increases search rate limit) | github_pat_xxx |
+
 
 ### Frontend (.env.local)
 

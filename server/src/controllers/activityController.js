@@ -14,18 +14,25 @@ function todayDate() {
 
 async function getOrCreateSession(userId) {
   const date = todayDate();
-  const [session] = await models.ActivitySession.findOrCreate({
-    where: { userId, date },
-    defaults: {
-      userId,
-      date,
-      sessionStart: new Date(),
-      activeMinutes: 0,
-      pageViews: 0,
-      eventsCount: 0,
-    },
-  });
-  return session;
+  try {
+    const [session] = await models.ActivitySession.findOrCreate({
+      where: { userId, date },
+      defaults: {
+        userId,
+        date,
+        sessionStart: new Date(),
+        activeMinutes: 0,
+        pageViews: 0,
+        eventsCount: 0,
+      },
+    });
+    return session;
+  } catch (error) {
+    // Workaround for Sequelize race condition bug where it crashes on .toString() inside findOrCreate
+    const existing = await models.ActivitySession.findOne({ where: { userId, date } });
+    if (existing) return existing;
+    throw error;
+  }
 }
 
 // ─── Controller ───────────────────────────────────────────────────────────────

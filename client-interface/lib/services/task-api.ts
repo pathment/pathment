@@ -44,7 +44,7 @@ export const taskApi = {
     deliverable?: string;
     acceptanceCriteria?: string[];
     resources?: { title: string; url: string; resourceType?: string }[];
-    // Present only when type === 'interview' — links the kit + per-assignment options.
+    openSourceOrgIds?: string[];
     interview?: InterviewAssignOptions;
   }) =>
     apiClient.post('/tasks/custom', data),
@@ -61,7 +61,7 @@ export const taskApi = {
     deliverable?: string;
     acceptanceCriteria?: string[];
     resources?: { title: string; url: string; resourceType?: string }[];
-    // Present only when type === 'interview' — links the kit + per-assignment options.
+    openSourceOrgIds?: string[];
     interview?: InterviewAssignOptions;
   }) =>
     apiClient.post('/tasks/custom/bulk', data),

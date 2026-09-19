@@ -10,12 +10,18 @@ import { roadmapAiApi, type RoadmapStepInput } from '@/lib/services/roadmap-api'
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import RichTextEditor from '@/components/shared/RichTextEditor';
 import { pointsForDifficulty } from '@/lib/config/points';
+import { OpenSourceOrgPicker } from '@/components/shared/OpenSourceOrgPicker';
+import type { OpenSourceOrg } from '@/lib/services/open-source-orgs-api';
 
-const STEP_TYPES = ['project', 'assignment', 'reading', 'video', 'quiz', 'discussion'];
+const STEP_TYPES = ['project', 'assignment', 'reading', 'video', 'quiz', 'discussion', 'open_source'];
+const STEP_TYPE_LABELS: Record<string, string> = {
+  project: 'Project', assignment: 'Assignment', reading: 'Reading',
+  video: 'Video', quiz: 'Quiz', discussion: 'Discussion', open_source: 'Open Source',
+};
 const EFFORTS = ['xs', 's', 'm', 'l', 'xl'];
 const DIFFICULTIES = ['easy', 'medium', 'hard', 'expert'];
 const TITLE_MAX = 255;
-// Common non-standard type names → our 6 types (so imports don't all become "project").
+// Common non-standard type names → our types (so imports don't all become "project").
 const TYPE_ALIAS: Record<string, string> = { task: 'assignment', course: 'video', exercise: 'assignment', practical: 'project', assessment: 'quiz', lecture: 'video' };
 
 interface DraftResource { label: string; url: string }
@@ -63,10 +69,12 @@ interface DraftStep {
   key: string; id?: string; title: string; type: string; description: string; criteria: string;
   effort: string; dueOffsetDays: string; difficulty: string; deliverable: string; points: string;
   resources: DraftResource[];
+  openSourceOrgs: OpenSourceOrg[];
 }
 const emptyStep = (): DraftStep => ({
   key: uid(), title: '', type: 'project', description: '', criteria: '',
   effort: 'm', dueOffsetDays: '', difficulty: 'medium', deliverable: '', points: '10', resources: [],
+  openSourceOrgs: [],
 });
 
 // The roadmap shape this editor accepts (covers both mentor "local" and admin "org").
@@ -82,6 +90,7 @@ export interface EditableRoadmap {
     effort?: string | null; dueOffsetDays?: number | null; difficulty?: string | null;
     deliverable?: string | null; pointsBase?: number | null;
     resources?: { id?: string; title: string; url: string; resourceType?: string | null }[];
+    openSourceOrgs?: { id: string; name: string; url: string }[];
   }[];
 }
 
@@ -126,10 +135,10 @@ export function RoadmapEditorDrawer({
   const [published, setPublished] = useState<boolean>((draft?.published as boolean) ?? roadmap?.published ?? true);
   const [steps, setSteps] = useState<DraftStep[]>(() => {
     if (Array.isArray(draft?.steps) && (draft!.steps as DraftStep[]).length) {
-      return (draft!.steps as DraftStep[]).map((s) => ({ ...s, key: s.key || uid(), resources: s.resources || [] }));
+      return (draft!.steps as DraftStep[]).map((s): DraftStep => ({ ...emptyStep(), ...s, key: s.key || uid(), resources: s.resources || [], openSourceOrgs: s.openSourceOrgs || [] }));
     }
     if (editing && roadmap!.steps.length) {
-      return roadmap!.steps.map((s) => ({
+      return roadmap!.steps.map((s): DraftStep => ({
         key: s.id, id: s.id, title: s.title, type: s.type || 'project',
         description: s.description || '',
         effort: s.effort || 'm', dueOffsetDays: s.dueOffsetDays != null ? String(s.dueOffsetDays) : '',
@@ -138,6 +147,10 @@ export function RoadmapEditorDrawer({
         deliverable: s.deliverable || '',
         points: s.pointsBase != null ? String(s.pointsBase) : '10',
         resources: (s.resources || []).map((r) => ({ label: r.title, url: r.url })),
+        // Rehydrate the saved orgs so the picker shows them on re-edit.
+        // Backend returns only {id,name,url}; cast to full OpenSourceOrg — picker
+        // only reads those three fields so this is safe at runtime.
+        openSourceOrgs: Array.isArray(s.openSourceOrgs) ? (s.openSourceOrgs as OpenSourceOrg[]) : [],
       }));
     }
     return [emptyStep()];
@@ -190,6 +203,7 @@ export function RoadmapEditorDrawer({
         deliverable: String(s.deliverable || ''),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         resources: Array.isArray(s.resources) ? s.resources.filter((r: any) => r && r.url).map((r: any) => ({ label: String(r.label || r.title || ''), url: String(r.url) })) : [],
+        openSourceOrg: null,
       };
     });
     if (drafts.length === 0) { setJsonError('No steps with a "title" were found.'); return; }
@@ -328,6 +342,7 @@ export function RoadmapEditorDrawer({
       deliverable: s.deliverable.trim() || undefined,
       pointsBase: s.points.trim() ? Number(s.points) : undefined,
       resources: s.resources.filter((r) => r.url.trim()).map((r) => ({ label: r.label.trim(), url: r.url.trim() })),
+      openSourceOrgIds: s.type === 'open_source' ? s.openSourceOrgs.map((o) => o.id) : undefined,
     }));
     try {
       setSaving(true);
@@ -467,8 +482,8 @@ export function RoadmapEditorDrawer({
                       className={`w-full border rounded-lg px-3 py-1.5 text-sm mb-1 focus:outline-none focus:ring-2 ${over ? 'border-red-400 focus:ring-red-400' : 'border-slate-300 focus:ring-brand-500'}`} />
                     {over && <p className="text-[11px] text-red-500 mb-1">Title is too long ({s.title.trim().length}/{TITLE_MAX}). Move the detail into the description below.</p>}
                     <div className="flex flex-wrap gap-2">
-                      <select value={s.type} onChange={(e) => setStep(s.key, { type: e.target.value })} title="Type" className="border border-slate-300 rounded-lg px-2 py-1.5 text-sm bg-card capitalize focus:outline-none focus:ring-2 focus:ring-brand-500">
-                        {STEP_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                      <select value={s.type} onChange={(e) => setStep(s.key, { type: e.target.value, openSourceOrgs: [] })} title="Type" className="border border-slate-300 rounded-lg px-2 py-1.5 text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500">
+                        {STEP_TYPES.map((t) => <option key={t} value={t}>{STEP_TYPE_LABELS[t] ?? t}</option>)}
                       </select>
                       <select value={s.effort} onChange={(e) => setStep(s.key, { effort: e.target.value })} title="Effort" className="border border-slate-300 rounded-lg px-2 py-1.5 text-sm bg-card uppercase focus:outline-none focus:ring-2 focus:ring-brand-500">
                         {EFFORTS.map((ef) => <option key={ef} value={ef}>{ef}</option>)}
@@ -491,6 +506,17 @@ export function RoadmapEditorDrawer({
 
                     <textarea value={s.criteria} onChange={(e) => setStep(s.key, { criteria: e.target.value })} rows={2} placeholder="Acceptance criteria, one per line" className="mt-2 w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-brand-500" />
                     <input value={s.deliverable} onChange={(e) => setStep(s.key, { deliverable: e.target.value })} placeholder="Deliverable — what the mentee submits (optional)" className="mt-2 w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+
+                    {s.type === 'open_source' && (
+                      <div className="mt-2 rounded-xl border border-brand-200 bg-brand-50/50 dark:border-brand-500/20 dark:bg-brand-500/5 p-3 space-y-2">
+                        <span className="block text-xs font-medium text-slate-700 dark:text-slate-300">Open Source Organizations</span>
+                        <OpenSourceOrgPicker
+                          multiple
+                          value={s.openSourceOrgs}
+                          onChange={(orgs) => setStep(s.key, { openSourceOrgs: orgs })}
+                        />
+                      </div>
+                    )}
 
                     {/* Resources — the links the mentee watches/reads for this step */}
                     <div className="mt-2">

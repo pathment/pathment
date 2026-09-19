@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { qk, useApiQuery, STALE } from '@/lib/query';
 import { orgRoadmapApi, type RoadmapStepInput } from '@/lib/services/roadmap-api';
 
@@ -17,6 +18,7 @@ export interface OrgRoadmapStep {
   deliverable?: string | null;
   pointsBase?: number | null;
   resources?: { id?: string; title: string; url: string; resourceType?: string | null }[];
+  openSourceOrgs?: { id: string; name: string; url: string }[];
 }
 
 export interface OrgRoadmap {
@@ -47,6 +49,7 @@ export interface UseOrgRoadmapsReturn {
 const EMPTY: OrgRoadmap[] = [];
 
 export function useOrgRoadmaps(): UseOrgRoadmapsReturn {
+  const qc = useQueryClient();
   const { data, loading, error, refetch } = useApiQuery<OrgRoadmap[]>({
     queryKey: qk.admin.orgRoadmaps,
     queryFn: async () => (await orgRoadmapApi.list())?.data?.roadmaps ?? [],
@@ -55,10 +58,13 @@ export function useOrgRoadmaps(): UseOrgRoadmapsReturn {
   });
 
   // Every mutation is write-then-refetch; `after` keeps that in one place.
+  // We also invalidate the mentor roadmaps cache so mentors see the change
+  // immediately instead of waiting for the 5-minute stale window to expire.
   const after = useCallback(async (call: Promise<unknown>) => {
     await call;
     await refetch();
-  }, [refetch]);
+    qc.invalidateQueries({ queryKey: qk.mentor.roadmaps });
+  }, [refetch, qc]);
 
   return {
     roadmaps: data ?? EMPTY,

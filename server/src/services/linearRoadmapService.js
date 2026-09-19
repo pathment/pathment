@@ -79,16 +79,36 @@ class LinearRoadmapService {
   }
 
   async getSteps(roadmapId) {
-    return models.RoadmapTask.findAll({
+    const rows = await models.RoadmapTask.findAll({
       where: { roadmapId },
       order: [['taskOrder', 'ASC']],
-      attributes: ['id', 'title', 'description', 'type', 'difficulty', 'taskOrder', 'deliverable', 'acceptanceCriteria', 'estimatedHours', 'pointsBase', 'effort', 'dueOffsetDays'],
-      include: [{
-        model: models.TaskResource, as: 'resources',
-        attributes: ['id', 'title', 'url', 'resourceType', 'description', 'displayOrder'],
-        separate: true, order: [['displayOrder', 'ASC']],
-      }],
+      attributes: ['id', 'title', 'description', 'type', 'difficulty', 'taskOrder', 'deliverable', 'acceptanceCriteria', 'estimatedHours', 'pointsBase', 'effort', 'dueOffsetDays', 'openSourceOrgIds'],
+      include: [
+        {
+          model: models.TaskResource, as: 'resources',
+          attributes: ['id', 'title', 'url', 'resourceType', 'description', 'displayOrder'],
+          separate: true, order: [['displayOrder', 'ASC']],
+        }
+      ],
     });
+
+    // Always return plain objects so callers don't need to guard against
+    // Sequelize instance methods (toJSON, dataValues, etc.).
+    const steps = rows.map((s) => (s.toJSON ? s.toJSON() : s));
+
+    // Hydrate open source orgs in a single batch query.
+    if (models.OpenSourceOrg) {
+      const allOrgIds = [...new Set(steps.flatMap((s) => s.openSourceOrgIds || []))];
+      if (allOrgIds.length > 0) {
+        const orgRows = await models.OpenSourceOrg.findAll({ where: { id: allOrgIds }, attributes: ['id', 'name', 'url'] });
+        const orgMap = new Map(orgRows.map((o) => [o.id, o.toJSON ? o.toJSON() : o]));
+        for (const s of steps) {
+          s.openSourceOrgs = (s.openSourceOrgIds || []).map((id) => orgMap.get(id)).filter(Boolean);
+        }
+      }
+    }
+
+    return steps;
   }
 
   async withSteps(roadmap) {
@@ -194,7 +214,9 @@ class LinearRoadmapService {
       isMandatory: true,
       isCustomTask: false,
       // Standard points by difficulty (no hand-typed values).
-      pointsBase: pointsForDifficulty(step.difficulty)
+      pointsBase: pointsForDifficulty(step.difficulty),
+      // Only persist orgs on open_source steps; clear it for any other type.
+      openSourceOrgIds: step.type === 'open_source' ? (Array.isArray(step.openSourceOrgIds) ? step.openSourceOrgIds : []) : [],
     };
   }
 
@@ -714,6 +736,9 @@ class LinearRoadmapService {
       isCustomTask: false,
       // Standard points by the step's difficulty (single source of truth).
       pointsBase: pointsForDifficulty(step.difficulty),
+      // Copy the template-level orgs onto the assigned task so the mentee's
+      // task card and submission page show the correct open source orgs.
+      openSourceOrgIds: step.type === 'open_source' && Array.isArray(step.openSourceOrgIds) ? step.openSourceOrgIds : [],
       ...(ov || {})
     });
 

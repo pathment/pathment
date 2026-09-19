@@ -3,9 +3,11 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { CheckCircle2, Clock, Award, Pencil, RotateCcw, Trash2, Loader2, StickyNote, ClipboardCheck } from 'lucide-react';
+import { CheckCircle2, Clock, Award, Pencil, RotateCcw, Trash2, Loader2, StickyNote, ClipboardCheck, Code2, ExternalLink } from 'lucide-react';
 import { Drawer } from '@/components/shared/Drawer';
 import { ResourceLink } from '@/components/shared/ResourceLink';
+import { OpenSourceOrgAvatar } from '@/components/shared/OpenSourceOrgAvatar';
+
 import { TaskEditDrawer } from '@/components/mentor/TaskEditDrawer';
 import taskApi from '@/lib/services/task-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
@@ -133,6 +135,30 @@ export function MenteeTaskDrawer({ task, onClose, onChanged }: { task: any; onCl
             : isHtml
             ? <div className="prose prose-sm max-w-none dark:prose-invert text-slate-600 dark:text-slate-300" dangerouslySetInnerHTML={{ __html: description }} />
             : <p className="text-sm text-slate-600 whitespace-pre-wrap">{description}</p>}
+
+          {Array.isArray(task.openSourceOrgs) && task.openSourceOrgs.length > 0 && (
+            <div className="rounded-xl border border-brand-200 dark:border-brand-500/30 bg-brand-50/60 dark:bg-brand-500/10 p-3 space-y-2">
+              <p className="text-xs font-semibold text-brand-900 dark:text-brand-200 inline-flex items-center gap-1.5">
+                <Code2 className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400" />
+                Open Source Organization{task.openSourceOrgs.length > 1 ? 's' : ''}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {task.openSourceOrgs.map((org: any) => (
+                  <a
+                    key={org.id || org.name}
+                    href={org.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-brand-200 dark:border-brand-500/30 bg-white dark:bg-slate-900 text-xs font-medium text-slate-900 dark:text-slate-100 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
+                  >
+                    <OpenSourceOrgAvatar name={org.name} url={org.url} avatar={org.avatar} className="w-3.5 h-3.5 rounded-full object-cover shrink-0 border border-slate-200 dark:border-slate-700" />
+                    <span>{org.name}</span>
+                    <ExternalLink className="w-3 h-3 text-brand-600 dark:text-brand-400" />
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
 
           {rt.deliverable && (
             <div className="rounded-lg bg-blue-50 border border-blue-200 px-3 py-2">
