@@ -520,7 +520,13 @@ class TaskService {
         {
           model: models.RoadmapTask,
           as: 'roadmapTask',
-          include: [{ model: models.Roadmap, as: 'roadmap', attributes: ['id', 'name'] }]
+          include: [
+            {
+              model: models.TaskResource,
+              as: 'resources'
+            },
+            { model: models.Roadmap, as: 'roadmap', attributes: ['id', 'name'] }
+          ]
         },
         {
           model: models.User,
@@ -540,12 +546,23 @@ class TaskService {
           separate: true,
           order: [['version', 'DESC']],
           limit: 1,
-          // Feedback (notes/rating) + extension fields live on the submission;
-          // the cohort-review screen reads them, so include them here too.
+          // Feedback (notes/rating/mentor) + files + extension fields live on the submission;
+          // the cohort-review and completed-task views read them.
           include: [
             {
               model: models.TaskFeedback,
-              as: 'feedback'
+              as: 'feedback',
+              include: [
+                {
+                  model: models.User,
+                  as: 'mentor',
+                  attributes: ['id', 'firstName', 'lastName']
+                }
+              ]
+            },
+            {
+              model: models.TaskSubmissionFile,
+              as: 'files'
             }
           ]
         },
@@ -603,7 +620,13 @@ class TaskService {
         {
           model: models.RoadmapTask,
           as: 'roadmapTask',
-          include: [{ model: models.Roadmap, as: 'roadmap', attributes: ['id', 'name'] }]
+          include: [
+            {
+              model: models.TaskResource,
+              as: 'resources'
+            },
+            { model: models.Roadmap, as: 'roadmap', attributes: ['id', 'name'] }
+          ]
         },
         {
           model: models.User,
@@ -626,7 +649,18 @@ class TaskService {
           include: [
             {
               model: models.TaskFeedback,
-              as: 'feedback'
+              as: 'feedback',
+              include: [
+                {
+                  model: models.User,
+                  as: 'mentor',
+                  attributes: ['id', 'firstName', 'lastName']
+                }
+              ]
+            },
+            {
+              model: models.TaskSubmissionFile,
+              as: 'files'
             }
           ]
         }

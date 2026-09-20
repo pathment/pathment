@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import {
   ChevronLeft, ChevronRight, SkipForward, Check, Loader2,
   TrendingUp, TrendingDown, Minus, Flag, Clock, ClipboardCheck, Keyboard, CheckCircle2, ArrowUpRight, Send, Plus, ListTodo, CalendarClock,
-  Trash2, X, History, RotateCcw, CalendarDays, AlertTriangle, StickyNote, Search, Lock, Unlock, PauseCircle, Sparkles, PenLine,
+  Trash2, X, History, RotateCcw, CalendarDays, AlertTriangle, StickyNote, Search, Lock, Unlock, PauseCircle, Sparkles, PenLine, Star,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useMentorCohort, useMentorApprovals, type CohortMentee, type CohortMomentum, type CohortRisk, type ApprovalItem } from '@/lib/hooks/mentor';
@@ -375,7 +375,7 @@ export default function CohortReview() {
   useEffect(() => {
     if (!mentee) return;
     setFocus(0); setNote(''); setNoteSent(false); setBlockers([]); setTasks([]); setProfile(null); setAttHistory([]);
-    frictionApi.listBlockers(mentee.id, 'open').then((r: any) => setBlockers(r?.data?.blockers ?? [])).catch(() => {}); // eslint-disable-line @typescript-eslint/no-explicit-any
+    frictionApi.listBlockers(mentee.id, 'open').then((r: any) => setBlockers(r?.data?.blockers ?? [])).catch(() => { }); // eslint-disable-line @typescript-eslint/no-explicit-any
     mentorApi.getMenteeProfile(mentee.id).then((r: any) => setProfile(r?.data?.profile ?? r?.data ?? null)).catch(() => setProfile(null)); // eslint-disable-line @typescript-eslint/no-explicit-any
     mentorApi.getMenteeAttendanceHistory(mentee.id).then((r) => setAttHistory((r?.data?.history ?? []) as typeof attHistory)).catch(() => setAttHistory([]));
     // The mentee's FULL task list (every assignment, whoever made it) — not just
@@ -435,13 +435,21 @@ export default function CohortReview() {
 
   // Latest mentor note + rating for a task, surfaced on reviewed/changes rows.
   const reviewOf = (t: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
-    const fb = t.submissions?.[0]?.feedback;
-    if (!fb) return { note: null as string | null, rating: null as number | null };
+    const subFb = t.submissions?.[0]?.feedback;
+    const fb = Array.isArray(subFb) ? subFb[0] : subFb;
+    const taskFb = Array.isArray(t.feedback) ? t.feedback[0] : t.feedback;
+    const effectiveFb = fb || taskFb;
     const note = t.status === 'revision_needed'
-      ? (fb.revisionNotes || fb.feedbackText || null)
-      : t.status === 'completed' ? (fb.feedbackText || null) : null;
-    const r = Number(fb.rating);
-    return { note, rating: t.status === 'completed' && Number.isFinite(r) && r > 0 ? r : null };
+      ? (effectiveFb?.revisionNotes || effectiveFb?.feedbackText || null)
+      : t.status === 'completed' ? (effectiveFb?.feedbackText || null) : null;
+    const fbRating = effectiveFb ? Number(effectiveFb.rating) : NaN;
+    const taskRating = t.finalRating != null ? Number(t.finalRating) : NaN;
+    const r = Number.isFinite(taskRating) && taskRating > 0
+      ? taskRating
+      : Number.isFinite(fbRating) && fbRating > 0
+        ? fbRating
+        : null;
+    return { note, rating: t.status === 'completed' ? r : null };
   };
 
   const fmtCardDate = (value: string | Date | null | undefined) => {
@@ -1056,8 +1064,21 @@ export default function CohortReview() {
                                         {t.hasOverrides && <span className="ml-1.5 align-middle text-[10px] font-medium text-amber-600">• customized</span>}
                                       </p>
                                       <p className="mt-0.5 text-xs text-slate-500 truncate">
-                                        {[source, typeLabel, points != null ? `${points} pts` : null].filter(Boolean).join(' · ')}
-                                        {rating != null && <span className="ml-2 inline-flex items-center gap-0.5 text-amber-600"><CheckCircle2 className="w-3 h-3" />{rating}★</span>}
+                                        {[
+                                          source,
+                                          typeLabel,
+                                          t.status === 'completed' && t.pointsAwarded != null && points != null
+                                            ? `${t.pointsAwarded}/${points} pts`
+                                            : points != null
+                                              ? `${points} pts`
+                                              : null,
+                                        ].filter(Boolean).join(' · ')}
+                                        {rating != null && (
+                                          <span className="ml-2 inline-flex items-center gap-1 font-medium text-amber-600 dark:text-amber-400 align-middle">
+                                            <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400 shrink-0" />
+                                            <span>{rating}</span>
+                                          </span>
+                                        )}
                                         {t.mentorNote && <span className="ml-2 inline-flex items-center gap-0.5 text-amber-600"><StickyNote className="w-3 h-3" />note</span>}
                                       </p>
                                     </button>
