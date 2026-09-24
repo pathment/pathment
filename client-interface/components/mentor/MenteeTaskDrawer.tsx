@@ -200,38 +200,42 @@ export function MenteeTaskDrawer({
           <div className="space-y-5">
             {showSubmissions && <TaskSubmissionHistory taskId={task.id} />}
 
-            <div className="flex flex-wrap items-center gap-2">
-              <span
-                className={`px-2 py-0.5 rounded-full text-xs font-medium capitalize ${STATUS_CLS[task.status] || "bg-slate-100 text-slate-600"}`}
-              >
-                {(task.status || "assigned").replace("_", " ")}
-              </span>
-              {rt.type && (
-                <span className="px-2 py-0.5 rounded bg-brand-50 text-brand-700 text-[11px] font-medium capitalize">
-                  {rt.type}
-                </span>
-              )}
-              {rt.difficulty && (
+            <div className="bg-card rounded-2xl border border-slate-200 dark:border-slate-800 p-4 sm:p-5 space-y-4 shadow-sm">
+              <h3 className="text-sm font-semibold text-slate-900 dark:text-white mb-2">
+                Task Requirements
+              </h3>
+
+              <div className="flex flex-wrap items-center gap-2">
                 <span
-                  className={`px-2 py-0.5 rounded text-[11px] font-medium capitalize ${DIFF_CLS[rt.difficulty] || "bg-slate-100 text-slate-600"}`}
+                  className={`px-2 py-0.5 rounded-full text-xs font-medium capitalize ${STATUS_CLS[task.status] || "bg-slate-100 text-slate-600"}`}
                 >
-                  {rt.difficulty}
+                  {(task.status || "assigned").replace("_", " ")}
                 </span>
-              )}
-              {/* Where the task came from: a roadmap (which one) or a custom task. */}
-              <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[11px] font-medium">
-                {task.isCustomTask
-                  ? "Custom task"
-                  : task.roadmapName || rt.roadmap?.name
-                    ? `Roadmap · ${task.roadmapName || rt.roadmap?.name}`
-                    : "Roadmap"}
-              </span>
-              {task.hasOverrides && (
-                <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[11px] font-medium">
-                  Customized for this mentee
+                {rt.type && (
+                  <span className="px-2 py-0.5 rounded-full bg-brand-50 text-brand-700 text-[11px] font-medium capitalize">
+                    {rt.type}
+                  </span>
+                )}
+                {rt.difficulty && (
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[11px] font-medium capitalize ${DIFF_CLS[rt.difficulty] || "bg-slate-100 text-slate-600"}`}
+                  >
+                    {rt.difficulty}
+                  </span>
+                )}
+                <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[11px] font-medium">
+                  {task.isCustomTask
+                    ? "Custom task"
+                    : task.roadmapName || rt.roadmap?.name
+                      ? `Roadmap · ${task.roadmapName || rt.roadmap?.name}`
+                      : "Roadmap"}
                 </span>
-              )}
-            </div>
+                {task.hasOverrides && (
+                  <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[11px] font-medium">
+                    Customized for this mentee
+                  </span>
+                )}
+              </div>
 
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
               {due && (
@@ -360,6 +364,8 @@ export function MenteeTaskDrawer({
                 </ul>
               </div>
             )}
+            
+            </div>
           </div>
         </Drawer>
       )}
