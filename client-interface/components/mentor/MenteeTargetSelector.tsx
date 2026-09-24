@@ -93,9 +93,9 @@ export function MenteeTargetSelector({
   };
 
   return (
-    <div className="bg-card rounded-2xl border border-slate-200 dark:border-slate-800 p-5 space-y-4 shadow-xs">
+    <div className="bg-card rounded-2xl border border-border p-5 space-y-4 shadow-xs">
       {/* Header & Scope Tabs */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3">
         <div>
           <div className="flex items-center gap-2">
             <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
@@ -117,7 +117,7 @@ export function MenteeTargetSelector({
         </div>
 
         {/* Segmented Control Switcher */}
-        <div className="inline-flex rounded-xl bg-slate-100 dark:bg-slate-800/80 p-1 border border-slate-200/60 dark:border-slate-700/50">
+        <div className="inline-flex rounded-xl bg-muted p-1 border border-border">
           <button
             type="button"
             onClick={() => {
@@ -126,8 +126,8 @@ export function MenteeTargetSelector({
             }}
             className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all flex items-center gap-1.5 ${
               scope === 'all'
-                ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-sm font-semibold'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                ? 'bg-background text-foreground shadow-sm font-semibold'
+                : 'text-muted-foreground hover:text-foreground'
             }`}
           >
             <Users className="w-3.5 h-3.5" />
@@ -142,8 +142,8 @@ export function MenteeTargetSelector({
             }}
             className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all flex items-center gap-1.5 ${
               scope === 'selected'
-                ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-sm font-semibold'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                ? 'bg-background text-foreground shadow-sm font-semibold'
+                : 'text-muted-foreground hover:text-foreground'
             }`}
           >
             <CheckSquare className="w-3.5 h-3.5" />
@@ -155,8 +155,8 @@ export function MenteeTargetSelector({
             onClick={() => setScope('single')}
             className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all flex items-center gap-1.5 ${
               scope === 'single'
-                ? 'bg-white dark:bg-slate-900 text-brand-600 dark:text-brand-400 shadow-sm font-semibold'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                ? 'bg-background text-foreground shadow-sm font-semibold'
+                : 'text-muted-foreground hover:text-foreground'
             }`}
           >
             <User className="w-3.5 h-3.5" />
@@ -304,7 +304,7 @@ export function MenteeTargetSelector({
       )}
 
       {/* Footer Context Summary Strip */}
-      <div className="pt-2 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-slate-800/80">
+      <div className="pt-2 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
         <UserCheck className="w-4 h-4 text-brand-600 dark:text-brand-400 shrink-0" />
         {scope === 'all' ? (
           <span>

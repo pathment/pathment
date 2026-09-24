@@ -315,7 +315,7 @@ function RoadmapSlotEditor({ slot, menteeId, roadmaps, onPatch, refreshTick }: {
   }, [stepStatus]);
 
   return (
-    <div className="rounded-xl bg-slate-50/70 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-800 p-4 space-y-3">
+    <div className="rounded-xl bg-muted/40 border border-border/50 p-4 space-y-3">
       <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-brand-50 dark:bg-brand-500/15 text-brand-700 dark:text-brand-300 text-xs font-semibold border border-brand-200/60 dark:border-brand-500/30">
         <Route className="w-3.5 h-3.5" />
         Roadmap Chain (in order)
@@ -325,9 +325,9 @@ function RoadmapSlotEditor({ slot, menteeId, roadmaps, onPatch, refreshTick }: {
         {(slot.roadmapChain || []).map((rid, i) => {
           const rm = roadmaps.find((r) => r.id === rid);
           return (
-            <span key={rid} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-brand-100 dark:bg-brand-500/20 text-brand-800 dark:text-brand-200 text-xs font-semibold shadow-2xs">
+            <span key={rid} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-brand-500/20 text-brand-200 text-xs font-semibold shadow-2xs">
               {i + 1}. {rm?.name || 'Roadmap'}
-              <button type="button" onClick={() => onPatch({ roadmapChain: slot.roadmapChain.filter((x) => x !== rid) })} className="text-brand-600 dark:text-brand-400 hover:text-red-500 transition-colors">
+              <button type="button" onClick={() => onPatch({ roadmapChain: slot.roadmapChain.filter((x) => x !== rid) })} className="text-brand-400 hover:text-red-500 transition-colors">
                 <X className="w-3.5 h-3.5" />
               </button>
             </span>
@@ -338,7 +338,7 @@ function RoadmapSlotEditor({ slot, menteeId, roadmaps, onPatch, refreshTick }: {
       <select
         value=""
         onChange={(e) => { if (e.target.value) onPatch({ roadmapChain: [...(slot.roadmapChain || []), e.target.value] }); }}
-        className="w-full rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-2 text-xs bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 shadow-2xs cursor-pointer"
+        className="w-full rounded-xl border border-border px-3 py-2 text-xs bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 shadow-2xs cursor-pointer"
       >
         <option value="">+ Add roadmap to chain</option>
         {roadmaps.filter((r) => !(slot.roadmapChain || []).includes(r.id)).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
@@ -346,9 +346,9 @@ function RoadmapSlotEditor({ slot, menteeId, roadmaps, onPatch, refreshTick }: {
 
       {/* Progress-aware: where to start the FIRST roadmap, given what they've done. */}
       {!headId ? null : statusLoading ? (
-        <div className="flex items-center gap-2 text-xs text-slate-400"><Loader2 className="w-3.5 h-3.5 animate-spin" />Checking this mentee&apos;s progress…</div>
+        <div className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="w-3.5 h-3.5 animate-spin" />Checking this mentee&apos;s progress…</div>
       ) : started ? (
-        <div className="rounded-xl border border-amber-200 dark:border-amber-500/30 bg-amber-50/70 dark:bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-300">
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-500">
           <p className="font-semibold">Already started for this mentee</p>
           <p className="mt-0.5 opacity-90">
             {doneCount}/{steps.length} steps done{activeCount > 0 ? `, ${activeCount} in progress` : ''}
@@ -358,18 +358,18 @@ function RoadmapSlotEditor({ slot, menteeId, roadmaps, onPatch, refreshTick }: {
         </div>
       ) : steps.length > 1 ? (
         <div>
-          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Start &ldquo;{head?.name}&rdquo; at step</label>
+          <label className="block text-xs font-semibold text-foreground mb-1">Start &ldquo;{head?.name}&rdquo; at step</label>
           <select
             value={String(slot.startStep ?? firstUndone)}
             onChange={(e) => onPatch({ startStep: Number(e.target.value) })}
-            className="w-full rounded-xl border border-slate-200 dark:border-slate-800 px-3 py-2 text-xs bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 shadow-2xs cursor-pointer"
+            className="w-full rounded-xl border border-border px-3 py-2 text-xs bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 shadow-2xs cursor-pointer"
           >
             {steps.map((st, i) => <option key={st.id || i} value={i} disabled={isDone(i)}>{isDone(i) ? '✓ ' : ''}{i + 1}. {st.title}{isDone(i) ? ' (done)' : ''}</option>)}
           </select>
-          <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Skip steps they already know — applies to the first roadmap in the chain. Saving starts it for this mentee.</p>
+          <p className="text-xs text-muted-foreground mt-1">Skip steps they already know — applies to the first roadmap in the chain. Saving starts it for this mentee.</p>
         </div>
       ) : (
-        <p className="text-xs text-slate-400 dark:text-slate-500">Saving starts this roadmap for the mentee.</p>
+        <p className="text-xs text-muted-foreground">Saving starts this roadmap for the mentee.</p>
       )}
     </div>
   );
@@ -507,8 +507,8 @@ function FillTab() {
             {slots.map((s, idx) => {
               const slotId = s.id || `slot-${idx}`;
               return (
-                <div key={slotId} className="bg-card rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-xs transition-all">
-                  <div className="flex flex-wrap items-center justify-between gap-3 mb-3 pb-3 border-b border-slate-100 dark:border-slate-800/80">
+                <div key={slotId} className="bg-card rounded-2xl border border-border p-5 shadow-xs transition-all">
+                  <div className="flex flex-wrap items-center justify-between gap-3 mb-3 pb-3">
                     <div className="flex items-center gap-2.5">
                       <div className="w-8 h-8 rounded-xl bg-brand-50 dark:bg-brand-500/15 text-brand-600 dark:text-brand-400 flex items-center justify-center shrink-0">
                         {s.kind === 'recurring' ? <Repeat className="w-4 h-4" /> : s.kind === 'roadmap' ? <Route className="w-4 h-4" /> : <Clock className="w-4 h-4" />}
@@ -538,7 +538,7 @@ function FillTab() {
                 )}
 
                 {s.kind === 'recurring' && !s.recurring?.task && (
-                  <div className="rounded-xl bg-slate-50/70 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-800 p-4 space-y-4">
+                  <div className="rounded-xl bg-muted/40 border border-border/50 p-4 space-y-4">
                     <div className="flex items-center justify-between">
                       <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-brand-50 dark:bg-brand-500/15 text-brand-700 dark:text-brand-300 text-xs font-semibold border border-brand-200/60 dark:border-brand-500/30">
                         <Repeat className="w-3.5 h-3.5" />
@@ -671,7 +671,7 @@ function FillTab() {
                   <p className="text-xs text-muted-foreground">Changes apply to tasks that haven’t been created yet. Existing assignments keep their details.</p>
                 </div>}
 
-                <div className="flex items-center justify-end gap-2.5 mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80">
+                <div className="flex items-center justify-end gap-2.5 mt-4 pt-3">
                   {s.kind !== 'empty' && (
                     <button
                       type="button"
@@ -936,8 +936,8 @@ function AvailabilityTab() {
         <div className="p-6 grid gap-5 lg:grid-cols-[minmax(240px,0.8fr)_1fr]">
           <div><ReviewHistoryCalendar label="Meeting calendar" unit="slot" initialDate={dateKey(new Date().toISOString())} dates={calendarDates} selected={calendarDate} onSelect={selectCalendarDay} selectableDays="all" /><p className="text-xs text-muted-foreground">Times shown in {getBrowserTimeZone()}. Days with a count have availability or a booked 1:1; select any day to plan a one-off slot.</p></div>
           {visibleMeetings.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-4 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-900/40 dark:text-slate-300">
-              <p className="font-semibold text-slate-900 dark:text-slate-100">{calendarDate ? `No booked 1:1s on ${calendarDate}.` : 'No upcoming 1:1s yet.'}</p>
+            <div className="rounded-xl border border-dashed border-border bg-muted/50 p-4 text-xs text-muted-foreground">
+              <p className="font-semibold text-foreground">{calendarDate ? `No booked 1:1s on ${calendarDate}.` : 'No upcoming 1:1s yet.'}</p>
               {calendarDate && availabilityOnSelectedDay.length > 0 ? <p className="mt-1">{availabilityOnSelectedDay.length} bookable {availabilityOnSelectedDay.length === 1 ? 'slot is' : 'slots are'} open on this day.</p> : <p className="mt-1">Select a day, then add a one-off time below or set weekly hours.</p>}
             </div>
           ) : (
@@ -1000,13 +1000,13 @@ function AvailabilityTab() {
             {adding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}Publish slot
           </button>
         </div>
-        {oneOffSlots.length === 0 ? <p className="text-xs text-slate-500 dark:text-slate-400">No one-off slots published. Weekly-hour slots appear in the calendar above.</p> : (
+        {oneOffSlots.length === 0 ? <p className="text-xs text-muted-foreground">No one-off slots published. Weekly-hour slots appear in the calendar above.</p> : (
           <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
             {oneOffSlots.map((s) => (
-              <div key={s.id} className="flex items-center justify-between gap-2 p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/50">
+              <div key={s.id} className="flex items-center justify-between gap-2 p-3 rounded-xl border border-border bg-muted/40">
                 <div>
-                  <p className="text-xs font-semibold text-slate-900 dark:text-slate-100">{formatMeeting(s.startsAt, s.day, s.time)}</p>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400">{s.durationMins} min</p>
+                  <p className="text-xs font-semibold text-foreground">{formatMeeting(s.startsAt, s.day, s.time)}</p>
+                  <p className="text-[11px] text-muted-foreground">{s.durationMins} min</p>
                 </div>
                 {s.taken ? (
                   <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-xs font-semibold">
