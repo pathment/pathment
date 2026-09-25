@@ -4,7 +4,7 @@ import { NO_CERTIFICATE, reviewSelection, aiSelection, decisionPayload } from '@
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import {
-  AlertTriangle, Award, CheckCircle2, ChevronDown, Circle, Clock, Loader2, RefreshCw,
+  AlertTriangle, Award, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Circle, Clock, Loader2, RefreshCw,
   Sparkles, XCircle,
 } from 'lucide-react';
 import { Drawer } from '@/components/shared/Drawer';
@@ -29,6 +29,12 @@ interface MenteeEvidenceDrawerProps {
   onDecided?: () => void;
   /** False for someone reading their own certificate. */
   canDecide?: boolean;
+  navigation?: {
+    position: number;
+    total: number;
+    onPrevious?: () => void;
+    onNext?: () => void;
+  };
 }
 
 /**
@@ -45,7 +51,7 @@ interface MenteeEvidenceDrawerProps {
  * read; burying it under the metrics would make them hunt for it.
  */
 export function MenteeEvidenceDrawer({
-  templateId, menteeId, onClose, onTierChange, onDecided, canDecide = true, initialSelection,
+  templateId, menteeId, onClose, onTierChange, onDecided, canDecide = true, initialSelection, navigation,
 }: MenteeEvidenceDrawerProps) {
   const [evidence, setEvidence] = useState<MenteeEvidence | null>(null);
   const [loading, setLoading] = useState(false);
@@ -90,6 +96,23 @@ export function MenteeEvidenceDrawer({
     load();
   }, [menteeId, load]);
 
+  useEffect(() => {
+    if (!menteeId || !navigation) return;
+    const navigate = (event: KeyboardEvent) => {
+      if (!event.altKey) return;
+      if (event.key === 'ArrowLeft' && navigation.onPrevious) {
+        event.preventDefault();
+        navigation.onPrevious();
+      }
+      if (event.key === 'ArrowRight' && navigation.onNext) {
+        event.preventDefault();
+        navigation.onNext();
+      }
+    };
+    window.addEventListener('keydown', navigate);
+    return () => window.removeEventListener('keydown', navigate);
+  }, [menteeId, navigation]);
+
   const tierName = (id: string | null | undefined) =>
     id === NO_CERTIFICATE ? 'No certificate' : evidence?.criteria.find((c) => c.id === id)?.name || id || '—';
 
@@ -121,8 +144,9 @@ export function MenteeEvidenceDrawer({
         reason: needsReason ? reason.trim() : undefined,
       });
       toast.success(isChange ? 'Grade changed and signed off' : 'Grade signed off');
-      onDecided?.();
-      onClose();
+      await onDecided?.();
+      if (navigation?.onNext) navigation.onNext();
+      else onClose();
     } catch (err) {
       toast.error(extractApiErrorMessage(err, 'Could not save that decision'));
     } finally {
@@ -163,6 +187,25 @@ export function MenteeEvidenceDrawer({
         </div>
       ) : !evidence ? null : (
         <div className="space-y-5 pt-1">
+          {navigation && navigation.total > 1 && (
+            <div className="sticky top-0 z-10 -mx-1 rounded-2xl border border-border bg-card/95 p-3 shadow-sm backdrop-blur">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between text-[11px] font-semibold text-muted-foreground">
+                    <span>Review progress</span>
+                    <span>{navigation.position} / {navigation.total}</span>
+                  </div>
+                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+                    <div className="h-full rounded-full bg-brand-500 transition-[width]" style={{ width: `${Math.round((navigation.position / navigation.total) * 100)}%` }} />
+                  </div>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button type="button" onClick={navigation.onPrevious} disabled={!navigation.onPrevious} aria-label="Previous mentee" className="rounded-lg border border-border p-2 text-foreground hover:bg-muted disabled:opacity-40"><ChevronLeft className="h-4 w-4" /></button>
+                  <button type="button" onClick={navigation.onNext} disabled={!navigation.onNext} aria-label="Next mentee" className="rounded-lg border border-border p-2 text-foreground hover:bg-muted disabled:opacity-40"><ChevronRight className="h-4 w-4" /></button>
+                </div>
+              </div>
+            </div>
+          )}
           {/* ── Who ────────────────────────────────────────────────────── */}
           <div className="flex items-center gap-3 rounded-2xl border border-border bg-card p-3.5">
             <Avatar src={evidence.mentee.profilePictureUrl ?? undefined} name={name} size="sm" />
@@ -352,7 +395,9 @@ export function MenteeEvidenceDrawer({
                   className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-700 disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed"
                 >
                   {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-                  {v ? (isChange ? 'Save change and sign off' : 'Sign off this grade') : 'Set badge'}
+                  {v
+                    ? `${isChange ? 'Save change and sign off' : 'Sign off this grade'}${navigation?.onNext ? ' · Next' : ''}`
+                    : 'Set badge'}
                 </button>
                 {reasonMissing && (
                   <p className="text-[11px] font-medium text-amber-600">A reason is needed to change a grade.</p>

@@ -91,6 +91,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
   const [loadingQualifications, setLoadingQualifications] = useState(false);
 
   const [inspectedRecipient, setInspectedRecipient] = useState<any | null>(null);
+  const [inspectionQueue, setInspectionQueue] = useState<string[]>([]);
   const [expandedAIRows, setExpandedAIRows] = useState<Set<string>>(new Set());
 
   const {
@@ -136,6 +137,16 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
     clanName: string;
     mode: CertificateReviewMode;
   } | null>(null);
+  const reviewDrawerRows = useMemo(() => {
+    if (!reviewDrawer) return [];
+    return Object.values(reviewRows).filter((row) => {
+      if ((row.clanId ?? null) !== reviewDrawer.clanId) return false;
+      if (reviewDrawer.mode === 'changed') return row.overridden;
+      if (reviewDrawer.mode === 'pending') return row.status === 'pending';
+      return true;
+    });
+  }, [reviewDrawer, reviewRows]);
+  const inspectedIndex = inspectionQueue.indexOf(inspectedRecipient?.mentee_id);
 
   const {
     recipientSearch, setRecipientSearch,
@@ -1592,6 +1603,16 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
               onClose={() => setInspectedRecipient(null)}
               onTierChange={handleTierChange}
               onDecided={() => setRefreshKey(k => k + 1)}
+              navigation={inspectedIndex >= 0 && inspectionQueue.length > 1 ? {
+                position: inspectedIndex + 1,
+                total: inspectionQueue.length,
+                onPrevious: inspectedIndex > 0
+                  ? () => setInspectedRecipient({ mentee_id: inspectionQueue[inspectedIndex - 1] })
+                  : undefined,
+                onNext: inspectedIndex < inspectionQueue.length - 1
+                  ? () => setInspectedRecipient({ mentee_id: inspectionQueue[inspectedIndex + 1] })
+                  : undefined,
+              } : undefined}
             />
 
             <CertificateReviewDrawer
@@ -1603,6 +1624,7 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
               tierName={getTierName}
               onClose={() => setReviewDrawer(null)}
               onInspect={(menteeId) => {
+                setInspectionQueue(reviewDrawerRows.map((row) => row.menteeId));
                 setReviewDrawer(null);
                 setInspectedRecipient({ mentee_id: menteeId });
               }}
@@ -1720,7 +1742,10 @@ export default function CertificateEditor({ templateId }: CertificateEditorProps
                 if (tier === NO_CERTIFICATE) setInspectedRecipient({ mentee_id: id, initialSelection: NO_CERTIFICATE });
                 else handleTierChange(id, tier);
               }}
-              onInspectRecipient={setInspectedRecipient}
+              onInspectRecipient={(recipient) => {
+                setInspectionQueue(filtered.map((row: any) => row.id));
+                setInspectedRecipient(recipient);
+              }}
               loading={loadingQualifications}
               getTierName={getTierName}
               userRole="admin"

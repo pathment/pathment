@@ -134,6 +134,7 @@ export default function MentorCertificatesPage() {
 
   const [mentorTiers, setMentorTiers] = useState<Record<string, string>>({});
   const [inspectedRecipient, setInspectedRecipient] = useState<any | null>(null);
+  const [inspectionQueue, setInspectionQueue] = useState<string[]>([]);
 
   const [aiResults, setAiResults] = useState<any[]>([]);
 
@@ -501,6 +502,7 @@ export default function MentorCertificatesPage() {
   }, [activeMentees]);
 
   const allSelected = filtered.length > 0 && filtered.every(m => selectedIds.has(m.id));
+  const inspectedIndex = inspectionQueue.indexOf(inspectedRecipient?.mentee_id);
 
   const selectedSummary = useMemo(() => {
     const activeTemplate = templates.find(t => t.id === activeTemplateId);
@@ -673,6 +675,23 @@ export default function MentorCertificatesPage() {
     } finally {
       setVerifying(false);
     }
+  };
+
+  const unchangedPending = useMemo(() => reviewList.filter((row) =>
+    row.status === 'pending' && row.aiDecision !== 'no_certificate' && Boolean(row.aiTier)
+  ), [reviewList]);
+
+  const acceptUnchangedRecommendations = () => {
+    if (!unchangedPending.length) return;
+    submitVerification(unchangedPending.map((row) => ({ menteeId: row.menteeId, finalTier: row.aiTier! })));
+  };
+
+  const startFocusedReview = () => {
+    const pendingIds = reviewList.filter((row) => row.status === 'pending').map((row) => row.menteeId);
+    setReviewing(true);
+    setReviewFilter('pending');
+    setInspectionQueue(pendingIds);
+    if (pendingIds[0]) setInspectedRecipient({ mentee_id: pendingIds[0] });
   };
 
   /**
@@ -1166,6 +1185,16 @@ export default function MentorCertificatesPage() {
                 onClose={() => setInspectedRecipient(null)}
                 onTierChange={handleTierChange}
                 onDecided={loadReview}
+                navigation={inspectedIndex >= 0 && inspectionQueue.length > 1 ? {
+                  position: inspectedIndex + 1,
+                  total: inspectionQueue.length,
+                  onPrevious: inspectedIndex > 0
+                    ? () => setInspectedRecipient({ mentee_id: inspectionQueue[inspectedIndex - 1] })
+                    : undefined,
+                  onNext: inspectedIndex < inspectionQueue.length - 1
+                    ? () => setInspectedRecipient({ mentee_id: inspectionQueue[inspectedIndex + 1] })
+                    : undefined,
+                } : undefined}
               />
 
 
@@ -1177,6 +1206,10 @@ export default function MentorCertificatesPage() {
                   total={reviewList.length}
                   daysLeft={reviewDaysLeft}
                   reviewing={reviewing}
+                  unchangedCount={unchangedPending.length}
+                  verifying={verifying}
+                  onStartReview={startFocusedReview}
+                  onAcceptUnchanged={acceptUnchangedRecommendations}
                 />
               )}
 
@@ -1241,13 +1274,17 @@ export default function MentorCertificatesPage() {
                   allSelected={allSelected}
                   assignedTiers={mentorTiers}
                   handleTierChange={handleTierChange}
-                  onInspectRecipient={setInspectedRecipient}
+                  onInspectRecipient={(recipient) => {
+                    setInspectionQueue(filtered.map((row) => row.id));
+                    setInspectedRecipient(recipient);
+                  }}
                   loading={loadingQualifications}
                   getTierName={getTierName}
                   userRole="mentor"
                   recipientTypeLabel="Mentee"
                   emptyMessage={search ? 'No mentees match your search.' : 'No active mentees found.'}
                   reviewRows={reviewRows ?? undefined}
+                  reviewRoundOpen={reviewOpen}
                   locked={tableLocked}
                   isRecipientLocked={isApprovedRecipient}
                 />
@@ -1526,15 +1563,21 @@ export default function MentorCertificatesPage() {
  * job, and it says it above the table the work happens in.
  */
 function ReviewRoundBanner({
-  clans, pending, total, daysLeft, reviewing,
+  clans, pending, total, daysLeft, reviewing, unchangedCount, verifying, onStartReview, onAcceptUnchanged,
 }: {
   clans: ReviewerClanState[];
   pending: number;
   total: number;
   daysLeft: number | null;
   reviewing: boolean;
+  unchangedCount: number;
+  verifying: boolean;
+  onStartReview: () => void;
+  onAcceptUnchanged: () => void;
 }) {
   const done = pending === 0;
+  const verified = Math.max(0, total - pending);
+  const percent = total ? Math.round((verified / total) * 100) : 0;
   const tone = reviewing
     ? 'border-brand-500/30 bg-brand-500/5'
     : done
@@ -1573,15 +1616,38 @@ function ReviewRoundBanner({
         )}
       </div>
 
-      <ul className="space-y-1 pl-6">
+      <div className="h-2 overflow-hidden rounded-full bg-muted">
+        <div className="h-full rounded-full bg-brand-500 transition-[width]" style={{ width: `${percent}%` }} />
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground">
+        <span>{verified} complete · {pending} remaining · {percent}%</span>
+        {!done && (
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={onStartReview} className="rounded-lg bg-brand-600 px-3 py-1.5 font-semibold text-white hover:bg-brand-700">
+              Review next pending
+            </button>
+            {unchangedCount > 0 && (
+              <button type="button" onClick={onAcceptUnchanged} disabled={verifying} className="inline-flex items-center gap-1 rounded-lg border border-border bg-card px-3 py-1.5 font-semibold text-foreground hover:border-brand-500/40 disabled:opacity-50">
+                {verifying ? <Loader2 className="h-3 w-3 animate-spin" /> : <ShieldCheck className="h-3 w-3" />}
+                Sign off {unchangedCount} unchanged
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      <ul className="grid gap-2 pt-1 sm:grid-cols-2">
         {clans.map(clan => (
-          <li key={clan.clanId} className="flex flex-wrap items-center gap-2 text-[11px]">
-            <span className="font-semibold text-foreground">{clan.clanName || 'Your clan'}</span>
-            <span className="text-muted-foreground">
+          <li key={clan.clanId} className="rounded-xl border border-border/70 bg-card p-3 text-[11px]">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="font-semibold text-foreground">{clan.clanName || 'Your clan'}</span>
+              <span className="text-muted-foreground">
               {clan.pending === 0
                 ? `all ${clan.verified} signed off`
                 : `${clan.pending} of ${clan.pending + clan.verified} outstanding`}
-            </span>
+              </span>
+            </div>
+            <div className="mt-2">
             {clan.canSend ? (
               <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-500/10 px-2 py-0.5 font-bold text-emerald-600">
                 <CheckCircle2 className="w-2.5 h-2.5" /> Approved — you can send
@@ -1591,6 +1657,7 @@ function ReviewRoundBanner({
                 <Clock className="w-2.5 h-2.5" /> {clan.pending > 0 ? 'Needs mentor sign-off' : 'Waiting on admin approval'}
               </span>
             )}
+            </div>
           </li>
         ))}
       </ul>
