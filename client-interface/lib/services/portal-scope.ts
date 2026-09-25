@@ -34,8 +34,23 @@ function currentPortalRole(): NotificationRole | null {
 
 function currentClanId(): string | null {
   if (typeof window === 'undefined') return null;
+  const role = currentPortalRole();
+
+  /**
+   * The clan picker exists in the mentor and mentee portals. An admin screen
+   * has no active clan, so sending one there is not a narrower question — it is
+   * the user's OTHER hat bleeding into this one.
+   *
+   * It did exactly that. This read the mentor picker's clan for any portal that
+   * was not 'mentee', admin included, so an admin who also mentors a clan
+   * loaded the certificate round and got a verification queue narrowed to their
+   * own ten mentees — while the approval banner, which sends no clan, still
+   * described all 28. One screen, two answers: a clan shown as fully signed off
+   * that opened to no decisions at all.
+   */
+  if (role === 'admin') return null;
+
   try {
-    const role = currentPortalRole();
     const key = role === 'mentee' ? MENTEE_CLAN_STORAGE_KEY : MENTOR_CLAN_STORAGE_KEY;
     const saved = window.localStorage.getItem(key);
     return saved && saved !== ALL_CLANS ? saved : null;

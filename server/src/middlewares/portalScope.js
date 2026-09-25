@@ -29,9 +29,27 @@ function parseClanId(raw) {
 
 function portalScope(req, res, next) {
   const role = String(req.headers['x-portal-role'] || '').trim().toLowerCase();
+  const portalRole = PORTAL_ROLES.includes(role) ? role : null;
+
+  /**
+   * The clan selector belongs to the mentor and mentee portals. An ADMIN screen
+   * has no active clan, so a clan header arriving with one is not a preference
+   * — it is leakage from the other hat the same person wears.
+   *
+   * That is exactly what happened: the browser stored the mentor picker's clan
+   * under one key and sent it on every request, admin pages included. An admin
+   * who also mentors a clan opened the certificate round and the verification
+   * queue came back narrowed to their own ten mentees, while the approval
+   * banner — which takes no clan at all — still described all 28 clans. The
+   * same page then said a clan was fully signed off and, one click deeper, that
+   * it had no decisions in it.
+   *
+   * An explicit ?clanId= still filters: `requestedClanId` prefers query and
+   * body, so an admin asking for one clan on purpose is unaffected.
+   */
   req.portal = {
-    role: PORTAL_ROLES.includes(role) ? role : null,
-    clanId: parseClanId(req.headers['x-active-clan'])
+    role: portalRole,
+    clanId: portalRole === 'admin' ? null : parseClanId(req.headers['x-active-clan'])
   };
   next();
 }
