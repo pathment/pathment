@@ -1,6 +1,8 @@
 import { apiClient } from './api-client';
 
 export interface GamificationStats {
+  role?: 'mentor' | 'mentee';
+  rewardCredits?: number;
   totalPoints: number;
   currentLevel: number;
   currentStreak: number;
@@ -17,9 +19,41 @@ export interface Badge {
   name: string;
   description: string;
   category: string;
+  criteriaType?: string;
   pointsReward: number;
   isSecret: boolean;
+  iconUrl?: string | null;
   unlockedAt?: string;
+}
+
+export interface BadgeProgress {
+  measurable: boolean;
+  current?: number;
+  target?: number;
+  unit?: string;
+  label?: string;
+}
+
+export interface BadgeCatalogItem {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  audience?: string;
+  criteriaType?: string;
+  pointsReward: number;
+  isSecret: boolean;
+  iconUrl?: string | null;
+  unlockedAt?: string;
+  status: 'earned' | 'locked';
+  automatic?: boolean;
+  progress: BadgeProgress;
+}
+
+export interface BadgeCatalogResponse {
+  audience: 'mentee' | 'mentor';
+  earned: BadgeCatalogItem[];
+  available: BadgeCatalogItem[];
 }
 
 interface UserBadgeApiItem {
@@ -91,11 +125,27 @@ export const gamificationApi = {
 
       mapped.push({
         ...nested,
+        iconUrl: nested.iconUrl ?? null,
         unlockedAt: (item as UserBadgeApiItem).unlockedAt || nested.unlockedAt
       });
     }
 
     return mapped;
+  },
+
+  async getBadgeCatalog(userId: string, audience?: 'mentor' | 'mentee'): Promise<BadgeCatalogResponse> {
+    const response = await apiClient.get<ApiResponse<{ catalog: BadgeCatalogResponse }>>(
+      `/gamification/user/${userId}/badge-catalog`,
+      { params: audience ? { audience } : undefined }
+    );
+    return response.data.catalog;
+  },
+
+  async uploadBadgeImage(file: File): Promise<string> {
+    const fd = new FormData();
+    fd.append('file', file);
+    const response = await apiClient.post<ApiResponse<{ url: string }>>('/gamification/badges/upload', fd);
+    return response.data.url;
   },
 
   async getUserPointsHistory(userId: string, limit = 20): Promise<PointsHistoryEntry[]> {

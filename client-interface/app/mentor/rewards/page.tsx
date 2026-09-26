@@ -1,25 +1,39 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Gift as GiftIcon, Loader2, Sparkles } from 'lucide-react';
 import { useRewards, useMentorCohort, type Gift } from '@/lib/hooks/mentor';
 import { rewardsApi } from '@/lib/services/rewards-api';
 import { Drawer } from '@/components/shared/Drawer';
+import { extractApiErrorMessage } from '@/lib/utils/api-error';
 
 function RedeemModal({ gift, onClose, onDone }: { gift: Gift; onClose: () => void; onDone: () => void }) {
   const { cohort } = useMentorCohort();
   const [menteeId, setMenteeId] = useState('');
   const [saving, setSaving] = useState(false);
+  const [balance, setBalance] = useState<number | null>(null);
+  const [balanceError, setBalanceError] = useState(false);
+  const requestKey = useRef<string | null>(null);
+  useEffect(() => {
+    let current = true;
+    requestKey.current = null;
+    setBalance(null); setBalanceError(false);
+    if (menteeId) rewardsApi.menteeBalance(menteeId).then(result => {
+      if (current) setBalance(result.data.balance);
+    }).catch(() => { if (current) setBalanceError(true); });
+    return () => { current = false; };
+  }, [menteeId]);
 
   const redeem = async () => {
     if (!menteeId) { toast.error('Pick a mentee'); return; }
     try {
       setSaving(true);
-      await rewardsApi.redeem(gift.id, menteeId);
+      requestKey.current ??= crypto.randomUUID();
+      await rewardsApi.redeem(gift.id, menteeId, requestKey.current);
       toast.success(`Redeemed "${gift.name}"`);
       onDone(); onClose();
-    } catch (e: any) { toast.error(e?.response?.data?.message || 'Could not redeem'); }
+    } catch (e: unknown) { toast.error(extractApiErrorMessage(e, 'Could not redeem')); }
     finally { setSaving(false); }
   };
 
@@ -28,22 +42,27 @@ function RedeemModal({ gift, onClose, onDone }: { gift: Gift; onClose: () => voi
       open
       onClose={onClose}
       title={`Redeem · ${gift.name}`}
-      subtitle={`${gift.costXp.toLocaleString()} XP${gift.stock !== null ? ` · ${gift.stock} left` : ''}`}
+      subtitle={`${gift.costXp.toLocaleString()} reward credits${gift.stock !== null ? ` · ${gift.stock} left` : ''}`}
       footer={
         <>
           <button onClick={onClose} className="px-4 py-2 border border-slate-200 text-slate-700 rounded-xl text-sm hover:bg-slate-50">Cancel</button>
-          <button onClick={redeem} disabled={saving} className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-sm inline-flex items-center gap-2 disabled:opacity-50">
+          <button onClick={redeem} disabled={saving || balance === null || balance < gift.costXp} className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-sm inline-flex items-center gap-2 disabled:opacity-50">
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}Redeem
           </button>
         </>
       }
     >
       <label className="block text-sm font-medium text-slate-700 mb-1">For which mentee?</label>
-      <select value={menteeId} onChange={(e) => setMenteeId(e.target.value)}
+      <select disabled={saving} value={menteeId} onChange={(e) => setMenteeId(e.target.value)}
         className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500">
         <option value="">Select a mentee</option>
         {cohort.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
       </select>
+      <p className="mt-3 text-sm text-slate-600" aria-live="polite">
+        {balanceError ? 'Could not load reward credits. Select the mentee again to retry.' : balance !== null
+          ? `Available: ${balance} reward credits. Cost: ${gift.costXp}. XP and levels stay unchanged.`
+          : menteeId ? 'Loading reward credits…' : 'Select a mentee to see available reward credits.'}
+      </p>
     </Drawer>
   );
 }
@@ -56,7 +75,7 @@ export default function MentorRewards() {
     <div className="space-y-6">
       <div>
         <h1 className="text-slate-900 mb-2">Rewards</h1>
-        <p className="text-slate-600">Turn the points a mentee has earned into something real. Your admin manages the catalog.</p>
+        <p className="text-slate-600">Redeem credits earned from approved tasks. XP and levels stay unchanged. Your organization manages the catalog.</p>
       </div>
 
       {loading ? (
@@ -89,7 +108,7 @@ export default function MentorRewards() {
                   <h3 className="font-medium text-slate-900">{g.name}</h3>
                   {g.description && <p className="text-sm text-slate-500 mt-0.5 flex-1">{g.description}</p>}
                   <div className="flex items-center justify-between mt-3">
-                    <span className="text-sm font-semibold text-brand-700">{g.costXp.toLocaleString()} XP</span>
+                    <span className="text-sm font-semibold text-brand-700">{g.costXp.toLocaleString()} credits</span>
                     <span className="text-xs text-slate-400">{g.stock === null ? 'unlimited' : `${g.stock} left`}</span>
                   </div>
                   <button onClick={() => setRedeeming(g)} disabled={g.stock === 0}
@@ -110,7 +129,7 @@ export default function MentorRewards() {
                   <div key={r.id} className="flex items-center gap-3 px-5 py-3 text-sm">
                     <Sparkles className="w-4 h-4 text-brand-400 shrink-0" />
                     <span className="text-slate-700 flex-1"><span className="font-medium">{r.gift}</span> → {r.mentee}</span>
-                    <span className="text-xs text-slate-400">{r.costXp.toLocaleString()} XP</span>
+                    <span className="text-xs text-slate-400">{r.costXp.toLocaleString()} credits</span>
                   </div>
                 ))}
               </div>

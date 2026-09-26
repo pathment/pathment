@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Trophy, Flame, Target, Award, ArrowRight } from 'lucide-react';
+import { Trophy, Flame, Target, ArrowRight, Award } from 'lucide-react';
 import { useAuth } from '@/lib/context/AuthContext';
 import {
   gamificationApi,
@@ -9,6 +9,7 @@ import {
   type Badge,
 } from '@/lib/services/gamification-api';
 import { useRouter } from 'next/navigation';
+import { BadgeEmblem } from '@/components/shared/BadgeEmblem';
 
 import type { MenteeRoadmapStep } from '@/lib/services/roadmap-api';
 
@@ -174,9 +175,14 @@ export function RoadmapGamificationCard({
                 key={badge.id}
                 className="flex items-center gap-2.5 p-2.5 bg-slate-50 border border-slate-200/80 rounded-xl hover:bg-slate-100/60 transition-colors"
               >
-                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-amber-400 to-amber-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
-                  <Award className="w-4 h-4" />
-                </div>
+                <BadgeEmblem
+                  name={badge.name}
+                  category={badge.category}
+                  criteriaType={badge.criteriaType}
+                  iconUrl={badge.iconUrl}
+                  size="sm"
+                  className="!h-7 !w-7 !rounded-lg !ring-2 shadow-2xs"
+                />
                 <div className="min-w-0 flex-1">
                   <div className="text-xs font-bold text-slate-900 truncate">{badge.name}</div>
                   {badge.description && (
@@ -185,7 +191,7 @@ export function RoadmapGamificationCard({
                 </div>
                 {badge.pointsReward ? (
                   <span className="text-[11px] font-bold text-amber-500 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-md shrink-0">
-                    +{badge.pointsReward} pts
+                    +{badge.pointsReward} XP
                   </span>
                 ) : null}
               </div>

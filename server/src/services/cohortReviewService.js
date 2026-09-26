@@ -310,6 +310,11 @@ class CohortReviewService {
     session.finishedAt = new Date();
     await session.save();
     this._notifyAbsentMentees(session).catch(() => {});
+    try {
+      await require('./gamificationService').checkAndAwardMentorBadges(session.mentorId || mentorId);
+    } catch (e) {
+      console.error('[Gamification] mentor badge check after session finish failed:', e.message);
+    }
     return this._withEntries(session);
   }
 

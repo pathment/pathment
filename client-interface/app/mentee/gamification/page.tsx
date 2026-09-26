@@ -5,7 +5,6 @@ import {
   Award,
   Flame,
   Loader2,
-  Medal,
   Star,
   Target,
   Trophy,
@@ -15,12 +14,13 @@ import { useAuth } from "@/lib/context/AuthContext";
 import { extractApiErrorMessage } from "@/lib/utils/api-error";
 import {
   gamificationApi,
-  type Badge,
+  type BadgeCatalogResponse,
   type GamificationStats,
   type LeaderboardEntry,
   type PointsHistoryEntry,
 } from "@/lib/services/gamification-api";
 import { communityApi } from "@/lib/services/community-api";
+import { BadgeCatalog } from "@/components/shared/BadgeCatalog";
 
 interface CommunityStanding {
   rank: number | null;
@@ -32,7 +32,7 @@ export default function MenteeGamificationPage() {
   const { user } = useAuth();
 
   const [stats, setStats] = useState<GamificationStats | null>(null);
-  const [badges, setBadges] = useState<Badge[]>([]);
+  const [catalog, setCatalog] = useState<BadgeCatalogResponse | null>(null);
   const [history, setHistory] = useState<PointsHistoryEntry[]>([]);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [community, setCommunity] = useState<CommunityStanding | null>(null);
@@ -49,10 +49,10 @@ export default function MenteeGamificationPage() {
         setLoading(true);
         setError(null);
 
-        const [statsRes, badgesRes, historyRes, leaderboardRes, communityRes] =
+        const [statsRes, catalogRes, historyRes, leaderboardRes, communityRes] =
           await Promise.all([
             gamificationApi.getUserStats(user.id),
-            gamificationApi.getUserBadges(user.id),
+            gamificationApi.getBadgeCatalog(user.id, 'mentee'),
             gamificationApi.getUserPointsHistory(user.id, 12),
             gamificationApi.getLeaderboard(10),
             communityApi.leaderboard("global", null, "all").catch(() => null),
@@ -60,7 +60,7 @@ export default function MenteeGamificationPage() {
 
         if (!mounted) return;
         setStats(statsRes);
-        setBadges(badgesRes);
+        setCatalog(catalogRes);
         setHistory(historyRes);
         setLeaderboard(leaderboardRes);
         setCommunity(
@@ -131,9 +131,9 @@ export default function MenteeGamificationPage() {
       <div className="rounded-2xl border border-brand-200 bg-linear-to-r from-brand-50 dark:from-brand-500/10 to-cyan-50 dark:to-transparent p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <h1 className="text-slate-900 mb-2">Points and badges</h1>
+            <h1 className="text-slate-900 mb-2">XP and badges</h1>
             <p className="text-slate-600">
-              What you have earned so far, and what is next.
+              XP builds your level. Reward credits come from approved tasks and are spent separately.
             </p>
           </div>
           <div className="flex gap-3">
@@ -168,7 +168,7 @@ export default function MenteeGamificationPage() {
             <span>
               {levelProgress.atMaxLevel
                 ? "Highest level reached"
-                : `${levelProgress.pointsToNext} pts to next level`}
+                : `${levelProgress.pointsToNext} XP to next level`}
             </span>
           </div>
           <div className="h-3 w-full rounded-full bg-card/80 border border-brand-100 overflow-hidden">
@@ -180,13 +180,14 @@ export default function MenteeGamificationPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <StatCard
           icon={Trophy}
-          label="Total Points"
+          label="Total XP"
           value={stats.totalPoints}
           accent="text-amber-600"
         />
+        <StatCard icon={Award} label="Reward Credits" value={stats.rewardCredits ?? 0} accent="text-brand-600" />
         <StatCard
           icon={Flame}
           label="Current Streak"
@@ -207,8 +208,8 @@ export default function MenteeGamificationPage() {
         />
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-3">
-        <section className="xl:col-span-2 rounded-2xl border border-slate-200 bg-card p-5">
+      <div className="grid gap-6">
+        <section className="rounded-2xl border border-slate-200 bg-card p-5">
           {/* No period tabs: the progress score is a current standing, not points
               banked over a window, so "this week's score" would be the same
               number wearing a different label. */}
@@ -283,53 +284,26 @@ export default function MenteeGamificationPage() {
             })}
           </div>
         </section>
-
-        <section className="rounded-2xl border border-slate-200 bg-card p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <Award className="w-5 h-5 text-brand-600" />
-            <h2 className="text-slate-900">Earned badges</h2>
-          </div>
-
-          <div className="space-y-3">
-            {badges.length === 0 && (
-              <div className="rounded-xl border border-dashed border-slate-300 p-5 text-center text-slate-500 text-sm">
-                No badges yet. Finish a task to earn your first one.
-              </div>
-            )}
-
-            {badges.map((badge) => (
-              <div
-                key={badge.id}
-                className="rounded-2xl border border-border p-4 bg-muted/40"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="text-slate-900 font-semibold">{badge.name}</p>
-                    <p className="text-slate-600 text-sm mt-1">
-                      {badge.description}
-                    </p>
-                  </div>
-                  <Medal className="w-5 h-5 text-amber-500 shrink-0" />
-                </div>
-                <div className="text-xs text-slate-500 mt-2 capitalize">
-                  {badge.category}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
       </div>
+
+      <section className="rounded-2xl border border-slate-200 bg-card p-5 sm:p-6">
+        {catalog ? (
+          <BadgeCatalog catalog={catalog} userId={user?.id} />
+        ) : (
+          <p className="text-sm text-slate-500">Loading badges…</p>
+        )}
+      </section>
 
       <section className="rounded-2xl border border-slate-200 bg-card p-5">
         <div className="flex items-center gap-2 mb-4">
           <Users className="w-5 h-5 text-brand-600" />
-          <h2 className="text-slate-900">Points History</h2>
+          <h2 className="text-slate-900">XP History</h2>
         </div>
 
         <div className="space-y-2">
           {history.length === 0 && (
             <div className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-slate-500">
-              No points awarded yet.
+              No XP awarded yet.
             </div>
           )}
 
@@ -350,7 +324,7 @@ export default function MenteeGamificationPage() {
                 className={`shrink-0 rounded-full px-3 py-1 text-sm font-semibold tabular-nums ${Number(item.pointsChange) >= 0 ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" : "bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300"}`}
               >
                 {Number(item.pointsChange) > 0 ? "+" : ""}
-                {item.pointsChange}
+                {item.pointsChange} XP
               </div>
             </div>
           ))}

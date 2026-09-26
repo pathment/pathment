@@ -457,10 +457,10 @@ class SubmissionService {
     await taskService.updateEnrollmentTaskStats(task.enrollmentId);
 
     // Keep gamification and mentee-profile progress in sync when a task is approved.
+    const gamificationService = require('./gamificationService');
     if (isApproved) {
       await this.updateMenteeGamificationProgress(task.menteeId);
 
-      const gamificationService = require('./gamificationService');
       const pointsToAward = updateData.pointsAwarded;
 
       try {
@@ -491,6 +491,12 @@ class SubmissionService {
 
     // Update mentor stats
     await this.updateMentorReviewStats(mentorId);
+
+    try {
+      await gamificationService.checkAndAwardMentorBadges(mentorId);
+    } catch (mentorBadgeError) {
+      console.error('[Gamification] mentor badge check after review failed:', mentorBadgeError.message);
+    }
 
     // The task's roadmapTask is already loaded on `submission.assignedTask` at the
     // top of this method, so the title comes for free — no need to re-run the

@@ -60,7 +60,8 @@ EXTENSION_HANDLED: 'extension_handled',
   CERTIFICATE_VERIFICATION_REQUESTED: 'certificate_verification_requested',
   CERTIFICATE_VERIFICATION_COMPLETED: 'certificate_verification_completed',
   // The admin has released a clan: its mentors may now send.
-  CERTIFICATE_CLAN_APPROVED: 'certificate_clan_approved'
+  CERTIFICATE_CLAN_APPROVED: 'certificate_clan_approved',
+  BADGE_EARNED: 'badge_earned',
 };
 
 // Which role's "hat" a notification concerns, so the bell + list can scope to the
@@ -247,6 +248,12 @@ const NOTIFICATION_MATRIX = {
     audience: 'mentee',
     preferenceKey: 'certificate_awarded',
     channels: { inApp: true, email: true, chat: false }
+  },
+  [NOTIFICATION_EVENTS.BADGE_EARNED]: {
+    type: 'milestone',
+    audience: 'any',
+    preferenceKey: null,
+    channels: { inApp: true, email: false, chat: false }
   },
   // "Your mentees have been graded — check the grades before they go out."
   // Emailed as well as belled: it carries a deadline and the mentor may not

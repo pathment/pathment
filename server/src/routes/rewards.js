@@ -5,11 +5,14 @@ const { authenticate } = require('../middlewares/auth');
 const { requirePermission, requirePermissionAnyScope, requirePermissionMinScope, scope } = require('../middlewares/authz');
 const { PERMISSIONS } = require('../config/permissions');
 const upload = require('../middlewares/upload');
+const Joi = require('joi');
+const { validate } = require('../middlewares/validate');
 
 // Catalog + redemptions — needs mentee.view (clan mentors + admins); per-mentee
 // actions are scoped to that mentee, the overview to any clan you mentor.
 router.get('/', authenticate, requirePermissionAnyScope(PERMISSIONS.MENTEE_VIEW), c.overview);
-router.post('/redeem', authenticate, requirePermission(PERMISSIONS.MENTEE_VIEW, scope.menteeBody('menteeId')), c.redeem);
+router.post('/redeem', authenticate, requirePermission(PERMISSIONS.MENTEE_VIEW, scope.menteeBody('menteeId')),
+  validate(Joi.object({ giftId: Joi.string().uuid().required(), menteeId: Joi.string().uuid().required(), requestKey: Joi.string().uuid() })), c.redeem);
 router.get('/balance/:menteeId', authenticate, requirePermission(PERMISSIONS.MENTEE_VIEW, scope.mentee('menteeId')), c.menteeBalance);
 
 // Catalog management (admin only).

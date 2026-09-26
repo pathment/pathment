@@ -5,6 +5,7 @@ module.exports = (sequelize, DataTypes) => {
    */
   const Redemption = sequelize.define('Redemption', {
     id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    requestKey: { type: DataTypes.UUID, field: 'request_key' },
     giftId: { type: DataTypes.UUID, allowNull: false, field: 'gift_id' },
     menteeId: { type: DataTypes.UUID, allowNull: false, field: 'mentee_id' },
     redeemedBy: { type: DataTypes.UUID, allowNull: true, field: 'redeemed_by' },
@@ -13,7 +14,8 @@ module.exports = (sequelize, DataTypes) => {
     tableName: 'redemptions',
     underscored: true,
     timestamps: true,
-    indexes: [{ fields: ['gift_id'] }, { fields: ['mentee_id'] }]
+    indexes: [{ fields: ['gift_id'] }, { fields: ['mentee_id'] },
+      { unique: true, fields: ['organization_id', 'mentee_id', 'request_key'], name: 'redemptions_request_key_uniq' }]
   });
 
   Redemption.associate = (models) => {

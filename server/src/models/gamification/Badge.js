@@ -6,6 +6,8 @@ module.exports = (sequelize, DataTypes) => {
       primaryKey: true
     },
     organizationId: { type: DataTypes.UUID, allowNull: false, field: 'organization_id' },
+    audience: { type: DataTypes.STRING(20), defaultValue: 'mentee' },
+    retiredAt: { type: DataTypes.DATE, field: 'retired_at' },
     name: {
       type: DataTypes.STRING(100),
       allowNull: false,

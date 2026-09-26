@@ -16,6 +16,7 @@ export const mentorWorkspaces = [
     { href: '/mentor/promotions', label: 'Promotions' },
     { href: '/mentor/certificates', label: 'Certificates' },
     { href: '/mentor/rewards', label: 'Rewards' },
+    { href: '/mentor/gamification', label: 'My recognition' },
   ] },
   { label: 'Insights', tabs: [
     { href: '/mentor/reports', label: 'Reports' },

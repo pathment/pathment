@@ -116,9 +116,17 @@ class ProgramReviewService {
 
     if (existing) {
       await existing.update(payload);
+      if (mentorId) {
+        try { await require('./gamificationService').checkAndAwardMentorBadges(mentorId); }
+        catch (e) { console.error('[Gamification] mentor badge check after rating failed:', e.message); }
+      }
       return { review: existing, updated: true };
     }
     const review = await models.ProgramReview.create(payload);
+    if (mentorId) {
+      try { await require('./gamificationService').checkAndAwardMentorBadges(mentorId); }
+      catch (e) { console.error('[Gamification] mentor badge check after rating failed:', e.message); }
+    }
     return { review, updated: false };
   }
 

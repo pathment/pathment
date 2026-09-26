@@ -13,7 +13,7 @@ export const menteeWorkspaces = [
     tabs: [
       { href: "/mentee/progress", label: "Overview" },
       { href: "/mentee/daily-log", label: "Daily log" },
-      { href: "/mentee/gamification", label: "Points & badges" },
+      { href: "/mentee/gamification", label: "XP & badges" },
       { href: "/mentee/certificates", label: "Certificates" },
     ],
   },

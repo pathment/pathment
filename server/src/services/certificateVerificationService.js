@@ -275,6 +275,11 @@ class CertificateVerificationService {
     };
     const saved = existingTransaction ? await execute(existingTransaction) : await sequelize.transaction(execute);
     if (notify) await this._notifyAdminsIfClanComplete(templateId, saved.clanId, user);
+    // Badge check only after a committed verify (not mid-batch inside an open transaction).
+    if (!existingTransaction && saved?.verifiedBy) {
+      try { await require('./gamificationService').checkAndAwardMentorBadges(saved.verifiedBy); }
+      catch (e) { console.error('[Gamification] mentor badge check after cert verify failed:', e.message); }
+    }
     return this._serialize(saved);
   }
 
@@ -301,6 +306,10 @@ class CertificateVerificationService {
     });
     for (const clanId of new Set(out.map((r) => r.clanId).filter(Boolean))) {
       await this._notifyAdminsIfClanComplete(templateId, clanId, user);
+    }
+    if (user?.id) {
+      try { await require('./gamificationService').checkAndAwardMentorBadges(user.id); }
+      catch (e) { console.error('[Gamification] mentor badge check after cert batch failed:', e.message); }
     }
     return { verified: out.length, rows: out };
   }

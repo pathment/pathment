@@ -8,7 +8,7 @@ import { rewardsApi } from '@/lib/services/rewards-api';
 import { useConfirm } from '@/lib/context/ConfirmContext';
 
 /**
- * Admin rewards catalog - the org-wide gift list mentees can redeem with points
+ * Admin rewards catalog - the org-wide gift list mentees redeem with reward credits
  * they earn. Mentors redeem on a mentee's behalf from the mentor Rewards page.
  */
 export default function AdminRewardsPage() {
@@ -29,7 +29,7 @@ export default function AdminRewardsPage() {
       <div className="admin-page-heading flex items-start justify-between gap-4">
         <div>
           <h1 className="text-slate-900 mb-1 flex items-center gap-2"><GiftIcon className="w-5 h-5 text-brand-600" /> Rewards catalog</h1>
-          <p className="text-slate-600 text-sm">Configure the gifts mentees can redeem with earned points. Mentors redeem these for their mentees.</p>
+          <p className="text-slate-600 text-sm">Manage your organization’s rewards. Mentees spend reward credits from approved tasks; XP and levels stay unchanged.</p>
         </div>
         <button onClick={() => setEditing('new')}
           className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-700 shrink-0">
@@ -57,7 +57,7 @@ export default function AdminRewardsPage() {
                   ) : (
                     <GiftIcon className="w-10 h-10 text-brand-300" />
                   )}
-                  <span className="absolute top-2 right-2 px-2 py-0.5 rounded-full bg-card/90 backdrop-blur text-brand-700 text-xs font-semibold tabular-nums shadow-sm">{g.costXp} pts</span>
+                  <span className="absolute top-2 right-2 px-2 py-0.5 rounded-full bg-card/90 backdrop-blur text-brand-700 text-xs font-semibold tabular-nums shadow-sm">{g.costXp} credits</span>
                 </div>
                 <div className="p-4 flex flex-col flex-1">
                   <div className="flex items-start justify-between gap-2">
@@ -113,7 +113,7 @@ function GiftDrawer({ gift, onClose, onSaved }: { gift: Gift | null; onClose: ()
     if (!file) return;
     try {
       setUploading(true);
-      const res: any = await rewardsApi.uploadGiftImage(file);
+      const res = await rewardsApi.uploadGiftImage(file);
       setImageUrl(res?.data?.url ?? null);
     } catch (e: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
       toast.error(e?.response?.data?.message || e?.message || 'Could not upload image');
@@ -171,7 +171,7 @@ function GiftDrawer({ gift, onClose, onSaved }: { gift: Gift | null; onClose: ()
             <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} className={`${field} resize-none`} />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Cost (points)</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Cost (reward credits)</label>
             <input type="number" min={0} value={costXp} onChange={(e) => setCostXp(Number(e.target.value) || 0)} className={field} />
           </div>
           <div>

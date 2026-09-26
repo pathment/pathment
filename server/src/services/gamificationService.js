@@ -7,6 +7,7 @@ const authzService = require('./authzService');
 const logger = require('../utils/logger');
 const { ensureMenteeProfile } = require('./menteeProfile');
 const performanceService = require('./performanceService');
+const { AsyncLocalStorage } = require('async_hooks');
 const {
   currentStreak,
   longestStreak,
@@ -14,60 +15,308 @@ const {
   milestoneFromReason,
   STREAK_BONUSES
 } = require('./streak');
+const { normalizeIconUrl } = require('../utils/badgeIcons');
+const {
+  MENTOR_AUTO_CRITERIA,
+  isMentorAutoCriteria,
+  measureMentorCriteria,
+} = require('../utils/mentorBadgeRules');
+
+// Auto-award can nest (badge → XP → more badges). Cap depth so Achievement
+// Collector can unlock once without unbounded XP/badge chains.
+const badgeEvalStore = new AsyncLocalStorage();
+const MAX_BADGE_EVAL_DEPTH = 2;
+
+/**
+ * Historical activity policy (mentor auto badges):
+ * All org-scoped qualifying activity counts toward thresholds (including
+ * activity before the badge was published). Publishing does not scan the org;
+ * awards run only after the next qualifying mentor event triggers
+ * checkAndAwardMentorBadges. Progress in the catalog uses the same counters.
+ */
 
 class GamificationService {
-  async awardPoints(menteeId, pointsAmount, sourceType, sourceId = null, reason = null) {
-    if (!menteeId || !pointsAmount || pointsAmount <= 0) {
-      throw new ValidationError('Invalid points amount or mentee ID');
-    }
+  async audit(action, badgeId, oldValues, newValues, transaction) {
+    const ctx = require('../utils/auditContext').getRequestContext();
+    return models.AuditLog.create({ action, entityType: 'badge', entityId: badgeId,
+      userId: ctx.userId || null, ipAddress: ctx.ip || null, userAgent: ctx.userAgent || null,
+      oldValues, newValues }, { transaction });
+  }
 
-    const menteeProfile = await models.MenteeProfile.findOne({
-      where: { userId: menteeId }
+  async saveBadge(id, data) {
+    return sequelize.transaction(async transaction => {
+      const badge = id ? await models.Badge.findByPk(id, { transaction, lock: transaction.LOCK.UPDATE }) : null;
+      if (id && !badge) throw new NotFoundError('Badge not found');
+      if (badge?.retiredAt) throw new ValidationError('Retired badges cannot be changed');
+      const oldValues = badge?.toJSON() || null;
+      const payload = { ...data };
+      if (Object.prototype.hasOwnProperty.call(payload, 'iconUrl')) {
+        payload.iconUrl = normalizeIconUrl(payload.iconUrl, { ValidationError });
+      }
+      const rule = { ...oldValues, ...payload };
+      const requiredValue = {
+        tasks_completed: 'count', programs_completed: 'count', badges_earned: 'count',
+        streak_days: 'days', points_milestone: 'threshold', avg_rating: 'minRating',
+        level_reached: 'level', skill_mastery: 'minProficiency',
+        mentor_accepted_answers: 'count', mentor_qualifying_reviews: 'count',
+        mentor_distinct_mentees: 'menteeCount', mentor_rating: 'minRating',
+        mentor_sessions_finished: 'count', mentor_cert_verifications: 'count',
+      }[rule.criteriaType];
+      if (requiredValue && !(Number(rule.criteriaValue?.[requiredValue]) > 0)) {
+        throw new ValidationError('The badge rule needs a positive threshold');
+      }
+      if (rule.criteriaType === 'skill_mastery' && !rule.criteriaValue?.skillId) throw new ValidationError('Select a skill');
+      if (rule.criteriaType === 'mentor_rating') {
+        const minReviews = Number(rule.criteriaValue?.minReviews || 3);
+        if (minReviews < 3) throw new ValidationError('Mentor rating badges require at least 3 reviews');
+      }
+      if (rule.audience === 'mentor' && rule.criteriaType !== 'custom' && !isMentorAutoCriteria(rule.criteriaType)) {
+        throw new ValidationError('Mentor badges must be manual recognition or a supported automatic rule');
+      }
+      if (rule.audience !== 'mentor' && isMentorAutoCriteria(rule.criteriaType)) {
+        throw new ValidationError('This automatic rule is only available for mentor badges');
+      }      if (badge && await models.UserBadge.count({ where: { badgeId: id }, transaction })) {
+        for (const field of ['audience', 'criteriaType', 'criteriaValue', 'pointsReward']) {
+          if (payload[field] !== undefined && JSON.stringify(payload[field]) !== JSON.stringify(badge[field])) {
+            throw new ValidationError('Create a new badge to change an earned badge’s rules or XP');
+          }
+        }
+      }
+      const saved = badge ? await badge.update(payload, { transaction }) : await models.Badge.create(payload, { transaction });
+      await this.audit(id ? 'badge.updated' : 'badge.created', saved.id, oldValues, saved.toJSON(), transaction);
+      return saved;
     });
+  }
 
-    if (!menteeProfile) {
-      throw new NotFoundError('Mentee profile not found');
+  async revokeBadge(userId, badgeId, reason) {
+    // Soft-revoke only: the UserBadge row stays so the same badge cannot be
+    // re-awarded (unique user+badge). Historical badge XP and levels are kept.
+    return sequelize.transaction(async transaction => {
+      await this._profile(userId, transaction);
+      const award = await models.UserBadge.findOne({ where: { userId, badgeId }, transaction, lock: transaction.LOCK.UPDATE });
+      if (!award) throw new NotFoundError('Award not found');
+      if (award.revokedAt) return award;
+      await award.update({ revokedAt: new Date(), revokeReason: reason, isFeatured: false }, { transaction });
+      await this.audit('badge.revoked', badgeId, null, { userId, reason, xpPreserved: true, reawardBlocked: true }, transaction);
+      return award;
+    });
+  }
+  // The existing ORM workspace boundary stamps and scopes every operation here.
+  // Lock a stable profile row, including when its ledger is still empty.
+  // Prefer mentee ledger when both exist (legacy dual-role XP path), unless
+  // forceMentor is set for mentor-audience awards and mentor badge checks.
+  async _profile(userId, transaction, { forceMentor = false } = {}) {
+    const options = { where: { userId }, transaction, ...(transaction ? { lock: transaction.LOCK.UPDATE } : {}) };
+    if (!forceMentor) {
+      const mentee = await models.MenteeProfile.findOne(options);
+      if (mentee) return { profile: mentee, mentor: false };
     }
+    const mentor = await models.MentorProfile.findOne(options);
+    if (!mentor) {
+      if (forceMentor) throw new NotFoundError('Mentor gamification profile not found');
+      throw new NotFoundError('Gamification profile not found');
+    }
+    return { profile: mentor, mentor: true };
+  }
 
-    const pointsBefore = Number(menteeProfile.totalPoints || 0);
-    const pointsAfter = pointsBefore + Number(pointsAmount);
-
+  async _writePoints(userId, change, sourceType, sourceId, reason, eventKey, transaction, { forceMentor = false } = {}) {
+    const { profile, mentor } = await this._profile(userId, transaction, { forceMentor });
+    const pointsBefore = mentor
+      ? Number(await models.PointsHistory.sum('pointsChange', { where: { userId, organizationId: profile.organizationId }, transaction }) || 0)
+      : Number(profile.totalPoints || 0);
+    // Consult pre-migration events too: a new key must never repay an old event.
+    const legacy = sourceId ? { userId, sourceType, sourceId }
+      : sourceType === 'streak_bonus' ? { userId, sourceType, reason } : null;
+    const existing = eventKey && await models.PointsHistory.findOne({
+      where: legacy ? { [Sequelize.Op.or]: [{ userId, eventKey }, legacy] } : { userId, eventKey }, transaction,
+    });
+    if (existing) return { pointsAwarded: 0, applied: 0, totalPoints: pointsBefore, alreadyAwarded: true, history: existing };
+    // Mentor XP requires verified recognition or an answer accepted by another person.
+    if (mentor && !['badge_earned', 'community_answer'].includes(sourceType)) {
+      return { pointsAwarded: 0, applied: 0, totalPoints: pointsBefore };
+    }
+    if (mentor && sourceType === 'community_answer') {
+      const today = new Date().toISOString().slice(0, 10);
+      const paidToday = Number(await models.PointsHistory.sum('pointsChange', { where: {
+        userId, organizationId: profile.organizationId, sourceType, createdAt: { [Sequelize.Op.gte]: new Date(`${today}T00:00:00Z`) },
+      }, transaction }) || 0);
+      change = Math.max(0, Math.min(change, 100 - paidToday));
+    }
+    const pointsAfter = Math.max(0, pointsBefore + change);
+    const applied = pointsAfter - pointsBefore;
     const history = await models.PointsHistory.create({
-      userId: menteeId,
-      pointsChange: pointsAmount,
-      pointsBefore,
-      pointsAfter,
-      sourceType,
-      sourceId,
-      reason
+      userId, pointsChange: applied, pointsBefore, pointsAfter, sourceType, sourceId, reason, eventKey,
+    }, { transaction });
+    if (!mentor) await profile.update({ totalPoints: pointsAfter }, { transaction });
+    return { pointsAwarded: applied, applied, totalPoints: pointsAfter, history };
+  }
+
+  async _afterPoints(userId) {
+    for (const method of ['checkLevelUp', 'checkAndAwardBadges', 'checkAndAwardMentorBadges']) {
+      try { await this[method](userId); }
+      catch (error) { logger.error(`Gamification ${method} failed`, { userId, error: error.message }); }
+    }
+  }
+
+  /**
+   * Progress for locked auto-badges. Only types with a clear numeric target are
+   * measurable — manual/custom/secret/non-numeric rules return measurable:false.
+   */
+  badgeProgress(badge, menteeProfile) {
+    if (!badge || badge.criteriaType === 'custom' || badge.isSecret) {
+      return { measurable: false };
+    }
+    if (isMentorAutoCriteria(badge.criteriaType)) {
+      return { measurable: false }; // mentors use mentorBadgeProgress
+    }
+    if (!menteeProfile) return { measurable: false };
+    const value = badge.criteriaValue || {};
+    switch (badge.criteriaType) {
+      case 'tasks_completed': {
+        const target = Number(value.count || 0);
+        if (!(target > 0)) return { measurable: false };
+        const current = Number(menteeProfile.totalTasksCompleted || 0);
+        return {
+          measurable: true, current, target, unit: 'approved tasks',
+          label: `${Math.min(current, target)}/${target} approved tasks`,
+        };
+      }
+      case 'streak_days': {
+        const target = Number(value.days || 0);
+        if (!(target > 0)) return { measurable: false };
+        const current = Number(menteeProfile.currentStreakDays || 0);
+        return {
+          measurable: true, current, target, unit: 'day streak',
+          label: `${Math.min(current, target)}/${target} day streak`,
+        };
+      }
+      case 'level_reached': {
+        const target = Number(value.level || 0);
+        if (!(target > 0)) return { measurable: false };
+        const current = Number(menteeProfile.currentLevel || 1);
+        return {
+          measurable: true, current, target, unit: 'level',
+          label: `Level ${Math.min(current, target)}/${target}`,
+        };
+      }
+      case 'points_milestone': {
+        const target = Number(value.threshold || 0);
+        if (!(target > 0)) return { measurable: false };
+        const current = Number(menteeProfile.totalPoints || 0);
+        return {
+          measurable: true, current, target, unit: 'XP',
+          label: `${Math.min(current, target)}/${target} XP`,
+        };
+      }
+      default:
+        return { measurable: false };
+    }
+  }
+
+  async mentorBadgeProgress(userId, badge, mentorProfile) {
+    if (!badge || badge.isSecret || badge.criteriaType === 'custom' || !isMentorAutoCriteria(badge.criteriaType)) {
+      return { measurable: false };
+    }
+    const organizationId = mentorProfile?.organizationId;
+    if (!organizationId) return { measurable: false };
+    const measured = await measureMentorCriteria(models, sequelize, userId, organizationId, badge);
+    return {
+      measurable: measured.measurable,
+      current: measured.current,
+      target: measured.target,
+      unit: measured.unit,
+      label: measured.label,
+    };
+  }
+
+  /**
+   * Earned + available catalog for the user's audience. Secret badges stay
+   * hidden until earned. Progress uses the same counters as award checks.
+   *
+   * Pass options.audience = 'mentor'|'mentee' for dual-role users (portals).
+   * Default: mentor-only profile → mentor; otherwise mentee.
+   */
+  async getBadgeCatalog(userId, options = {}) {
+    const menteeProfile = await models.MenteeProfile.findOne({ where: { userId } });
+    const mentorProfile = await models.MentorProfile.findOne({ where: { userId } });
+    let audience = options.audience;
+    if (audience !== 'mentor' && audience !== 'mentee') {
+      audience = mentorProfile && !menteeProfile ? 'mentor' : 'mentee';
+    }
+    if (audience === 'mentor' && !mentorProfile) audience = 'mentee';
+    if (audience === 'mentee' && !menteeProfile && mentorProfile) audience = 'mentor';
+
+    const [published, awards] = await Promise.all([
+      models.Badge.findAll({
+        where: { audience, isActive: true, retiredAt: null },
+        order: [['name', 'ASC']],
+      }),
+      models.UserBadge.findAll({
+        where: { userId, revokedAt: null },
+        include: [{ model: models.Badge, where: { audience }, required: true }],
+        order: [['unlockedAt', 'DESC']],
+      }),
+    ]);
+
+    const earnedIds = new Set(awards.map((row) => row.badgeId));
+    const earned = awards.map((row) => {
+      const badge = row.Badge || row.badge;
+      return {
+        id: badge.id,
+        name: badge.name,
+        description: badge.description,
+        category: badge.category,
+        audience: badge.audience,
+        criteriaType: badge.criteriaType,
+        pointsReward: badge.pointsReward,
+        isSecret: badge.isSecret,
+        iconUrl: badge.iconUrl || null,
+        unlockedAt: row.unlockedAt,
+        status: 'earned',
+        automatic: isMentorAutoCriteria(badge.criteriaType) || (badge.audience === 'mentee' && badge.criteriaType !== 'custom'),
+        progress: { measurable: false },
+      };
     });
 
-    await menteeProfile.update({ totalPoints: pointsAfter });
-
-    // Keep core points-award successful even if non-critical side effects fail.
-    try {
-      await this.checkLevelUp(menteeId);
-    } catch (error) {
-      console.error('[Gamification] checkLevelUp failed:', error.message);
+    const available = [];
+    for (const badge of published) {
+      if (earnedIds.has(badge.id)) continue;
+      if (badge.isSecret) continue;
+      let progress = { measurable: false };
+      if (audience === 'mentor' && mentorProfile) {
+        progress = await this.mentorBadgeProgress(userId, badge, mentorProfile);
+      } else if (audience === 'mentee' && menteeProfile) {
+        progress = this.badgeProgress(badge, menteeProfile);
+      }
+      available.push({
+        id: badge.id,
+        name: badge.name,
+        description: badge.description,
+        category: badge.category,
+        audience: badge.audience,
+        criteriaType: badge.criteriaType,
+        pointsReward: badge.pointsReward,
+        isSecret: false,
+        iconUrl: badge.iconUrl || null,
+        status: 'locked',
+        automatic: isMentorAutoCriteria(badge.criteriaType) || (badge.audience === 'mentee' && badge.criteriaType !== 'custom'),
+        progress,
+      });
     }
 
-    try {
-      await this.updateLeaderboardEntry(menteeId);
-    } catch (error) {
-      console.error('[Gamification] updateLeaderboardEntry failed:', error.message);
-    }
+    return { audience, earned, available };
+  }
 
-    try {
-      await this.checkAndAwardBadges(menteeId);
-    } catch (error) {
-      console.error('[Gamification] checkAndAwardBadges failed:', error.message);
+  async awardPoints(userId, amount, sourceType, sourceId = null, reason = null, options = {}) {
+    if (!userId || !Number.isSafeInteger(Number(amount)) || Number(amount) <= 0) {
+      throw new ValidationError('Invalid points amount or user ID');
     }
-
-    return {
-      pointsAwarded: Number(pointsAmount),
-      totalPoints: pointsAfter,
-      history
-    };
+    const eventKey = options.eventKey || (sourceId ? `${sourceType}:${sourceId}`
+      : sourceType === 'streak_bonus' ? `streak:${milestoneFromReason(reason)}` : null);
+    const result = await sequelize.transaction(transaction =>
+      this._writePoints(userId, Number(amount), sourceType, sourceId, reason, eventKey, transaction));
+    await this._afterPoints(userId);
+    return result;
   }
 
   /**
@@ -84,92 +333,72 @@ class GamificationService {
       return null;
     }
 
-    const menteeProfile = await models.MenteeProfile.findOne({
-      where: { userId: menteeId }
-    });
-
-    if (!menteeProfile) {
-      throw new NotFoundError('Mentee profile not found');
-    }
-
-    const pointsBefore = Number(menteeProfile.totalPoints || 0);
-    const pointsAfter = Math.max(0, pointsBefore + change);
-    const applied = pointsAfter - pointsBefore;
-    if (applied === 0) {
-      return { applied: 0, totalPoints: pointsAfter };
-    }
-
-    await models.PointsHistory.create({
-      userId: menteeId,
-      pointsChange: applied,
-      pointsBefore,
-      pointsAfter,
-      sourceType,
-      sourceId,
-      reason
-    });
-
-    await menteeProfile.update({ totalPoints: pointsAfter });
-
-    try {
-      await this.checkLevelUp(menteeId);
-    } catch (error) {
-      console.error('[Gamification] checkLevelUp failed:', error.message);
-    }
-
-    try {
-      await this.updateLeaderboardEntry(menteeId);
-    } catch (error) {
-      console.error('[Gamification] updateLeaderboardEntry failed:', error.message);
-    }
-
-    try {
-      await this.checkAndAwardBadges(menteeId);
-    } catch (error) {
-      console.error('[Gamification] checkAndAwardBadges failed:', error.message);
-    }
-
-    return { applied, totalPoints: pointsAfter };
+    if (!Number.isSafeInteger(change)) throw new ValidationError('Points must be whole numbers');
+    const result = await sequelize.transaction(transaction =>
+      this._writePoints(menteeId, change, sourceType, sourceId, reason, null, transaction));
+    await this._afterPoints(menteeId);
+    return result;
   }
 
   async awardBadge(userId, badgeId, unlockContext = {}) {
-    const existing = await models.UserBadge.findOne({
-      where: { userId, badgeId }
+    const result = await sequelize.transaction(async transaction => {
+      const badge = await models.Badge.findByPk(badgeId, { transaction, lock: transaction.LOCK.UPDATE });
+      if (!badge || !badge.isActive || badge.retiredAt) throw new NotFoundError('Published badge not found');
+
+      const forceMentor = badge.audience === 'mentor';
+      if (forceMentor) {
+        const user = await models.User.findByPk(userId, { transaction });
+        if (!user || !(await authzService.getCapabilities(user)).includes('mentor')) {
+          throw new ValidationError('This badge requires mentor access');
+        }
+        const mentorProfile = await models.MentorProfile.findOne({ where: { userId }, transaction });
+        if (!mentorProfile) throw new ValidationError('Mentor gamification profile not found');
+        if (isMentorAutoCriteria(badge.criteriaType)) {
+          // Automatic mentor rule — awarded by system after qualifying activity.
+          if (!unlockContext.reason) unlockContext = { ...unlockContext, reason: badge.criteriaType, automatic: true };
+        } else {
+          if (!unlockContext.awardedBy || String(unlockContext.reason || '').trim().length < 10) {
+            throw new ValidationError('Mentor recognition needs an admin and supporting evidence');
+          }
+          if (unlockContext.awardedBy === userId) {
+            throw new ValidationError('Another administrator must verify your mentor recognition');
+          }
+        }
+      } else {
+        const menteeProfile = await models.MenteeProfile.findOne({ where: { userId }, transaction });
+        if (!menteeProfile) throw new ValidationError('This badge is for mentees');
+      }
+
+      const existing = await models.UserBadge.findOne({ where: { userId, badgeId }, transaction });
+      if (existing) return { alreadyOwned: true, revoked: Boolean(existing.revokedAt) };
+      const userBadge = await models.UserBadge.create({ userId, badgeId, unlockContext }, { transaction });
+      if (badge.pointsReward > 0) {
+        await this._writePoints(
+          userId, badge.pointsReward, 'badge_earned', badgeId,
+          `Earned badge: ${badge.name}`, `badge_earned:${badgeId}`, transaction,
+          { forceMentor }
+        );
+      }
+      await this.audit('badge.awarded', badgeId, null, { userId, ...unlockContext }, transaction);
+      return { success: true, badge: userBadge, badgeDetails: badge, mentor: forceMentor };
     });
-
-    if (existing) {
-      return { alreadyOwned: true };
+    // Revoked awards keep the unique row — re-award is intentionally blocked.
+    if (result.alreadyOwned) {
+      if (result.revoked) {
+        throw new ValidationError('This badge was revoked for this person and cannot be awarded again. Historical XP is preserved.');
+      }
+      return result;
     }
-
-    const badge = await models.Badge.findByPk(badgeId);
-    if (!badge) {
-      throw new NotFoundError('Badge not found');
-    }
-
-    const userBadge = await models.UserBadge.create({
-      userId,
-      badgeId,
-      unlockContext
-    });
-
-    if (badge.pointsReward && badge.pointsReward > 0) {
-      await this.awardPoints(
-        userId,
-        badge.pointsReward,
-        'badge_earned',
-        badge.id,
-        `Earned badge: ${badge.name}`
-      );
-    }
+    const badge = result.badgeDetails;
 
     try {
       await notificationOrchestrator.dispatch({
-        eventKey: NOTIFICATION_EVENTS.BADGE_EARNED || 'badge_earned',
+        eventKey: NOTIFICATION_EVENTS.BADGE_EARNED,
         recipients: [{ userId }],
         payload: {
           title: 'Badge earned',
           message: `You earned the ${badge.name} badge.`,
-          actionUrl: '/mentee/profile/badges',
+          actionUrl: result.mentor ? '/mentor/gamification' : '/mentee/gamification',
           actionLabel: 'View badges',
           relatedEntityType: 'badge',
           relatedEntityId: badge.id,
@@ -180,37 +409,80 @@ class GamificationService {
       console.error('[Gamification] Failed to send badge notification:', notificationError.message);
     }
 
-    return {
-      success: true,
-      badge: userBadge,
-      badgeDetails: badge
-    };
+    await this._afterPoints(userId);
+    return result;
   }
 
   async checkAndAwardBadges(userId) {
-    const menteeProfile = await models.MenteeProfile.findOne({ where: { userId } });
-    if (!menteeProfile) return;
+    const depth = badgeEvalStore.getStore()?.depth || 0;
+    if (depth >= MAX_BADGE_EVAL_DEPTH) return;
 
-    // Bulk-fetch the two lists once, not a findOne per badge (that was the N+1
-    // that made task approval slow). Reuse the loaded profile for every criteria
-    // check so checkBadgeCriteria doesn't re-query it per badge either.
-    const [activeBadges, ownedBadges] = await Promise.all([
-      models.Badge.findAll({ where: { isActive: true } }),
-      models.UserBadge.findAll({ where: { userId }, attributes: ['badgeId'] })
-    ]);
-    const ownedBadgeIds = new Set(ownedBadges.map((ub) => ub.badgeId));
+    return badgeEvalStore.run({ depth: depth + 1 }, async () => {
+      const menteeProfile = await models.MenteeProfile.findOne({ where: { userId } });
+      if (!menteeProfile) return;
 
-    for (const badge of activeBadges) {
-      if (ownedBadgeIds.has(badge.id)) continue;
+      const [activeBadges, ownedBadges] = await Promise.all([
+        models.Badge.findAll({ where: { isActive: true, retiredAt: null, audience: 'mentee' } }),
+        models.UserBadge.findAll({ where: { userId }, attributes: ['badgeId'] })
+      ]);
+      const ownedBadgeIds = new Set(ownedBadges.map((ub) => ub.badgeId));
 
-      const isCriteriaMet = await this.checkBadgeCriteria(userId, badge, menteeProfile);
-      if (!isCriteriaMet) continue;
+      for (const badge of activeBadges) {
+        if (ownedBadgeIds.has(badge.id)) continue;
 
-      await this.awardBadge(userId, badge.id, {
-        triggeredAt: new Date().toISOString(),
-        reason: badge.criteriaType
-      });
-    }
+        const isCriteriaMet = await this.checkBadgeCriteria(userId, badge, menteeProfile);
+        if (!isCriteriaMet) continue;
+
+        const awarded = await this.awardBadge(userId, badge.id, {
+          triggeredAt: new Date().toISOString(),
+          reason: badge.criteriaType
+        });
+        if (awarded?.success) ownedBadgeIds.add(badge.id);
+      }
+    });
+  }
+
+  /**
+   * Evaluate published automatic mentor badges for this user.
+   * Uses mentor activity even when the same account also has a mentee profile.
+   * Does not convert or re-check manual (custom) mentor badges.
+   */
+  async checkAndAwardMentorBadges(userId) {
+    const depth = badgeEvalStore.getStore()?.depth || 0;
+    if (depth >= MAX_BADGE_EVAL_DEPTH) return;
+
+    return badgeEvalStore.run({ depth: depth + 1 }, async () => {
+      const mentorProfile = await models.MentorProfile.findOne({ where: { userId } });
+      if (!mentorProfile) return;
+
+      const [activeBadges, ownedBadges] = await Promise.all([
+        models.Badge.findAll({
+          where: {
+            isActive: true,
+            retiredAt: null,
+            audience: 'mentor',
+            criteriaType: { [Sequelize.Op.in]: MENTOR_AUTO_CRITERIA },
+          },
+        }),
+        models.UserBadge.findAll({ where: { userId }, attributes: ['badgeId'] }),
+      ]);
+      const ownedBadgeIds = new Set(ownedBadges.map((ub) => ub.badgeId));
+
+      for (const badge of activeBadges) {
+        if (ownedBadgeIds.has(badge.id)) continue;
+        const measured = await measureMentorCriteria(
+          models, sequelize, userId, mentorProfile.organizationId, badge
+        );
+        if (!measured.met) continue;
+
+        const awarded = await this.awardBadge(userId, badge.id, {
+          triggeredAt: new Date().toISOString(),
+          reason: badge.criteriaType,
+          automatic: true,
+        });
+        if (awarded?.success) ownedBadgeIds.add(badge.id);
+      }
+    });
   }
 
   async checkBadgeCriteria(userId, badge, menteeProfile = null) {
@@ -229,7 +501,9 @@ class GamificationService {
       case 'tasks_completed':
         return Number(menteeProfile.totalTasksCompleted || 0) >= Number(criteriaValue.count || 0);
       case 'programs_completed':
-        return Number(menteeProfile.totalProgramsCompleted || 0) >= Number(criteriaValue.count || 0);
+        return await models.Enrollment.count({ where: { menteeId: userId, status: 'program_completed' } }) >= Number(criteriaValue.count || 1);
+      case 'badges_earned':
+        return await models.UserBadge.count({ where: { userId, revokedAt: null } }) >= Number(criteriaValue.count || 1);
       case 'streak_days':
         return Number(menteeProfile.currentStreakDays || 0) >= Number(criteriaValue.days || 0);
       case 'avg_rating':
@@ -330,7 +604,10 @@ class GamificationService {
 
     if (newLevel <= currentLevel) return;
 
-    await menteeProfile.update({ currentLevel: newLevel });
+    const [changed] = await models.MenteeProfile.update({ currentLevel: newLevel }, {
+      where: { userId, currentLevel: { [Sequelize.Op.lt]: newLevel } },
+    });
+    if (!changed) return;
 
     try {
       await notificationOrchestrator.dispatch({
@@ -339,7 +616,7 @@ class GamificationService {
         payload: {
           title: 'Level up',
           message: `You reached level ${newLevel}.`,
-          actionUrl: '/mentee/profile/progress',
+          actionUrl: '/mentee/gamification',
           actionLabel: 'View progress',
           relatedEntityType: 'mentee_profile',
           relatedEntityId: userId,
@@ -401,6 +678,14 @@ class GamificationService {
     if (!menteeProfile) return;
 
     const { current, longest, todayKey } = await this.readStreak(userId);
+
+    const todayLogs = await models.DailyLogEntry.findAll({ where: { menteeId: userId, dateKey: todayKey },
+      attributes: ['tasksDone', 'slotsDone', 'note'] });
+    const meaningfulActivity = todayLogs.some(log => log.tasksDone?.length || log.slotsDone?.length || log.note?.trim())
+      || await models.TaskProgressEntry.count({ where: { menteeId: userId, dateKey: todayKey } });
+    if (current > 0 && meaningfulActivity) {
+      await this.awardPoints(userId, 1, 'daily_activity', null, 'Daily learning activity', { eventKey: `daily_activity:${todayKey}` });
+    }
 
     await menteeProfile.update({
       currentStreakDays: current,
@@ -566,7 +851,7 @@ class GamificationService {
 
   async getUserBadges(userId) {
     return models.UserBadge.findAll({
-      where: { userId },
+      where: { userId, revokedAt: null },
       include: [{ model: models.Badge }],
       order: [['unlockedAt', 'DESC']]
     });
@@ -609,9 +894,18 @@ class GamificationService {
   }
 
   async getUserGamificationStats(userId) {
+    const existingMentee = await models.MenteeProfile.findOne({ where: { userId } });
+    const mentorProfile = !existingMentee && await models.MentorProfile.findOne({ where: { userId } });
+    if (mentorProfile) {
+      const totalPoints = Number(await models.PointsHistory.sum('pointsChange', { where: { userId, organizationId: mentorProfile.organizationId } }) || 0);
+      return { role: 'mentor', totalPoints, rewardCredits: 0,
+        currentLevel: 1 + [500, 2000, 5000, 10000].filter(n => totalPoints >= n).length,
+        currentStreak: 0, longestStreak: 0, totalBadges: await models.UserBadge.count({ where: { userId, revokedAt: null } }),
+        totalTasksCompleted: 0, totalProgramsCompleted: 0, avgTaskRating: 0, leaderboardRank: null };
+    }
     const menteeProfile = await this.#readableMenteeProfile(userId);
 
-    const totalBadges = await models.UserBadge.count({ where: { userId } });
+    const totalBadges = await models.UserBadge.count({ where: { userId, revokedAt: null } });
     const recentBadges = await this.getUserBadges(userId);
     const recentPoints = await this.getUserPointsHistory(userId, 10);
 
@@ -639,13 +933,15 @@ class GamificationService {
     const streak = await this.readStreak(userId);
 
     return {
+      role: 'mentee',
+      rewardCredits: (await require('./rewardsService').menteePointsBalance(userId)).balance,
       totalPoints: Number(menteeProfile.totalPoints || 0),
       currentLevel: Number(menteeProfile.currentLevel || 1),
       currentStreak: streak.current,
       longestStreak: Math.max(streak.longest, Number(menteeProfile.longestStreakDays || 0)),
       totalBadges,
       totalTasksCompleted: Number(menteeProfile.totalTasksCompleted || 0),
-      totalProgramsCompleted: Number(menteeProfile.totalProgramsCompleted || 0),
+      totalProgramsCompleted: await models.Enrollment.count({ where: { menteeId: userId, status: 'program_completed' } }),
       avgTaskRating: parseFloat(menteeProfile.avgTaskRating) || 0,
       leaderboardRank: userLeaderboardRank ? userLeaderboardRank.rank : null,
       progressScore: standing.score,
@@ -669,6 +965,10 @@ class GamificationService {
   }
 
   async createDefaultBadges({ transaction } = {}) {
+    if (!transaction) return sequelize.transaction(transaction => this.createDefaultBadges({ transaction }));
+    const organizationId = require('../utils/auditContext').getRequestContext().organizationId;
+    if (!organizationId) throw new ValidationError('Organization context is required to seed badges');
+
     const defaultBadges = [
       {
         name: 'First Steps',
@@ -684,8 +984,8 @@ class GamificationService {
         name: 'Achievement Collector',
         description: 'Earn 5 badges',
         category: 'achievement',
-        criteriaType: 'custom',
-        criteriaValue: { manual: true },
+        criteriaType: 'badges_earned',
+        criteriaValue: { count: 5 },
         pointsReward: 50,
         isActive: true,
         isSecret: false
@@ -752,7 +1052,7 @@ class GamificationService {
       },
       {
         name: 'Points Collector',
-        description: 'Earn 500 points',
+        description: 'Earn 500 XP',
         category: 'points',
         criteriaType: 'points_milestone',
         criteriaValue: { threshold: 500 },
@@ -772,33 +1072,45 @@ class GamificationService {
       }
     ];
 
+    defaultBadges.push(...[
+      ['Thoughtful Feedback', 'Evidence of actionable feedback that helped a mentee improve.'],
+      ['Timely Support', 'Evidence of timely, useful reviews; speed alone does not qualify.'],
+      ['Blocker Resolver', 'Evidence that a mentee confirmed a blocker was resolved.'],
+      ['Mentee Growth', 'Evidence of sustained mentee improvement over a review period.'],
+      ['Cohort Support', 'Evidence of helpful support across a cohort.'],
+    ].map(([name, description]) => ({ name, description, category: 'mentor', audience: 'mentor',
+      criteriaType: 'custom', criteriaValue: { manual: true }, pointsReward: 50, isActive: false, isSecret: false })));
+
+    const createdNames = [];
+    const existingNames = [];
     for (const badgeData of defaultBadges) {
-      await models.Badge.findOrCreate({
-        where: { name: badgeData.name },
-        defaults: badgeData, transaction
+      // Per-organization idempotent seed — never merge or re-award existing users.
+      const [badge, created] = await models.Badge.findOrCreate({
+        where: { name: badgeData.name, organizationId },
+        defaults: { ...badgeData, organizationId },
+        transaction,
       });
+      if (created) {
+        createdNames.push(badge.name);
+        await this.audit('badge.created', badge.id, null, badge.toJSON(), transaction);
+      } else {
+        existingNames.push(badge.name);
+      }
     }
 
-    const count = await models.Badge.count({ transaction });
-    return count;
+    const total = await models.Badge.count({ transaction });
+    return {
+      total,
+      created: createdNames.length,
+      skipped: existingNames.length,
+      createdNames,
+      existingNames,
+    };
   }
 
   async awardDailyLoginPoint(userId) {
-    const profile = await models.MenteeProfile.findOne({ where: { userId } });
-    if (!profile) return;
-
-    const today = todayInZone();
-    const existing = await models.PointsHistory.findOne({
-      where: {
-        userId,
-        sourceType: 'daily_login',
-        createdAt: { [Sequelize.Op.gte]: new Date(today) }
-      }
-    });
-
-    if (existing) return;
-
-    await this.awardPoints(userId, 1, 'daily_login', null, 'Daily login bonus');
+    // Kept for old callers. Existing login XP remains; new XP follows activity.
+    return;
   }
 }
 

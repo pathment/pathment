@@ -333,6 +333,9 @@ class EnrollmentService {
       completedAt: new Date()
     });
 
+    await require('./gamificationService').checkAndAwardBadges(enrollment.menteeId)
+      .catch(e => console.error('[Completion] badge evaluation failed:', e.message));
+
     // Congratulate the mentee, then invite anonymous structured feedback on the mentor.
     const program = await models.Program.findByPk(enrollment.programId, { attributes: ['name'] });
     const programName = program?.name || 'your program';

@@ -71,9 +71,9 @@ class CommunityService {
     }
   }
 
-  async _awardPoints(userId, amount, sourceType, sourceId, reason) {
+  async _awardPoints(userId, amount, sourceType, sourceId, reason, options = {}) {
     try {
-      await gamificationService.awardPoints(userId, amount, sourceType, sourceId, reason);
+      await gamificationService.awardPoints(userId, amount, sourceType, sourceId, reason, options);
     } catch (e) {
       // Non-mentees have no profile - that's expected; only log real errors.
       if (!/profile not found/i.test(e.message)) console.error('[Community] awardPoints failed:', e.message);
@@ -468,7 +468,7 @@ class CommunityService {
     await post.update({ acceptedCommentId: comment.id, resolved: true });
 
     if (comment.authorId !== user.id) {
-      await this._awardPoints(comment.authorId, POINTS.ANSWER_ACCEPTED, 'community_answer', comment.id, 'Answer accepted');
+      await this._awardPoints(comment.authorId, POINTS.ANSWER_ACCEPTED, 'community_answer', comment.id, 'Answer accepted', { eventKey: `community_answer:${post.id}` });
       await this._notify(NOTIFICATION_EVENTS.COMMUNITY_ANSWER_ACCEPTED, [comment.authorId], {
         title: 'Your answer was accepted ✅',
         message: post.title || post.body.slice(0, 140),

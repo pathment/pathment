@@ -38,7 +38,7 @@ const menteeBalance = catchAsync(async (req, res) => {
 });
 
 const redeem = catchAsync(async (req, res) => {
-  const redemption = await rewardsService.redeem(req.body.giftId, req.body.menteeId, req.user.id);
+  const redemption = await rewardsService.redeem(req.body.giftId, req.body.menteeId, req.user.id, req.body.requestKey || null);
   res.status(201).json(successResponse('Gift redeemed', { redemption }, 201));
 });
 

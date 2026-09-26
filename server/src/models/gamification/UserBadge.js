@@ -6,6 +6,8 @@ module.exports = (sequelize, DataTypes) => {
       primaryKey: true
     },
     organizationId: { type: DataTypes.UUID, allowNull: false, field: 'organization_id' },
+    revokedAt: { type: DataTypes.DATE, field: 'revoked_at' },
+    revokeReason: { type: DataTypes.TEXT, field: 'revoke_reason' },
     userId: {
       type: DataTypes.UUID,
       allowNull: false,
@@ -43,17 +45,17 @@ module.exports = (sequelize, DataTypes) => {
     hooks: {
       afterCreate: async (userBadge, options) => {
         // Increment badge's total_unlocked
-        const badge = await sequelize.models.Badge.findByPk(userBadge.badgeId);
+        const badge = await sequelize.models.Badge.findByPk(userBadge.badgeId, { transaction: options.transaction });
         if (badge) {
-          await badge.increment('totalUnlocked');
+          await badge.increment('totalUnlocked', { transaction: options.transaction });
         }
         
         // Increment mentee's total_badges_earned
         const menteeProfile = await sequelize.models.MenteeProfile.findOne({
-          where: { user_id: userBadge.userId }
+          where: { user_id: userBadge.userId }, transaction: options.transaction
         });
         if (menteeProfile) {
-          await menteeProfile.increment('totalBadgesEarned');
+          await menteeProfile.increment('totalBadgesEarned', { transaction: options.transaction });
         }
       }
     }

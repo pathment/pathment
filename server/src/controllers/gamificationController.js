@@ -41,6 +41,23 @@ exports.getUserBadges = catchAsync(async (req, res) => {
 });
 
 /**
+ * GET /api/gamification/user/:userId/badge-catalog
+ * Earned + available (locked) badges for the user's audience, with progress
+ * where measurable. Secret badges stay hidden until earned.
+ */
+exports.getBadgeCatalog = catchAsync(async (req, res) => {
+  const { userId } = req.params;
+  if (!req.user || !(await authzService.canViewMentee(req.user, userId))) {
+    return res.status(403).json({ success: false, message: 'Forbidden - cannot view other user badges' });
+  }
+  const audience = req.query.audience === 'mentor' || req.query.audience === 'mentee'
+    ? req.query.audience
+    : undefined;
+  const catalog = await gamificationService.getBadgeCatalog(userId, { audience });
+  res.status(200).json(successResponse('Badge catalog retrieved', { catalog }));
+});
+
+/**
  * Get user's points history
  * GET /api/gamification/user/:userId/points-history?limit=50
  */
@@ -90,10 +107,11 @@ exports.getLeaderboard = catchAsync(async (req, res) => {
  * GET /api/gamification/badges?active=true
  */
 exports.getAllBadges = catchAsync(async (req, res) => {
-  const { active = true } = req.query;
+  const { active = 'true' } = req.query;
   const { models } = require('../db');
 
-  const where = active === 'true' ? { isActive: true } : {};
+  const manager = await authzService.can(req.user, require('../config/permissions').PERMISSIONS.GAMIFICATION_MANAGE, { orgWide: true });
+  const where = manager && active === 'all' ? {} : { isActive: true, retiredAt: null, isSecret: false };
 
   const badges = await models.Badge.findAll({
     where,
@@ -112,7 +130,7 @@ exports.getAllBadges = catchAsync(async (req, res) => {
 exports.createBadge = catchAsync(async (req, res) => {
   // Authorization enforced at the route (requirePermission GAMIFICATION_MANAGE),
   // which a granted admin satisfies even if their base role isn't 'admin'.
-  const badge = await require('../db').models.Badge.create(req.body);
+  const badge = await gamificationService.saveBadge(null, req.body);
 
   res.status(201).json(
     successResponse('Badge created successfully', { badge }, 201)
@@ -128,7 +146,7 @@ exports.awardBadgeManual = catchAsync(async (req, res) => {
 
   const { userId, badgeId, context } = req.body;
 
-  const result = await gamificationService.awardBadge(userId, badgeId, context || {});
+  const result = await gamificationService.awardBadge(userId, badgeId, { reason: context.reason, awardedBy: req.user.id });
 
   res.status(200).json(
     successResponse('Badge awarded successfully', result)
@@ -245,11 +263,71 @@ exports.getUserChallenges = catchAsync(async (req, res) => {
 exports.setupDefaultBadges = catchAsync(async (req, res) => {
   // Authorization enforced at the route (requirePermission GAMIFICATION_MANAGE).
 
-  const count = await gamificationService.createDefaultBadges();
+  const result = await gamificationService.createDefaultBadges();
+  const message = result.created
+    ? `Added ${result.created} default badge${result.created === 1 ? '' : 's'} (${result.skipped} already present)`
+    : `Defaults already present (${result.skipped} verified, none added)`;
 
   res.status(201).json(
-    successResponse(`${count} default badges created/verified`, { count }, 201)
+    successResponse(message, {
+      count: result.total,
+      created: result.created,
+      skipped: result.skipped,
+      createdNames: result.createdNames,
+      existingNames: result.existingNames,
+    }, 201)
   );
+});
+
+exports.updateBadge = catchAsync(async (req, res) => {
+  const { retire, ...data } = req.body;
+  if (retire) Object.assign(data, { retiredAt: new Date(), isActive: false });
+  res.json(successResponse('Badge updated', { badge: await gamificationService.saveBadge(req.params.id, data) }));
+});
+
+/**
+ * Upload custom badge artwork → Cloudinary pathment/badges.
+ * Returns a URL for the admin form to store on the badge definition (not per award).
+ */
+exports.uploadBadgeImage = catchAsync(async (req, res) => {
+  const { ValidationError } = require('../utils/errors/errorTypes');
+  const { uploadToCloudinary } = require('../utils/cloudinaryUpload');
+  const { BADGE_FOLDER, isAllowedBadgeImageMime } = require('../utils/badgeIcons');
+
+  if (!req.file) throw new ValidationError('No image uploaded');
+  if (!isAllowedBadgeImageMime(req.file.mimetype)) {
+    throw new ValidationError('Please upload a PNG, JPG, WebP, or GIF image.');
+  }
+  const result = await uploadToCloudinary(req.file.buffer, BADGE_FOLDER, 'image');
+  res.status(200).json(successResponse('Uploaded', { url: result.secure_url }));
+});
+
+exports.revokeBadge = catchAsync(async (req, res) => {
+  res.json(successResponse('Badge revoked; historical XP preserved', {
+    award: await gamificationService.revokeBadge(req.body.userId, req.params.id, req.body.reason),
+  }));
+});
+
+exports.badgeHistory = catchAsync(async (req, res) => {
+  const { models } = require('../db');
+  const history = await models.AuditLog.findAll({ where: { entityType: 'badge', entityId: req.params.id },
+    order: [['createdAt', 'DESC']], limit: 100,
+    include: [{ model: models.User, as: 'user', attributes: ['id', 'firstName', 'lastName'] }] });
+  const awards = await models.UserBadge.findAll({ where: { badgeId: req.params.id },
+    order: [['unlockedAt', 'DESC']], limit: 100,
+    include: [{ model: models.User, attributes: ['id', 'firstName', 'lastName'] }] });
+  res.json(successResponse('Badge history', { history, awards }));
+});
+
+exports.badgeRecipients = catchAsync(async (req, res) => {
+  const { models, Sequelize } = require('../db');
+  const search = String(req.query.search || '').trim().slice(0, 80);
+  if (search.length < 2) return res.json(successResponse('Members', { members: [] }));
+  const members = await models.User.findAll({
+    where: { [Sequelize.Op.or]: ['firstName', 'lastName', 'email'].map(key => ({ [key]: { [Sequelize.Op.iLike]: `%${search.replace(/[%_\\]/g, '')}%` } })) },
+    attributes: ['id', 'firstName', 'lastName'], limit: 20, order: [['firstName', 'ASC']],
+  });
+  res.json(successResponse('Members', { members }));
 });
 
 module.exports = exports;

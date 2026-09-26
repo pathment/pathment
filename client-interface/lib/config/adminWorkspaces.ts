@@ -105,6 +105,7 @@ export const adminWorkspaces: { label: string; tabs: AdminWorkspaceTab[] }[] = [
         label: "Rewards",
         permission: "gamification.manage",
       },
+      { href: "/admin/badges", label: "Badges", permission: "gamification.manage" },
     ],
   },
   {
