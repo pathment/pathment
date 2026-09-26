@@ -9,7 +9,7 @@ import { toast } from 'sonner';
 import {
   ChevronLeft, ChevronRight, SkipForward, Check, Loader2,
   TrendingUp, TrendingDown, Minus, Flag, Clock, ClipboardCheck, Keyboard, CheckCircle2, ArrowUpRight, Send, Plus, ListTodo, CalendarClock,
-  Trash2, X, History, RotateCcw, CalendarDays, AlertTriangle, StickyNote, Search, Lock, Unlock, PauseCircle, Sparkles, PenLine,
+  Trash2, X, History, RotateCcw, CalendarDays, AlertTriangle, StickyNote, Search, Lock, Unlock, PauseCircle, Sparkles, PenLine, Star,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useMentorCohort, useMentorApprovals, type CohortMentee, type CohortMomentum, type CohortRisk, type ApprovalItem } from '@/lib/hooks/mentor';
@@ -441,7 +441,8 @@ export default function CohortReview() {
 
   // Latest mentor note + rating for a task, surfaced on reviewed/changes rows.
   const reviewOf = (t: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
-    const fb = t.submissions?.[0]?.feedback;
+    let fb = t.submissions?.[0]?.feedback;
+    if (Array.isArray(fb)) fb = fb[0]; // handle new backend array structure
     if (!fb) return { note: null as string | null, rating: null as number | null };
     const note = t.status === 'revision_needed'
       ? (fb.revisionNotes || fb.feedbackText || null)
@@ -1099,8 +1100,19 @@ export default function CohortReview() {
                                         {t.hasOverrides && <span className="ml-1.5 align-middle text-[10px] font-medium text-amber-600">• customized</span>}
                                       </p>
                                       <p className="mt-0.5 text-xs text-slate-500 truncate">
-                                        {[source, typeLabel, points != null ? `${points} pts` : null].filter(Boolean).join(' · ')}
-                                        {rating != null && <span className="ml-2 inline-flex items-center gap-0.5 text-amber-600"><CheckCircle2 className="w-3 h-3" />{rating}★</span>}
+                                        {[
+                                          source, 
+                                          typeLabel, 
+                                          (t.status === 'completed' && t.pointsAwarded != null) 
+                                            ? `${t.pointsAwarded}${points != null ? ` / ${points}` : ''} pts`
+                                            : points != null ? `${points} pts` : null
+                                        ].filter(Boolean).join(' · ')}
+                                        {rating != null && (
+                                          <span className="ml-2 inline-flex items-center gap-1 bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded-full border border-amber-200/50">
+                                            <Star className="w-3 h-3 fill-amber-500 text-amber-500" />
+                                            <span className="font-semibold">{rating}</span>
+                                          </span>
+                                        )}
                                         {t.mentorNote && <span className="ml-2 inline-flex items-center gap-0.5 text-amber-600"><StickyNote className="w-3 h-3" />note</span>}
                                       </p>
                                     </button>
