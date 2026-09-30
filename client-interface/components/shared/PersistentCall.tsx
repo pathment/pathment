@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowUpLeft, Maximize2, Minimize2, PhoneOff } from 'lucide-react';
+import { ArrowUpLeft, Maximize2, Minimize2, PhoneOff, Video, VideoOff, X } from 'lucide-react';
 import { JitsiRoom, type JitsiParticipant } from '@/components/shared/JitsiRoom';
 import type { CallSpec } from '@/lib/context/CallContext';
 
@@ -35,6 +35,7 @@ export function PersistentCall({
 }) {
   const router = useRouter();
   const [rect, setRect] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
+  const [cameraPref, setCameraPref] = useState<'on' | 'off' | null>(null);
 
   // Track the dock placeholder's geometry. A fixed overlay has to be told where
   // its target is, and that target moves with scroll, resize, sidebar collapse
@@ -110,24 +111,60 @@ export function PersistentCall({
       )}
 
       <div className={isDocked ? 'w-full h-full' : 'flex-1 min-h-0'}>
-        <JitsiRoom
-          key={reloadKey}
-          domain={call.domain}
-          room={call.room}
-          displayName={call.displayName}
-          avatarUrl={call.avatarUrl}
-          role={call.role}
-          privateChat={call.privateChat}
-          polls={call.polls}
-          onJoined={onJoined}
-          onParticipantJoined={onParticipantJoined}
-          onDominantSpeaker={onDominantSpeaker}
-          onSelfDominantChange={onSelfDominantChange}
-          // The user hung up inside Jitsi's own toolbar — treat it exactly like
-          // pressing our End/Leave button. This is the ONLY path (besides those
-          // buttons) that may end a call; navigation no longer reaches it.
-          onReadyToClose={onEnd}
-        />
+        {call.role === 'guest' && !cameraPref ? (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-background/80 backdrop-blur-md p-4">
+            <div className="bg-card rounded-3xl shadow-2xl max-w-sm w-full p-8 text-center border border-border animate-in fade-in zoom-in-95 duration-200 relative">
+              <button
+                onClick={onEnd}
+                className="absolute top-4 right-4 p-2 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                title="Cancel and return"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-5 border border-primary/20 shadow-sm mt-2">
+                <Video className="w-8 h-8 text-primary" />
+              </div>
+              <h2 className="text-xl font-bold text-card-foreground mb-2">Ready to join?</h2>
+              <p className="text-sm text-muted-foreground mb-8 px-2">Choose how you'd like to enter the live clan review.</p>
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={() => setCameraPref('on')}
+                  className="flex items-center justify-center gap-2 w-full py-3.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-medium transition-all shadow-md"
+                >
+                  <Video className="w-4 h-4" />
+                  Join with Camera On
+                </button>
+                <button
+                  onClick={() => setCameraPref('off')}
+                  className="flex items-center justify-center gap-2 w-full py-3.5 rounded-xl bg-secondary hover:bg-secondary/80 text-secondary-foreground font-medium transition-colors border border-border"
+                >
+                  <VideoOff className="w-4 h-4" />
+                  Join with Camera Off
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <JitsiRoom
+            key={reloadKey}
+            domain={call.domain}
+            room={call.room}
+            displayName={call.displayName}
+            avatarUrl={call.avatarUrl}
+            role={call.role}
+            privateChat={call.privateChat}
+            polls={call.polls}
+            startWithVideoMuted={cameraPref === 'off'}
+            onJoined={onJoined}
+            onParticipantJoined={onParticipantJoined}
+            onDominantSpeaker={onDominantSpeaker}
+            onSelfDominantChange={onSelfDominantChange}
+            // The user hung up inside Jitsi's own toolbar — treat it exactly like
+            // pressing our End/Leave button. This is the ONLY path (besides those
+            // buttons) that may end a call; navigation no longer reaches it.
+            onReadyToClose={onEnd}
+          />
+        )}
       </div>
     </div>
   );
