@@ -1,12 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Building2, Loader2, Plus, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { useOrganization } from '@/lib/context/OrganizationContext';
 import { organizationsApi } from '@/lib/services/organizations-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { Drawer } from '@/components/shared/Drawer';
+import { SelectMenu } from '@/components/shared/SelectMenu';
+import { tzList } from '@/components/settings/LocationDetailsFields';
 
 export function OrganizationSettingsTab() {
   const { current, overview, refresh, switchTo } = useOrganization();
@@ -16,6 +18,7 @@ export function OrganizationSettingsTab() {
   const [creating, setCreating] = useState(false);
   const creationEnabled = overview?.workspaceCreationEnabled === true;
   const canEdit = ['owner', 'admin'].includes(overview?.membership?.role || '');
+  const zones = useMemo(tzList, []);
 
   useEffect(() => {
     if (!current) return;
@@ -45,7 +48,20 @@ export function OrganizationSettingsTab() {
       <div className="grid gap-5 md:grid-cols-2">
         <label className="space-y-2"><span className="text-sm font-medium">Name</span><input className={field} value={name} onChange={(e) => setName(e.target.value)} disabled={!canEdit} /></label>
         <label className="space-y-2"><span className="text-sm font-medium">Workspace URL</span><input className={field} value={`app.pathment.me/w/${current.slug}`} disabled /></label>
-        <label className="space-y-2"><span className="text-sm font-medium">Default timezone</span><input className={field} value={timezone} onChange={(e) => setTimezone(e.target.value)} disabled={!canEdit} placeholder="Asia/Karachi" /></label>
+        <label className="space-y-2">
+          <span className="text-sm font-medium">Default timezone</span>
+          <SelectMenu
+            value={timezone}
+            onChange={setTimezone}
+            options={zones.map((z) => ({
+              value: z,
+              label: z.replace(/_/g, ' '),
+            }))}
+            placeholder="Select timezone"
+            ariaLabel="Default timezone"
+            searchable
+          />
+        </label>
       </div>
       {canEdit && <button onClick={save} disabled={saving || !name.trim()} className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Save organization</button>}
       <div className="border-t border-border pt-6"><h3 className="text-sm font-semibold text-foreground">More workspaces</h3><p className="mt-1 text-sm text-muted-foreground">A new workspace starts with you as owner. Member directories and data from other workspaces are not imported.</p><p className="mt-2 text-sm text-muted-foreground">{creationEnabled ? 'New workspaces start on Starter.' : 'Workspace creation is not available yet. You can continue using your current workspace.'} <a href="https://pathment.me/pricing" target="_blank" rel="noreferrer" className="text-brand-700 underline">Browse plans (opens a new tab)</a></p><button disabled={!creationEnabled} onClick={() => setCreating(true)} className="mt-4 inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2.5 text-sm font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"><Plus className="h-4 w-4" />Create workspace</button></div>

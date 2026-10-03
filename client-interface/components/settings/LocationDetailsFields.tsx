@@ -19,7 +19,7 @@ interface Props {
 const FIELD = 'w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 text-sm';
 
 // A reasonable timezone list - falls back gracefully if the runtime lacks Intl.supportedValuesOf.
-function tzList(): string[] {
+export function tzList(): string[] {
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const all = (Intl as any).supportedValuesOf?.('timeZone');
