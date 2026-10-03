@@ -274,8 +274,13 @@ class AuthzService {
       attributes: ['id'],
     });
     const legacyAccountRole = !organizationId || Boolean(defaultOrganization);
-    if ((legacyAccountRole && user.role === 'mentor') || mentorsSomewhere ||
-        (getRequestContext().organizationId && await models.MentorProfile.findOne({ where: { userId: user.id }, attributes: ['id'] }))) caps.add('mentor');
+    // if ((legacyAccountRole && user.role === 'mentor') || mentorsSomewhere ||
+    //     (getRequestContext().organizationId && await models.MentorProfile.findOne({ where: { userId: user.id }, attributes: ['id'] }))) caps.add('mentor');
+
+    
+    if ((legacyAccountRole && user.role === "mentor") || mentorsSomewhere) {
+      caps.add("mentor");
+    }
 
     if ((legacyAccountRole && user.role === 'mentee') || assignments.some(a => a.role === 'mentee')) {
       caps.add('mentee');

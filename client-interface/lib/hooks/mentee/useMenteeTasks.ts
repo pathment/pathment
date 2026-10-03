@@ -57,18 +57,15 @@ export function useMenteeTasks(): UseMenteeTasksReturn {
   const enrollments = enrollmentsQuery.data ?? NO_ENROLLMENTS;
   const enrollmentsReady = !enrollmentsQuery.loading;
 
-  // Default to the first active enrollment; an explicit pick wins. Derived
-  // rather than synced into state, so there is no effect to fall out of step.
-  const defaultEnrollmentId = useMemo(() => {
-    const active = enrollments.find((e: any) => ['active', 'matched'].includes(e.status)) || enrollments[0];
-    return active?.id ?? null;
-  }, [enrollments]);
-  const selectedEnrollmentId = enrollmentOverride ?? defaultEnrollmentId;
+  // Let the selected clan scope tasks by default. A mentee may have several
+  // enrollments, so implicitly picking the first one can hide another clan's
+  // tasks. An explicit enrollment filter still takes precedence.
+  const selectedEnrollmentId = enrollmentOverride;
 
   const statsQuery = useApiQuery<any>({
     queryKey: qk.me.taskStats(selectedEnrollmentId, menteeActiveClanId),
-    queryFn: async () => (await taskApi.getMenteeTaskStats(menteeId, selectedEnrollmentId ?? undefined))?.data?.stats,
-    enabled: !!menteeId && enrollmentsReady,
+    queryFn: async () => (await taskApi.getMenteeTaskStats(menteeId, selectedEnrollmentId ?? undefined, menteeActiveClanId))?.data?.stats,
+    enabled: !!menteeId && enrollmentsReady && !!menteeActiveClanId,
   });
 
   const tasksQuery = useApiQuery<any[]>({
@@ -77,10 +74,11 @@ export function useMenteeTasks(): UseMenteeTasksReturn {
       const params: any = {};
       if (filterStatus !== 'all') params.status = filterStatus;
       if (selectedEnrollmentId) params.enrollmentId = selectedEnrollmentId;
+      params.clanId = menteeActiveClanId;
       const tasksRes = await taskApi.getMenteeTasks(menteeId, params);
       return tasksRes.data.tasks || [];
     },
-    enabled: !!menteeId && enrollmentsReady,
+    enabled: !!menteeId && enrollmentsReady && !!menteeActiveClanId,
     errorMessage: 'Failed to load tasks',
   });
 

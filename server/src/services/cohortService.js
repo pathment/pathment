@@ -432,7 +432,7 @@ class CohortService {
    * mentee's actual stats - not a fabricated narrative - until the LLM-backed
    * summary feature is wired in.
    */
-  async getMenteeDetail(menteeId) {
+  async getMenteeDetail(menteeId, clanId = null) {
     // Critical path: the mentee record itself. If this fails (or doesn't exist)
     // the profile can't render — fail loudly so the controller returns a 404.
     const [mentee, optional] = await Promise.all([
@@ -448,7 +448,7 @@ class CohortService {
       // Reads are delegated to the owning domain services (SRP/DIP): cohortService
       // assembles the profile, it doesn't know other domains' schemas.
       Promise.allSettled([
-        taskService.listMenteeProfileTasks(menteeId),
+        taskService.listMenteeProfileTasks(menteeId, clanId),
         frictionService.listDelaysFor(menteeId),
         frictionService.listBlockersWithTask(menteeId),
         insightService.getInsightsByMentee(menteeId),
@@ -458,7 +458,7 @@ class CohortService {
           include: [{ model: models.User, as: 'author', attributes: ['firstName', 'lastName'] }]
         }),
         models.Collaborator.findAll({ where: { menteeId }, order: [['created_at', 'DESC']] }),
-        dailyLogService.list(menteeId, 7),
+        dailyLogService.list(menteeId, 7, clanId),
         this._lastAttendance(menteeId)
       ])
     ]);

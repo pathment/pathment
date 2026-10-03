@@ -20,6 +20,43 @@ const { toStringList } = require('../utils/multipartFields');
  * state after that belongs to whoever reviews it.
  */
 const MENTEE_SETTABLE_STATUSES = ['in_progress'];
+const MENTOR_CLAN_ROLES = ['lead_mentor', 'co_mentor', 'core_team'];
+
+/** Scope legacy tasks without clanId through their uniquely linked mentor. */
+async function clanScopedTaskWhere(base, clanId, memberships) {
+  const scoped = clanScopedWhere(base, clanId, memberships.length);
+  if (!clanId || memberships.length <= 1) return scoped;
+
+  const selected = memberships.find((membership) => membership.clanId === clanId);
+  const enrollmentId = selected?.enrollmentId;
+  if (!enrollmentId) return scoped;
+
+  const clanIds = memberships.map((membership) => membership.clanId);
+  const mentors = await models.ClanMembership.findAll({
+    where: {
+      clanId: { [Op.in]: clanIds },
+      role: { [Op.in]: MENTOR_CLAN_ROLES },
+      status: 'active'
+    },
+    attributes: ['clanId', 'userId']
+  });
+  const mentorClans = new Map();
+  for (const mentor of mentors) {
+    const clans = mentorClans.get(mentor.userId) || new Set();
+    clans.add(mentor.clanId);
+    mentorClans.set(mentor.userId, clans);
+  }
+  const uniqueMentorIds = [...mentorClans]
+    .filter(([, clans]) => clans.size === 1 && clans.has(clanId))
+    .map(([mentorId]) => mentorId);
+
+  // Older task rows may have no clanId, and clans in one program can share an
+  // enrollment. Include those rows only when their mentor belongs to this one
+  // of the mentee's clans, which keeps the clan views separate.
+  return uniqueMentorIds.length
+    ? { ...base, [Op.or]: [{ clanId }, { clanId: null, enrollmentId, mentorId: { [Op.in]: uniqueMentorIds } }] }
+    : scoped;
+}
 
 /** Guess a resource's kind from its URL (mirrors the roadmap step normalizer). */
 function inferResourceType(url) {
@@ -387,7 +424,7 @@ class TaskService {
     const where = { menteeId };
     if (clanId) {
       const rows = await listMenteeClans(menteeId);
-      Object.assign(where, clanScopedWhere({}, clanId, rows.length));
+      Object.assign(where, await clanScopedTaskWhere({}, clanId, rows));
     }
     return models.AssignedTask.findAll({
       where,
@@ -403,7 +440,7 @@ class TaskService {
   async getMenteeTasks(menteeId, filters = {}) {
     const clanId = await resolveMenteeClanId(menteeId, filters.clanId, { actorId: filters.actorId });
     const memberships = await listMenteeClans(menteeId);
-    const where = clanScopedWhere({ menteeId }, clanId, memberships.length);
+    const where = await clanScopedTaskWhere({ menteeId }, clanId, memberships);
 
     if (filters.status) {
       where.status = filters.status;
@@ -1061,7 +1098,7 @@ class TaskService {
   async getMenteeTaskStats(menteeId, enrollmentId, clanId = null) {
     const resolvedClanId = await resolveMenteeClanId(menteeId, clanId);
     const memberships = await listMenteeClans(menteeId);
-    const where = clanScopedWhere({ menteeId }, resolvedClanId, memberships.length);
+    const where = await clanScopedTaskWhere({ menteeId }, resolvedClanId, memberships);
     if (enrollmentId) {
       where.enrollmentId = enrollmentId;
     }

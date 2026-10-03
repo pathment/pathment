@@ -56,6 +56,7 @@ export default function Navigation({ role }: NavigationProps) {
   const { clans, activeClanId, setActiveClanId, menteeClans, menteeActiveClanId, setMenteeActiveClanId } = useClan();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [clanDropdownOpen, setClanDropdownOpen] = useState(false);
 
   const { links, pinned, isEditing, toggleEdit, togglePin, moveUp, moveDown, reset, recordUsage, adaptive, toggleAdaptive } = useNavPreferences(role);
   const { can, canAny, canAccessAdmin, loading: permsLoading } = usePermissions();

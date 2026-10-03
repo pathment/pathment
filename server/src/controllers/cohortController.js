@@ -4,6 +4,7 @@ const cohortService = require('../services/cohortService');
 const submissionService = require('../services/submissionService');
 const authzService = require('../services/authzService');
 const { AuthorizationError } = require('../utils/errors/errorTypes');
+const { requestedClanId } = require('../middlewares/portalScope');
 
 /**
  * GET /api/mentor/cohort
@@ -146,7 +147,7 @@ const nudge = catchAsync(async (req, res) => {
  * The logged-in mentee's own fairness read (self-facing My Progress).
  */
 const getMyProgress = catchAsync(async (req, res) => {
-  const profile = await cohortService.getMenteeDetail(req.user.id);
+  const profile = await cohortService.getMenteeDetail(req.user.id, requestedClanId(req));
   if (!profile) {
     return res.status(404).json({ success: false, message: 'No progress data yet', statusCode: 404 });
   }

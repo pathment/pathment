@@ -14,11 +14,11 @@ export interface TaskTimingOptions {
 
 export const taskApi = {
   // Mentee APIs
-  getMenteeTasks: (menteeId: string, params?: { status?: string; enrollmentId?: string }) =>
+  getMenteeTasks: (menteeId: string, params?: { status?: string; enrollmentId?: string; clanId?: string }) =>
     apiClient.get(`/tasks/mentee/${menteeId}`, { params }),
 
-  getMenteeTaskStats: (menteeId: string, enrollmentId?: string) =>
-    apiClient.get(`/tasks/mentee/${menteeId}/stats`, { params: { enrollmentId } }),
+  getMenteeTaskStats: (menteeId: string, enrollmentId?: string, clanId?: string) =>
+    apiClient.get(`/tasks/mentee/${menteeId}/stats`, { params: { enrollmentId, clanId } }),
 
   getTaskById: (taskId: string) =>
     apiClient.get(`/tasks/${taskId}`),

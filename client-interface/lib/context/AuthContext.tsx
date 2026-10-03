@@ -15,6 +15,27 @@ function getCapabilities(user: User | null): UserRole[] {
   return user.capabilities ?? [user.role];
 }
 
+function getAvailableRoles(user: User | null): UserRole[] {
+  if (!user) return [];
+
+  const capabilities = getCapabilities(user);
+
+  const hasActiveMenteeMembership =
+    user.clanMemberships?.some(
+      (membership) =>
+        membership.status === 'active' &&
+        membership.role === 'mentee'
+    ) ?? false;
+
+  return capabilities.filter((role) => {
+    if (role === 'mentee') {
+      return hasActiveMenteeMembership;
+    }
+
+    return true;
+  });
+}
+
 interface RegistrationResult {
   clanJoin?: { joinPath?: string };
   [key: string]: unknown;
@@ -70,7 +91,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setActiveRoleState(null);
       return;
     }
-    const caps = getCapabilities(user);
+    //const caps = getCapabilities(user);
+    const caps = getAvailableRoles(user);
     const stored = (typeof window !== 'undefined'
       ? (localStorage.getItem('activeRole') as UserRole | null)
       : null);
@@ -85,7 +107,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user]);
 
   const setActiveRole = (role: UserRole) => {
-    if (!getCapabilities(user).includes(role)) return;
+    if (!getAvailableRoles(user).includes(role)) return;
     setActiveRoleState(role);
     if (typeof window !== 'undefined') {
       localStorage.setItem('activeRole', role);
@@ -285,8 +307,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isAuthenticated: !!user && !requiresTwoFactor,
     requiresTwoFactor,
     temporaryToken,
-    activeRole: activeRole && getCapabilities(user).includes(activeRole) ? activeRole : null,
-    availableRoles: getCapabilities(user),
+    activeRole: activeRole && getAvailableRoles(user).includes(activeRole) ? activeRole : null,
+    availableRoles: getAvailableRoles(user),
     setActiveRole,
     login,
     verify2FA,
