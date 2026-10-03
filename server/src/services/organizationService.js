@@ -2,16 +2,50 @@ const { Op } = require('sequelize');
 const { models, sequelize } = require('../db');
 const { getRequestContext } = require('../utils/auditContext');
 const { NotFoundError, ForbiddenError, ValidationError, ConflictError } = require('../utils/errors/errorTypes');
+const { uploadToCloudinary, deleteFromCloudinary, extractPublicId } = require('../utils/cloudinaryUpload');
 
 const SLUG = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 const RESERVED_SLUGS = new Set(['pathment', 'www', 'app', 'api', 'links', 'meet', 'staging', 'status', 'support', 'admin', 'mail', 'cdn', 'assets']);
+const ORGANIZATION_LOGO_CACHE_TTL_MS = 30000;
+const ORGANIZATION_LOGO_CACHE_MAX_ENTRIES = 500;
+const organizationLogoCache = new Map();
+const organizationLogoCacheGenerations = new Map();
 
-const serializeOrganization = (organization, membership = null) => ({
+const organizationLogoCacheKey = (organizationId) => `organization-logo:${organizationId}`;
+const organizationLogoCacheGeneration = (organizationId) => organizationLogoCacheGenerations.get(organizationId) || 0;
+
+const getCachedOrganizationLogo = (organizationId) => {
+  const key = organizationLogoCacheKey(organizationId);
+  const entry = organizationLogoCache.get(key);
+  if (!entry) return { hit: false };
+  if (entry.expiresAt <= Date.now()) {
+    organizationLogoCache.delete(key);
+    return { hit: false };
+  }
+  return { hit: true, logoUrl: entry.logoUrl };
+};
+
+const cacheOrganizationLogo = (organizationId, logoUrl) => {
+  organizationLogoCache.set(organizationLogoCacheKey(organizationId), {
+    logoUrl: logoUrl || null,
+    expiresAt: Date.now() + ORGANIZATION_LOGO_CACHE_TTL_MS,
+  });
+  while (organizationLogoCache.size > ORGANIZATION_LOGO_CACHE_MAX_ENTRIES) {
+    organizationLogoCache.delete(organizationLogoCache.keys().next().value);
+  }
+};
+
+const invalidateOrganizationLogo = (organizationId) => {
+  organizationLogoCache.delete(organizationLogoCacheKey(organizationId));
+  organizationLogoCacheGenerations.set(organizationId, organizationLogoCacheGeneration(organizationId) + 1);
+};
+
+const serializeOrganization = (organization, membership = null, logoUrl = organization.logoUrl) => ({
   id: organization.id,
   name: organization.name,
   slug: organization.slug,
   status: organization.status,
-  logoUrl: organization.logoUrl || null,
+  logoUrl: logoUrl || null,
   primaryColor: organization.primaryColor,
   timezone: organization.timezone,
   settings: organization.settings || {},
@@ -85,11 +119,35 @@ class OrganizationService {
   async memberships(userId) {
     const rows = await models.OrganizationMembership.findAll({
       where: { userId, status: 'active' },
-      include: [{ model: models.Organization, as: 'organization', where: { status: { [Op.in]: ['trial', 'active', 'past_due'] } } }],
+      include: [{ model: models.Organization, as: 'organization', attributes: { exclude: ['logoUrl'] }, where: { status: { [Op.in]: ['trial', 'active', 'past_due'] } } }],
       order: [[{ model: models.Organization, as: 'organization' }, 'name', 'ASC']],
       skipOrganizationScope: true,
     });
-    return rows.map(row => serializeOrganization(row.organization, row));
+
+    const logos = new Map();
+    const missingLogoIds = [];
+    for (const row of rows) {
+      const organizationId = row.organization.id;
+      const cached = getCachedOrganizationLogo(organizationId);
+      if (cached.hit) logos.set(organizationId, cached.logoUrl);
+      else missingLogoIds.push(organizationId);
+    }
+    if (missingLogoIds.length) {
+      const generations = new Map(missingLogoIds.map((id) => [id, organizationLogoCacheGeneration(id)]));
+      const organizations = await models.Organization.findAll({
+        where: { id: { [Op.in]: missingLogoIds } },
+        attributes: ['id', 'logoUrl'],
+        skipOrganizationScope: true,
+      });
+      for (const organization of organizations) {
+        const logoUrl = organization.logoUrl || null;
+        logos.set(organization.id, logoUrl);
+        if (generations.get(organization.id) === organizationLogoCacheGeneration(organization.id)) {
+          cacheOrganizationLogo(organization.id, logoUrl);
+        }
+      }
+    }
+    return rows.map(row => serializeOrganization(row.organization, row, logos.get(row.organization.id) || null));
   }
 
   async create(userId, input = {}) {
@@ -145,9 +203,17 @@ class OrganizationService {
   async currentForUser(userId, organizationId = null) {
     const id = organizationId || await this.currentId();
     const membership = await this.assertMembership(userId, id);
-    const organization = await models.Organization.findByPk(id);
+    const cachedLogo = getCachedOrganizationLogo(id);
+    const generation = cachedLogo.hit ? null : organizationLogoCacheGeneration(id);
+    const organization = await models.Organization.findByPk(id, cachedLogo.hit
+      ? { attributes: { exclude: ['logoUrl'] } }
+      : undefined);
     if (!organization) throw new NotFoundError('Organization not found');
-    return { organization: serializeOrganization(organization, membership), membership };
+    const logoUrl = cachedLogo.hit ? cachedLogo.logoUrl : organization.logoUrl || null;
+    if (!cachedLogo.hit && generation === organizationLogoCacheGeneration(id)) {
+      cacheOrganizationLogo(id, logoUrl);
+    }
+    return { organization: serializeOrganization(organization, membership, logoUrl), membership };
   }
 
   async subscription(organizationId, options = {}) {
@@ -239,7 +305,56 @@ class OrganizationService {
     for (const key of allowed) if (patch[key] !== undefined) organization[key] = patch[key];
     if (!organization.name?.trim()) throw new ValidationError('Organization name is required');
     await organization.save();
+    if (patch.logoUrl !== undefined) invalidateOrganizationLogo(organizationId);
     return serializeOrganization(organization, membership);
+  }
+
+  async assertCanManageBranding(userId, organizationId) {
+    const membership = await this.assertMembership(userId, organizationId);
+    if (!['owner', 'admin'].includes(membership.role)) throw new ForbiddenError('Organization admin access is required');
+    if (!(await this.entitlement(organizationId, 'customBranding'))) {
+      throw new ForbiddenError('Custom branding is available on the Growth plan and above');
+    }
+    const organization = await models.Organization.findByPk(organizationId);
+    if (!organization) throw new NotFoundError('Organization not found');
+    return { membership, organization };
+  }
+
+  async setLogo(userId, organizationId, file) {
+    const { membership, organization } = await this.assertCanManageBranding(userId, organizationId);
+    if (!file || !['image/png', 'image/jpeg', 'image/jpg', 'image/webp'].includes(file.mimetype) || file.size > 5 * 1024 * 1024) {
+      throw new ValidationError('Choose a PNG, JPG or WebP image up to 5 MB');
+    }
+
+    const result = await uploadToCloudinary(file.buffer, 'pathment/organization-logos', 'image');
+    const logoUrl = result.secure_url || result.url;
+    if (!logoUrl) throw new ValidationError('Logo upload did not return an image URL');
+    const previous = organization.getDataValue('logoUrl');
+    organization.logoUrl = logoUrl;
+    try {
+      await organization.save();
+    } catch (error) {
+      if (result.public_id) deleteFromCloudinary(result.public_id, 'image').catch(() => {});
+      throw error;
+    }
+    invalidateOrganizationLogo(organizationId);
+    this.deleteOrganizationLogo(previous);
+    return serializeOrganization(organization, membership);
+  }
+
+  async removeLogo(userId, organizationId) {
+    const { membership, organization } = await this.assertCanManageBranding(userId, organizationId);
+    const previous = organization.getDataValue('logoUrl');
+    organization.logoUrl = null;
+    await organization.save();
+    invalidateOrganizationLogo(organizationId);
+    this.deleteOrganizationLogo(previous);
+    return serializeOrganization(organization, membership);
+  }
+
+  deleteOrganizationLogo(url) {
+    if (!url || !url.includes('res.cloudinary.com') || !url.includes('/pathment/organization-logos/')) return;
+    deleteFromCloudinary(extractPublicId(url), 'image').catch(() => {});
   }
 
   async entitlement(organizationId, feature) {

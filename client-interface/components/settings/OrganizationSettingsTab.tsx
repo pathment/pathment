@@ -7,10 +7,12 @@ import { useOrganization } from '@/lib/context/OrganizationContext';
 import { organizationsApi } from '@/lib/services/organizations-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { Drawer } from '@/components/shared/Drawer';
+import { OrganizationAvatarEditor } from '@/components/shared/OrganizationAvatarEditor';
 
 export function OrganizationSettingsTab() {
   const { current, overview, refresh, switchTo } = useOrganization();
   const [name, setName] = useState('');
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [timezone, setTimezone] = useState('UTC');
   const [saving, setSaving] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -20,6 +22,7 @@ export function OrganizationSettingsTab() {
   useEffect(() => {
     if (!current) return;
     setName(current.name);
+    setLogoUrl(current.logoUrl);
     setTimezone(current.timezone || 'UTC');
   }, [current]);
 
@@ -35,6 +38,11 @@ export function OrganizationSettingsTab() {
     finally { setSaving(false); }
   };
 
+  const updateLogo = async (value: string | null) => {
+    setLogoUrl(value);
+    await refresh();
+  };
+
   const field = 'w-full rounded-xl border border-border bg-background px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:opacity-60';
   return (
     <div className="space-y-7">
@@ -42,6 +50,7 @@ export function OrganizationSettingsTab() {
         <span className="grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-700"><Building2 className="h-5 w-5" /></span>
         <div><h2 className="font-semibold text-foreground">Organization</h2><p className="text-sm text-muted-foreground">Workspace identity and regional defaults.</p></div>
       </div>
+      <OrganizationAvatarEditor name={name || current.name} logoUrl={logoUrl} disabled={!canEdit} onChanged={updateLogo} />
       <div className="grid gap-5 md:grid-cols-2">
         <label className="space-y-2"><span className="text-sm font-medium">Name</span><input className={field} value={name} onChange={(e) => setName(e.target.value)} disabled={!canEdit} /></label>
         <label className="space-y-2"><span className="text-sm font-medium">Workspace URL</span><input className={field} value={`app.pathment.me/w/${current.slug}`} disabled /></label>

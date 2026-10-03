@@ -1,8 +1,18 @@
 'use strict';
 
+jest.mock('../../src/utils/cloudinaryUpload', () => {
+  const actual = jest.requireActual('../../src/utils/cloudinaryUpload');
+  return {
+    ...actual,
+    uploadToCloudinary: jest.fn(),
+    deleteFromCloudinary: jest.fn().mockResolvedValue({ result: 'ok' }),
+  };
+});
+
 const request = require('supertest');
 const app = require('../../src/index');
 const { models } = require('../../src/db');
+const cloudinaryUpload = require('../../src/utils/cloudinaryUpload');
 const { createAdmin, createMentee, cleanDb } = require('../helpers/seed');
 const { generateAccessToken } = require('../../src/utils/jwt');
 const { runWithRequestContext } = require('../../src/utils/auditContext');
@@ -67,6 +77,102 @@ describe('organization tenancy', () => {
       .set('X-Pathment-Workspace', secondary.slug);
     expect(response.status).toBe(403);
     expect(response.body.message).toMatch(/do not have access/i);
+  });
+
+  it('does not cache a stale logo from a read already in flight during update', async () => {
+    const organizationService = require('../../src/services/organizationService');
+    const oldLogoUrl = 'https://example.com/old-logo.png';
+    const newLogoUrl = 'https://example.com/new-logo.png';
+    const context = { organizationId: secondary.id, userId: admin.id };
+    await runWithRequestContext(context, () => organizationService.update(admin.id, secondary.id, { logoUrl: oldLogoUrl }));
+
+    let markReadStarted;
+    const readStarted = new Promise((resolve) => { markReadStarted = resolve; });
+    let releaseRead;
+    const continueRead = new Promise((resolve) => { releaseRead = resolve; });
+    const originalFindByPk = models.Organization.findByPk.bind(models.Organization);
+    let pauseNextRead = true;
+    const findByPk = jest.spyOn(models.Organization, 'findByPk').mockImplementation(async (...args) => {
+      const organization = await originalFindByPk(...args);
+      if (args[0] === secondary.id && pauseNextRead) {
+        pauseNextRead = false;
+        markReadStarted();
+        await continueRead;
+      }
+      return organization;
+    });
+
+    try {
+      const staleRead = runWithRequestContext(context, () => organizationService.currentForUser(admin.id, secondary.id));
+      await readStarted;
+      await runWithRequestContext(context, () => organizationService.update(admin.id, secondary.id, { logoUrl: newLogoUrl }));
+      releaseRead();
+
+      const inFlightResult = await staleRead;
+      expect(inFlightResult.organization.logoUrl).toBe(oldLogoUrl);
+      const nextRead = await runWithRequestContext(context, () => organizationService.currentForUser(admin.id, secondary.id));
+      expect(nextRead.organization.logoUrl).toBe(newLogoUrl);
+    } finally {
+      releaseRead();
+      findByPk.mockRestore();
+    }
+  });
+
+  it('lets workspace admins upload and remove a logo', async () => {
+    const headers = {
+      Authorization: `Bearer ${token}`,
+      'X-Pathment-Workspace': secondary.slug,
+    };
+    const empty = await request(app).get('/api/organizations/current').set(headers);
+    expect(empty.status).toBe(200);
+    expect(empty.body.data.organization.logoUrl).toBeNull();
+
+    const findByPk = jest.spyOn(models.Organization, 'findByPk');
+    const cachedRead = await request(app).get('/api/organizations/current').set(headers);
+    expect(cachedRead.status).toBe(200);
+    expect(cachedRead.body.data.organization.logoUrl).toBeNull();
+    expect(findByPk).toHaveBeenCalledWith(secondary.id, {
+      attributes: { exclude: ['logoUrl'] },
+    });
+    findByPk.mockRestore();
+
+    const logoUrl = 'https://res.cloudinary.com/test/image/upload/v123/pathment/organization-logos/brand.png';
+    cloudinaryUpload.uploadToCloudinary.mockResolvedValueOnce({
+      secure_url: logoUrl,
+      public_id: 'pathment/organization-logos/brand',
+    });
+
+    const uploaded = await request(app)
+      .post('/api/organizations/current/logo')
+      .set(headers)
+      .attach('file', Buffer.from('image-bytes'), { filename: 'brand.png', contentType: 'image/png' });
+    expect(uploaded.status).toBe(200);
+    expect(uploaded.body.data.organization.logoUrl).toBe(logoUrl);
+    expect(cloudinaryUpload.uploadToCloudinary).toHaveBeenCalledWith(
+      expect.any(Buffer), 'pathment/organization-logos', 'image',
+    );
+    const afterUpload = await request(app).get('/api/organizations/current').set(headers);
+    expect(afterUpload.body.data.organization.logoUrl).toBe(logoUrl);
+
+    const removed = await request(app)
+      .delete('/api/organizations/current/logo')
+      .set(headers);
+    expect(removed.status).toBe(200);
+    expect(removed.body.data.organization.logoUrl).toBeNull();
+    expect(cloudinaryUpload.deleteFromCloudinary).toHaveBeenCalledWith(
+      'pathment/organization-logos/brand', 'image',
+    );
+    const afterRemove = await request(app).get('/api/organizations/current').set(headers);
+    expect(afterRemove.body.data.organization.logoUrl).toBeNull();
+
+    const replacementLogoUrl = 'https://example.com/workspace-logo.png';
+    const updated = await request(app)
+      .patch('/api/organizations/current')
+      .set(headers)
+      .send({ logoUrl: replacementLogoUrl });
+    expect(updated.status).toBe(200);
+    const afterUpdate = await request(app).get('/api/organizations/current').set(headers);
+    expect(afterUpdate.body.data.organization.logoUrl).toBe(replacementLogoUrl);
   });
 
   it('automatically scopes tenant-owned model reads to the request workspace', async () => {
@@ -231,6 +337,15 @@ describe('organization tenancy', () => {
       .set('X-Pathment-Workspace', secondary.slug)
       .send({ primaryColor: '#112233' });
     expect(branding.status).toBe(403);
+
+    cloudinaryUpload.uploadToCloudinary.mockClear();
+    const logo = await request(app)
+      .post('/api/organizations/current/logo')
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-Pathment-Workspace', secondary.slug)
+      .attach('file', Buffer.from('image-bytes'), { filename: 'brand.png', contentType: 'image/png' });
+    expect(logo.status).toBe(403);
+    expect(cloudinaryUpload.uploadToCloudinary).not.toHaveBeenCalled();
 
     const ordinary = await request(app)
       .patch('/api/organizations/current')

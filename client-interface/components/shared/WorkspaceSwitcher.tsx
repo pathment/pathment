@@ -6,6 +6,7 @@ import { Building2, Check, ChevronDown, Plus, Settings2 } from 'lucide-react';
 import { useOrganization } from '@/lib/context/OrganizationContext';
 import { workspacePath } from '@/lib/services/workspace-scope';
 import { CreateWorkspaceDrawer } from '@/components/settings/OrganizationSettingsTab';
+import { Avatar } from '@/components/shared/Avatar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 interface WorkspaceSwitcherProps {
@@ -64,9 +65,7 @@ export function WorkspaceSwitcher({ compact = false, onNavigate }: WorkspaceSwit
               aria-current={selected ? 'page' : undefined}
               className={`flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left transition-colors ${selected ? 'bg-brand-50 text-brand-900' : 'text-slate-700 hover:bg-slate-50'}`}
             >
-              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-slate-200 bg-card text-xs font-bold uppercase text-brand-700">
-                {organization.name.slice(0, 2)}
-              </span>
+              <Avatar name={organization.name} src={organization.logoUrl} size="sm" title={organization.name} />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-medium">{organization.name}</span>
                 <span className="block truncate text-xs capitalize text-slate-500">{organization.membershipRole || 'member'}</span>

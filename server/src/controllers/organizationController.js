@@ -27,6 +27,16 @@ const updateCurrent = catchAsync(async (req, res) => {
   res.json(successResponse('Organization updated', { organization }));
 });
 
+const uploadLogo = catchAsync(async (req, res) => {
+  const organization = await organizationService.setLogo(req.user.id, req.organizationId, req.file);
+  res.json(successResponse('Organization logo updated', { organization }));
+});
+
+const removeLogo = catchAsync(async (req, res) => {
+  const organization = await organizationService.removeLogo(req.user.id, req.organizationId);
+  res.json(successResponse('Organization logo removed', { organization }));
+});
+
 const requestPlan = catchAsync(async (req, res) => {
   const subscription = await organizationService.requestPlan(req.user.id, req.organizationId, req.body?.planKey);
   res.json(successResponse('Plan change requested', { subscription }));
@@ -61,4 +71,4 @@ const demo = catchAsync(async (req, res) => {
   }));
 });
 
-module.exports = { demo, current, listMine, create, listPlans, updateCurrent, requestPlan };
+module.exports = { demo, current, listMine, create, listPlans, updateCurrent, uploadLogo, removeLogo, requestPlan };
