@@ -59,9 +59,9 @@ async function cleanDb() {
     'points_history',
     'notifications',
     'user_badges',
-    // Stored AI keys. Nothing else seeds these, and leaving them behind meant a
-    // key added by one test was still resolvable in the next, so a test
-    // asserting "no key configured" passed or failed on run order.
+    'talk_category_links',
+    'talks',
+    'talk_categories',
     'ai_connections',
     'users',
   ];

@@ -16,6 +16,8 @@
     "seed:admin": "node scripts/seedAdmin.js",
     "seed:skills": "node scripts/seedSkills.js",
     "seed:schedules": "node scripts/seed-schedule-templates.js",
+    "seed:talks": "node scripts/seed-talks.js",
+    "seed:mentor": "node scripts/seedMentor.js",
     "seed:demo": "node scripts/seed-demo.js",
     "seed:changelog": "node scripts/seed-changelog.js",
     "test:db": "node scripts/testDbConnection.js",

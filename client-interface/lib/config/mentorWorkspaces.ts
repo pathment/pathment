@@ -10,6 +10,7 @@ export const mentorWorkspaces = [
     { href: '/mentor/quizzes', label: 'Quizzes' },
     { href: '/mentor/programs', label: 'Programs' },
     { href: '/mentor/library', label: 'Library' },
+    { href: '/mentor/talks', label: 'Talks' },
   ] },
   { label: 'Recognition', tabs: [
     { href: '/mentor/top-performers', label: 'Top performers' },

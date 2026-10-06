@@ -133,6 +133,9 @@ router.use('/rewards', rewardsRoutes);
 // Mentor Library (org documents)
 router.use('/library', libraryRoutes);
 
+// Talks library (shared talks with categories)
+router.use('/talks', require('./talks'));
+
 // Schedule engine (templates + per-mentee slot schedules)
 router.use('/schedules', scheduleRoutes);
 
