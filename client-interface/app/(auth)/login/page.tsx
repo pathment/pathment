@@ -1,18 +1,19 @@
 'use client';
 
 import { useCallback, useState, useEffect } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/context/AuthContext';
 import { TwoFactorCodeInput } from '@/components/shared/TwoFactorCodeInput';
 import { extractApiErrorMessage, getRateLimit, formatRetryAfter, getErrorCode } from '@/lib/utils/api-error';
 import { Mail, Lock, ArrowRight, AlertCircle, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { activeWorkspaceSlug, workspaceLandingPath, workspacePath } from '@/lib/services/workspace-scope';
+import { workspaceLandingPath, workspacePath, workspaceSlugFromPathname } from '@/lib/services/workspace-scope';
 import { tokenStore } from '@/lib/services/token-store';
 
 export default function LoginPage() {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const { login, verify2FA, user, isLoading, requiresTwoFactor } = useAuth();
   const [formData, setFormData] = useState({ email: '', password: '' });
@@ -26,7 +27,11 @@ export default function LoginPage() {
   const [cooldownUntil, setCooldownUntil] = useState(0);
   const [now, setNow] = useState(() => Date.now());
   const cooldownSec = Math.max(0, Math.ceil((cooldownUntil - now) / 1000));
-  const scopedWorkspace = activeWorkspaceSlug();
+  // A neutral `/login` must stay account-level even when this browser has a
+  // workspace cookie from an earlier visit. Only an explicit `/w/:slug/login`
+  // is workspace-scoped.
+  const scopedWorkspace = workspaceSlugFromPathname(pathname);
+  const authPath = (path: string) => scopedWorkspace ? workspacePath(path, scopedWorkspace) : path;
 
   // Tick every second while a cooldown is active so the countdown updates live.
   useEffect(() => {
@@ -125,7 +130,7 @@ export default function LoginPage() {
           // Reset form and logout user to go back to login if they cancel
           setFormData({ email: '', password: '' });
           setError('');
-          window.location.href = scopedWorkspace ? workspacePath('/login') : '/login';
+          window.location.href = authPath('/login');
         }}
         userEmail={user?.email}
       />
@@ -197,7 +202,7 @@ export default function LoginPage() {
           <div>
             <div className="flex items-center justify-between mb-2">
               <label htmlFor="login-password" className="block text-slate-700 text-sm">Password</label>
-              <Link href="/reset-password" className="text-brand-600 hover:text-brand-700 text-sm">
+              <Link href={authPath('/reset-password')} className="text-brand-600 hover:text-brand-700 text-sm">
                 Forgot?
               </Link>
             </div>
@@ -265,7 +270,7 @@ export default function LoginPage() {
         <div className="mt-6 text-center">
           <p className="text-slate-600 text-sm">
             Don&apos;t have an account?{' '}
-            <Link href={workspacePath('/register')} className="text-brand-600 hover:text-brand-700">
+            <Link href={authPath('/register')} className="text-brand-600 hover:text-brand-700">
               Sign up
             </Link>
           </p>
