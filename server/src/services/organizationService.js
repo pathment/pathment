@@ -32,10 +32,13 @@ const serializeOrganization = (organization, membership = null) => ({
 
 class OrganizationService {
   workspaceCreationEnabled() {
-    // Workspace creation is part of the public organization onboarding flow.
-    // Keep an explicit emergency kill switch, but do not make a missing env var
-    // turn every new organization into a dead end.
-    return process.env.MULTI_TENANT_WORKSPACES_ENABLED !== 'false';
+    return process.env.MULTI_TENANT_WORKSPACES_ENABLED === 'true';
+  }
+
+  organizationSignupEnabled() {
+    // First-workspace signup and additional-workspace creation are separate
+    // product decisions. The old rollout switch must not dead-end a new company.
+    return process.env.PUBLIC_ORGANIZATION_SIGNUP_ENABLED !== 'false';
   }
 
   assertWorkspaceAvailable(organization) {
@@ -43,7 +46,8 @@ class OrganizationService {
     if (['suspended', 'archived'].includes(organization.status)) {
       throw new ForbiddenError('This workspace is unavailable');
     }
-    if (!this.workspaceCreationEnabled() && organization.slug !== this.defaultSlug() &&
+    const isPublicSignup = organization.settings?.onboardingSource === 'public_signup';
+    if (!this.workspaceCreationEnabled() && !isPublicSignup && organization.slug !== this.defaultSlug() &&
         !require('../utils/stagingWorkspaceDemo').isDemo(organization)) {
       throw new ForbiddenError('Additional workspaces are not available during the workspace rollout');
     }
@@ -108,7 +112,7 @@ class OrganizationService {
   }
 
   async create(userId, input = {}, options = {}) {
-    if (!this.workspaceCreationEnabled()) {
+    if (!this.workspaceCreationEnabled() && !options.allowInitialWorkspace) {
       throw new ForbiddenError('Workspace creation is not available during the workspace rollout');
     }
     const name = String(input.name || '').trim();
@@ -125,7 +129,10 @@ class OrganizationService {
     const createInTransaction = async (transaction) => {
       const plan = await models.Plan.findOne({ where: { key: 'starter', active: true }, transaction });
       if (!plan) throw new NotFoundError('Starter plan is not configured');
-      const organization = await models.Organization.create({ name, slug, timezone, status: 'active', createdBy: userId }, { transaction });
+      const organization = await models.Organization.create({
+        name, slug, timezone, status: 'active', createdBy: userId,
+        ...(options.allowInitialWorkspace ? { settings: { onboardingSource: 'public_signup' } } : {}),
+      }, { transaction });
       const membership = await models.OrganizationMembership.create({
         organizationId: organization.id, userId, role: 'owner', status: 'active', joinedAt: new Date(),
       }, { transaction, skipOrganizationScope: true });

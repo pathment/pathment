@@ -32,7 +32,9 @@ describe('POST /api/auth/register — Registration', () => {
 
   it('creates an owner account and first organization without an invitation', async () => {
     const previous = process.env.MULTI_TENANT_WORKSPACES_ENABLED;
-    process.env.MULTI_TENANT_WORKSPACES_ENABLED = 'true';
+    // Public first-workspace signup is independent from the rollout gate for
+    // creating additional workspaces from an existing account.
+    process.env.MULTI_TENANT_WORKSPACES_ENABLED = 'false';
     try {
       const res = await registerRequest().send({
         firstName: 'Nadia',
@@ -54,7 +56,9 @@ describe('POST /api/auth/register — Registration', () => {
         where: { userId: user.id, organizationId: organization.id }, skipOrganizationScope: true,
       });
       expect(membership.role).toBe('owner');
+      expect(organization.settings).toMatchObject({ onboardingSource: 'public_signup' });
       expect(await models.EmailVerificationToken.count({ where: { userId: user.id } })).toBe(1);
+      expect(() => require('../../src/services/organizationService').assertWorkspaceAvailable(organization)).not.toThrow();
     } finally {
       if (previous === undefined) delete process.env.MULTI_TENANT_WORKSPACES_ENABLED;
       else process.env.MULTI_TENANT_WORKSPACES_ENABLED = previous;

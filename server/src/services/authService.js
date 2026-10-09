@@ -386,7 +386,7 @@ class AuthService {
    */
   async _registerOrganizationOwner({ firstName, lastName, email, password, organization }) {
     const organizationService = require('./organizationService');
-    if (!organizationService.workspaceCreationEnabled()) {
+    if (!organizationService.organizationSignupEnabled()) {
       throw new AuthorizationError('New organization signup is temporarily unavailable');
     }
 
@@ -411,7 +411,10 @@ class AuthService {
       }, { transaction });
 
       await models.UserSettings.create({ userId: user.id }, { transaction });
-      const createdOrganization = await organizationService.create(user.id, organization, { transaction });
+      const createdOrganization = await organizationService.create(user.id, organization, {
+        transaction,
+        allowInitialWorkspace: true,
+      });
       await models.EmailVerificationToken.create({
         userId: user.id,
         token: tokenHash,
