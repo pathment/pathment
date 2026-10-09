@@ -22,6 +22,8 @@ function getCapabilities(user: User | null): UserRole[] {
 
 interface RegistrationResult {
   clanJoin?: { joinPath?: string };
+  organization?: { name: string; slug: string };
+  requiresEmailVerification?: boolean;
   [key: string]: unknown;
 }
 

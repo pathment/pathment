@@ -330,8 +330,8 @@ class NotificationOrchestrator {
     });
   }
 
-  async sendEmailVerificationEmail(user, verificationToken) {
-    const verifyUrl = verifyLink(verificationToken);
+  async sendEmailVerificationEmail(user, verificationToken, workspaceSlug) {
+    const verifyUrl = verifyLink(verificationToken, workspaceSlug);
 
     // Transactional auth email: always send, no unsubscribe.
     const heading = 'Verify your email';

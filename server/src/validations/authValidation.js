@@ -73,15 +73,21 @@ const authSchemas = {
       'any.only': 'Passwords do not match',
       'string.empty': 'Confirm password is required'
     }),
-    // Classic email-locked invite OR public clan join slug (multi-use). Exactly one.
+    // Join an existing organization by invite/clan link, or create a new one as
+    // its owner. Exactly one entry path is allowed.
     inviteToken: Joi.string().trim().optional(),
     clanJoinSlug: Joi.string().trim().max(64).optional(),
+    organization: Joi.object({
+      name: Joi.string().min(2).max(160).trim().required(),
+      slug: Joi.string().trim().lowercase().pattern(/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/).required(),
+      timezone: Joi.string().trim().max(80).default('UTC')
+    }).optional(),
     phoneNumber: patterns.phoneNumber,
     dateOfBirth: Joi.date().max('now').optional(),
     bio: Joi.string().max(500).optional()
-  }).xor('inviteToken', 'clanJoinSlug').messages({
-    'object.xor': 'Provide either an invite token or a clan join link, not both',
-    'object.missing': 'An invite token or clan join link is required'
+  }).xor('inviteToken', 'clanJoinSlug', 'organization').messages({
+    'object.xor': 'Choose one registration path: organization, invite, or clan joining link',
+    'object.missing': 'Organization details, an invite token, or a clan joining link is required'
   }),
 
   // NOTE: validate() runs with stripUnknown:true, so anything not declared here

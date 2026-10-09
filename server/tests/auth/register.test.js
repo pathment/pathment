@@ -11,6 +11,7 @@
 const request = require('supertest');
 const app = require('../../src/index');
 const { cleanDb, createAdmin, createInviteToken } = require('../helpers/seed');
+const { models } = require('../../src/db');
 
 const BASE = '/api/auth/register';
 let requestIp = 10;
@@ -27,6 +28,37 @@ describe('POST /api/auth/register — Registration', () => {
     await cleanDb();
     admin = await createAdmin();
     ({ rawToken: validToken } = await createInviteToken({ adminId: admin.id, role: 'mentee', email: targetEmail }));
+  });
+
+  it('creates an owner account and first organization without an invitation', async () => {
+    const previous = process.env.MULTI_TENANT_WORKSPACES_ENABLED;
+    process.env.MULTI_TENANT_WORKSPACES_ENABLED = 'true';
+    try {
+      const res = await registerRequest().send({
+        firstName: 'Nadia',
+        lastName: 'Khan',
+        email: 'nadia@acme.com',
+        password: 'Strong@1234',
+        confirmPassword: 'Strong@1234',
+        organization: { name: 'Acme Learning', slug: 'acme-learning', timezone: 'Asia/Karachi' },
+      });
+
+      expect(res.status).toBe(201);
+      expect(res.body.data.requiresEmailVerification).toBe(true);
+      expect(res.body.data.organization).toMatchObject({ name: 'Acme Learning', slug: 'acme-learning', membershipRole: 'owner' });
+      expect(res.body.data.user).toMatchObject({ email: 'nadia@acme.com', role: 'admin', emailVerified: false });
+
+      const user = await models.User.findOne({ where: { email: 'nadia@acme.com' } });
+      const organization = await models.Organization.findOne({ where: { slug: 'acme-learning' }, skipOrganizationScope: true });
+      const membership = await models.OrganizationMembership.findOne({
+        where: { userId: user.id, organizationId: organization.id }, skipOrganizationScope: true,
+      });
+      expect(membership.role).toBe('owner');
+      expect(await models.EmailVerificationToken.count({ where: { userId: user.id } })).toBe(1);
+    } finally {
+      if (previous === undefined) delete process.env.MULTI_TENANT_WORKSPACES_ENABLED;
+      else process.env.MULTI_TENANT_WORKSPACES_ENABLED = previous;
+    }
   });
 
   // TC-M01

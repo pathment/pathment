@@ -36,7 +36,9 @@ class AuthController {
         AUTH_MESSAGES.REGISTER_SUCCESS,
         {
           user: result.user,
-          ...(result.clanJoin ? { clanJoin: result.clanJoin } : {})
+          ...(result.clanJoin ? { clanJoin: result.clanJoin } : {}),
+          ...(result.organization ? { organization: result.organization } : {}),
+          ...(result.requiresEmailVerification ? { requiresEmailVerification: true } : {})
         },
         201
       )

@@ -32,7 +32,10 @@ const serializeOrganization = (organization, membership = null) => ({
 
 class OrganizationService {
   workspaceCreationEnabled() {
-    return process.env.MULTI_TENANT_WORKSPACES_ENABLED === 'true';
+    // Workspace creation is part of the public organization onboarding flow.
+    // Keep an explicit emergency kill switch, but do not make a missing env var
+    // turn every new organization into a dead end.
+    return process.env.MULTI_TENANT_WORKSPACES_ENABLED !== 'false';
   }
 
   assertWorkspaceAvailable(organization) {
@@ -104,7 +107,7 @@ class OrganizationService {
     return rows.map(row => serializeOrganization(row.organization, row));
   }
 
-  async create(userId, input = {}) {
+  async create(userId, input = {}, options = {}) {
     if (!this.workspaceCreationEnabled()) {
       throw new ForbiddenError('Workspace creation is not available during the workspace rollout');
     }
@@ -115,12 +118,11 @@ class OrganizationService {
     catch { throw new ValidationError('Choose a valid IANA timezone'); }
     if (name.length < 2 || name.length > 160) throw new ValidationError('Organization name must be between 2 and 160 characters');
     if (!slug) throw new ValidationError('Workspace URL must use lowercase letters, numbers, and single hyphens');
-    if (await models.Organization.findOne({ where: { slug }, skipOrganizationScope: true })) {
+    if (await models.Organization.findOne({ where: { slug }, skipOrganizationScope: true, transaction: options.transaction })) {
       throw new ConflictError('That workspace URL is already in use');
     }
 
-    const { sequelize } = require('../db');
-    return sequelize.transaction(async (transaction) => {
+    const createInTransaction = async (transaction) => {
       const plan = await models.Plan.findOne({ where: { key: 'starter', active: true }, transaction });
       if (!plan) throw new NotFoundError('Starter plan is not configured');
       const organization = await models.Organization.create({ name, slug, timezone, status: 'active', createdBy: userId }, { transaction });
@@ -137,7 +139,12 @@ class OrganizationService {
         await require('./gamificationService').createDefaultBadges({ transaction });
       });
       return serializeOrganization(organization, membership);
-    }).catch(error => {
+    };
+
+    const operation = options.transaction
+      ? createInTransaction(options.transaction)
+      : sequelize.transaction(createInTransaction);
+    return operation.catch(error => {
       if (error.name === 'SequelizeUniqueConstraintError' &&
           (error.fields?.slug !== undefined || error.errors?.some(item => item.path === 'slug'))) {
         throw new ConflictError('That workspace URL is already in use');

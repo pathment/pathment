@@ -70,6 +70,8 @@ export interface RegisterData {
   inviteToken?: string;
   /** Public clan join slug (mutually exclusive with inviteToken). */
   clanJoinSlug?: string;
+  /** New-organization signup. Mutually exclusive with invite/join paths. */
+  organization?: { name: string; slug: string; timezone: string };
 }
 
 export interface tokens {

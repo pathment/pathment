@@ -240,10 +240,8 @@ export default function LoginPage() {
           </form>
         )}
 
-        {/* Registration is organization-led. A generic signup link creates a
-            dead end because every account must begin with a trusted invite. */}
         <p className="mt-8 text-center text-sm text-slate-600">
-          New to Pathment? <Link href={authPath('/register')} className="font-semibold text-brand-700 hover:text-brand-800">See how to join an organization</Link>
+          New to Pathment? <Link href="/register" className="font-semibold text-brand-700 hover:text-brand-800">Create an organization</Link>
         </p>
       </div>
 

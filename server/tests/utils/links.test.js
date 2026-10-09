@@ -70,6 +70,7 @@ describe('with the link host set', () => {
   test('the tenant can be named outright rather than guessed', () => {
     const links = load({ ...LIVE, TENANT_SLUG: 'microtechx' });
     expect(links.inviteLink('t')).toBe('https://links.pathment.me/i/microtechx/t');
+    expect(links.verifyLink('t', 'new-company')).toBe('https://links.pathment.me/v/new-company/t');
   });
 
   test('a shared API uses the request workspace instead of the default', async () => {

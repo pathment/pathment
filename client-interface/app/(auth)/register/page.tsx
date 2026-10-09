@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/context/AuthContext';
-import { Mail, Lock, User, ArrowRight, CheckCircle2, AlertCircle, Loader2, Eye, EyeOff, Building2, LogIn, MailCheck } from 'lucide-react';
+import { Mail, Lock, User, ArrowRight, CheckCircle2, AlertCircle, Loader2, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiClient } from '@/lib/services/api-client';
 import { apiConfig } from '@/lib/config/api';
@@ -12,6 +12,7 @@ import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { validatePassword } from '@/lib/utils/validation';
 import { PasswordRequirements } from '@/components/shared/PasswordRequirements';
 import { workspacePath, workspaceSlugFromPathname } from '@/lib/services/workspace-scope';
+import { OrganizationSignup } from '@/components/auth/OrganizationSignup';
 
 type InviteDetails = {
   id: string;
@@ -151,45 +152,7 @@ export default function RegisterPage() {
   }
 
   if (!inviteToken && !clanJoinSlug) {
-    return (
-      <div className="space-y-6">
-        <div className="text-center">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-[.16em] text-brand-700">Organization access</p>
-          <h1 className="text-brand-900">Join your Pathment workspace</h1>
-          <p className="mt-3 leading-6 text-slate-600">
-            Your account starts from a secure invitation sent by your organization.
-          </p>
-        </div>
-
-        <div className="auth-card space-y-6">
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex gap-4">
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-700">
-                <MailCheck className="h-5 w-5" aria-hidden="true" />
-              </span>
-              <div>
-                <p className="font-semibold text-slate-950">Open your invitation email</p>
-                <p className="mt-1 text-sm leading-5 text-slate-600">The invitation opens the correct organization and verifies that you are allowed to join.</p>
-              </div>
-            </div>
-            <div className="my-5 h-px bg-slate-100" />
-            <div className="flex gap-4">
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
-                <Building2 className="h-5 w-5" aria-hidden="true" />
-              </span>
-              <div>
-                <p className="font-semibold text-slate-950">No invitation yet?</p>
-                <p className="mt-1 text-sm leading-5 text-slate-600">Ask your organization administrator to invite your work email.</p>
-              </div>
-            </div>
-          </div>
-          <Link href={scopedPath('/login')} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-brand-700">
-            <LogIn className="h-4 w-4" aria-hidden="true" />
-            Already have an account? Sign in
-          </Link>
-        </div>
-      </div>
-    );
+    return <OrganizationSignup />;
   }
 
   const handleAcceptInvite = async () => {

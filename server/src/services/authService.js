@@ -177,10 +177,15 @@ class AuthService {
       password,
       inviteToken,
       clanJoinSlug,
+      organization,
       phoneNumber,
       dateOfBirth,
       bio
     } = userData;
+
+    if (organization && !inviteToken && !clanJoinSlug) {
+      return this._registerOrganizationOwner({ firstName, lastName, email, password, organization });
+    }
 
     if (clanJoinSlug && !inviteToken) {
       return this._registerViaClanJoinSlug({
@@ -371,6 +376,58 @@ class AuthService {
     delete userResponse.passwordHash;
 
     return { user: userResponse };
+  }
+
+  /**
+   * Public organization signup. The account and its first workspace are one
+   * atomic operation, so a slug conflict or plan/setup failure cannot leave a
+   * user stranded without an organization. Member registration remains invite
+   * based; this path always creates an admin owner.
+   */
+  async _registerOrganizationOwner({ firstName, lastName, email, password, organization }) {
+    const organizationService = require('./organizationService');
+    if (!organizationService.workspaceCreationEnabled()) {
+      throw new AuthorizationError('New organization signup is temporarily unavailable');
+    }
+
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+    const hashedPassword = await bcrypt.hash(password, 12);
+    const verificationToken = generateRandomToken();
+    const tokenHash = hashToken(verificationToken);
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    const result = await sequelize.transaction(async (transaction) => {
+      const existingUser = await models.User.findOne({ where: { email: normalizedEmail }, transaction });
+      if (existingUser) throw new ConflictError(AUTH_MESSAGES.EMAIL_ALREADY_EXISTS);
+
+      const user = await models.User.create({
+        firstName,
+        lastName,
+        email: normalizedEmail,
+        passwordHash: hashedPassword,
+        role: 'admin',
+        emailVerified: false,
+        status: 'active',
+      }, { transaction });
+
+      await models.UserSettings.create({ userId: user.id }, { transaction });
+      const createdOrganization = await organizationService.create(user.id, organization, { transaction });
+      await models.EmailVerificationToken.create({
+        userId: user.id,
+        token: tokenHash,
+        expiresAt,
+      }, { transaction });
+
+      return { user, organization: createdOrganization };
+    });
+
+    notificationOrchestrator.sendEmailVerificationEmail(result.user, verificationToken, result.organization.slug).catch((error) => {
+      console.warn('organization owner verification email failed:', error.message);
+    });
+
+    const userResponse = result.user.toJSON();
+    delete userResponse.passwordHash;
+    return { user: userResponse, organization: result.organization, requiresEmailVerification: true };
   }
 
   /**
