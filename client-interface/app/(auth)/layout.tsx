@@ -9,7 +9,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
     <div data-public-appearance className="auth-shell">
       <aside className="auth-story">
         <SummitBackdrop />
-        <Link href="/programs" className="flex w-fit items-center gap-3 text-xl font-semibold">
+        <Link href="https://pathment.me" className="flex w-fit items-center gap-3 text-xl font-semibold">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo-tile.png" alt="" width={40} height={40} className="rounded-xl" />Pathment
         </Link>
@@ -21,7 +21,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
             {[{ icon: Route, title: 'Find your direction', detail: 'A clear roadmap, one step at a time.' }, { icon: Users, title: 'Grow with people', detail: 'Mentors and a community along the way.' }, { icon: CheckCircle2, title: 'Make progress visible', detail: 'Your work, feedback, and milestones together.' }].map(({ icon: Icon, title, detail }) => <div key={title} className="flex items-start gap-4"><span className="rounded-xl border border-white/15 bg-white/10 p-2.5"><Icon size={19} aria-hidden="true" /></span><div><p className="text-sm font-medium">{title}</p><p className="mt-1 text-sm text-teal-50/65">{detail}</p></div></div>)}
           </div>
         </div>
-        <Link href="/programs" className="mt-8 flex w-fit items-center gap-2 text-sm text-teal-100 hover:text-white">Explore available programs <ArrowUpRight size={16} /></Link>
+        <Link href="https://pathment.me" className="mt-8 flex w-fit items-center gap-2 text-sm text-teal-100 hover:text-white">About Pathment <ArrowUpRight size={16} /></Link>
       </aside>
       <main id="auth-content" className="auth-main"><div className="auth-form">{children}</div><p className="mt-8 text-center text-xs text-muted-foreground">Pathment · Learn with direction. Grow together.</p></main>
     </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/context/AuthContext';
@@ -8,7 +8,8 @@ import { TwoFactorCodeInput } from '@/components/shared/TwoFactorCodeInput';
 import { extractApiErrorMessage, getRateLimit, formatRetryAfter, getErrorCode } from '@/lib/utils/api-error';
 import { Mail, Lock, ArrowRight, AlertCircle, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { workspaceLandingPath, workspacePath } from '@/lib/services/workspace-scope';
+import { activeWorkspaceSlug, workspaceLandingPath, workspacePath } from '@/lib/services/workspace-scope';
+import { tokenStore } from '@/lib/services/token-store';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -25,6 +26,7 @@ export default function LoginPage() {
   const [cooldownUntil, setCooldownUntil] = useState(0);
   const [now, setNow] = useState(() => Date.now());
   const cooldownSec = Math.max(0, Math.ceil((cooldownUntil - now) / 1000));
+  const scopedWorkspace = activeWorkspaceSlug();
 
   // Tick every second while a cooldown is active so the countdown updates live.
   useEffect(() => {
@@ -39,6 +41,10 @@ export default function LoginPage() {
   // only: anything else is ignored so the param can't be used as an open redirect.
   const nextParam = searchParams.get('next');
   const returnTo = nextParam && nextParam.startsWith('/') && !nextParam.startsWith('//') ? nextParam : null;
+  const destinationFor = useCallback((currentUser: Parameters<typeof workspaceLandingPath>[0]) => {
+    if (!scopedWorkspace) return '/';
+    return returnTo ? workspacePath(returnTo) : workspaceLandingPath(currentUser);
+  }, [returnTo, scopedWorkspace]);
 
   // Check if redirected due to expired session
   useEffect(() => {
@@ -50,11 +56,13 @@ export default function LoginPage() {
 
   // Redirect if already logged in
   useEffect(() => {
-    if (!isLoading && user && !requiresTwoFactor && !redirecting) {
-      const destination = returnTo ? workspacePath(returnTo) : workspaceLandingPath(user);
-      router.replace(destination);
+    if (isLoading || requiresTwoFactor || redirecting) return;
+    if (!scopedWorkspace && tokenStore.getToken()) {
+      router.replace('/');
+    } else if (user) {
+      router.replace(destinationFor(user));
     }
-  }, [user, isLoading, requiresTwoFactor, redirecting, router, returnTo]);
+  }, [user, isLoading, requiresTwoFactor, redirecting, router, destinationFor, scopedWorkspace]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,7 +74,7 @@ export default function LoginPage() {
       const result = await login(formData, rememberMe);
       // Use returned result instead of state to avoid stale value race.
       if (!result.requiresTwoFactor && result.user) {
-        const destination = returnTo ? workspacePath(returnTo) : workspaceLandingPath(result.user);
+        const destination = destinationFor(result.user);
         setRedirecting(true);
         toast.success('Welcome back!');
         router.replace(destination);
@@ -92,7 +100,7 @@ export default function LoginPage() {
   const handle2FAVerify = async (code: string) => {
     const verifiedUser = await verify2FA(code, rememberMe);
     // After successful 2FA, resume where they were (or the dashboard).
-    const destination = returnTo ? workspacePath(returnTo) : workspaceLandingPath(verifiedUser);
+    const destination = destinationFor(verifiedUser);
     setRedirecting(true);
     router.replace(destination);
   };
@@ -117,7 +125,7 @@ export default function LoginPage() {
           // Reset form and logout user to go back to login if they cancel
           setFormData({ email: '', password: '' });
           setError('');
-          window.location.href = workspacePath('/login');
+          window.location.href = scopedWorkspace ? workspacePath('/login') : '/login';
         }}
         userEmail={user?.email}
       />
@@ -148,7 +156,7 @@ export default function LoginPage() {
                   ? `You can try again in ${formatRetryAfter(cooldownSec)}.`
                   : 'Please check your credentials and try again'}
               </p>
-              {workspaceError === 'WORKSPACE_NOT_FOUND' && (
+              {scopedWorkspace && workspaceError === 'WORKSPACE_NOT_FOUND' && (
                 <Link className="mt-2 inline-block text-sm underline" href="/">
                   Choose another workspace
                 </Link>

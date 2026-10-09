@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { validWorkspaceSlug, legacyWorkspaceFromHostname } from './lib/services/workspace-scope';
 
 const WORKSPACE_COOKIE = 'pathment-workspace';
+const ACCOUNT_ROUTES = new Set(['/', '/login', '/register', '/reset-password', '/verify-email', '/workspaces']);
 
 function hostname(request: NextRequest) {
   return (request.headers.get('host') || '')
@@ -68,7 +69,7 @@ export function proxy(request: NextRequest) {
     // Account-level entry points are deliberately workspace-neutral. The root
     // decides from the signed-in account's real memberships; it must never
     // infer a tenant from a stale cookie or the deployment's demo workspace.
-    if (pathname === '/' || pathname === '/workspaces') return NextResponse.next();
+    if (ACCOUNT_ROUTES.has(pathname)) return NextResponse.next();
     const remembered = request.cookies.get(WORKSPACE_COOKIE)?.value;
     const target = request.nextUrl.clone();
     // Old short links may reuse a workspace the browser actually visited. With

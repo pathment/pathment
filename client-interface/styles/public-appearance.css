@@ -21,6 +21,13 @@
 .auth-form > div > .text-center > img { width: 40px; height: 40px; margin-bottom: 1.25rem; }
 .auth-card { background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: clamp(1.25rem, 3vw, 2rem); box-shadow: 0 8px 30px #103e3610; }
 .auth-form input:not([type=checkbox]) { background: #fff; color: #183a37; }
+.auth-form input:-webkit-autofill,
+.auth-form input:-webkit-autofill:hover,
+.auth-form input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #183a37;
+  -webkit-box-shadow: 0 0 0 1000px #f4faf8 inset;
+  caret-color: #183a37;
+}
 .auth-form input { accent-color: var(--brand-600); }
 .public-hero { border-radius: 28px; padding: clamp(1.5rem, 5vw, 4rem); background: radial-gradient(ellipse at right top, #d6f2e7, transparent 65%), #eaf4ef; border: 1px solid #d8e9e0; }
 @media (min-width: 900px) { .auth-form > div > .text-center > img { display: none; } }

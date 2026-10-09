@@ -12,6 +12,7 @@ import { CreateWorkspaceDrawer } from '@/components/settings/OrganizationSetting
 import { tokenStore } from '@/lib/services/token-store';
 import { WorkspaceChooser } from '@/components/shared/WorkspaceChooser';
 import { activeWorkspaceSlug } from '@/lib/services/workspace-scope';
+import '@/styles/public-appearance.css';
 
 export default function WorkspacesPage() {
   const { user, isLoading } = useAuth();
@@ -28,7 +29,7 @@ export default function WorkspacesPage() {
 
   if (isLoading) return <div role="status" className="grid min-h-screen place-items-center bg-slate-50"><Loader2 className="h-6 w-6 animate-spin text-brand-600" /><span className="sr-only">Loading account</span></div>;
 
-  return <main className="relative min-h-screen overflow-hidden bg-slate-50 px-5 py-8 sm:px-8">
+  return <main data-public-appearance className="relative min-h-screen overflow-hidden bg-[var(--background)] px-5 py-8 sm:px-8">
     <div className="pointer-events-none absolute inset-x-0 top-0 h-80 bg-gradient-to-b from-brand-50/90 to-transparent" />
     <div className="relative mx-auto max-w-2xl pt-8 sm:pt-14">
       <div className="flex items-center gap-3">
@@ -41,7 +42,7 @@ export default function WorkspacesPage() {
         <h1 className="mt-4 text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">Your workspaces</h1>
         <p className="mt-3 leading-7 text-slate-600">Switch organizations without signing in again. Your people, programs, and roles stay separate.</p>
       </div>
-      {!hasSession ? <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"><p className="text-sm text-slate-600">Your session has ended. Choose a workspace to sign in again.</p><Link href="/" className="mt-4 inline-flex items-center gap-2 rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white"><LogIn className="h-4 w-4" aria-hidden="true" />Choose a workspace</Link></div> : <>
+      {!hasSession ? <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"><p className="text-sm text-slate-600">Your session has ended. Sign in to see the organizations connected to your account.</p><Link href="/login" className="mt-4 inline-flex items-center gap-2 rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white"><LogIn className="h-4 w-4" aria-hidden="true" />Sign in</Link></div> : <>
         {loading ? <div role="status" className="mt-10 flex items-center gap-3 text-sm text-slate-600"><Loader2 className="h-5 w-5 animate-spin text-brand-600" />Loading your organizations…</div> : error ? <div role="alert" className="mt-8 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-950"><p>{error}</p><button onClick={() => void refetch()} className="mt-3 font-semibold text-brand-700">Try again</button></div> : <div className="mt-8"><WorkspaceChooser organizations={workspaces} recentSlug={activeWorkspaceSlug()} onOpen={switchWorkspace} canCreate={canCreate} onCreate={() => setCreating(true)} /></div>}
         {!loading && !error && !canCreate && <p className="mt-6 text-center text-xs text-slate-500">Only active organization memberships are shown.</p>}
         {creating && canCreate && <CreateWorkspaceDrawer onClose={() => setCreating(false)} onCreated={switchWorkspace} />}

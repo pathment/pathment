@@ -152,8 +152,10 @@ test('proxy validates cookie fallback, ignores forwarded host, and rewrites scop
   }
   assert.equal(proxy(request('/')).kind, 'next');
   assert.equal(proxy(request('/workspaces', 'devweekends')).kind, 'next');
-  assert.equal(proxy(request('/login')).url.pathname, '/');
-  assert.equal(proxy(request('/login', 'acme')).url.pathname, '/w/acme/login');
+  assert.equal(proxy(request('/login')).kind, 'next');
+  assert.equal(proxy(request('/login', 'acme')).kind, 'next');
+  assert.equal(proxy(request('/register', 'acme')).kind, 'next');
+  assert.equal(proxy(request('/reset-password', 'acme')).kind, 'next');
   assert.equal(proxy(request('/api/health')).kind, 'next');
   assert.equal(proxy(request('/w/acme/report.csv')).url.pathname, '/report.csv');
   assert.equal(proxy(request('/w/app/login')).status, 404);
