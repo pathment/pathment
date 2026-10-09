@@ -8,7 +8,7 @@ import { activeWorkspaceSlug } from '../services/workspace-scope';
 import { apiClient } from '../services/api-client';
 import { apiConfig } from '../config/api';
 import { tokenStore } from '../services/token-store';
-import { startAuthSession, resetAuthSession } from '../services/auth-session';
+import { SessionExpiredError, startAuthSession, resetAuthSession, restoreAccessToken } from '../services/auth-session';
 
 /** Keep in sync with ClanContext storage keys (avoid importing ClanContext here — circular). */
 const MENTOR_CLAN_STORAGE_KEY = 'pathment-active-clan';
@@ -113,7 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const workspace = activeWorkspaceSlug();
     const isCurrent = () => version === authCheckVersion.current && workspace === activeWorkspaceSlug();
     try {
-      const token = tokenStore.getToken();
+      const token = await restoreAccessToken();
       const cachedUser = tokenStore.getUser<User>();
       const cachedWorkspace = tokenStore.getCachedUserWorkspace();
       if (!token) {
@@ -158,7 +158,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error('Auth check failed:', error);
       setUser(null);
       setActiveRoleState(null);
-      if (getHttpStatus(error) === 401) tokenStore.clearSession();
+      if (error instanceof SessionExpiredError || getHttpStatus(error) === 401) tokenStore.clearSession();
     } finally {
       if (isCurrent()) setIsLoading(false);
     }

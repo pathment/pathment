@@ -68,9 +68,26 @@ function decodeExpiryMs(token: string | null): number | null {
 
 /** True when we hold a token that is expired or about to be. */
 function needsRefresh(): boolean {
-  const exp = decodeExpiryMs(tokenStore.getToken());
+  const current = tokenStore.getToken();
+  // A persisted refresh credential without an access token is still a session
+  // we can restore. Treat it as immediately due instead of silently leaving the
+  // account signed out until the visitor enters a workspace again.
+  if (!current) return Boolean(tokenStore.getRefreshToken());
+  const exp = decodeExpiryMs(current);
   if (exp === null) return false;
   return Date.now() >= exp - REFRESH_SKEW_MS;
+}
+
+/**
+ * Return a usable account access token, restoring the persisted session when
+ * the short-lived access token is missing. Refresh is single-flight, so the
+ * root gateway and AuthProvider can safely arrive here at the same time.
+ */
+export async function restoreAccessToken(): Promise<string | null> {
+  const current = tokenStore.getToken();
+  if (current) return current;
+  if (!tokenStore.getRefreshToken()) return null;
+  return refreshAccessToken();
 }
 
 /**
