@@ -1,17 +1,17 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/context/AuthContext';
-import { Mail, Lock, User, ArrowRight, CheckCircle2, AlertCircle, Loader2, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, User, ArrowRight, CheckCircle2, AlertCircle, Loader2, Eye, EyeOff, Building2, LogIn, MailCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiClient } from '@/lib/services/api-client';
 import { apiConfig } from '@/lib/config/api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { validatePassword } from '@/lib/utils/validation';
 import { PasswordRequirements } from '@/components/shared/PasswordRequirements';
-import { workspacePath } from '@/lib/services/workspace-scope';
+import { workspacePath, workspaceSlugFromPathname } from '@/lib/services/workspace-scope';
 
 type InviteDetails = {
   id: string;
@@ -19,6 +19,7 @@ type InviteDetails = {
   role: 'mentor' | 'mentee';
   expiresAt: string;
   existingAccount?: boolean;
+  organization?: { id: string; name: string; slug: string; logoUrl?: string | null } | null;
   program?: { id: string; name: string } | null;
   clan?: { id: string; name: string } | null;
   applicant?: { firstName: string; lastName: string } | null;
@@ -35,6 +36,7 @@ type ClanJoinDetails = {
 
 export default function RegisterPage() {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const { register, user, isLoading, refreshUser } = useAuth();
   const [formData, setFormData] = useState({
@@ -59,13 +61,15 @@ export default function RegisterPage() {
   const inviteToken = searchParams.get('invite')?.trim() || '';
   const clanJoinSlug = searchParams.get('clanJoin')?.trim() || '';
   const joinReturnPath = clanJoinSlug ? `/clan/join/${encodeURIComponent(clanJoinSlug)}` : '';
+  const scopedWorkspace = workspaceSlugFromPathname(pathname);
+  const scopedPath = (path: string) => workspacePath(path, scopedWorkspace);
 
   // Redirect if already logged in — unless this is an existing-account clan invite.
   useEffect(() => {
     if (isLoading || !user) return;
     if (inviteToken) return;
-    router.push(joinReturnPath || workspacePath('/'));
-  }, [user, isLoading, router, joinReturnPath, inviteToken, inviteDetails]);
+    router.push(workspacePath(joinReturnPath || '/', scopedWorkspace));
+  }, [user, isLoading, router, joinReturnPath, inviteToken, inviteDetails, scopedWorkspace]);
 
   // Validate invite token OR public clan join slug before allowing registration
   useEffect(() => {
@@ -77,7 +81,6 @@ export default function RegisterPage() {
 
     if (!inviteToken && !clanJoinSlug) {
       setInviteLoading(false);
-      setInviteError('An invite link or clan joining link is required to create an account.');
       return;
     }
 
@@ -102,6 +105,15 @@ export default function RegisterPage() {
             firstName: prev.firstName || invite.applicant?.firstName || '',
             lastName: prev.lastName || invite.applicant?.lastName || '',
           }));
+
+          // Old/raw invite URLs are still accepted, then canonicalized onto the
+          // organization URL. The registration form should always visibly
+          // belong to the workspace the person is joining.
+          const inviteWorkspace = invite.organization?.slug;
+          if (inviteWorkspace && workspaceSlugFromPathname(pathname) !== inviteWorkspace) {
+            router.replace(workspacePath(`/register?invite=${encodeURIComponent(inviteToken)}`, inviteWorkspace));
+            return;
+          }
           return;
         }
 
@@ -124,7 +136,7 @@ export default function RegisterPage() {
     };
 
     validate();
-  }, [inviteToken, clanJoinSlug]);
+  }, [inviteToken, clanJoinSlug, pathname, router]);
 
   if (isLoading || inviteLoading) {
     return (
@@ -138,6 +150,51 @@ export default function RegisterPage() {
     return null;
   }
 
+  if (!inviteToken && !clanJoinSlug) {
+    return (
+      <div className="space-y-6">
+        <div className="text-left">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo-tile.png" alt="Pathment" className="mb-5 inline-block h-12 w-12 rounded-xl shadow-sm" />
+          <p className="mb-2 text-xs font-semibold uppercase tracking-[.16em] text-brand-700">Organization access</p>
+          <h1 className="text-brand-900">Join Pathment through your organization</h1>
+          <p className="mt-3 leading-6 text-slate-600">
+            Pathment accounts are connected to a real workspace, so there is no public account signup form.
+          </p>
+        </div>
+
+        <div className="auth-card space-y-5">
+          <div className="flex gap-4 rounded-2xl border border-brand-100 bg-brand-50/70 p-4">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-brand-700 shadow-sm">
+              <MailCheck className="h-5 w-5" aria-hidden="true" />
+            </span>
+            <div>
+              <p className="font-medium text-brand-950">Open your invitation email</p>
+              <p className="mt-1 text-sm leading-5 text-slate-600">
+                Your organization&apos;s invitation opens its verified workspace and secure account setup automatically.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex gap-4 px-1">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
+              <Building2 className="h-5 w-5" aria-hidden="true" />
+            </span>
+            <div>
+              <p className="text-sm font-medium text-slate-900">No invitation yet?</p>
+              <p className="mt-1 text-sm leading-5 text-slate-600">Ask your organization administrator to invite your email address.</p>
+            </div>
+          </div>
+
+          <Link href={scopedPath('/login')} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-brand-700">
+            <LogIn className="h-4 w-4" aria-hidden="true" />
+            Sign in to an existing account
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   const handleAcceptInvite = async () => {
     if (!inviteToken || !user) return;
     setAccepting(true);
@@ -145,7 +202,7 @@ export default function RegisterPage() {
       await apiClient.post(apiConfig.endpoints.acceptInvite(inviteToken));
       await refreshUser();
       toast.success(inviteDetails?.clan ? 'You joined the clan.' : 'You joined the workspace.');
-      router.push(workspacePath(`/${inviteDetails?.role === 'mentor' ? 'mentor' : 'mentee'}/dashboard`));
+      router.push(scopedPath(`/${inviteDetails?.role === 'mentor' ? 'mentor' : 'mentee'}/dashboard`));
     } catch (error: unknown) {
       toast.error(extractApiErrorMessage(error, 'Could not accept this invite'));
     } finally {
@@ -200,10 +257,10 @@ export default function RegisterPage() {
       if (clanJoinSlug) {
         const next = result?.clanJoin?.joinPath || joinReturnPath;
         toast.success('Account created! Log in to continue joining the clan.');
-        setTimeout(() => router.push(workspacePath(`/login?next=${encodeURIComponent(next)}`)), 1500);
+        setTimeout(() => router.push(scopedPath(`/login?next=${encodeURIComponent(next)}`)), 1500);
       } else {
         toast.success('Account created! You can now log in.');
-        setTimeout(() => router.push(workspacePath('/login')), 1500);
+        setTimeout(() => router.push(scopedPath('/login')), 1500);
       }
     } catch (err: unknown) {
       const message = extractApiErrorMessage(err, 'Registration failed');
@@ -215,26 +272,33 @@ export default function RegisterPage() {
   };
 
   const emailLocked = Boolean(inviteDetails?.email);
+  const organizationName = inviteDetails?.organization?.name;
+  const registrationName = organizationName || clanJoinDetails?.clan?.name;
+  const registrationLogo = inviteDetails?.organization?.logoUrl || '/logo-tile.png';
 
   return (
     <div className="auth-register space-y-4">
       <div className="text-center">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/logo-tile.png" alt="Pathment" className="inline-block w-16 h-16 rounded-2xl shadow-sm mb-4" />
-        <h1 className="text-brand-900 mb-2">Create your Pathment account</h1>
+        <img src={registrationLogo} alt={organizationName ? `${organizationName} logo` : 'Pathment'} className="inline-block h-14 w-14 rounded-2xl object-cover shadow-sm mb-4" />
+        <p className="mb-2 text-xs font-semibold uppercase tracking-[.16em] text-brand-700">{registrationName ? `Invited by ${registrationName}` : 'Secure invitation'}</p>
+        <h1 className="text-brand-900 mb-2">{registrationName ? `Join ${registrationName}` : 'Create your Pathment account'}</h1>
         <p className="text-slate-600">
-          {clanJoinSlug ? 'Continue from your clan joining link' : 'Invite-only signup for approved users'}
+          {clanJoinSlug ? 'Create your account to continue your clan request.' : 'Set up your account with this verified organization invitation.'}
         </p>
       </div>
 
       <div className="auth-card">
         {inviteError && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+          <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-5 flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
             <div>
-              <p className="text-red-900">{inviteToken || clanJoinSlug ? 'Joining link unavailable' : 'You’ll need an invitation'}</p>
-              <p className="text-red-700 text-sm mt-1">{inviteError}</p>
-              <Link href="/programs" className="mt-3 inline-block text-sm font-medium text-brand-700 underline">Explore programs accepting applications →</Link>
+              <p className="font-medium text-amber-950">This invitation can&apos;t be used</p>
+              <p className="text-amber-900/80 text-sm mt-1">{inviteError}</p>
+              <p className="mt-2 text-sm text-slate-600">Ask the organization administrator for a new invitation, or sign in if you already joined.</p>
+              <Link href={scopedPath('/login')} className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-brand-700 hover:text-brand-800">
+                Sign in <ArrowRight className="h-4 w-4" aria-hidden="true" />
+              </Link>
             </div>
           </div>
         )}
@@ -242,9 +306,9 @@ export default function RegisterPage() {
         {!inviteError && inviteDetails && (
           <div className="mb-6 p-4 bg-brand-50 dark:bg-brand-500/10 border border-brand-200 dark:border-brand-500/20 rounded-xl">
             <p className="text-brand-900 text-sm">
-              You are invited as <span className="font-semibold capitalize">{inviteDetails.role}</span>
+              {organizationName ? <>Invitation from <span className="font-semibold">{organizationName}</span></> : <>You are invited as <span className="font-semibold capitalize">{inviteDetails.role}</span></>}
             </p>
-            <p className="text-brand-700 text-sm mt-1">Invite email: {inviteDetails.email}</p>
+            <p className="text-brand-700 text-sm mt-1">Joining as <span className="font-medium capitalize">{inviteDetails.role}</span> · {inviteDetails.email}</p>
             {(inviteDetails.program || inviteDetails.clan) && (
               <p className="text-brand-700 text-sm mt-1">
                 {inviteDetails.role === 'mentor' ? 'Mentoring' : 'Joining'}
@@ -255,7 +319,7 @@ export default function RegisterPage() {
             {inviteDetails.existingAccount && !user && (
               <p className="text-brand-700 text-sm mt-2">
                 You already have an account.{' '}
-                <Link href={workspacePath(`/login?next=${encodeURIComponent(`/register?invite=${inviteToken}`)}`)} className="underline font-medium">
+                <Link href={scopedPath(`/login?next=${encodeURIComponent(`/register?invite=${inviteToken}`)}`)} className="underline font-medium">
                   Sign in to join this clan
                 </Link>
               </p>
@@ -438,7 +502,7 @@ export default function RegisterPage() {
         <p className="text-center text-sm text-slate-500 mt-6">
           Already have an account?{' '}
           <Link
-            href={workspacePath(joinReturnPath ? `/login?next=${encodeURIComponent(joinReturnPath)}` : '/login')}
+            href={scopedPath(joinReturnPath ? `/login?next=${encodeURIComponent(joinReturnPath)}` : '/login')}
             className="font-medium text-brand-700 hover:text-brand-800"
           >
             Log in

@@ -266,13 +266,12 @@ export default function LoginPage() {
           </button>
         </form>
 
-        {/* Register Link */}
-        <div className="mt-6 text-center">
-          <p className="text-slate-600 text-sm">
-            Don&apos;t have an account?{' '}
-            <Link href={authPath('/register')} className="text-brand-600 hover:text-brand-700">
-              Sign up
-            </Link>
+        {/* Registration is organization-led. A generic signup link creates a
+            dead end because every account must begin with a trusted invite. */}
+        <div className="mt-6 rounded-xl border border-brand-100 bg-brand-50/70 px-4 py-3 text-left">
+          <p className="text-sm font-medium text-brand-900">Joining Pathment for the first time?</p>
+          <p className="mt-1 text-sm leading-5 text-slate-600">
+            Open the invitation from your organization. It will take you to their secure account setup page.
           </p>
         </div>
       </div>

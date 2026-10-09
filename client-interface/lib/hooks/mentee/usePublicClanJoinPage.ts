@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/context/AuthContext';
 import { qk, useApiQuery, useInvalidate } from '@/lib/query';
 import { publicApi, type PublicClanJoinInfo } from '@/lib/services/public-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
+import { workspacePath } from '@/lib/services/workspace-scope';
 
 export interface UsePublicClanJoinPageReturn {
   info: PublicClanJoinInfo | null;
@@ -32,11 +33,11 @@ export function usePublicClanJoinPage(token: string): UsePublicClanJoinPageRetur
   const [message, setMessage] = useState('');
 
   const joinPath = `/clan/join/${encodeURIComponent(token)}`;
-  const loginHref = `/login?next=${encodeURIComponent(joinPath)}`;
-  const registerHref = `/register?clanJoin=${encodeURIComponent(token)}`;
+  const loginHref = workspacePath(`/login?next=${encodeURIComponent(joinPath)}`);
+  const registerHref = workspacePath(`/register?clanJoin=${encodeURIComponent(token)}`);
   const continueHref = user
-    ? '/mentee/dashboard'
-    : `/login?next=${encodeURIComponent('/mentee/dashboard')}`;
+    ? workspacePath('/mentee/dashboard')
+    : workspacePath(`/login?next=${encodeURIComponent('/mentee/dashboard')}`);
 
   const viewer = user?.id ?? 'anon';
   const { data: info = null, loading, error } = useApiQuery<PublicClanJoinInfo | null>({

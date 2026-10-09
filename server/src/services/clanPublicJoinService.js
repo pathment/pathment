@@ -594,7 +594,8 @@ class ClanPublicJoinService {
 
   _buildJoinUrl(slug) {
     const base = require('../utils/applicationUrl')();
-    return `${base}/clan/join/${slug}`;
+    const workspace = require('../utils/links').tenantSlug();
+    return `${base}/w/${workspace}/clan/join/${slug}`;
   }
 
   async _mintUniqueSlug() {

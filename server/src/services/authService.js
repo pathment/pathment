@@ -20,6 +20,7 @@ const notificationOrchestrator = require('./notificationOrchestrator');
 const { NOTIFICATION_EVENTS } = require('../config/notificationMatrix');
 const { mapResponsesToProfile } = require('../config/intakeProfileFields');
 const logger = require('../utils/logger');
+const { orgLogoThumb } = require('../utils/imageUrl');
 
 /**
  * How long after rotation a spent refresh token is still treated as a retry
@@ -69,7 +70,11 @@ class AuthService {
 
     // Surface the placement so the registration page can show (read-only)
     // which program/clan the person is joining.
-    const [program, clan, application] = await Promise.all([
+    const [organization, program, clan, application] = await Promise.all([
+      models.Organization.findByPk(invite.organizationId, {
+        attributes: ['id', 'name', 'slug', 'logoUrl'],
+        skipOrganizationScope: true
+      }),
       invite.programId ? models.Program.findByPk(invite.programId, { attributes: ['id', 'name'] }) : null,
       invite.clanId ? models.Clan.findByPk(invite.clanId, { attributes: ['id', 'name'] }) : null,
       // If this invite came from an application, prefill the registrant's name
@@ -85,6 +90,12 @@ class AuthService {
       role: invite.role,
       expiresAt: invite.expiresAt,
       existingAccount: Boolean(existingUser),
+      organization: organization ? {
+        id: organization.id,
+        name: organization.name,
+        slug: organization.slug,
+        logoUrl: orgLogoThumb(organization.logoUrl || null) || null
+      } : null,
       program: program ? { id: program.id, name: program.name } : null,
       clan: clan ? { id: clan.id, name: clan.name } : null,
       applicant: application ? { firstName: application.firstName || '', lastName: application.lastName || '' } : null
