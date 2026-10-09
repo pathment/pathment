@@ -153,42 +153,39 @@ export default function RegisterPage() {
   if (!inviteToken && !clanJoinSlug) {
     return (
       <div className="space-y-6">
-        <div className="text-left">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo-tile.png" alt="Pathment" className="mb-5 inline-block h-12 w-12 rounded-xl shadow-sm" />
-          <p className="mb-2 text-xs font-semibold uppercase tracking-[.16em] text-brand-700">Organization access</p>
-          <h1 className="text-brand-900">Join Pathment through your organization</h1>
+        <div className="text-center">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-[.16em] text-brand-700">Organization access</p>
+          <h1 className="text-brand-900">Join your Pathment workspace</h1>
           <p className="mt-3 leading-6 text-slate-600">
-            Pathment accounts are connected to a real workspace, so there is no public account signup form.
+            Your account starts from a secure invitation sent by your organization.
           </p>
         </div>
 
-        <div className="auth-card space-y-5">
-          <div className="flex gap-4 rounded-2xl border border-brand-100 bg-brand-50/70 p-4">
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-brand-700 shadow-sm">
-              <MailCheck className="h-5 w-5" aria-hidden="true" />
-            </span>
-            <div>
-              <p className="font-medium text-brand-950">Open your invitation email</p>
-              <p className="mt-1 text-sm leading-5 text-slate-600">
-                Your organization&apos;s invitation opens its verified workspace and secure account setup automatically.
-              </p>
+        <div className="auth-card space-y-6">
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex gap-4">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-700">
+                <MailCheck className="h-5 w-5" aria-hidden="true" />
+              </span>
+              <div>
+                <p className="font-semibold text-slate-950">Open your invitation email</p>
+                <p className="mt-1 text-sm leading-5 text-slate-600">The invitation opens the correct organization and verifies that you are allowed to join.</p>
+              </div>
+            </div>
+            <div className="my-5 h-px bg-slate-100" />
+            <div className="flex gap-4">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
+                <Building2 className="h-5 w-5" aria-hidden="true" />
+              </span>
+              <div>
+                <p className="font-semibold text-slate-950">No invitation yet?</p>
+                <p className="mt-1 text-sm leading-5 text-slate-600">Ask your organization administrator to invite your work email.</p>
+              </div>
             </div>
           </div>
-
-          <div className="flex gap-4 px-1">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
-              <Building2 className="h-5 w-5" aria-hidden="true" />
-            </span>
-            <div>
-              <p className="text-sm font-medium text-slate-900">No invitation yet?</p>
-              <p className="mt-1 text-sm leading-5 text-slate-600">Ask your organization administrator to invite your email address.</p>
-            </div>
-          </div>
-
           <Link href={scopedPath('/login')} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-brand-700">
             <LogIn className="h-4 w-4" aria-hidden="true" />
-            Sign in to an existing account
+            Already have an account? Sign in
           </Link>
         </div>
       </div>

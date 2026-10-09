@@ -21,11 +21,11 @@ function BrandHeader() {
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/logo-tile.png" alt="" className="h-11 w-11 rounded-xl shadow-sm" />
         <span>
-          <span className="block text-base font-bold leading-tight text-slate-950">Pathment</span>
-          <span className="block text-xs text-slate-500">Your mentorship workspace</span>
+          <span className="block text-base font-bold leading-tight text-white">Pathment</span>
+          <span className="block text-xs text-brand-100">Your mentorship workspace</span>
         </span>
       </span>
-      <Link href="https://pathment.me" className="text-sm font-medium text-slate-600 hover:text-brand-700">About Pathment</Link>
+      <Link href="https://pathment.me" className="text-sm font-medium text-brand-100 hover:text-white">About Pathment</Link>
     </header>
   );
 }
@@ -94,26 +94,26 @@ export default function HomePage() {
   }
 
   return (
-    <main data-public-appearance className="relative min-h-screen overflow-hidden bg-[var(--background)] px-5 py-6 sm:px-8 sm:py-8">
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-80 bg-gradient-to-b from-brand-50/90 to-transparent" />
+    <main data-public-appearance className="relative min-h-screen overflow-hidden bg-[#f4f7f6] px-5 py-6 sm:px-8 sm:py-8">
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-[430px] bg-[radial-gradient(circle_at_75%_10%,#118b7c_0,transparent_34%),linear-gradient(135deg,#073f3b,#075e57)]" />
       <div className="relative mx-auto max-w-5xl">
         <BrandHeader />
 
         {state === 'choose' && (
-          <section className="mx-auto mt-16 max-w-2xl sm:mt-20">
-            <div className="mb-7">
-              <span className="inline-flex items-center gap-2 rounded-full border border-brand-200 bg-white/80 px-3 py-1 text-xs font-semibold text-brand-700 shadow-sm">
+          <section className="mx-auto mt-14 max-w-3xl sm:mt-20">
+            <div className="mb-9 text-center text-white">
+              <span className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-semibold text-brand-50">
                 <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" /> Signed in{cachedUser?.email ? ` as ${cachedUser.email}` : ''}
               </span>
-              <h1 className="mt-5 text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
+              <h1 className="mt-5 text-3xl font-semibold tracking-tight text-white sm:text-5xl">
                 {organizations.length === 0
                   ? 'You’re signed in — now join a workspace'
                   : cachedUser?.firstName ? `Welcome back, ${cachedUser.firstName}` : 'Choose a workspace'}
               </h1>
-              <p className="mt-3 text-base leading-7 text-slate-600">
+              <p className="mt-3 text-base leading-7 text-brand-50/80">
                 {organizations.length === 0
                   ? 'Open an invitation from your organization, or create a workspace if workspace creation is available for your account.'
-                  : 'Choose the organization you want to open. Pathment will remember it for next time.'}
+                  : 'Choose where you want to continue.'}
               </p>
             </div>
             <WorkspaceChooser
@@ -123,9 +123,6 @@ export default function HomePage() {
               canCreate={canCreate}
               onCreate={() => setCreating(true)}
             />
-            {organizations.length > 0 && (
-              <p className="mt-5 text-center text-xs text-slate-500">Only organizations where your account has an active membership are shown.</p>
-            )}
             <button type="button" onClick={() => void signOutAccount()} className="mx-auto mt-6 flex items-center gap-2 text-sm font-medium text-slate-600 transition hover:text-brand-700">
               <LogOut className="h-4 w-4" aria-hidden="true" /> Sign out or use another account
             </button>

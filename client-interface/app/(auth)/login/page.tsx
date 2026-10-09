@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useAuth } from '@/lib/context/AuthContext';
 import { TwoFactorCodeInput } from '@/components/shared/TwoFactorCodeInput';
 import { extractApiErrorMessage, getRateLimit, formatRetryAfter, getErrorCode } from '@/lib/utils/api-error';
-import { Mail, Lock, ArrowRight, AlertCircle, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { Mail, Lock, ArrowRight, ArrowLeft, AlertCircle, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { workspaceLandingPath, workspacePath, workspaceSlugFromPathname } from '@/lib/services/workspace-scope';
 import { tokenStore } from '@/lib/services/token-store';
@@ -16,7 +16,9 @@ export default function LoginPage() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { login, verify2FA, user, isLoading, requiresTwoFactor } = useAuth();
-  const [formData, setFormData] = useState({ email: '', password: '' });
+  const initialEmail = searchParams.get('email')?.trim() || '';
+  const [formData, setFormData] = useState({ email: initialEmail, password: '' });
+  const [step, setStep] = useState<'email' | 'password'>(initialEmail ? 'password' : 'email');
   const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState('');
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
@@ -102,6 +104,14 @@ export default function LoginPage() {
     }
   };
 
+  const continueWithEmail = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!formData.email.trim()) return;
+    setError('');
+    setWorkspaceError(null);
+    setStep('password');
+  };
+
   const handle2FAVerify = async (code: string) => {
     const verifiedUser = await verify2FA(code, rememberMe);
     // After successful 2FA, resume where they were (or the dashboard).
@@ -141,10 +151,10 @@ export default function LoginPage() {
     <div className="space-y-6">
       {/* Logo & Header */}
       <div className="text-center">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/logo-tile.png" alt="Pathment" className="inline-block w-16 h-16 rounded-2xl shadow-sm mb-4" />
-        <h1 className="text-brand-900 mb-2">Welcome back to Pathment</h1>
-        <p className="text-slate-600">Sign in to pick up where you left off.</p>
+        <h1 className="text-brand-900 mb-3">{step === 'email' ? 'Sign in to Pathment' : 'Enter your password'}</h1>
+        <p className="text-slate-600">
+          {step === 'email' ? 'Use the email address connected to your organization.' : 'Continue with your Pathment account.'}
+        </p>
       </div>
 
       {/* Login Form */}
@@ -181,106 +191,64 @@ export default function LoginPage() {
           </div>
         </div> */}
 
-        <form onSubmit={handleSubmit} className="space-y-5">
-          {/* Email */}
-          <div>
-            <label htmlFor="login-email" className="block text-slate-700 text-sm mb-2">Email Address</label>
+        {step === 'email' ? (
+          <form onSubmit={continueWithEmail} className="space-y-4">
+            <label htmlFor="login-email" className="sr-only">Email address</label>
             <div className="relative">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+              <Mail className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
               <input
-                id="login-email" autoComplete="email" type="email"
+                id="login-email" autoComplete="email" type="email" autoFocus
                 value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                className="w-full pl-11 pr-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
-                placeholder="you@example.com"
+                onChange={(event) => setFormData((current) => ({ ...current, email: event.target.value }))}
+                className="w-full rounded-xl border border-slate-300 py-3.5 pl-12 pr-4 text-base focus:border-transparent focus:outline-none focus:ring-2 focus:ring-brand-500"
+                placeholder="name@work-email.com"
                 required
               />
             </div>
-          </div>
-
-          {/* Password */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label htmlFor="login-password" className="block text-slate-700 text-sm">Password</label>
-              <Link href={authPath('/reset-password')} className="text-brand-600 hover:text-brand-700 text-sm">
-                Forgot?
-              </Link>
+            <button type="submit" className="group flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 py-3.5 font-semibold text-white transition-colors hover:bg-brand-700">
+              Continue <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <span className="min-w-0 truncate text-sm font-medium text-slate-800">{formData.email}</span>
+              <button type="button" onClick={() => { setStep('email'); setFormData((current) => ({ ...current, password: '' })); setError(''); }} className="ml-3 shrink-0 text-sm font-semibold text-brand-700 hover:text-brand-800">Change</button>
             </div>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-              <input
-                id="login-password" autoComplete="current-password" type={showPassword ? 'text' : 'password'}
-                value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                className="w-full pl-11 pr-12 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
-                placeholder="••••••••"
-                required
-              />
-              <button
-                type="button"
-                aria-label={showPassword ? 'Hide password' : 'Show password'}
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-              >
-                {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-              </button>
+            <input type="email" autoComplete="email" value={formData.email} readOnly className="sr-only" tabIndex={-1} aria-hidden="true" />
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <label htmlFor="login-password" className="text-sm font-medium text-slate-700">Password</label>
+                <Link href={authPath('/reset-password')} className="text-sm font-medium text-brand-700 hover:text-brand-800">Forgot password?</Link>
+              </div>
+              <div className="relative">
+                <Lock className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                <input id="login-password" autoComplete="current-password" autoFocus type={showPassword ? 'text' : 'password'} value={formData.password} onChange={(event) => setFormData((current) => ({ ...current, password: event.target.value }))} className="w-full rounded-xl border border-slate-300 py-3.5 pl-12 pr-12 text-base focus:border-transparent focus:outline-none focus:ring-2 focus:ring-brand-500" placeholder="Enter your password" required />
+                <button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} onClick={() => setShowPassword((visible) => !visible)} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                  {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                </button>
+              </div>
             </div>
-          </div>
-
-          {/* Remember Me — checked: stay signed in on this device for 30 days.
-              Unchecked: session-only, signs you out when the browser is closed. */}
-          <div className="flex items-start">
-            <input
-              type="checkbox"
-              id="remember"
-              checked={rememberMe}
-              onChange={(e) => setRememberMe(e.target.checked)}
-              className="w-4 h-4 mt-0.5 text-brand-600 border-slate-300 rounded focus:ring-brand-500"
-            />
-            <label htmlFor="remember" className="ml-2 text-slate-700 text-sm">
-              Keep me signed in for 30 days
-              <span className="block text-xs text-slate-400">
-                {rememberMe
-                  ? 'Stays signed in on this device.'
-                  : 'Signs out when you close the browser — best on shared computers.'}
-              </span>
-            </label>
-          </div>
-
-          {/* Submit Button */}
-          <button
-            type="submit"
-            disabled={loading || cooldownSec > 0}
-            className="w-full bg-brand-600 hover:bg-brand-700 disabled:bg-brand-400 disabled:cursor-not-allowed text-white py-3 rounded-xl transition-colors flex items-center justify-center gap-2 group"
-          >
-            {loading ? (
-              'Signing in...'
-            ) : cooldownSec > 0 ? (
-              `Try again in ${formatRetryAfter(cooldownSec)}`
-            ) : (
-              <>
-                Sign In
-                <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-              </>
-            )}
-          </button>
-        </form>
+            <div className="flex items-start">
+              <input type="checkbox" id="remember" checked={rememberMe} onChange={(event) => setRememberMe(event.target.checked)} className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500" />
+              <label htmlFor="remember" className="ml-2 text-sm text-slate-700">Keep me signed in for 30 days</label>
+            </div>
+            <button type="submit" disabled={loading || cooldownSec > 0} className="group flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 py-3.5 font-semibold text-white transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-brand-400">
+              {loading ? 'Signing in…' : cooldownSec > 0 ? `Try again in ${formatRetryAfter(cooldownSec)}` : <>Sign in <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-0.5" aria-hidden="true" /></>}
+            </button>
+            <button type="button" onClick={() => setStep('email')} className="mx-auto flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-brand-700"><ArrowLeft className="h-4 w-4" aria-hidden="true" /> Use another email</button>
+          </form>
+        )}
 
         {/* Registration is organization-led. A generic signup link creates a
             dead end because every account must begin with a trusted invite. */}
-        <div className="mt-6 rounded-xl border border-brand-100 bg-brand-50/70 px-4 py-3 text-left">
-          <p className="text-sm font-medium text-brand-900">Joining Pathment for the first time?</p>
-          <p className="mt-1 text-sm leading-5 text-slate-600">
-            Open the invitation from your organization. It will take you to their secure account setup page.
-          </p>
-        </div>
+        <p className="mt-8 text-center text-sm text-slate-600">
+          New to Pathment? <Link href={authPath('/register')} className="font-semibold text-brand-700 hover:text-brand-800">See how to join an organization</Link>
+        </p>
       </div>
 
       {/* Security Notice */}
-      <div className="flex items-center justify-center gap-2 text-slate-500 text-sm">
-        <Lock className="w-4 h-4" />
-        <span>Your account, your learning journey</span>
-      </div>
+      <p className="text-center text-xs text-slate-500">After sign-in, Pathment opens your recent workspace or lets you choose one.</p>
     </div>
   );
 }
