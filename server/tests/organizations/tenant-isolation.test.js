@@ -132,6 +132,85 @@ describe('organization tenancy', () => {
     expect(capabilities).not.toContain('mentor');
   });
 
+  it('lets an explicitly assigned organization super admin manage workspace settings', async () => {
+    await runWithRequestContext({ organizationId: secondary.id }, async () => {
+      await models.OrganizationMembership.update({ role: 'member' }, {
+        where: { organizationId: secondary.id, userId: admin.id },
+      });
+      await models.RoleAssignment.create({
+        organizationId: secondary.id,
+        userId: admin.id,
+        role: 'super_admin',
+        scopeType: 'org',
+        scopeId: null,
+      });
+    });
+
+    const overview = await request(app)
+      .get('/api/organizations/current')
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-Pathment-Workspace', secondary.slug);
+    expect(overview.status).toBe(200);
+    expect(overview.body.data.membership.role).toBe('member');
+    expect(overview.body.data.canManageOrganization).toBe(true);
+
+    const updated = await request(app)
+      .patch('/api/organizations/current')
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-Pathment-Workspace', secondary.slug)
+      .send({ name: 'Managed by assigned super admin', timezone: 'Asia/Karachi' });
+    expect(updated.status).toBe(200);
+    expect(updated.body.data.organization).toMatchObject({
+      name: 'Managed by assigned super admin',
+      timezone: 'Asia/Karachi',
+    });
+
+    const removedLogo = await request(app)
+      .delete('/api/organizations/current/logo')
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-Pathment-Workspace', secondary.slug);
+    expect(removedLogo.status).toBe(200);
+
+    const planRequest = await request(app)
+      .post('/api/organizations/current/plan-request')
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-Pathment-Workspace', secondary.slug)
+      .send({ planKey: 'scale' });
+    expect(planRequest.status).toBe(200);
+    expect(planRequest.body.data.subscription.requestedPlan.key).toBe('scale');
+  });
+
+  it('keeps organization settings read-only for a member without full workspace access', async () => {
+    await runWithRequestContext({ organizationId: secondary.id }, () =>
+      models.OrganizationMembership.create({
+        organizationId: secondary.id,
+        userId: outsider.id,
+        role: 'member',
+        status: 'active',
+        joinedAt: new Date(),
+      }));
+
+    const overview = await request(app)
+      .get('/api/organizations/current')
+      .set('Authorization', `Bearer ${outsiderToken}`)
+      .set('X-Pathment-Workspace', secondary.slug);
+    expect(overview.status).toBe(200);
+    expect(overview.body.data.canManageOrganization).toBe(false);
+
+    const update = await request(app)
+      .patch('/api/organizations/current')
+      .set('Authorization', `Bearer ${outsiderToken}`)
+      .set('X-Pathment-Workspace', secondary.slug)
+      .send({ timezone: 'Asia/Karachi' });
+    expect(update.status).toBe(403);
+
+    const removeLogo = await request(app)
+      .delete('/api/organizations/current/logo')
+      .set('Authorization', `Bearer ${outsiderToken}`)
+      .set('X-Pathment-Workspace', secondary.slug);
+    expect(removeLogo.status).toBe(403);
+  });
+
   it('rejects invalid workspace headers instead of silently using DevWeekends', async () => {
     const response = await request(app).get('/api/organizations/current')
       .set('Authorization', `Bearer ${token}`).set('X-Pathment-Workspace', '../bad');
@@ -171,7 +250,7 @@ describe('organization tenancy', () => {
     const billing = require('../../src/services/manualBillingService');
     const orgService = require('../../src/services/organizationService');
     await runWithRequestContext({ organizationId: secondary.id, userId: admin.id }, async () => {
-      await orgService.requestPlan(admin.id, secondary.id, 'scale');
+      await orgService.requestPlan(admin, secondary.id, 'scale');
       const input = { workspace: secondary.slug, planKey: 'scale', invoiceReference: 'INV-TEST-1',
         operator: 'test-operator', periodEnd: new Date(Date.now() + 86400000).toISOString() };
       expect((await billing.activateRequestedPlan(input)).alreadyActivated).toBe(false);

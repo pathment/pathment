@@ -42,7 +42,7 @@ export default function WorkspacePreviewPage() {
     catch (e) { setError(extractApiErrorMessage(e, 'Could not request plan')); }
     finally { setPending(false); }
   };
-  const canManage = ['owner', 'admin'].includes(overview?.membership.role || '');
+  const canManage = overview?.canManageOrganization === true;
   const button = 'rounded-lg border border-border px-4 py-2 text-sm hover:bg-muted disabled:opacity-50';
   return <main className="mx-auto max-w-5xl space-y-7 px-6 py-10">
     <header className="flex flex-wrap items-center justify-between gap-4">

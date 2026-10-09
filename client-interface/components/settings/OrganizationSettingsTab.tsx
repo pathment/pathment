@@ -22,7 +22,7 @@ export function OrganizationSettingsTab() {
   const [saving, setSaving] = useState(false);
   const [creating, setCreating] = useState(false);
   const creationEnabled = overview?.workspaceCreationEnabled === true;
-  const canEdit = ['owner', 'admin'].includes(overview?.membership?.role || '');
+  const canEdit = overview?.canManageOrganization === true;
   const brandingEnabled = overview?.subscription?.plan?.features?.customBranding === true;
   const zones = useMemo(tzList, []);
 
@@ -77,6 +77,7 @@ export function OrganizationSettingsTab() {
             placeholder="Select timezone"
             ariaLabel="Default timezone"
             searchable
+            disabled={!canEdit}
           />
         </label>
       </div>

@@ -25,6 +25,7 @@ export interface Plan {
 
 export interface OrganizationOverview {
   workspaceCreationEnabled?: boolean;
+  canManageOrganization: boolean;
   organization: OrganizationSummary;
   organizations: OrganizationSummary[];
   membership: { role: string; status: string };
