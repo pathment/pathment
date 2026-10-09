@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { X, Sparkles, ArrowRight, Flame } from "lucide-react";
+import { X, Sparkles, ArrowRight, Flame, Trophy } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/context/AuthContext";
@@ -188,9 +188,13 @@ export function PointsEarnedNotifier() {
   const rewardsHref = pathname.startsWith("/mentee")
     ? "/mentee/gamification"
     : null;
+  const title = dailyLogin ? "You showed up today" : formatReason(primaryItem);
+  const supportingCopy = dailyLogin
+    ? "Small steps build strong streaks. Come back tomorrow to keep yours moving."
+    : "Nice work — your level progress just moved forward.";
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 top-0 z-[80] flex justify-center px-3 pt-4 sm:pt-5">
+    <div className="pointer-events-none fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] z-[80] flex justify-center sm:inset-auto sm:right-6 sm:top-6 sm:block">
       <aside
         onMouseEnter={() => setPaused(true)}
         onMouseLeave={() => setPaused(false)}
@@ -202,65 +206,57 @@ export function PointsEarnedNotifier() {
         role="status"
         aria-live="polite"
         aria-atomic="true"
-        className={[
-          "pointer-events-auto w-full max-w-md overflow-hidden rounded-2xl border shadow-lg",
-          "motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-top-3 motion-safe:duration-300",
-          dailyLogin
-            ? "border-brand-200 bg-linear-to-br from-brand-50 via-card to-cyan-50/80 dark:from-brand-500/15 dark:via-card dark:to-transparent"
-            : "border-border bg-card",
-        ].join(" ")}
+        aria-label={`You earned ${totalPoints} XP. ${title}`}
+        className="pointer-events-auto relative w-full max-w-[390px] overflow-hidden rounded-[1.4rem] border border-white/70 bg-white/95 text-slate-950 shadow-[0_20px_55px_-18px_rgba(15,118,110,0.45),0_8px_24px_-12px_rgba(15,23,42,0.25)] backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/95 dark:text-white motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-3 sm:motion-safe:slide-in-from-top-3 sm:motion-safe:duration-300"
       >
-        {dailyLogin && (
-          <div className="h-1 w-full bg-linear-to-r from-brand-500 via-brand-600 to-cyan-500" />
-        )}
+        <div
+          aria-hidden="true"
+          className={[
+            "absolute inset-x-0 top-0 h-24 opacity-90",
+            dailyLogin
+              ? "bg-linear-to-br from-amber-100 via-orange-50 to-transparent dark:from-amber-500/20 dark:via-orange-500/10"
+              : "bg-linear-to-br from-emerald-100 via-teal-50 to-transparent dark:from-emerald-500/20 dark:via-teal-500/10",
+          ].join(" ")}
+        />
+        <span aria-hidden="true" className="absolute right-14 top-5 h-2 w-2 rounded-full bg-amber-300/80" />
+        <span aria-hidden="true" className="absolute right-8 top-14 h-1.5 w-1.5 rounded-full bg-teal-400/70" />
+        <Sparkles aria-hidden="true" className="absolute right-20 top-10 h-4 w-4 rotate-12 text-amber-400/80" />
 
-        <div className="flex items-start gap-3 p-4">
-          <span
+        <div className="relative flex items-start gap-3.5 p-4.5 pr-12 sm:p-5 sm:pr-12">
+          <div
             className={[
-              "flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl",
+              "relative flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border shadow-sm",
               dailyLogin
-                ? "bg-brand-100 text-brand-700 dark:bg-brand-500/20 dark:text-brand-300"
-                : "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200",
+                ? "border-amber-200 bg-linear-to-br from-amber-300 to-orange-500 text-white shadow-orange-200/70 dark:border-amber-400/30 dark:shadow-none"
+                : "border-emerald-200 bg-linear-to-br from-emerald-500 to-teal-700 text-white shadow-emerald-200/70 dark:border-emerald-400/30 dark:shadow-none",
             ].join(" ")}
           >
+            <span aria-hidden="true" className="absolute inset-1 rounded-xl border border-white/30" />
             {dailyLogin ? (
-              <Flame className="h-5 w-5" aria-hidden="true" />
+              <Flame className="relative h-7 w-7 fill-white/20" aria-hidden="true" />
             ) : (
-              <Sparkles className="h-5 w-5" aria-hidden="true" />
+              <Trophy className="relative h-7 w-7" aria-hidden="true" />
             )}
-          </span>
+          </div>
 
           <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-700/80 dark:text-brand-300">
-              {dailyLogin ? "Daily check-in" : "XP earned"}
+            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-700 dark:text-emerald-300">
+              {dailyLogin ? "Daily streak" : "Progress unlocked"}
             </p>
-            <p className="mt-0.5 text-sm font-semibold text-slate-900 dark:text-slate-50">
-              {dailyLogin
-                ? "Welcome back +1 XP"
-                : formatReason(primaryItem)}
-            </p>
-            <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-              {dailyLogin ? (
-                <>
-                  Nice habit. Keep showing up. Streaks and levels grow from
-                  small check-ins like this.
-                </>
-              ) : (
-                <>
-                  <span className="font-semibold text-slate-900 dark:text-slate-100">
-                    +{totalPoints} XP
-                  </span>{" "}
-                  added to your progress.
-                </>
-              )}
-            </p>
+            <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+              <p className="text-2xl font-black tracking-tight text-slate-950 dark:text-white">
+                +{totalPoints} XP
+              </p>
+              <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">{title}</p>
+            </div>
+            <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-300">{supportingCopy}</p>
             {rewardsHref && (
               <Link
                 href={workspacePath(rewardsHref)}
                 onClick={handleDismiss}
-                className="mt-2.5 inline-flex items-center gap-1 text-xs font-semibold text-brand-700 hover:text-brand-800 dark:text-brand-300"
+                className="mt-3 inline-flex min-h-8 items-center gap-1.5 rounded-full bg-slate-950 px-3 text-xs font-bold text-white transition-colors hover:bg-emerald-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 dark:bg-white dark:text-slate-950 dark:hover:bg-emerald-200"
               >
-                View progress
+                See your progress
                 <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
               </Link>
             )}
@@ -269,7 +265,7 @@ export function PointsEarnedNotifier() {
           <button
             type="button"
             onClick={handleDismiss}
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-white/70 hover:text-slate-700 dark:hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-brand-500"
+            className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-black/5 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-emerald-600 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-white"
             aria-label="Dismiss reward notification"
           >
             <X className="h-4 w-4" />
