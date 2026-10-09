@@ -1,7 +1,10 @@
 import { apiClient } from './api-client';
 
 export interface ClosurePreview {
-  ended: boolean; closed: boolean; canClose: boolean; enrollmentCount: number;
+  ended: boolean; started: boolean; closed: boolean; canClose: boolean; enrollmentCount: number;
+  earliestCloseDate?: string | null;
+  today?: string;
+  scheduledEndDate?: string | null;
   /** False on Starter/free plans — close/reopen UI should upgrade instead of offer close. */
   featureAvailable?: boolean;
   unresolved: { id: string; firstName: string; lastName: string }[];

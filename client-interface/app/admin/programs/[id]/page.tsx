@@ -9,10 +9,8 @@ import {
   UserCheck,
   Clock,
   CheckCircle2,
-  Circle,
   Route,
   Share2,
-  Copy,
   Link as LinkIcon,
   Loader2,
   ChevronDown,
@@ -23,6 +21,7 @@ import { useProgramDetail } from '@/lib/hooks/admin';
 import { MenuPanel } from '@/components/shared/MenuPanel';
 import { useConfirm } from '@/lib/context/ConfirmContext';
 import { EditProgramDrawer } from '@/components/admin/EditProgramDrawer';
+import { ProgramCompletionPanel } from '@/components/admin/ProgramCompletionPanel';
 import { completionApi } from '@/lib/services/program-completion-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { toast } from 'sonner';
@@ -67,17 +66,12 @@ function StatusSelector({
   const confirm = useConfirm();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [closeOpen, setCloseOpen] = useState(false);
-  const [closeNotes, setCloseNotes] = useState('');
-  const [closeDate, setCloseDate] = useState(() => new Date().toISOString().slice(0, 10));
   const ref = useRef<HTMLDivElement>(null);
   const s = STATUS_CONFIG[status as ProgramStatus] ?? STATUS_CONFIG.draft;
   const transitions = STATUS_TRANSITIONS[status as ProgramStatus] ?? [];
   const isClosed = status === 'completed';
-  const showClose = !isClosed;
   const showReopen = isClosed;
-  const menuOpenable = transitions.length > 0 || showClose || showReopen;
-  const todayKey = new Date().toISOString().slice(0, 10);
+  const menuOpenable = transitions.length > 0 || showReopen;
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -91,51 +85,6 @@ function StatusSelector({
     setOpen(false);
     if (t.confirm && !(await confirm({ title: t.confirm }))) return;
     onUpdate(t.value);
-  };
-
-  const openCloseDialog = async () => {
-    setOpen(false);
-    setBusy(true);
-    try {
-      const preview = await completionApi.preview(programId);
-      if (!preview.canClose) {
-        toast.error('This program cannot be closed right now');
-        return;
-      }
-      const notes: string[] = ['Cohort clans become read-only and final results are saved.'];
-      if (preview.unresolved.length) {
-        notes.push(`${preview.unresolved.length} certificate decision(s) still need attention.`);
-      }
-      if ((preview.certificatesNotIssued?.length ?? 0) > 0) {
-        notes.push('Some certificates are not issued yet.');
-      }
-      notes.push('You can still close.');
-      setCloseNotes(notes.join(' '));
-      setCloseDate(new Date().toISOString().slice(0, 10));
-      setCloseOpen(true);
-    } catch (e) {
-      toast.error(extractApiErrorMessage(e, 'Could not prepare program close'));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleCloseProgram = async () => {
-    if (!closeDate) {
-      toast.error('Choose a close date');
-      return;
-    }
-    setBusy(true);
-    try {
-      await completionApi.close(programId, { closedAt: closeDate });
-      toast.success('Program closed');
-      setCloseOpen(false);
-      onLifecycleChange();
-    } catch (e) {
-      toast.error(extractApiErrorMessage(e, 'Could not close the program'));
-    } finally {
-      setBusy(false);
-    }
   };
 
   const handleReopenProgram = async () => {
@@ -197,19 +146,6 @@ function StatusSelector({
               })}
             </>
           )}
-          {showClose && (
-            <button
-              type="button"
-              onClick={() => void openCloseDialog()}
-              className="w-full flex items-start gap-3 px-3 py-3 hover:bg-slate-50 transition-colors text-left border-t border-slate-100 dark:border-slate-700"
-            >
-              <span className="mt-1 w-2 h-2 rounded-full shrink-0 bg-blue-500" />
-              <div>
-                <p className="text-sm font-medium text-slate-800">Close program</p>
-                <p className="text-xs text-slate-500 mt-0.5">Finalize results and freeze cohort clans</p>
-              </div>
-            </button>
-          )}
           {showReopen && (
             <button
               type="button"
@@ -226,46 +162,6 @@ function StatusSelector({
         </MenuPanel>
       )}
 
-      {closeOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => !busy && setCloseOpen(false)} />
-          <div className="relative z-10 w-full max-w-md rounded-2xl bg-card p-6 shadow-xl">
-            <h3 className="text-lg font-semibold text-slate-900">Close this program?</h3>
-            <p className="mt-1 text-sm text-slate-500">{closeNotes}</p>
-            <label className="mt-4 block text-sm font-medium text-slate-800" htmlFor="program-close-date">
-              Close date
-            </label>
-            <input
-              id="program-close-date"
-              type="date"
-              value={closeDate}
-              max={todayKey}
-              onChange={(e) => setCloseDate(e.target.value)}
-              className="mt-1.5 w-full rounded-xl border border-slate-200 bg-card px-3 py-2 text-sm text-slate-900"
-            />
-            <p className="mt-1 text-xs text-slate-500">Defaults to today. You can backdate if needed.</p>
-            <div className="mt-6 flex justify-end gap-3">
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => setCloseOpen(false)}
-                className="rounded-xl border border-slate-200 bg-card px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={busy || !closeDate}
-                onClick={() => void handleCloseProgram()}
-                className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
-              >
-                {busy && <Loader2 className="h-4 w-4 animate-spin" />}
-                Close program
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -312,6 +208,12 @@ export default function ProgramDetails() {
 
   return (
     <>
+      <ProgramCompletionPanel
+        programId={id}
+        programName={program.name}
+        status={program.status}
+        onClosed={() => { void refetch(); }}
+      />
       {/* Header */}
       <div className="mb-8">
         <Link
@@ -549,22 +451,22 @@ export default function ProgramDetails() {
               <Users className="w-16 h-16 text-slate-300 mx-auto mb-4" />
               <h3 className="text-slate-900 mb-2">No Enrollments Yet</h3>
               <p className="text-slate-600">
-                Mentees haven't enrolled in this program yet.
+                Mentees haven&apos;t enrolled in this program yet.
               </p>
             </div>
           ) : (
             <>
               {/* Pending Approvals */}
-              {enrollments.filter((e: any) => e.status === 'pending_approval').length > 0 && (
+              {enrollments.filter((e) => e.status === 'pending_approval').length > 0 && (
                 <div className="bg-card rounded-2xl border border-slate-200 p-6">
                   <div className="flex items-center gap-2 mb-4">
                     <Clock className="w-5 h-5 text-amber-600" />
-                    <h3 className="text-slate-900">Pending Approvals ({enrollments.filter((e: any) => e.status === 'pending_approval').length})</h3>
+                    <h3 className="text-slate-900">Pending Approvals ({enrollments.filter((e) => e.status === 'pending_approval').length})</h3>
                   </div>
                   <div className="space-y-3">
                     {enrollments
-                      .filter((e: any) => e.status === 'pending_approval')
-                      .map((enrollment: any) => (
+                      .filter((e) => e.status === 'pending_approval')
+                      .map((enrollment) => (
                         <div key={enrollment.id} className="p-4 border border-amber-200 bg-amber-50 rounded-xl">
                           <div className="flex items-start justify-between">
                             <div className="flex-1">
@@ -601,7 +503,7 @@ export default function ProgramDetails() {
               <div className="bg-card rounded-2xl border border-slate-200 p-6">
                 <h3 className="text-slate-900 mb-4">All Enrollments ({enrollments.length})</h3>
                 <div className="space-y-2">
-                  {enrollments.map((enrollment: any) => (
+                  {enrollments.map((enrollment) => (
                     <div key={enrollment.id} className="p-4 border border-slate-200 rounded-xl hover:border-brand-300 transition-colors">
                       <div className="flex items-center justify-between">
                         <div className="flex-1">
