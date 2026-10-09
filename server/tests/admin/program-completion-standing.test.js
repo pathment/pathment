@@ -38,8 +38,24 @@ describe('formal completion and independent standing clans', () => {
   it('lets an admin close early while preserving the close snapshot', () => within(async () => {
     await alpha.update({ endDate: '2099-01-01' });
     await models.CertificateVerification.update({ status: 'pending' }, { where: { templateId: template.id } });
+    const preview = await lifecycle.preview(alpha.id, admin);
+    expect(preview).toMatchObject({ started: true, ended: false, canClose: true, earliestCloseDate: '2020-01-01', scheduledEndDate: '2099-01-01' });
     await expect(lifecycle.closeProgram(alpha.id, admin)).resolves.toBeTruthy();
     expect((await alpha.reload()).closedAt).toBeTruthy();
+  }));
+
+  it('allows a custom historical close date after start and rejects dates before start', () => within(async () => {
+    await alpha.update({ startDate: '2020-01-10', endDate: '2099-01-01' });
+    await expect(lifecycle.closeProgram(alpha.id, admin, { closedAt: '2020-01-09' }))
+      .rejects.toThrow(/before the program start date/);
+    await expect(lifecycle.closeProgram(alpha.id, admin, { closedAt: '2020-02-15' })).resolves.toBeTruthy();
+    expect((await alpha.reload()).closedAt.toISOString().slice(0, 10)).toBe('2020-02-15');
+  }));
+
+  it('does not allow closure before the program has started', () => within(async () => {
+    await alpha.update({ startDate: '2099-01-01', endDate: '2099-06-01' });
+    await expect(lifecycle.preview(alpha.id, admin)).resolves.toMatchObject({ started: false, ended: false, canClose: false });
+    await expect(lifecycle.closeProgram(alpha.id, admin)).rejects.toThrow(/before the program start date/);
   }));
 
   it('closes exactly once, freezes cohort clans, and exposes final results from enrollments', () => within(async () => {

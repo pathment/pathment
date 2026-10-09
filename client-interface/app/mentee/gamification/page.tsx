@@ -3,10 +3,10 @@
 import { type ComponentType, useEffect, useMemo, useState } from "react";
 import {
   Award,
+  ChevronDown,
   Flame,
   Loader2,
   Medal,
-  Star,
   Target,
   Trophy,
   Users,
@@ -38,6 +38,7 @@ export default function MenteeGamificationPage() {
   const [community, setCommunity] = useState<CommunityStanding | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [badgeProgressOpen, setBadgeProgressOpen] = useState(false);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -131,21 +132,21 @@ export default function MenteeGamificationPage() {
       <div className="rounded-2xl border border-brand-200 bg-linear-to-r from-brand-50 dark:from-brand-500/10 to-cyan-50 dark:to-transparent p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <h1 className="text-slate-900 mb-2">Points and badges</h1>
+            <h1 className="text-slate-900 mb-2">XP, coins & badges</h1>
             <p className="text-slate-600">
-              What you have earned so far, and what is next.
+              XP builds your level. Coins buy gifts. Performance rank reflects learning quality.
             </p>
           </div>
           <div className="flex gap-3">
             <div className="rounded-xl bg-card px-4 py-3 border border-brand-200 min-w-[110px]">
-              <div className="text-xs text-slate-500">Learning rank</div>
+              <div className="text-xs text-slate-500">Performance rank</div>
               <div className="text-2xl font-semibold text-brand-700">
                 {stats.leaderboardRank
                   ? `#${stats.leaderboardRank}`
                   : "Unranked"}
               </div>
               <div className="text-[11px] text-slate-400">
-                from completed work
+                program progress score
               </div>
             </div>
             <div className="rounded-xl bg-card px-4 py-3 border border-brand-200 min-w-[120px]">
@@ -183,9 +184,15 @@ export default function MenteeGamificationPage() {
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           icon={Trophy}
-          label="Total Points"
-          value={stats.totalPoints}
+          label="XP"
+          value={stats.xp ?? stats.totalPoints}
           accent="text-amber-600"
+        />
+        <StatCard
+          icon={Medal}
+          label="Coins"
+          value={stats.coinsBalance ?? 0}
+          accent="text-yellow-600"
         />
         <StatCard
           icon={Flame}
@@ -199,13 +206,60 @@ export default function MenteeGamificationPage() {
           value={stats.totalTasksCompleted}
           accent="text-emerald-600"
         />
-        <StatCard
-          icon={Star}
-          label="Average Rating"
-          value={Number(stats.avgTaskRating || 0).toFixed(2)}
-          accent="text-brand-600"
-        />
       </div>
+      {(stats.coinsEarned != null || stats.coinsSpent != null) && (
+        <p className="text-xs text-slate-500 -mt-2">
+          Lifetime coins earned: {stats.coinsEarned ?? 0}
+          {stats.coinsSpent ? ` · spent on gifts: ${stats.coinsSpent}` : ""}
+          {" "}(redeeming never removes badges)
+        </p>
+      )}
+
+      {!!stats.badgeProgress?.length && (
+        <section className="rounded-2xl border border-slate-200 bg-card overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setBadgeProgressOpen((open) => !open)}
+            aria-expanded={badgeProgressOpen}
+            className="w-full px-5 py-4 flex items-center justify-between gap-3 text-left hover:bg-slate-50/80 transition-colors"
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <Award className="w-5 h-5 text-brand-600 shrink-0" />
+              <div className="min-w-0">
+                <h2 className="text-slate-900">Badge progress</h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {stats.badgeProgress.filter((r) => !r.earned).length} in progress
+                  {" · "}
+                  {stats.badgeProgress.filter((r) => r.earned).length} earned
+                </p>
+              </div>
+            </div>
+            <ChevronDown
+              className={`w-5 h-5 text-slate-400 shrink-0 transition-transform ${badgeProgressOpen ? "rotate-180" : ""}`}
+            />
+          </button>
+          {badgeProgressOpen && (
+            <div className="px-5 pb-5 space-y-3 border-t border-slate-100 pt-4">
+              {stats.badgeProgress.map((row) => (
+                <div key={row.progressKey || row.badgeId} className="rounded-xl border border-slate-100 p-3">
+                  <div className="flex items-center justify-between gap-3 text-sm">
+                    <span className="font-medium text-slate-800 truncate">{row.name}</span>
+                    <span className="text-slate-500 tabular-nums shrink-0">
+                      {row.earned ? "Earned" : `${row.current}/${row.target}`}
+                    </span>
+                  </div>
+                  <div className="mt-2 h-2 rounded-full bg-slate-100 overflow-hidden">
+                    <div
+                      className={`h-full ${row.earned ? "bg-emerald-500" : "bg-brand-500"}`}
+                      style={{ width: `${row.percent}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       <div className="grid gap-6 xl:grid-cols-3">
         <section className="xl:col-span-2 rounded-2xl border border-slate-200 bg-card p-5">
@@ -213,10 +267,10 @@ export default function MenteeGamificationPage() {
               banked over a window, so "this week's score" would be the same
               number wearing a different label. */}
           <div className="mb-4">
-            <h2 className="text-slate-900">Top Leaderboard</h2>
+            <h2 className="text-slate-900">Performance leaderboard</h2>
             <p className="text-slate-500 text-xs mt-0.5">
-              Ranked by progress score — the same measure your mentor sees under
-              Teaching. Badges and streaks are earned separately.
+              Ranked by performance score in your program — not XP or coins.
+              Badges and gifts are separate.
             </p>
           </div>
 
@@ -299,20 +353,32 @@ export default function MenteeGamificationPage() {
 
             {badges.map((badge) => (
               <div
-                key={badge.id}
+                key={badge.userBadgeId || badge.id}
                 className="rounded-2xl border border-border p-4 bg-muted/40"
               >
-                <div className="flex items-start justify-between gap-2">
-                  <div>
+                <div className="flex items-start gap-3">
+                  <div className="h-12 w-12 rounded-xl border border-slate-200 bg-white overflow-hidden flex items-center justify-center shrink-0">
+                    {badge.iconUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={badge.iconUrl} alt="" className="h-full w-full object-contain bg-white" />
+                    ) : (
+                      <Medal className="w-5 h-5 text-amber-500" />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
                     <p className="text-slate-900 font-semibold">{badge.name}</p>
                     <p className="text-slate-600 text-sm mt-1">
                       {badge.description}
                     </p>
+                    <div className="text-xs text-slate-500 mt-2 capitalize">
+                      {badge.category}
+                      {badge.clanName ? ` · ${badge.clanName}` : ''}
+                      {!badge.clanName && badge.programName ? ` · ${badge.programName}` : ''}
+                      {badge.unlockedAt
+                        ? ` · ${new Date(badge.unlockedAt).toLocaleDateString()}`
+                        : ''}
+                    </div>
                   </div>
-                  <Medal className="w-5 h-5 text-amber-500 shrink-0" />
-                </div>
-                <div className="text-xs text-slate-500 mt-2 capitalize">
-                  {badge.category}
                 </div>
               </div>
             ))}

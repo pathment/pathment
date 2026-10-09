@@ -13,6 +13,9 @@ const { requireWorkspaceId } = require('../utils/workspaceExecution');
 const logger = require('../utils/logger');
 const { resolveMenteeClanId } = require('./menteeClanScope');
 const clanLifecycleService = require('./clanLifecycleService');
+// gamificationService is required lazily below — a top-level require cycles
+// cohortService → gamificationService → performanceService → cohortService and
+// leaves cohortService as an empty export (preloadMenteeData is not a function).
 
 /**
  * cohortService - assembles a mentor's cohort for the Cockpit on real data,
@@ -750,6 +753,13 @@ class CohortService {
       attributedToId,
       createdBy: mentorId
     });
+
+    try {
+      const gamificationService = require('./gamificationService');
+      await gamificationService.checkAndAwardBadges(mentorId);
+    } catch (err) {
+      console.error('[Gamification] mentor badge check after meeting log failed:', err.message);
+    }
 
     // Make "blockers to track" REAL: open Blocker records so they surface on
     // At-risk and feed the relative-grading blocker credit.

@@ -34,8 +34,9 @@ export function TaskEditDrawer({
   onSaved: () => void;
 }) {
   const rt = task.roadmapTask || {};
-  // Points are standard by difficulty (read-only here).
-  const standardPoints = pointsForDifficulty(rt.difficulty);
+  const initialPoints =
+    Number(task.pointsBase ?? rt.pointsBase ?? pointsForDifficulty(rt.difficulty || task.difficulty)) ||
+    pointsForDifficulty("medium");
   const initial = {
     type: rt.type || "custom",
     title: rt.title || "",
@@ -43,6 +44,7 @@ export function TaskEditDrawer({
     deliverable: rt.deliverable || "",
     criteria: (rt.acceptanceCriteria || []).join("\n"),
     note: task.mentorNote || "",
+    pointsBase: initialPoints,
   };
   const [type, setType] = useState(initial.type);
   const [title, setTitle] = useState(initial.title);
@@ -50,6 +52,7 @@ export function TaskEditDrawer({
   const [deliverable, setDeliverable] = useState(initial.deliverable);
   const [criteria, setCriteria] = useState(initial.criteria);
   const [note, setNote] = useState(initial.note);
+  const [pointsBase, setPointsBase] = useState(initial.pointsBase);
   const [resources, setResources] = useState<ResourceItem[]>(
     (rt.resources || []).map((r: any) => ({
       title: r.title || "",
@@ -157,6 +160,9 @@ export function TaskEditDrawer({
       payload.acceptanceCriteriaOverride = arr.length ? arr : null;
     }
     if (note !== initial.note) payload.mentorNote = note.trim() || null;
+    if (pointsBase !== initial.pointsBase) {
+      payload.pointsBase = Math.max(1, Math.min(200, Math.round(Number(pointsBase) || initial.pointsBase)));
+    }
     if (resourcesTouched) {
       const arr = resources
         .filter((r) => r.url.trim())
@@ -306,13 +312,22 @@ export function TaskEditDrawer({
           />
         </div>
         <div>
-          <label className={label}>Points</label>
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 text-sm font-medium tabular-nums">
-            {standardPoints} pts
-          </span>
+          <label htmlFor="edit-task-points" className={label}>Task value (XP &amp; Coins)</label>
+          <input
+            id="edit-task-points"
+            type="number"
+            min={1}
+            max={200}
+            value={pointsBase}
+            onChange={(e) => {
+              const v = Math.round(Number(e.target.value));
+              setPointsBase(Number.isFinite(v) ? Math.max(1, Math.min(200, v)) : initial.pointsBase);
+            }}
+            className={field}
+          />
           <p className="mt-1 text-xs text-slate-400">
-            Set by task difficulty{rt.difficulty ? ` (${rt.difficulty})` : ""} —
-            same for every mentee.
+            Max awarded on approval for this mentee. Defaults from difficulty
+            {rt.difficulty ? ` (${rt.difficulty})` : ""}.
           </p>
         </div>
         <div>

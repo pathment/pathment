@@ -14,6 +14,6 @@ export const rewardsApi = {
   uploadGiftImage: (file: File) => {
     const fd = new FormData();
     fd.append('file', file);
-    return apiClient.post('/rewards/gifts/upload', fd);
+    return apiClient.post<{ data: { url: string } }>('/rewards/gifts/upload', fd);
   },
 };

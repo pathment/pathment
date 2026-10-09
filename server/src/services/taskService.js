@@ -81,11 +81,12 @@ function applyTaskOverrides(taskInstance) {
   const rmName = rt && rt.roadmap ? rt.roadmap.name : null;
   t.source = t.isCustomTask ? 'custom' : 'roadmap';
   t.roadmapName = t.isCustomTask ? null : rmName;
-  // Effective points are STANDARD by difficulty (single source of truth). Fall
-  // back to a stored base only when difficulty isn't loaded.
-  t.points = rt?.difficulty != null
-    ? pointsForDifficulty(rt.difficulty)
-    : ((t.pointsBase != null ? t.pointsBase : (rt ? rt.pointsBase : null)) ?? null);
+  // Prefer assignment override (mentor-set task value), then step, then difficulty.
+  t.points = t.pointsBase != null
+    ? Number(t.pointsBase)
+    : (rt?.pointsBase != null
+      ? Number(rt.pointsBase)
+      : (rt?.difficulty != null ? pointsForDifficulty(rt.difficulty) : null));
   return t;
 }
 
@@ -236,8 +237,10 @@ class TaskService {
             : (EST_HOURS_BY_DIFFICULTY[difficulty || 'medium'] || 4),
         isMandatory: false,
         isCustomTask: true,
-        // Standard points by difficulty (no hand-typed values).
-        pointsBase: pointsForDifficulty(difficulty || 'medium')
+        // Mentor may pass pointsBase; otherwise standard by difficulty.
+        pointsBase: Number.isFinite(Number(pointsBase)) && Number(pointsBase) > 0
+          ? Math.min(200, Math.round(Number(pointsBase)))
+          : pointsForDifficulty(difficulty || 'medium')
       });
 
       // Attach any learning resources (links) to the one-off task.
@@ -253,6 +256,10 @@ class TaskService {
     const defaultDueDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
     const resolvedDueDate = await this._resolveDueDate(menteeId, dueDate || defaultDueDate);
 
+    const resolvedPointsBase = Number.isFinite(Number(pointsBase)) && Number(pointsBase) > 0
+      ? Math.min(200, Math.round(Number(pointsBase)))
+      : (roadmapTask.pointsBase ?? pointsForDifficulty(difficulty || roadmapTask.difficulty || 'medium'));
+
     // Create assigned task
     const assignedTask = await models.AssignedTask.create({
       roadmapTaskId: roadmapTask.id,
@@ -262,6 +269,7 @@ class TaskService {
       clanId,
       status: 'assigned',
       dueDate: resolvedDueDate,
+      pointsBase: resolvedPointsBase,
       isCustomTask: roadmapTaskId ? false : true, // Roadmap tasks are not custom
       trackId: trackId || null,
       scheduleSlotId: scheduleSlotId || null,
@@ -1212,8 +1220,15 @@ class TaskService {
         task[f] = (v === '' || v == null || (Array.isArray(v) && !v.length)) ? null : v;
       }
     }
-    // Points are standardized by difficulty and not editable per assignment, so
-    // any incoming pointsBase is intentionally ignored here.
+    // Mentors may set/override the assignment's coin+XP value (capped). Approval
+    // still awards at most this amount through the existing review flow.
+    if ('pointsBase' in data && data.pointsBase != null && data.pointsBase !== '') {
+      const n = Number(data.pointsBase);
+      if (!Number.isFinite(n) || n < 0 || n > 200) {
+        throw new ValidationError('Task value must be between 0 and 200');
+      }
+      task.pointsBase = Math.round(n);
+    }
     if ('dueDate' in data && data.dueDate) {
       task.dueDate = await this._resolveDueDate(task.menteeId, data.dueDate);
     }

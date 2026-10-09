@@ -1,7 +1,24 @@
 import { apiClient } from './api-client';
 
+export interface BadgeProgress {
+  badgeId: string;
+  name: string;
+  iconUrl?: string | null;
+  criteriaType: string;
+  /** 0 workspace, 1 program, 2 clan */
+  earningScope?: number;
+  programId?: string | null;
+  clanId?: string | null;
+  progressKey?: string;
+  current: number;
+  target: number;
+  earned: boolean;
+  percent: number;
+}
+
 export interface GamificationStats {
   totalPoints: number;
+  xp?: number;
   currentLevel: number;
   currentStreak: number;
   longestStreak: number;
@@ -10,6 +27,11 @@ export interface GamificationStats {
   totalProgramsCompleted: number;
   avgTaskRating: number;
   leaderboardRank: number | null;
+  progressScore?: number | null;
+  coinsEarned?: number;
+  coinsSpent?: number;
+  coinsBalance?: number;
+  badgeProgress?: BadgeProgress[];
 }
 
 export interface Badge {
@@ -17,10 +39,37 @@ export interface Badge {
   name: string;
   description: string;
   category: string;
+  criteriaType?: string;
+  criteriaValue?: Record<string, unknown>;
   pointsReward: number;
   isSecret: boolean;
+  isActive?: boolean;
+  iconUrl?: string | null;
   unlockedAt?: string;
+  /** 0 workspace, 1 program, 2 clan */
+  earningScope?: number;
+  userBadgeId?: string;
+  programId?: string | null;
+  clanId?: string | null;
+  programName?: string | null;
+  clanName?: string | null;
 }
+
+export type BadgeCriteriaType =
+  | 'points_milestone'
+  | 'coins_earned'
+  | 'tasks_completed'
+  | 'programs_completed'
+  | 'streak_days'
+  | 'avg_rating'
+  | 'level_reached'
+  | 'custom'
+  | 'reviews_given'
+  | 'tasks_approved'
+  | 'meetings_logged'
+  | 'mentees_guided'
+  | 'clans_led'
+  | 'mentor_avg_rating';
 
 interface UserBadgeApiItem {
   id: string;
@@ -85,13 +134,23 @@ export const gamificationApi = {
     const mapped: Badge[] = [];
 
     for (const item of response.data.badges || []) {
-      const isUserBadge = 'badge' in item || 'Badge' in item;
-      const nested = isUserBadge ? (item as UserBadgeApiItem).badge || (item as UserBadgeApiItem).Badge : (item as Badge);
-      if (!nested || !nested.name) continue;
+      // Server now returns flat badge DTOs; keep nested UserBadge support.
+      const nested =
+        (item as UserBadgeApiItem).badge ||
+        (item as UserBadgeApiItem).Badge ||
+        (('name' in item && (item as Badge).name) ? (item as Badge) : null);
+      if (!nested?.name) continue;
 
+      const flat = item as Badge;
       mapped.push({
         ...nested,
-        unlockedAt: (item as UserBadgeApiItem).unlockedAt || nested.unlockedAt
+        unlockedAt: (item as UserBadgeApiItem).unlockedAt || nested.unlockedAt,
+        userBadgeId: flat.userBadgeId || (item as UserBadgeApiItem).id,
+        earningScope: flat.earningScope ?? nested.earningScope,
+        programId: flat.programId ?? null,
+        clanId: flat.clanId ?? null,
+        programName: flat.programName ?? null,
+        clanName: flat.clanName ?? null,
       });
     }
 
@@ -112,7 +171,54 @@ export const gamificationApi = {
       { params: { limit } }
     );
     return response.data.leaderboard;
-  }
+  },
+
+  async listBadges(params?: { active?: boolean; role?: 'mentee' | 'mentor' }): Promise<Badge[]> {
+    const response = await apiClient.get<ApiResponse<{ badges: Badge[] }>>('/gamification/badges', {
+      params: {
+        active: params?.active === false ? 'false' : 'true',
+        role: params?.role,
+      },
+    });
+    return response.data.badges || [];
+  },
+
+  async createBadge(payload: {
+    name: string;
+    description: string;
+    category?: string;
+    criteriaType: BadgeCriteriaType;
+    criteriaValue: Record<string, unknown>;
+    pointsReward?: number;
+    isActive?: boolean;
+    isSecret?: boolean;
+    iconUrl?: string | null;
+    earningScope?: 0 | 1 | 2;
+  }): Promise<Badge> {
+    const response = await apiClient.post<ApiResponse<{ badge: Badge }>>('/gamification/badges', payload);
+    return response.data.badge;
+  },
+
+  async updateBadge(badgeId: string, payload: Partial<{
+    name: string;
+    description: string;
+    category: string;
+    pointsReward: number;
+    isActive: boolean;
+    isSecret: boolean;
+    iconUrl: string | null;
+  }>): Promise<Badge> {
+    const response = await apiClient.patch<ApiResponse<{ badge: Badge }>>(`/gamification/badges/${badgeId}`, payload);
+    return response.data.badge;
+  },
+
+  async awardBadge(
+    userId: string,
+    badgeId: string,
+    context?: { programId?: string | null; clanId?: string | null; reason?: string },
+  ): Promise<void> {
+    await apiClient.post('/gamification/badges/award', { userId, badgeId, context });
+  },
 };
 
 export default gamificationApi;

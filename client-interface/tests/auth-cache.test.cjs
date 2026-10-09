@@ -32,9 +32,14 @@ function fixture(remember = true) {
   };
   const { AuthProvider } = load('lib/context/AuthContext.tsx', {
     react, axios: { isAxiosError: e => !!e?.isAxiosError }, '../services/workspace-scope': scope,
+    '@tanstack/react-query': { useQueryClient: () => ({ clear() {} }) },
     '../services/token-store': { tokenStore }, '../services/api-client': { apiClient: { get: () => request() } },
     '../config/api': { apiConfig: { endpoints: { me: '/auth/me' } } },
-    '../services/auth-session': { startAuthSession: () => {}, resetAuthSession: () => {} },
+    '../services/auth-session': {
+      SessionExpiredError: class SessionExpiredError extends Error {},
+      startAuthSession: () => {}, resetAuthSession: () => {},
+      restoreAccessToken: async () => tokenStore.getToken(),
+    },
   }, globals);
   const render = () => { cursor = 0; return AuthProvider({ children: null }); };
   return { ...globals, tokenStore, render, scope: value => { workspace = value; }, fail: error => { request = async () => { throw error; }; }, respond: user => { request = async () => ({ data: { user } }); }, request: fn => { request = fn; } };
@@ -88,12 +93,12 @@ test('malformed success invalidates prior cache', async () => {
 });
 test('late result cannot stamp a different workspace', async () => {
   const f=fixture(); let resolve; f.request(()=>new Promise(r=>{resolve=r;}));
-  const pending=f.render().refreshUser(); f.scope('beta'); resolve({data:{user:admin}}); await pending;
+  const pending=f.render().refreshUser(); await new Promise(setImmediate); f.scope('beta'); resolve({data:{user:admin}}); await pending;
   assert.equal(f.render().user,null); assert.equal(f.tokenStore.getCachedUserWorkspace(),'alpha');
 });
 test('newer denial wins over an older successful request', async () => {
   const f=fixture(); let resolve; f.request(()=>new Promise(r=>{resolve=r;})); const pending=f.render().refreshUser();
-  f.fail({response:{status:403}}); await f.render().refreshUser(); resolve({data:{user:admin}}); await pending;
+  await new Promise(setImmediate); f.fail({response:{status:403}}); await f.render().refreshUser(); resolve({data:{user:admin}}); await pending;
   assert.equal(f.render().user,null); assert.equal(f.tokenStore.getCachedUserWorkspace(),null);
 });
 

@@ -1,10 +1,10 @@
 const express = require('express');
-const Joi = require('joi');
 const gamificationController = require('../controllers/gamificationController');
 const { authenticate, authorize, optionalAuth } = require('../middlewares/auth');
-const { requirePermission, requirePermissionMinScope } = require('../middlewares/authz');
+const { requirePermissionMinScope } = require('../middlewares/authz');
 const { PERMISSIONS } = require('../config/permissions');
-const { validate } = require('../middlewares/validate');
+const { validateBody } = require('../middlewares/validate');
+const { gamificationSchemas } = require('../validations/gamificationValidation');
 
 const router = express.Router();
 
@@ -40,29 +40,23 @@ router.post(
   '/badges',
   authenticate,
   requirePermissionMinScope(PERMISSIONS.GAMIFICATION_MANAGE),
-  validate(Joi.object({
-    name: Joi.string().max(100).required(),
-    description: Joi.string().required(),
-    category: Joi.string().max(50).required(),
-    criteriaType: Joi.string().required(),
-    criteriaValue: Joi.object().required(),
-    pointsReward: Joi.number().integer().min(0).default(0),
-    isActive: Joi.boolean().default(true),
-    isSecret: Joi.boolean().default(false),
-    iconUrl: Joi.string().uri().optional()
-  })),
+  validateBody(gamificationSchemas.createBadge),
   gamificationController.createBadge
+);
+
+router.patch(
+  '/badges/:badgeId',
+  authenticate,
+  requirePermissionMinScope(PERMISSIONS.GAMIFICATION_MANAGE),
+  validateBody(gamificationSchemas.updateBadge),
+  gamificationController.updateBadge
 );
 
 router.post(
   '/badges/award',
   authenticate,
   requirePermissionMinScope(PERMISSIONS.GAMIFICATION_MANAGE),
-  validate(Joi.object({
-    userId: Joi.string().uuid().required(),
-    badgeId: Joi.string().uuid().required(),
-    context: Joi.object().optional()
-  })),
+  validateBody(gamificationSchemas.awardBadge),
   gamificationController.awardBadgeManual
 );
 

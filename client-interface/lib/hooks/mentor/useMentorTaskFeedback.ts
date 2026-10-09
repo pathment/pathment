@@ -89,7 +89,7 @@ export function useMentorTaskFeedback(taskId: string): UseMentorTaskFeedbackRetu
       revisionNotes: '',
       decision: null as 'approve' | 'revision' | null,
       inlineFeedback: [] as InlineFeedbackItem[],
-      pointsAwarded: Number(task?.roadmapTask?.pointsBase ?? 0) || 0,
+      pointsAwarded: Number(task?.pointsBase ?? task?.roadmapTask?.pointsBase ?? task?.points ?? 0) || 0,
     };
     if (!alreadyReviewed || !Array.isArray(submission?.feedback) || !submission.feedback.length) return base;
 
@@ -110,7 +110,7 @@ export function useMentorTaskFeedback(taskId: string): UseMentorTaskFeedbackRetu
           }))
         : [],
       // Points live on the task once approved; fall back to the base value.
-      pointsAwarded: Number(task?.pointsAwarded ?? task?.roadmapTask?.pointsBase ?? 0) || 0,
+      pointsAwarded: Number(task?.pointsAwarded ?? task?.pointsBase ?? task?.roadmapTask?.pointsBase ?? 0) || 0,
     };
   }, [task, submission, alreadyReviewed]);
 
@@ -198,9 +198,11 @@ export function useMentorTaskFeedback(taskId: string): UseMentorTaskFeedbackRetu
           setFeedbackError('Feedback is required. Please describe your thoughts on the submission.');
           hasError = true;
         }
-        const maxPoints = task?.roadmapTask?.pointsBase ?? 10;
+        const maxPoints = Number(
+          task?.pointsBase ?? task?.roadmapTask?.pointsBase ?? task?.points ?? 10,
+        ) || 10;
         if (pointsAwarded > maxPoints) {
-          setPointsError(`Maximum points are ${maxPoints}.`);
+          setPointsError(`Maximum XP & Coins are ${maxPoints}.`);
           hasError = true;
         }
       }

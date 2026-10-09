@@ -3,6 +3,8 @@ const { models, sequelize } = require('../db');
 const { getRequestContext } = require('../utils/auditContext');
 const { NotFoundError, ForbiddenError, ValidationError, ConflictError } = require('../utils/errors/errorTypes');
 const { orgLogoThumb } = require('../utils/imageUrl');
+const authz = require('./authzService');
+const { PERMISSIONS } = require('../config/permissions');
 const {
   uploadToCloudinary,
   deleteFromCloudinary,
@@ -160,6 +162,15 @@ class OrganizationService {
     return { organization: serializeOrganization(organization, membership), membership };
   }
 
+  async assertCanManage(user, organizationId) {
+    if (!user?.id) throw new ForbiddenError('Organization admin access is required');
+    const membership = await this.assertMembership(user.id, organizationId);
+    if (!(await authz.can(user, PERMISSIONS.SYSTEM_SETTINGS))) {
+      throw new ForbiddenError('Organization admin access is required');
+    }
+    return membership;
+  }
+
   async subscription(organizationId, options = {}) {
     const subscription = await models.OrganizationSubscription.findOne({
       where: { organizationId }, include: [
@@ -177,13 +188,14 @@ class OrganizationService {
     };
   }
 
-  async overview(userId, organizationId = null) {
-    const { organization, membership } = await this.currentForUser(userId, organizationId);
-    const [subscription, organizations, usage] = await Promise.all([
-      this.subscription(organization.id), this.memberships(userId), this.usage(organization.id),
+  async overview(user, organizationId = null) {
+    const { organization, membership } = await this.currentForUser(user.id, organizationId);
+    const [subscription, organizations, usage, canManageOrganization] = await Promise.all([
+      this.subscription(organization.id), this.memberships(user.id), this.usage(organization.id),
+      authz.can(user, PERMISSIONS.SYSTEM_SETTINGS),
     ]);
     return { organization, membership: membership.toJSON(), subscription, organizations, usage,
-      workspaceCreationEnabled: this.workspaceCreationEnabled() };
+      canManageOrganization, workspaceCreationEnabled: this.workspaceCreationEnabled() };
   }
 
   async usage(organizationId, options = {}) {
@@ -211,9 +223,8 @@ class OrganizationService {
     });
   }
 
-  async requestPlan(userId, organizationId, planKey) {
-    const membership = await this.assertMembership(userId, organizationId);
-    if (!['owner', 'admin'].includes(membership.role)) throw new ForbiddenError('Organization admin access is required');
+  async requestPlan(user, organizationId, planKey) {
+    await this.assertCanManage(user, organizationId);
     const plan = await models.Plan.findOne({ where: { key: String(planKey || ''), active: true } });
     if (!plan) throw new NotFoundError('Plan not found');
     await sequelize.transaction(async transaction => {
@@ -232,9 +243,8 @@ class OrganizationService {
     return this.subscription(organizationId);
   }
 
-  async update(userId, organizationId, patch) {
-    const membership = await this.assertMembership(userId, organizationId);
-    if (!['owner', 'admin'].includes(membership.role)) throw new ForbiddenError('Organization admin access is required');
+  async update(user, organizationId, patch) {
+    const membership = await this.assertCanManage(user, organizationId);
     const organization = await models.Organization.findByPk(organizationId);
     if (!organization) throw new NotFoundError('Organization not found');
     if (patch.logoUrl !== undefined) {
@@ -254,11 +264,8 @@ class OrganizationService {
     return serializeOrganization(organization, membership);
   }
 
-  async assertCanEditLogo(userId, organizationId) {
-    const membership = await this.assertMembership(userId, organizationId);
-    if (!['owner', 'admin'].includes(membership.role)) {
-      throw new ForbiddenError('Organization admin access is required');
-    }
+  async assertCanEditLogo(user, organizationId) {
+    const membership = await this.assertCanManage(user, organizationId);
     if (!(await this.entitlement(organizationId, 'customBranding'))) {
       throw new ForbiddenError('Custom branding is available on the Growth plan and above');
     }
@@ -267,8 +274,8 @@ class OrganizationService {
     return { organization, membership };
   }
 
-  async setLogo(userId, organizationId, file) {
-    const { organization, membership } = await this.assertCanEditLogo(userId, organizationId);
+  async setLogo(user, organizationId, file) {
+    const { organization, membership } = await this.assertCanEditLogo(user, organizationId);
     if (!file || !LOGO_MIME.includes(file.mimetype) || file.size > LOGO_MAX_BYTES) {
       throw new ValidationError('Choose a PNG or JPG image up to 5 MB');
     }
@@ -284,8 +291,8 @@ class OrganizationService {
     return serializeOrganization(organization, membership);
   }
 
-  async removeLogo(userId, organizationId) {
-    const { organization, membership } = await this.assertCanEditLogo(userId, organizationId);
+  async removeLogo(user, organizationId) {
+    const { organization, membership } = await this.assertCanEditLogo(user, organizationId);
     const previous = organization.logoUrl;
     organization.logoUrl = null;
     await organization.save();

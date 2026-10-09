@@ -88,7 +88,8 @@ export function AssignTaskDrawer({
   const [type, setType] = useState<string>('assignment');
   const [description, setDescription] = useState('');
   const [difficulty, setDifficulty] = useState<string>('medium');
-  // Points are derived from difficulty (standard) — no manual entry.
+  // Task value (XP + Coins on approval). Defaults with difficulty; mentor can override.
+  const [pointsBase, setPointsBase] = useState<number>(pointsForDifficulty('medium'));
   const [dueDays, setDueDays] = useState<number>(7);
   // An exact date (free picker) overrides the preset when set; presets clear it.
   const [dueExact, setDueExact] = useState<string>('');
@@ -182,6 +183,7 @@ export function AssignTaskDrawer({
     type: string;
     description: string;
     difficulty: string;
+    pointsBase?: number;
     dueDays: number;
     dueExact: string;
     deliverable: string;
@@ -194,7 +196,7 @@ export function AssignTaskDrawer({
   };
 
   const { flush: flushDraft } = useFormDraft<AssignDraft>(draftKey, {
-    schedule, source, roadmapId, title, type, description, difficulty, dueDays, dueExact,
+    schedule, source, roadmapId, title, type, description, difficulty, pointsBase, dueDays, dueExact,
     deliverable, criteria, resources, trackId, kitId, quizKitId, selected: [...selected],
   }, (d) => {
     if (!d || typeof d !== 'object') return;
@@ -205,6 +207,7 @@ export function AssignTaskDrawer({
     if (d.schedule && ['now', 'once', 'weekly'].includes(d.schedule.mode)) setSchedule({ ...initialTaskSchedule(), ...d.schedule });
     if (typeof d.description === 'string') setDescription(d.description);
     if (typeof d.difficulty === 'string') setDifficulty(d.difficulty);
+    if (typeof d.pointsBase === 'number' && d.pointsBase > 0) setPointsBase(d.pointsBase);
     if (typeof d.dueDays === 'number') setDueDays(d.dueDays);
     if (typeof d.dueExact === 'string') setDueExact(d.dueExact);
     if (typeof d.deliverable === 'string') setDeliverable(d.deliverable);
@@ -366,7 +369,7 @@ export function AssignTaskDrawer({
         type,
         difficulty,
         dueDate: schedule.mode === 'now' ? dueISO() : undefined,
-        // Points are standard by difficulty (derived server-side).
+        pointsBase: Number.isFinite(pointsBase) && pointsBase > 0 ? Math.min(200, Math.round(pointsBase)) : undefined,
         deliverable: (deliverable.trim() || undefined),
         acceptanceCriteria: cleanCriteria,
         resources: (cleanResources.length ? cleanResources : undefined),
@@ -506,7 +509,7 @@ export function AssignTaskDrawer({
                         <p className="text-[11px] text-slate-400">
                           {selectedKit.questionCount} question{selectedKit.questionCount === 1 ? '' : 's'} · scored out of {selectedKit.totalPoints} ·{' '}
                           {selectedKit.timingMode === 'total' ? 'one total timer' : 'per-question timing'}
-                          <span className="block">Awards up to {pointsForDifficulty(difficulty)} pts (set by difficulty), pro-rated by their score.</span>
+                          <span className="block">Awards up to {pointsBase} XP &amp; Coins (task value), pro-rated by their score.</span>
                         </p>
                       )}
                       <div className="space-y-2 pt-1">
@@ -552,7 +555,7 @@ export function AssignTaskDrawer({
                         <p className="text-[11px] text-slate-400">
                           {selectedQuizKit.questionCount} question{selectedQuizKit.questionCount === 1 ? '' : 's'} · scored out of {selectedQuizKit.totalPoints}
                           {selectedQuizKit.passScore != null ? ` · pass ${selectedQuizKit.passScore}%` : ''}
-                          <span className="block">Awards up to {pointsForDifficulty(difficulty)} pts (set by difficulty), pro-rated by their score.</span>
+                          <span className="block">Awards up to {pointsBase} XP &amp; Coins (task value), pro-rated by their score.</span>
                         </p>
                       )}
                       {/* Auto vs mentor-review — the key choice for a quiz. */}
@@ -617,7 +620,18 @@ export function AssignTaskDrawer({
                     <span className="block text-sm font-medium text-slate-700 mb-1.5">Difficulty</span>
                     <div className="flex flex-wrap gap-1.5">
                       {DIFFICULTIES.map((d) => (
-                        <button key={d} type="button" onClick={() => setDifficulty(d)} className={`${pill(difficulty === d)} capitalize`} aria-pressed={difficulty === d}>{d}</button>
+                        <button
+                          key={d}
+                          type="button"
+                          onClick={() => {
+                            setDifficulty(d);
+                            setPointsBase(pointsForDifficulty(d));
+                          }}
+                          className={`${pill(difficulty === d)} capitalize`}
+                          aria-pressed={difficulty === d}
+                        >
+                          {d}
+                        </button>
                       ))}
                     </div>
                   </div>
@@ -626,13 +640,20 @@ export function AssignTaskDrawer({
               {(
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Points</label>
-                    <div className="flex items-center h-[38px]">
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 text-sm font-medium tabular-nums">
-                        {pointsForDifficulty(difficulty)} pts
-                      </span>
-                    </div>
-                    <p className="mt-1 text-xs text-slate-400">Set by difficulty.</p>
+                    <label htmlFor="assign-task-points" className="block text-sm font-medium text-slate-700 mb-1">Task value (XP &amp; Coins)</label>
+                    <input
+                      id="assign-task-points"
+                      type="number"
+                      min={1}
+                      max={200}
+                      value={pointsBase}
+                      onChange={(e) => {
+                        const v = Math.round(Number(e.target.value));
+                        setPointsBase(Number.isFinite(v) ? Math.max(1, Math.min(200, v)) : pointsForDifficulty(difficulty));
+                      }}
+                      className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500 tabular-nums"
+                    />
+                    <p className="mt-1 text-xs text-slate-400">Defaults with difficulty; you can override.</p>
                   </div>
                   {mode === 'single' && tracks.length > 0 && (
                     <div>

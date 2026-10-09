@@ -23,7 +23,7 @@ export function PlansSettingsTab() {
   const [requesting, setRequesting] = useState<string | null>(null);
   const confirm = useConfirm();
   const subscription = overview?.subscription;
-  const canManage = ['owner', 'admin'].includes(overview?.membership?.role || '');
+  const canManage = overview?.canManageOrganization === true;
 
   useEffect(() => { let current = true; organizationsApi.plans().then(value => { if (current) setPlans(value); }).catch(() => { if (current) setError(true); }).finally(() => { if (current) setLoading(false); }); return () => { current = false; }; }, [attempt]);
   if (loading || overviewLoading) return <div className="grid min-h-48 place-items-center"><Loader2 className="h-6 w-6 animate-spin text-brand-600" /></div>;
@@ -42,7 +42,7 @@ export function PlansSettingsTab() {
     <div className="space-y-7">
       <div className="flex items-start justify-between gap-4"><div><h2 className="font-semibold text-foreground">Plan &amp; usage</h2><p className="text-sm text-muted-foreground">Current plan: {subscription.plan.name}. Limits apply to this workspace.</p></div><span className="rounded-full bg-muted px-3 py-1 text-xs font-semibold capitalize text-foreground">{subscription.status}</span></div>
       <p className="text-sm text-muted-foreground">Plan changes use manual invoicing: request a plan → Pathment arranges an invoice → an operator confirms and activates the change. No payment is taken here. <a href="https://pathment.me/pricing" target="_blank" rel="noreferrer" className="text-brand-700 underline">Browse public plans (opens a new tab)</a></p>
-      {!canManage && <p className="text-sm text-muted-foreground">Only workspace owners and admins can request a plan change.</p>}
+      {!canManage && <p className="text-sm text-muted-foreground">Only people with full workspace administration access can request a plan change.</p>}
       <div className="grid gap-3 sm:grid-cols-3">
         {(['members', 'programs', 'clans'] as const).map((key) => {
           const used = overview?.usage[key] || 0; const limit = Number(subscription.plan.limits[key]); const unlimited = limit < 0;

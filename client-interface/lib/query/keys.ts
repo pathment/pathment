@@ -130,6 +130,7 @@ export const qk = {
     enrollmentStats: ['admin', 'enrollment-stats'] as const,
     cohort: (cohortId: string) => ['admin', 'cohort', cohortId] as const,
     program: (programId: string) => ['admin', 'program', programId] as const,
+    programCompletion: (programId: string) => ['admin', 'program-completion', programId] as const,
     programEnrollments: (programId: string) => ['admin', 'program-enrollments', programId] as const,
     pendingMatches: (programId: string) => ['admin', 'pending-matches', programId] as const,
     matchSuggestions: (enrollmentIds: string[]) => ['admin', 'match-suggestions', enrollmentIds] as const,

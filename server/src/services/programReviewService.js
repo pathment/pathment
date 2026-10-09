@@ -2,6 +2,7 @@ const { Op } = require('sequelize');
 const { models } = require('../db');
 const { NotFoundError, ValidationError, ForbiddenError } = require('../utils/errors/errorTypes');
 const { VISIBLE_MEMBERSHIP_STATUSES } = require('../config/membership');
+const gamificationService = require('./gamificationService');
 
 /**
  * Anonymous, structured mentee→mentor feedback collected at program completion.
@@ -116,9 +117,23 @@ class ProgramReviewService {
 
     if (existing) {
       await existing.update(payload);
+      if (mentorId) {
+        try {
+          await gamificationService.checkAndAwardBadges(mentorId);
+        } catch (err) {
+          console.error('[Gamification] mentor badge check after program review failed:', err.message);
+        }
+      }
       return { review: existing, updated: true };
     }
     const review = await models.ProgramReview.create(payload);
+    if (mentorId) {
+      try {
+        await gamificationService.checkAndAwardBadges(mentorId);
+      } catch (err) {
+        console.error('[Gamification] mentor badge check after program review failed:', err.message);
+      }
+    }
     return { review, updated: false };
   }
 

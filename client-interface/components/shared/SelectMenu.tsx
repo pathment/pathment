@@ -1,6 +1,6 @@
 'use client';
 
-import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Check, ChevronDown, Search } from 'lucide-react';
 
 export interface SelectOption {
@@ -22,6 +22,7 @@ interface SelectMenuProps {
    * is long enough to be annoying to scan (> 8 options). Pass false to force off.
    */
   searchable?: boolean;
+  disabled?: boolean;
 }
 
 /**
@@ -32,7 +33,7 @@ interface SelectMenuProps {
  * its height with a scroll, is dark-mode aware, keyboard accessible
  * (↑/↓/Enter/Esc), and - for long lists - type-to-filter searchable.
  */
-export function SelectMenu({ value, onChange, options, placeholder = 'Select…', className = '', ariaLabel, searchable }: SelectMenuProps) {
+export function SelectMenu({ value, onChange, options, placeholder = 'Select…', className = '', ariaLabel, searchable, disabled = false }: SelectMenuProps) {
   const [open, setOpen] = useState(false);
   const [flipUp, setFlipUp] = useState(false);
   const [activeIdx, setActiveIdx] = useState(-1);
@@ -50,21 +51,21 @@ export function SelectMenu({ value, onChange, options, placeholder = 'Select…'
     return options.filter((o) => o.label.toLowerCase().includes(q));
   }, [options, query]);
 
-  // Open downward by default; flip up only if there genuinely isn't room below.
-  useLayoutEffect(() => {
-    if (!open || !triggerRef.current) return;
+  const openMenu = () => {
+    if (!triggerRef.current || disabled) return;
     const rect = triggerRef.current.getBoundingClientRect();
     const spaceBelow = window.innerHeight - rect.bottom;
     const needed = Math.min(options.length * 40 + (withSearch ? 56 : 16), 320);
     setFlipUp(spaceBelow < needed && rect.top > spaceBelow);
-  }, [open, options.length, withSearch]);
+    setQuery('');
+    setActiveIdx(Math.max(0, options.findIndex((o) => o.value === value)));
+    setOpen(true);
+    requestAnimationFrame(() => (withSearch ? searchRef.current : menuRef.current)?.focus());
+  };
 
   // Outside-click + Escape close; focus search (or menu) so keys work.
   useEffect(() => {
     if (!open) return;
-    setQuery('');
-    setActiveIdx(Math.max(0, options.findIndex((o) => o.value === value)));
-    requestAnimationFrame(() => (withSearch ? searchRef.current : menuRef.current)?.focus());
     const onDown = (e: MouseEvent) => {
       if (!menuRef.current?.contains(e.target as Node) && !triggerRef.current?.contains(e.target as Node)) setOpen(false);
     };
@@ -72,7 +73,7 @@ export function SelectMenu({ value, onChange, options, placeholder = 'Select…'
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);
     return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); };
-  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open]);
 
   // Keep the active row in view as it changes.
   useEffect(() => {
@@ -82,7 +83,7 @@ export function SelectMenu({ value, onChange, options, placeholder = 'Select…'
   const choose = (v: string) => { onChange(v); setOpen(false); setQuery(''); triggerRef.current?.focus(); };
 
   const onTriggerKey = (e: React.KeyboardEvent) => {
-    if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(true); }
+    if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openMenu(); }
   };
   const onListKey = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') { e.preventDefault(); setActiveIdx((i) => Math.min(i + 1, filtered.length - 1)); }
@@ -95,12 +96,13 @@ export function SelectMenu({ value, onChange, options, placeholder = 'Select…'
       <button
         ref={triggerRef}
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => { if (open) setOpen(false); else openMenu(); }}
         onKeyDown={onTriggerKey}
+        disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={ariaLabel}
-        className="w-full flex items-center justify-between gap-2 px-3 py-2.5 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-700 dark:text-slate-700 bg-card hover:border-slate-300 dark:hover:border-slate-600 focus:outline-none focus:ring-2 focus:ring-brand-500"
+        className="w-full flex items-center justify-between gap-2 px-3 py-2.5 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-700 dark:text-slate-700 bg-card hover:border-slate-300 dark:hover:border-slate-600 focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:cursor-not-allowed disabled:opacity-60"
       >
         <span className="flex items-center gap-2 min-w-0">
           {selected?.icon}

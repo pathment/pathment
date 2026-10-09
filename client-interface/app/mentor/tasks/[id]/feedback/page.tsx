@@ -18,7 +18,6 @@ import { SubmissionFileList } from '@/components/shared/SubmissionFileList';
 import { ResourceError } from '@/components/shared/ResourceError';
 import { useMentorTaskFeedback } from '@/lib/hooks/mentor';
 import { PageHeader } from '@/components/admin/ui';
-import { pointsForDifficulty } from '@/lib/config/points';
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -38,21 +37,25 @@ export default function FeedbackProvision({ params }: PageProps) {
     feedbackText,
     revisionNotes,
     decision,
+    pointsAwarded,
     inlineFeedback,
     error,
     ratingError,
     feedbackError,
     decisionError,
     revisionError,
+    pointsError,
     setRating,
     setHoveredRating,
     setFeedbackText,
     setRevisionNotes,
     setDecision,
+    setPointsAwarded,
     setRatingError,
     setFeedbackError,
     setDecisionError,
     setRevisionError,
+    setPointsError,
     addInlineFeedback,
     updateInlineFeedback,
     removeInlineFeedback,
@@ -84,7 +87,9 @@ export default function FeedbackProvision({ params }: PageProps) {
   const taskDescription = task.roadmapTask?.description || task.description;
   const taskDeliverable = task.roadmapTask?.deliverable || task.deliverable;
   const acceptanceCriteria = task.roadmapTask?.acceptanceCriteria || task.acceptanceCriteria || [];
-  const standardPoints = pointsForDifficulty(task.roadmapTask?.difficulty || task.difficulty);
+  const maxPoints = Number(
+    task.pointsBase ?? task.roadmapTask?.pointsBase ?? task.points ?? 10,
+  ) || 10;
   const sortedExtensions = (task.submissions || [])
     .filter((s: any) => s.extensionRequested)
     .sort((a: any, b: any) => (b.version || 0) - (a.version || 0));
@@ -440,16 +445,44 @@ export default function FeedbackProvision({ params }: PageProps) {
           )}
         </div>
 
-         {/* Points (if approved) — standard by difficulty, not editable. */}
+        {/* XP & Coins — mentor confirms or overrides up to the task value. */}
         {decision === 'approve' && (
           <div>
-            <label className="block text-sm text-slate-700 mb-2">Points</label>
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 text-sm font-medium tabular-nums">
-              {standardPoints} pts
-            </span>
+            <label className="block text-sm text-slate-700 mb-2">XP &amp; Coins awarded</label>
+            <div className="flex items-center gap-3">
+              <input
+                type="number"
+                min={0}
+                max={maxPoints}
+                value={pointsAwarded}
+                onChange={(e) => {
+                  const v = Math.round(Number(e.target.value));
+                  setPointsAwarded(Number.isFinite(v) ? Math.max(0, Math.min(maxPoints, v)) : 0);
+                  setPointsError('');
+                }}
+                className="w-24 px-3 py-2 border border-slate-200 rounded-lg text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-brand-500"
+                aria-label="XP and Coins awarded"
+              />
+              <span className="text-sm text-slate-500 tabular-nums">/ {maxPoints}</span>
+              {pointsAwarded !== maxPoints && (
+                <button
+                  type="button"
+                  onClick={() => { setPointsAwarded(maxPoints); setPointsError(''); }}
+                  className="text-xs font-medium text-brand-600 hover:text-brand-700"
+                >
+                  Award full
+                </button>
+              )}
+            </div>
             <p className="mt-1 text-xs text-slate-400">
-              Set by task difficulty{task.roadmapTask?.difficulty ? ` (${task.roadmapTask.difficulty})` : ''}. Awarded in full on approval.
+              Task value sets the max. Awarded once as XP (levels) and Coins (gifts).
             </p>
+            {pointsError && (
+              <p className="mt-2 text-sm text-red-600 flex items-center gap-1">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                {pointsError}
+              </p>
+            )}
           </div>
         )}
 

@@ -6,6 +6,14 @@ module.exports = (sequelize, DataTypes) => {
       primaryKey: true
     },
     organizationId: { type: DataTypes.UUID, allowNull: false, field: 'organization_id' },
+    /** 0 = workspace, 1 = program, 2 = clan */
+    earningScope: {
+      type: DataTypes.SMALLINT,
+      allowNull: false,
+      defaultValue: 0,
+      field: 'earning_scope',
+      validate: { isIn: [[0, 1, 2]] },
+    },
     name: {
       type: DataTypes.STRING(100),
       allowNull: false,

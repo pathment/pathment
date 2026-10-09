@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { Gift as GiftIcon, Loader2, Sparkles } from 'lucide-react';
 import { useRewards, useMentorCohort, type Gift } from '@/lib/hooks/mentor';
 import { rewardsApi } from '@/lib/services/rewards-api';
+import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { Drawer } from '@/components/shared/Drawer';
 
 function RedeemModal({ gift, onClose, onDone }: { gift: Gift; onClose: () => void; onDone: () => void }) {
@@ -19,7 +20,7 @@ function RedeemModal({ gift, onClose, onDone }: { gift: Gift; onClose: () => voi
       await rewardsApi.redeem(gift.id, menteeId);
       toast.success(`Redeemed "${gift.name}"`);
       onDone(); onClose();
-    } catch (e: any) { toast.error(e?.response?.data?.message || 'Could not redeem'); }
+    } catch (e: unknown) { toast.error(extractApiErrorMessage(e, 'Could not redeem')); }
     finally { setSaving(false); }
   };
 
@@ -28,7 +29,7 @@ function RedeemModal({ gift, onClose, onDone }: { gift: Gift; onClose: () => voi
       open
       onClose={onClose}
       title={`Redeem · ${gift.name}`}
-      subtitle={`${gift.costXp.toLocaleString()} XP${gift.stock !== null ? ` · ${gift.stock} left` : ''}`}
+      subtitle={`${gift.costXp.toLocaleString()} Coins${gift.stock !== null ? ` · ${gift.stock} left` : ''}`}
       footer={
         <>
           <button onClick={onClose} className="px-4 py-2 border border-slate-200 text-slate-700 rounded-xl text-sm hover:bg-slate-50">Cancel</button>
@@ -56,7 +57,7 @@ export default function MentorRewards() {
     <div className="space-y-6">
       <div>
         <h1 className="text-slate-900 mb-2">Rewards</h1>
-        <p className="text-slate-600">Turn the points a mentee has earned into something real. Your admin manages the catalog.</p>
+        <p className="text-slate-600">Redeem gifts with Coins from approved tasks. Your admin manages the catalog.</p>
       </div>
 
       {loading ? (
@@ -89,7 +90,7 @@ export default function MentorRewards() {
                   <h3 className="font-medium text-slate-900">{g.name}</h3>
                   {g.description && <p className="text-sm text-slate-500 mt-0.5 flex-1">{g.description}</p>}
                   <div className="flex items-center justify-between mt-3">
-                    <span className="text-sm font-semibold text-brand-700">{g.costXp.toLocaleString()} XP</span>
+                    <span className="text-sm font-semibold text-brand-700">{g.costXp.toLocaleString()} Coins</span>
                     <span className="text-xs text-slate-400">{g.stock === null ? 'unlimited' : `${g.stock} left`}</span>
                   </div>
                   <button onClick={() => setRedeeming(g)} disabled={g.stock === 0}
@@ -110,7 +111,7 @@ export default function MentorRewards() {
                   <div key={r.id} className="flex items-center gap-3 px-5 py-3 text-sm">
                     <Sparkles className="w-4 h-4 text-brand-400 shrink-0" />
                     <span className="text-slate-700 flex-1"><span className="font-medium">{r.gift}</span> → {r.mentee}</span>
-                    <span className="text-xs text-slate-400">{r.costXp.toLocaleString()} XP</span>
+                    <span className="text-xs text-slate-400">{r.costXp.toLocaleString()} Coins</span>
                   </div>
                 ))}
               </div>

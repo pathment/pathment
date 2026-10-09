@@ -9,6 +9,7 @@ const { ensureMenteeProfile } = require('./menteeProfile');
 const standingClanService = require('./standingClanService');
 const clanLifecycleService = require('./clanLifecycleService');
 const avatarService = require('./clanAvatarService');
+const gamificationService = require('./gamificationService');
 
 // The permissions a co-mentor holds by default — and therefore the exact set a
 // lead mentor / admin may toggle on or off for an individual co-mentor. Derived
@@ -53,6 +54,42 @@ class ClanService {
       await ensureMenteeProfile(user.id, { transaction });
     }
     return user;
+  }
+
+  /**
+   * Reconcile roster-based badges only after the membership is committed.
+   *
+   * This deliberately uses the existing idempotent gamification service
+   * instead of a process-local EventEmitter queue. An in-memory queue loses
+   * work on restart and cannot coordinate across Heroku dynos. Roster checks
+   * are small enough to run directly; true bulk recalculation belongs in a
+   * durable database-backed job.
+   */
+  reconcileClanMemberBadges({ organizationId, clanId, userId, role }, transaction = null) {
+    if (!organizationId || !clanId || !userId || !role) {
+      console.warn('[clanService] skipped badge reconciliation: missing organizationId/clanId/userId/role');
+      return;
+    }
+    const payload = { organizationId, clanId, userId, role };
+    const reconcile = async () => {
+      try {
+        await gamificationService.reconcileClanMembershipBadges(payload);
+      } catch (error) {
+        // A badge is derived recognition. Never turn a successfully committed
+        // roster change into an apparent failure because reconciliation failed.
+        console.error('[Gamification] clan roster badge reconciliation failed:', {
+          clanId,
+          userId,
+          role,
+          error: error?.message,
+        });
+      }
+    };
+    if (transaction && typeof transaction.afterCommit === 'function') {
+      transaction.afterCommit(reconcile);
+    } else {
+      return reconcile();
+    }
   }
 
   async listClans({ programId, programIds, status, userId, search, page, limit } = {}) {
@@ -246,6 +283,12 @@ class ClanService {
           role: 'lead_mentor',
           status: 'active'
         }, { transaction });
+        this.reconcileClanMemberBadges({
+          organizationId: clan.organizationId,
+          clanId: clan.id,
+          userId: data.leadMentorId,
+          role: 'lead_mentor',
+        }, transaction);
       }
 
       return clan;
@@ -283,6 +326,12 @@ class ClanService {
           });
           if (existing) { existing.role = 'lead_mentor'; existing.status = 'active'; await existing.save({ transaction }); }
           else { await models.ClanMembership.create({ clanId, userId: newLeadId, role: 'lead_mentor', status: 'active' }, { transaction }); }
+          this.reconcileClanMemberBadges({
+            organizationId: clan.organizationId,
+            clanId,
+            userId: newLeadId,
+            role: 'lead_mentor',
+          }, transaction);
         }
         // Previous lead steps down (a clan has one lead).
         if (prevLeadId && prevLeadId !== newLeadId) {
@@ -421,7 +470,28 @@ class ClanService {
 
       return membership;
     };
-    const membership = outerTransaction ? await place(outerTransaction) : await sequelize.transaction(place);
+    let membership;
+    if (outerTransaction) {
+      membership = await place(outerTransaction);
+      // Still inside the caller's open txn — wait for commit before badge work.
+      this.reconcileClanMemberBadges({
+        organizationId: clan.organizationId,
+        clanId,
+        userId,
+        role,
+      }, outerTransaction);
+    } else {
+      membership = await sequelize.transaction(async (transaction) => {
+        const row = await place(transaction);
+        this.reconcileClanMemberBadges({
+          organizationId: clan.organizationId,
+          clanId,
+          userId,
+          role,
+        }, transaction);
+        return row;
+      });
+    }
 
     // Audit who added whom — especially a co-mentor using mentee.add — so leads
     // and admins have an accountability trail. Internal/system placements pass

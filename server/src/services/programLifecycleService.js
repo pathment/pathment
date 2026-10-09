@@ -20,16 +20,21 @@ function enrollmentStatusAtClose(enrollment) {
 }
 
 /** Resolve close timestamp: omit/empty → now; YYYY-MM-DD  */
-function resolveClosedAt(value) {
+function resolveClosedAt(value, todayKey = new Date().toISOString().slice(0, 10)) {
   if (value == null || value === '') return new Date();
   const raw = String(value).trim();
   const dayOnly = /^\d{4}-\d{2}-\d{2}$/.test(raw);
   const closedAt = dayOnly ? new Date(`${raw}T12:00:00.000Z`) : new Date(raw);
   if (Number.isNaN(closedAt.getTime())) throw new ValidationError('Enter a valid close date');
-  const todayKey = new Date().toISOString().slice(0, 10);
   const closeKey = closedAt.toISOString().slice(0, 10);
   if (closeKey > todayKey) throw new ValidationError('Close date cannot be in the future');
   return closedAt;
+}
+
+function dateKey(value) {
+  if (!value) return null;
+  if (typeof value === 'string') return value.slice(0, 10);
+  return new Date(value).toISOString().slice(0, 10);
 }
 
 class ProgramLifecycleService {
@@ -40,12 +45,11 @@ class ProgramLifecycleService {
     }
   }
 
-  async hasEnded(program, now = new Date()) {
+  async localToday(program, now = new Date()) {
     const org = await models.Organization.findByPk(program.organizationId, { attributes: ['timezone'] });
-    const today = new Intl.DateTimeFormat('en-CA', {
+    return new Intl.DateTimeFormat('en-CA', {
       timeZone: org?.timezone || 'UTC', year: 'numeric', month: '2-digit', day: '2-digit',
     }).format(now);
-    return Boolean(program.endDate && program.endDate <= today);
   }
 
   /** Certificate review rows for close preview — informational only; does not block close. */
@@ -95,7 +99,10 @@ class ProgramLifecycleService {
     const program = await models.Program.findByPk(programId);
     if (!program) throw new NotFoundError('Program not found');
     const { enrollments, unresolved, withoutCertificate } = await this.decisions(programId);
-    const ended = await this.hasEnded(program);
+    const today = await this.localToday(program);
+    const ended = Boolean(program.endDate && dateKey(program.endDate) <= today);
+    const earliestCloseDate = dateKey(program.startDate) || dateKey(program.createdAt);
+    const started = !earliestCloseDate || earliestCloseDate <= today;
     const pending = unresolved.length
       ? await models.User.findAll({ where: { id: { [Op.in]: unresolved } }, attributes: ['id', 'firstName', 'lastName'] })
       : [];
@@ -104,10 +111,16 @@ class ProgramLifecycleService {
       : [];
     return {
       ended,
+      started,
       closed: Boolean(program.closedAt),
-      // Admins may close anytime; certificates may be unsettled — warn in UI, still allow close.
-      canClose: !program.closedAt,
+      // The scheduled end is planning metadata, not an admin lock. Once a
+      // program has started, a full-access admin may close it on any historical
+      // date from the start through today.
+      canClose: !program.closedAt && started,
       featureAvailable: true,
+      earliestCloseDate,
+      today,
+      scheduledEndDate: dateKey(program.endDate),
       enrollmentCount: enrollments.length,
       unresolved: pending,
       certificatesNotIssued: missingCertificates,
@@ -128,7 +141,13 @@ class ProgramLifecycleService {
         where: { programId, kind: 'cohort' }, transaction, lock: transaction.LOCK.UPDATE, order: [['id', 'ASC']],
       });
       const { enrollments } = await this.decisions(programId, transaction);
-      const closedAt = resolveClosedAt(closedAtInput);
+      const today = await this.localToday(program);
+      const closedAt = resolveClosedAt(closedAtInput, today);
+      const startKey = dateKey(program.startDate) || dateKey(program.createdAt);
+      const closeKey = dateKey(closedAt);
+      if (startKey && closeKey < startKey) {
+        throw new ValidationError(`Close date cannot be before the program start date (${startKey})`);
+      }
 
       const groups = new Map();
       for (const enrollment of enrollments) {

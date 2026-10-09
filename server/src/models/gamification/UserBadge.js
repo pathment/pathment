@@ -16,6 +16,16 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       field: 'badge_id'
     },
+    programId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      field: 'program_id'
+    },
+    clanId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      field: 'clan_id'
+    },
     unlockedAt: {
       type: DataTypes.DATE,
       defaultValue: DataTypes.NOW,
@@ -35,25 +45,30 @@ module.exports = (sequelize, DataTypes) => {
     underscored: true,
     timestamps: false,
     indexes: [
-      { unique: true, fields: ['user_id', 'badge_id'] },
+      // Uniqueness: user_badges_once_per_context expression index (migration 123).
       { fields: ['user_id'] },
       { fields: ['badge_id'] },
-      { fields: ['unlocked_at'] }
+      { fields: ['unlocked_at'] },
+      { fields: ['program_id'] },
+      { fields: ['clan_id'] },
     ],
     hooks: {
       afterCreate: async (userBadge, options) => {
-        // Increment badge's total_unlocked
-        const badge = await sequelize.models.Badge.findByPk(userBadge.badgeId);
+        // Keep counters in the caller's transaction when this model is used
+        // directly. The main award path performs the same updates beside its
+        // conflict-safe raw INSERT because raw SQL does not run model hooks.
+        const transaction = options?.transaction;
+        const badge = await sequelize.models.Badge.findByPk(userBadge.badgeId, { transaction });
         if (badge) {
-          await badge.increment('totalUnlocked');
+          await badge.increment('totalUnlocked', { transaction });
         }
-        
-        // Increment mentee's total_badges_earned
+
         const menteeProfile = await sequelize.models.MenteeProfile.findOne({
-          where: { user_id: userBadge.userId }
+          where: { userId: userBadge.userId },
+          transaction,
         });
         if (menteeProfile) {
-          await menteeProfile.increment('totalBadgesEarned');
+          await menteeProfile.increment('totalBadgesEarned', { transaction });
         }
       }
     }
@@ -62,6 +77,8 @@ module.exports = (sequelize, DataTypes) => {
   UserBadge.associate = (models) => {
     UserBadge.belongsTo(models.User, { foreignKey: 'user_id' });
     UserBadge.belongsTo(models.Badge, { foreignKey: 'badge_id' });
+    UserBadge.belongsTo(models.Program, { foreignKey: 'program_id', as: 'program' });
+    UserBadge.belongsTo(models.Clan, { foreignKey: 'clan_id', as: 'clan' });
   };
 
   return UserBadge;

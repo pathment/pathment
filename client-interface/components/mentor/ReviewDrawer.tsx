@@ -248,7 +248,7 @@ export function ReviewDrawer({
         <div>
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-sm font-medium text-slate-700 flex items-center gap-2">
-              Points awarded
+              XP &amp; Coins awarded
               {isLate && latePenalty > 0 && (
                 <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400 text-[11px] font-medium"><Clock className="w-3 h-3" />Late −{latePenalty}</span>
               )}
@@ -286,8 +286,8 @@ export function ReviewDrawer({
           </div>
           <p className="mt-1 text-xs text-slate-400">
             {isLate
-              ? `Late submission — pre-set to ${total - latePenalty}/${total} (−${latePenalty}). Adjust if needed; can't exceed ${total}.`
-              : `Defaults to full (${total}). Lower it if the work fell short — e.g. ${Math.max(0, total - 2)}/${total}. Can't exceed ${total}.`}
+              ? `Late submission — pre-set to ${total - latePenalty}/${total} (−${latePenalty}). Adjust if needed; can't exceed ${total}. Counts as XP & Coins.`
+              : `Defaults to full (${total}). Lower if work fell short. Awarded once as XP (levels) and Coins (gifts).`}
           </p>
         </div>
 
