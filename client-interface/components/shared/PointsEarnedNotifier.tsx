@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState } from "react";
 import { X, Sparkles, ArrowRight, Flame } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -87,30 +87,24 @@ export function PointsEarnedNotifier() {
   const rawPath = usePathname() || "";
   const pathname = logicalPathname(rawPath);
   const [items, setItems] = useState<PointsHistoryEntry[]>([]);
-  const [visible, setVisible] = useState(false);
+  const [itemsOwnerId, setItemsOwnerId] = useState<string | null>(null);
   const [paused, setPaused] = useState(false);
-  const [dismissed, setDismissed] = useState(false);
+  const [dismissedOwnerId, setDismissedOwnerId] = useState<string | null>(null);
 
   const blocked = isOnboardingPath(pathname, rawPath);
-
-  useEffect(() => {
-    setItems([]);
-    setVisible(false);
-    setDismissed(false);
-  }, [user?.id]);
+  const userId = user?.id || null;
+  const dismissed = dismissedOwnerId === userId;
+  const visible = !blocked && !dismissed && itemsOwnerId === userId && items.length > 0;
 
   // Hide toast on onboarding, but keep a fresh daily_login toastable for after setup.
   useEffect(() => {
     if (!blocked) return;
-    setVisible(false);
-    setItems([]);
-
-    if (!user?.id) return;
-    const cacheKey = `pathment_seen_point_ids_${user.id}`;
+    if (!userId) return;
+    const cacheKey = `pathment_seen_point_ids_${userId}`;
     let cancelled = false;
     (async () => {
       try {
-        const history = await gamificationApi.getUserPointsHistory(user.id, 20);
+        const history = await gamificationApi.getUserPointsHistory(userId, 20);
         if (cancelled) return;
         // Mark backlog only — never eat today’s fresh daily check-in.
         const ids = (history || [])
@@ -128,66 +122,60 @@ export function PointsEarnedNotifier() {
     return () => {
       cancelled = true;
     };
-  }, [blocked, user?.id]);
-
-  const checkUnseenPoints = useCallback(async () => {
-    if (!user?.id || dismissed || blocked) return;
-
-    const cacheKey = `pathment_seen_point_ids_${user.id}`;
-    const seenIds = readSeenIds(cacheKey);
-
-    try {
-      const history = await gamificationApi.getUserPointsHistory(user.id, 15);
-      const unseen = (history || []).filter(
-        (item) => Number(item.pointsChange) > 0 && !seenIds.includes(item.id),
-      );
-      if (!unseen.length) return;
-
-      const toastItems = pickToastItems(unseen);
-      // Everything else in the unseen backlog is marked seen without toasting.
-      const quietIds = unseen
-        .filter((i) => !toastItems.some((t) => t.id === i.id))
-        .map((i) => i.id);
-      if (quietIds.length) writeSeenIds(cacheKey, quietIds);
-
-      if (toastItems.length) {
-        setItems(toastItems);
-        setVisible(true);
-      }
-    } catch {
-      // Silently ignore points fetch errors
-    }
-  }, [user?.id, dismissed, blocked]);
+  }, [blocked, userId]);
 
   useEffect(() => {
-    if (!user?.id || blocked) {
-      setVisible(false);
-      return;
-    }
-    const timer = setTimeout(() => {
-      void checkUnseenPoints();
+    if (!userId || dismissed || blocked) return;
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      const cacheKey = `pathment_seen_point_ids_${userId}`;
+      const seenIds = new Set(readSeenIds(cacheKey));
+      try {
+        const history = await gamificationApi.getUserPointsHistory(userId, 15);
+        if (cancelled) return;
+        const unseen = (history || []).filter(
+          (item) => Number(item.pointsChange) > 0 && !seenIds.has(item.id),
+        );
+        const toastItems = pickToastItems(unseen);
+        const toastIds = new Set(toastItems.map((item) => item.id));
+        const quietIds = unseen.filter((item) => !toastIds.has(item.id)).map((item) => item.id);
+        if (quietIds.length) writeSeenIds(cacheKey, quietIds);
+        if (toastItems.length) {
+          setItems(toastItems);
+          setItemsOwnerId(userId);
+        }
+      } catch {
+        // A toast is optional; points history remains available on the page.
+      }
     }, 900);
-    return () => clearTimeout(timer);
-  }, [user?.id, blocked, checkUnseenPoints]);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [userId, dismissed, blocked]);
 
-  const handleDismiss = useCallback(() => {
-    setVisible(false);
-    setDismissed(true);
-    if (!user?.id || items.length === 0) return;
+  const handleDismiss = () => {
+    if (!userId || items.length === 0) return;
+    setDismissedOwnerId(userId);
     writeSeenIds(
-      `pathment_seen_point_ids_${user.id}`,
+      `pathment_seen_point_ids_${userId}`,
       items.map((i) => i.id),
     );
-  }, [user?.id, items]);
+  };
 
   useEffect(() => {
     if (visible && !paused) {
       const timer = setTimeout(() => {
-        handleDismiss();
+        if (!userId) return;
+        setDismissedOwnerId(userId);
+        writeSeenIds(
+          `pathment_seen_point_ids_${userId}`,
+          items.map((item) => item.id),
+        );
       }, 6500);
       return () => clearTimeout(timer);
     }
-  }, [visible, paused, handleDismiss]);
+  }, [visible, paused, userId, items]);
 
   if (blocked || !visible || items.length === 0) return null;
 

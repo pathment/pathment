@@ -286,7 +286,7 @@ function BadgeDrawer({ badge, onClose, onSaved }: { badge: Badge | null; onClose
     if (!file) return;
     try {
       setUploading(true);
-      const res: any = await rewardsApi.uploadGiftImage(file);
+      const res = await rewardsApi.uploadGiftImage(file);
       setIconUrl(res?.data?.url ?? null);
     } catch (e) {
       toast.error(extractApiErrorMessage(e, 'Could not upload image'));
@@ -724,10 +724,10 @@ function GiftDrawer({ gift, onClose, onSaved }: { gift: Gift | null; onClose: ()
     if (!file) return;
     try {
       setUploading(true);
-      const res: any = await rewardsApi.uploadGiftImage(file);
+      const res = await rewardsApi.uploadGiftImage(file);
       setImageUrl(res?.data?.url ?? null);
-    } catch (e: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
-      toast.error(e?.response?.data?.message || e?.message || 'Could not upload image');
+    } catch (e: unknown) {
+      toast.error(extractApiErrorMessage(e, 'Could not upload image'));
     } finally { setUploading(false); }
   };
 

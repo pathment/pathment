@@ -7,6 +7,7 @@ const authzService = require('./authzService');
 const logger = require('../utils/logger');
 const { ensureMenteeProfile } = require('./menteeProfile');
 const performanceService = require('./performanceService');
+const { runWithRequestContext } = require('../utils/auditContext');
 const {
   currentStreak,
   longestStreak,
@@ -149,22 +150,21 @@ class GamificationService {
    * Side effects (XP, notification) run only when a new row is inserted.
    */
   async awardBadge(userId, badgeId, unlockContext = {}) {
-    const badge = await models.Badge.findByPk(badgeId, { skipOrganizationScope: true });
+    // Keep the badge lookup tenant-scoped. A caller with GAMIFICATION_MANAGE in
+    // workspace A must never be able to award a UUID belonging to workspace B.
+    const badge = await models.Badge.findByPk(badgeId);
     if (!badge) throw new NotFoundError('Badge not found');
+
+    if (unlockContext.awardMethod === 'manual') {
+      const targetMembership = await models.OrganizationMembership.findOne({
+        where: { organizationId: badge.organizationId, userId, status: 'active' },
+        attributes: ['id'],
+      });
+      if (!targetMembership) throw new ValidationError('User is not an active member of this workspace');
+    }
 
     const scope = Number(badge.earningScope ?? EARNING_SCOPE.WORKSPACE);
     const { programId, clanId } = await this.#normalizeAwardContext(badge, unlockContext);
-
-    const existing = await models.UserBadge.findOne({
-      where: {
-        userId,
-        badgeId,
-        programId: programId || null,
-        clanId: clanId || null,
-      },
-      skipOrganizationScope: true,
-    });
-    if (existing) return { alreadyOwned: true, badge: existing, badgeDetails: badge };
 
     const id = require('crypto').randomUUID();
     const awardMethod = unlockContext.awardMethod === 'manual' ? 'manual' : 'automatic';
@@ -176,64 +176,85 @@ class GamificationService {
       awardMethod,
     });
 
-    const [rows] = await sequelize.query(
-      `
-      INSERT INTO user_badges (
-        id, organization_id, user_id, badge_id, program_id, clan_id,
-        unlocked_at, unlock_context, is_featured
-      ) VALUES (
-        :id, :organizationId, :userId, :badgeId, :programId, :clanId,
-        CURRENT_TIMESTAMP, CAST(:unlockContext AS jsonb), false
-      )
-      ON CONFLICT (user_id, badge_id, (COALESCE(clan_id, program_id, badge_id)))
-      DO NOTHING
-      RETURNING id, organization_id, user_id, badge_id, program_id, clan_id, unlocked_at
-      `,
-      {
-        replacements: {
-          id,
-          organizationId: badge.organizationId,
-          userId,
-          badgeId,
-          programId: programId || null,
-          clanId: clanId || null,
-          unlockContext: contextJson,
-        },
-      }
-    );
+    const created = await sequelize.transaction(async (transaction) => {
+      const [rows] = await sequelize.query(
+        `
+        INSERT INTO user_badges (
+          id, organization_id, user_id, badge_id, program_id, clan_id,
+          unlocked_at, unlock_context, is_featured
+        ) VALUES (
+          :id, :organizationId, :userId, :badgeId, :programId, :clanId,
+          CURRENT_TIMESTAMP, CAST(:unlockContext AS jsonb), false
+        )
+        ON CONFLICT (user_id, badge_id, (COALESCE(clan_id, program_id, badge_id)))
+        DO NOTHING
+        RETURNING id
+        `,
+        {
+          replacements: {
+            id,
+            organizationId: badge.organizationId,
+            userId,
+            badgeId,
+            programId: programId || null,
+            clanId: clanId || null,
+            unlockContext: contextJson,
+          },
+          transaction,
+        }
+      );
+      if (!rows?.length) return null;
 
-    if (!rows?.length) {
+      // The raw INSERT is necessary for expression-index ON CONFLICT support,
+      // but all derived counters must commit atomically with the award.
+      await models.Badge.increment('totalUnlocked', {
+        where: { id: badgeId },
+        transaction,
+      });
+
+      const menteeProfile = await models.MenteeProfile.findOne({
+        where: { userId },
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      });
+      if (menteeProfile) {
+        const profilePatch = {
+          totalBadgesEarned: Number(menteeProfile.totalBadgesEarned || 0) + 1,
+        };
+        if (badge.pointsReward > 0) {
+          const pointsBefore = Number(menteeProfile.totalPoints || 0);
+          const pointsAfter = pointsBefore + Number(badge.pointsReward);
+          profilePatch.totalPoints = pointsAfter;
+          await models.PointsHistory.create({
+            userId,
+            pointsChange: Number(badge.pointsReward),
+            pointsBefore,
+            pointsAfter,
+            sourceType: 'badge_earned',
+            sourceId: id,
+            reason: `Earned badge: ${badge.name}`,
+          }, { transaction });
+        }
+        await menteeProfile.update(profilePatch, { transaction });
+      }
+
+      return rows[0].id;
+    });
+
+    if (!created) {
       return { alreadyOwned: true, badgeDetails: badge };
     }
 
-    // Mirror afterCreate hook counters (raw INSERT skips Sequelize hooks).
-    try {
-      await models.Badge.increment('totalUnlocked', {
-        where: { id: badgeId },
-        skipOrganizationScope: true,
-      });
-    } catch (_) { /* counter is best-effort */ }
-    const menteeProfile = await models.MenteeProfile.findOne({ where: { userId } });
-    if (menteeProfile) {
-      try {
-        await menteeProfile.increment('totalBadgesEarned');
-      } catch (_) { /* counter is best-effort */ }
-    }
+    const userBadge = await models.UserBadge.findByPk(created);
 
-    const userBadge = await models.UserBadge.findByPk(rows[0].id, { skipOrganizationScope: true });
-
-    if (badge.pointsReward && badge.pointsReward > 0) {
-      try {
-        await this.awardPoints(
-          userId,
-          badge.pointsReward,
-          'badge_earned',
-          badge.id,
-          `Earned badge: ${badge.name}`
-        );
-      } catch (error) {
-        console.error('[Gamification] Badge XP reward skipped:', error.message);
-      }
+    // Refresh derived state after the award transaction. Failures here never
+    // undo an award, but XP/counters themselves are already durable above.
+    if (badge.pointsReward > 0) {
+      await Promise.allSettled([
+        this.checkLevelUp(userId),
+        this.updateLeaderboardEntry(userId),
+        this.checkAndAwardBadges(userId),
+      ]);
     }
 
     try {
@@ -257,16 +278,6 @@ class GamificationService {
     return { success: true, badge: userBadge, badgeDetails: badge };
   }
 
-  /** Formal program close is `closed_at` (status becomes completed). */
-  async #programIsOpen(programId) {
-    if (!programId) return false;
-    const program = await models.Program.findByPk(programId, {
-      attributes: ['id', 'closedAt'],
-      skipOrganizationScope: true,
-    });
-    return Boolean(program && !program.closedAt);
-  }
-
   async #normalizeAwardContext(badge, unlockContext = {}) {
     const scope = Number(badge.earningScope ?? EARNING_SCOPE.WORKSPACE);
     let programId = unlockContext.programId || null;
@@ -285,9 +296,6 @@ class GamificationService {
       });
       if (!program || program.organizationId !== badge.organizationId) {
         throw new ValidationError('Program is not in this workspace');
-      }
-      if (program.closedAt) {
-        throw new ValidationError('Cannot award a program badge for a closed program');
       }
       return { programId, clanId: null };
     }
@@ -310,7 +318,8 @@ class GamificationService {
   /**
    * Distinct completed tasks for badge progress/award.
    * Program scope uses enrollment.program_id, excludes standing-clan tasks,
-   * and ignores closed programs (programs.closed_at IS NOT NULL).
+   * Closed programs remain eligible: final reviews and backfills often happen
+   * after close, and completed work must not disappear from badge evidence.
    */
   async countCompletedTasksScoped(userId, { organizationId, programId = null, clanId = null } = {}) {
     const [rows] = await sequelize.query(
@@ -319,7 +328,6 @@ class GamificationService {
       FROM assigned_tasks at
       LEFT JOIN enrollments e ON e.id = at.enrollment_id
       LEFT JOIN clans c ON c.id = at.clan_id
-      LEFT JOIN programs p ON p.id = e.program_id
       WHERE at.mentee_id = :userId
         AND at.status = 'completed'
         AND (:organizationId::uuid IS NULL OR at.organization_id = :organizationId)
@@ -329,7 +337,6 @@ class GamificationService {
             :clanId::uuid IS NULL
             AND :programId::uuid IS NOT NULL
             AND e.program_id = :programId
-            AND p.closed_at IS NULL
             AND (c.id IS NULL OR c.kind IS DISTINCT FROM 'standing')
           )
           OR (
@@ -356,12 +363,10 @@ class GamificationService {
       SELECT DISTINCT
         e.program_id AS "programId",
         at.clan_id AS "clanId",
-        c.kind AS "clanKind",
-        p.closed_at AS "programClosedAt"
+        c.kind AS "clanKind"
       FROM assigned_tasks at
       LEFT JOIN enrollments e ON e.id = at.enrollment_id
       LEFT JOIN clans c ON c.id = at.clan_id
-      LEFT JOIN programs p ON p.id = e.program_id
       WHERE at.mentee_id = :userId
         AND at.status = 'completed'
         AND at.organization_id = :organizationId
@@ -387,6 +392,41 @@ class GamificationService {
   }
 
   /**
+   * Reconcile mentor badges affected by one committed clan membership change.
+   * This is intentionally a normal service method, not an EventEmitter worker:
+   * it is cheap, idempotent, workspace-bound, and safe with multiple dynos.
+   */
+  async reconcileClanMembershipBadges({ organizationId, clanId, userId, role }) {
+    if (!organizationId || !clanId || !userId || !role) {
+      throw new ValidationError('organizationId, clanId, userId and role are required');
+    }
+
+    return runWithRequestContext({ organizationId }, async () => {
+      const mentorRoles = ['lead_mentor', 'co_mentor', 'core_team'];
+      if (mentorRoles.includes(role)) {
+        await this.checkAndAwardBadges(userId);
+        return;
+      }
+      if (role !== 'mentee') return;
+
+      const mentors = await models.ClanMembership.findAll({
+        where: {
+          organizationId,
+          clanId,
+          status: 'active',
+          role: { [Sequelize.Op.in]: mentorRoles },
+        },
+        attributes: ['userId'],
+        raw: true,
+      });
+
+      for (const mentor of mentors) {
+        await this.checkAndAwardBadges(mentor.userId);
+      }
+    });
+  }
+
+  /**
    * Auto-award path. Optional hintContext from the approved assignment
    * ({ programId, clanId, organizationId }) — never from UI clan selection alone.
    */
@@ -404,6 +444,7 @@ class GamificationService {
     const ownedKeys = new Set(
       ownedBadges.map((ub) => this.ownedAwardKey(ub.badgeId, ub.programId, ub.clanId))
     );
+    let taskContexts = null;
 
     for (const badge of activeBadges) {
       const role = this.badgeTargetRole(badge);
@@ -432,7 +473,8 @@ class GamificationService {
       }
 
       // Program / clan task badges — evaluate each activity context.
-      const contexts = await this.#contextsForScopedBadge(userId, badge, hintContext);
+      taskContexts ||= await this.listTaskContextsForUser(userId, badge.organizationId);
+      const contexts = await this.#contextsForScopedBadge(userId, badge, hintContext, taskContexts);
       for (const ctx of contexts) {
         const key = this.ownedAwardKey(badge.id, ctx.programId, ctx.clanId);
         if (ownedKeys.has(key)) continue;
@@ -454,10 +496,10 @@ class GamificationService {
     }
   }
 
-  async #contextsForScopedBadge(userId, badge, hintContext = {}) {
+  async #contextsForScopedBadge(userId, badge, hintContext = {}, taskContexts = null) {
     const scope = Number(badge.earningScope ?? EARNING_SCOPE.WORKSPACE);
     const orgId = badge.organizationId;
-    const rows = await this.listTaskContextsForUser(userId, orgId);
+    const rows = taskContexts || await this.listTaskContextsForUser(userId, orgId);
     const out = [];
     const seen = new Set();
 
@@ -469,11 +511,11 @@ class GamificationService {
     };
 
     if (scope === EARNING_SCOPE.PROGRAM) {
-      if (hintContext.programId && await this.#programIsOpen(hintContext.programId)) {
+      if (hintContext.programId) {
         push(hintContext.programId, null);
       }
       for (const row of rows) {
-        if (row.programId && row.clanKind !== 'standing' && !row.programClosedAt) {
+        if (row.programId && row.clanKind !== 'standing') {
           push(row.programId, null);
         }
       }
@@ -1103,6 +1145,29 @@ class GamificationService {
     );
     const coins = await this.lifetimeCoinsEarned(userId);
     const out = [];
+    let taskContexts = null;
+    const taskCountCache = new Map();
+    const contextLabelCache = new Map();
+    const taskCount = async (organizationId, programId = null, clanId = null) => {
+      const key = `${organizationId}:${programId || ''}:${clanId || ''}`;
+      if (!taskCountCache.has(key)) {
+        taskCountCache.set(key, this.countCompletedTasksScoped(userId, {
+          organizationId,
+          programId,
+          clanId,
+        }));
+      }
+      return taskCountCache.get(key);
+    };
+    const contextLabel = async ({ programId = null, clanId = null }) => {
+      const key = clanId ? `clan:${clanId}` : `program:${programId}`;
+      if (!contextLabelCache.has(key)) {
+        contextLabelCache.set(key, clanId
+          ? models.Clan.findByPk(clanId, { attributes: ['name'], skipOrganizationScope: true }).then((row) => row?.name || null)
+          : models.Program.findByPk(programId, { attributes: ['name'], skipOrganizationScope: true }).then((row) => row?.name || null));
+      }
+      return contextLabelCache.get(key);
+    };
 
     for (const badge of activeBadges) {
       if (this.badgeTargetRole(badge) !== 'mentee') continue;
@@ -1141,24 +1206,17 @@ class GamificationService {
       } else if (criteriaType === 'tasks_completed') {
         if (scope === EARNING_SCOPE.WORKSPACE) {
           const earned = ownedKeys.has(this.ownedAwardKey(badge.id));
-          const current = await this.countCompletedTasksScoped(userId, {
-            organizationId: badge.organizationId,
-          });
+          const current = await taskCount(badge.organizationId);
           pushRow(current, earned);
         } else {
-          const contexts = await this.#contextsForScopedBadge(userId, badge, {});
+          taskContexts ||= await this.listTaskContextsForUser(userId, badge.organizationId);
+          const contexts = await this.#contextsForScopedBadge(userId, badge, {}, taskContexts);
           for (const ctx of contexts) {
             const earned = ownedKeys.has(
               this.ownedAwardKey(badge.id, ctx.programId, ctx.clanId)
             );
-            const current = await this.countCompletedTasksScoped(userId, {
-              organizationId: badge.organizationId,
-              programId: ctx.programId,
-              clanId: ctx.clanId,
-            });
-            const label = ctx.clanId
-              ? (await models.Clan.findByPk(ctx.clanId, { attributes: ['name'], skipOrganizationScope: true }))?.name
-              : (await models.Program.findByPk(ctx.programId, { attributes: ['name'], skipOrganizationScope: true }))?.name;
+            const current = await taskCount(badge.organizationId, ctx.programId, ctx.clanId);
+            const label = await contextLabel(ctx);
             pushRow(current, earned, ctx.programId, ctx.clanId, label || null);
           }
         }

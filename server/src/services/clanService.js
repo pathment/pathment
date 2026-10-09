@@ -9,7 +9,7 @@ const { ensureMenteeProfile } = require('./menteeProfile');
 const standingClanService = require('./standingClanService');
 const clanLifecycleService = require('./clanLifecycleService');
 const avatarService = require('./clanAvatarService');
-const appEvents = require('../events/appEvents');
+const gamificationService = require('./gamificationService');
 
 // The permissions a co-mentor holds by default — and therefore the exact set a
 // lead mentor / admin may toggle on or off for an individual co-mentor. Derived
@@ -57,21 +57,38 @@ class ClanService {
   }
 
   /**
-   * Notify the gamification worker that a clan membership became active.
-   * When `transaction` is still open, wait until afterCommit so the worker
-   * never sees uncommitted roster rows (or a rolled-back add).
+   * Reconcile roster-based badges only after the membership is committed.
+   *
+   * This deliberately uses the existing idempotent gamification service
+   * instead of a process-local EventEmitter queue. An in-memory queue loses
+   * work on restart and cannot coordinate across Heroku dynos. Roster checks
+   * are small enough to run directly; true bulk recalculation belongs in a
+   * durable database-backed job.
    */
-  emitClanMemberAdded({ organizationId, clanId, userId, role }, transaction = null) {
+  reconcileClanMemberBadges({ organizationId, clanId, userId, role }, transaction = null) {
     if (!organizationId || !clanId || !userId || !role) {
-      console.warn('[clanService] skipped clan.member_added emit: missing organizationId/clanId/userId/role');
+      console.warn('[clanService] skipped badge reconciliation: missing organizationId/clanId/userId/role');
       return;
     }
     const payload = { organizationId, clanId, userId, role };
-    const fire = () => appEvents.emit('clan.member_added', payload);
+    const reconcile = async () => {
+      try {
+        await gamificationService.reconcileClanMembershipBadges(payload);
+      } catch (error) {
+        // A badge is derived recognition. Never turn a successfully committed
+        // roster change into an apparent failure because reconciliation failed.
+        console.error('[Gamification] clan roster badge reconciliation failed:', {
+          clanId,
+          userId,
+          role,
+          error: error?.message,
+        });
+      }
+    };
     if (transaction && typeof transaction.afterCommit === 'function') {
-      transaction.afterCommit(fire);
+      transaction.afterCommit(reconcile);
     } else {
-      fire();
+      return reconcile();
     }
   }
 
@@ -266,7 +283,7 @@ class ClanService {
           role: 'lead_mentor',
           status: 'active'
         }, { transaction });
-        this.emitClanMemberAdded({
+        this.reconcileClanMemberBadges({
           organizationId: clan.organizationId,
           clanId: clan.id,
           userId: data.leadMentorId,
@@ -309,7 +326,7 @@ class ClanService {
           });
           if (existing) { existing.role = 'lead_mentor'; existing.status = 'active'; await existing.save({ transaction }); }
           else { await models.ClanMembership.create({ clanId, userId: newLeadId, role: 'lead_mentor', status: 'active' }, { transaction }); }
-          this.emitClanMemberAdded({
+          this.reconcileClanMemberBadges({
             organizationId: clan.organizationId,
             clanId,
             userId: newLeadId,
@@ -457,7 +474,7 @@ class ClanService {
     if (outerTransaction) {
       membership = await place(outerTransaction);
       // Still inside the caller's open txn — wait for commit before badge work.
-      this.emitClanMemberAdded({
+      this.reconcileClanMemberBadges({
         organizationId: clan.organizationId,
         clanId,
         userId,
@@ -466,7 +483,7 @@ class ClanService {
     } else {
       membership = await sequelize.transaction(async (transaction) => {
         const row = await place(transaction);
-        this.emitClanMemberAdded({
+        this.reconcileClanMemberBadges({
           organizationId: clan.organizationId,
           clanId,
           userId,

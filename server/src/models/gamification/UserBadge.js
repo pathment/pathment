@@ -54,18 +54,21 @@ module.exports = (sequelize, DataTypes) => {
     ],
     hooks: {
       afterCreate: async (userBadge, options) => {
-        // Increment badge's total_unlocked
-        const badge = await sequelize.models.Badge.findByPk(userBadge.badgeId);
+        // Keep counters in the caller's transaction when this model is used
+        // directly. The main award path performs the same updates beside its
+        // conflict-safe raw INSERT because raw SQL does not run model hooks.
+        const transaction = options?.transaction;
+        const badge = await sequelize.models.Badge.findByPk(userBadge.badgeId, { transaction });
         if (badge) {
-          await badge.increment('totalUnlocked');
+          await badge.increment('totalUnlocked', { transaction });
         }
-        
-        // Increment mentee's total_badges_earned
+
         const menteeProfile = await sequelize.models.MenteeProfile.findOne({
-          where: { user_id: userBadge.userId }
+          where: { userId: userBadge.userId },
+          transaction,
         });
         if (menteeProfile) {
-          await menteeProfile.increment('totalBadgesEarned');
+          await menteeProfile.increment('totalBadgesEarned', { transaction });
         }
       }
     }

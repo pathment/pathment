@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { Gift as GiftIcon, Loader2, Sparkles } from 'lucide-react';
 import { useRewards, useMentorCohort, type Gift } from '@/lib/hooks/mentor';
 import { rewardsApi } from '@/lib/services/rewards-api';
+import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { Drawer } from '@/components/shared/Drawer';
 
 function RedeemModal({ gift, onClose, onDone }: { gift: Gift; onClose: () => void; onDone: () => void }) {
@@ -19,7 +20,7 @@ function RedeemModal({ gift, onClose, onDone }: { gift: Gift; onClose: () => voi
       await rewardsApi.redeem(gift.id, menteeId);
       toast.success(`Redeemed "${gift.name}"`);
       onDone(); onClose();
-    } catch (e: any) { toast.error(e?.response?.data?.message || 'Could not redeem'); }
+    } catch (e: unknown) { toast.error(extractApiErrorMessage(e, 'Could not redeem')); }
     finally { setSaving(false); }
   };
 

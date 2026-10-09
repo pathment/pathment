@@ -9,7 +9,6 @@ const routes = require('./routes');
 const { errorHandler, notFound } = require('./middlewares/errorHandler');
 const { initSocket } = require('./socket');
 const notificationScheduler = require('./services/notificationScheduler');
-const gamificationWorker = require('./workers/gamificationWorker');
 const requestContext = require('./middlewares/requestContext');
 
 const app = express();
@@ -184,10 +183,6 @@ async function start() {
       require('./workers/certificateWorker').start();
     }
 
-    // Clan roster → mentor badge checks (decoupled via appEvents)
-    if (process.env.GAMIFICATION_WORKER_DISABLED !== 'true') {
-      gamificationWorker.start();
-    }
     if (process.env.NOTIFICATION_SCHEDULER_DISABLED !== 'true') {
       notificationScheduler.start();
     }
