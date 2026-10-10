@@ -190,7 +190,7 @@ class ClanService {
           // Include paused mentees too (they stay in the clan) so the admin can
           // see and resume them here. The `status` field tells them apart.
           where: { status: { [Op.in]: ['active', 'paused'] } },
-          include: [{ model: models.User, as: 'user', attributes: ['id', 'firstName', 'lastName', 'email', 'profilePictureUrl', 'role'] }]
+          include: [{ model: models.User, as: 'user', attributes: ['id', 'firstName', 'lastName', 'email', 'profilePictureUrl', 'role', 'status'] }]
         }
       ]
     });

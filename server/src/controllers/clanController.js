@@ -450,7 +450,36 @@ const getStandingActivity = catchAsync(async (req, res) => {
   res.status(200).json(successResponse('Clan activity', activity));
 });
 
+/**
+ * GET /api/clans/:id/prior-record
+ *
+ * What each mentee did before this standing clan. Read-only: their work stays
+ * in the completed programme, where the final report and their certificate
+ * still account for it.
+ */
+const getStandingPriorRecord = catchAsync(async (req, res) => {
+  const record = await standingClanService.priorRecord(req.params.id, req.user);
+  res.status(200).json(successResponse('Prior record', record));
+});
+
+/** GET /api/clans/:id/mentees/:menteeId/unfinished-prior-work */
+const getUnfinishedPriorWork = catchAsync(async (req, res) => {
+  const tasks = await standingClanService.unfinishedPriorWork(req.params.id, req.params.menteeId, req.user);
+  res.status(200).json(successResponse('Unfinished work from the completed program', tasks));
+});
+
+/** POST /api/clans/:id/mentees/:menteeId/carry-forward */
+const carryForwardWork = catchAsync(async (req, res) => {
+  const tasks = await standingClanService.carryForward(
+    req.params.id, req.params.menteeId, req.body?.taskIds, req.user,
+  );
+  res.status(201).json(successResponse(`Carried ${tasks.length} task(s) forward as new work`, tasks, 201));
+});
+
 module.exports = {
+  getStandingPriorRecord,
+  getUnfinishedPriorWork,
+  carryForwardWork,
   listClanInvites,
   resendClanInvite,
   revokeClanInvite,

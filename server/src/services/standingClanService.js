@@ -167,14 +167,281 @@ class StandingClanService {
         const program = await models.Program.findByPk(request.programId, { transaction, lock: transaction.LOCK.SHARE });
         if (!program?.closedAt || program.status !== 'completed') throw new ValidationError('Close the program before approving this request');
         await this.assertStandingClanPlan(program.organizationId);
+        /**
+         * The standing clan keeps the source clan's mentor team.
+         *
+         * This hardcoded `leadMentorId: request.mentorId`, so whoever pressed
+         * the button became lead — a co-mentor who requested a continuation
+         * was promoted over the lead mentor who had actually run the clan, and
+         * the lead was left out of their own group entirely. Requesting is not
+         * a promotion. Everyone carries the role they already held.
+         *
+         * With no source clan (rows predating it) there is nothing to inherit,
+         * so the requester leads, as before.
+         */
+        const team = await this._mentorTeamOf(request.sourceClanId, transaction);
+        const leadMentorId = team.leadId || request.mentorId;
         clan = await clans().createClan({ programId: request.programId, name: request.name, description: request.description,
-          kind: 'standing', leadMentorId: request.mentorId }, actor.id, { transaction, standingApproval: true });
+          kind: 'standing', leadMentorId }, actor.id, { transaction, standingApproval: true });
+
+        /**
+         * The lead's membership is created with the clan; everyone else joins
+         * as a co-mentor, the requester included when that is what they were.
+         *
+         * `actor` is deliberately null. Passing it makes `addMember` re-check
+         * permissions via `scopeOfClan`, which reads the clan OUTSIDE this
+         * transaction — and the clan was inserted inside it, so the read blocks
+         * on the uncommitted row until the statement times out. The admin's
+         * authority was already established above, before this branch ran.
+         */
+        const joinAsCoMentor = async (userId) => {
+          await clans().addMember(clan.id, { userId, role: 'co_mentor' }, null, { transaction });
+        };
+        for (const userId of team.coMentorIds) {
+          if (userId === leadMentorId) continue;
+          await joinAsCoMentor(userId);
+        }
+        if (request.mentorId !== leadMentorId && !team.coMentorIds.includes(request.mentorId)) {
+          // They asked for this clan, so they are in it even if their
+          // membership of the source clan has since changed.
+          await joinAsCoMentor(request.mentorId);
+        }
       }
       await request.update({ status: decision, reviewedBy: actor.id, reviewedAt: new Date(), decisionNote: String(note || '').trim() || null, createdClanId: clan?.id || null }, { transaction });
       return request;
     });
     await this._notifyMentorDecision(saved);
     return saved;
+  }
+
+  /**
+   * What each mentee did BEFORE this standing clan — read-only context.
+   *
+   * Their history is deliberately not moved or copied here. Re-pointing the
+   * task rows would empty the completed programme's record and break the
+   * certificate awarded on it, which reads those rows live; copying them would
+   * inflate this clan's activity with work done somewhere else, and activity is
+   * the one thing a standing clan measures. So the work stays where it
+   * happened, and this says what it was.
+   *
+   * Batched: three queries for the whole roster rather than three per mentee.
+   */
+  async priorRecord(clanId, actor) {
+    const clan = await models.Clan.findByPk(clanId, { attributes: ['id', 'kind', 'programId'] });
+    if (!clan || clan.kind !== 'standing') throw new NotFoundError('Standing clan not found');
+    const canView = await authz.can(actor, PERMISSIONS.MENTEE_VIEW, await authz.scopeOfClan(clanId));
+    if (!canView && !(await authz.hasAdminAccess(actor))) {
+      throw new ForbiddenError('You do not have access to this clan');
+    }
+
+    const members = await models.ClanMembership.findAll({
+      where: { clanId, role: 'mentee', status: { [Op.in]: ['active', 'paused'] } },
+      attributes: ['userId'], raw: true,
+    });
+    const menteeIds = [...new Set(members.map(m => m.userId))];
+    if (!menteeIds.length) return [];
+
+    // The cohort clans these people came from, in this clan's programme.
+    const priorMemberships = await models.ClanMembership.findAll({
+      where: { userId: { [Op.in]: menteeIds }, role: 'mentee' },
+      attributes: ['userId', 'clanId', 'status'],
+      include: [{
+        model: models.Clan, as: 'clan', required: true,
+        where: { kind: 'cohort', ...(clan.programId ? { programId: clan.programId } : {}) },
+        attributes: ['id', 'name'],
+      }],
+    });
+    if (!priorMemberships.length) return menteeIds.map(id => ({ menteeId: id, priorClans: [] }));
+
+    const priorClanIds = [...new Set(priorMemberships.map(m => m.clanId))];
+    const [tasks, blockers, certificates] = await Promise.all([
+      models.AssignedTask.findAll({
+        where: { clanId: { [Op.in]: priorClanIds }, menteeId: { [Op.in]: menteeIds } },
+        attributes: ['menteeId', 'clanId', 'status'], raw: true,
+      }),
+      models.Blocker.findAll({
+        where: { clanId: { [Op.in]: priorClanIds }, menteeId: { [Op.in]: menteeIds }, status: { [Op.ne]: 'resolved' } },
+        attributes: ['menteeId', 'clanId'], raw: true,
+      }),
+      models.CertificateInstance.findAll({
+        where: { menteeId: { [Op.in]: menteeIds } },
+        attributes: ['menteeId', 'tier', 'certificateNumber', 'createdAt'], raw: true,
+      }),
+    ]);
+
+    const key = (menteeId, cId) => `${menteeId}:${cId}`;
+    const taskTally = new Map();
+    for (const t of tasks) {
+      const k = key(t.menteeId, t.clanId);
+      const row = taskTally.get(k) || { assigned: 0, completed: 0, unfinished: 0 };
+      row.assigned += 1;
+      if (t.status === 'completed') row.completed += 1;
+      else if (t.status !== 'cancelled') row.unfinished += 1;
+      taskTally.set(k, row);
+    }
+    const openBlockers = new Map();
+    for (const b of blockers) {
+      const k = key(b.menteeId, b.clanId);
+      openBlockers.set(k, (openBlockers.get(k) || 0) + 1);
+    }
+    const certByMentee = new Map();
+    for (const c of certificates) {
+      const existing = certByMentee.get(c.menteeId);
+      if (!existing || new Date(c.createdAt) > new Date(existing.createdAt)) certByMentee.set(c.menteeId, c);
+    }
+
+    const byMentee = new Map(menteeIds.map(id => [id, []]));
+    for (const m of priorMemberships) {
+      const k = key(m.userId, m.clanId);
+      const tally = taskTally.get(k) || { assigned: 0, completed: 0, unfinished: 0 };
+      byMentee.get(m.userId)?.push({
+        clanId: m.clanId,
+        clanName: m.clan?.name || null,
+        membershipStatus: m.status,
+        tasksAssigned: tally.assigned,
+        tasksCompleted: tally.completed,
+        tasksUnfinished: tally.unfinished,
+        openBlockers: openBlockers.get(k) || 0,
+      });
+    }
+
+    return menteeIds.map(menteeId => {
+      const cert = certByMentee.get(menteeId) || null;
+      return {
+        menteeId,
+        priorClans: byMentee.get(menteeId) || [],
+        certificate: cert ? { tier: cert.tier, certificateNumber: cert.certificateNumber } : null,
+      };
+    });
+  }
+
+  /**
+   * The work a mentee left unfinished, offered for carrying forward.
+   *
+   * Read-only listing. Nothing here is moved; `carryForward` copies the
+   * *intent* into new assignments.
+   */
+  async unfinishedPriorWork(clanId, menteeId, actor) {
+    const clan = await models.Clan.findByPk(clanId, { attributes: ['id', 'kind', 'programId'] });
+    if (!clan || clan.kind !== 'standing') throw new NotFoundError('Standing clan not found');
+    if (!await authz.can(actor, PERMISSIONS.MENTEE_VIEW, await authz.scopeOfClan(clanId))) {
+      throw new ForbiddenError('You do not have access to this clan');
+    }
+    const priorClans = await models.Clan.findAll({
+      where: { kind: 'cohort', ...(clan.programId ? { programId: clan.programId } : {}) },
+      attributes: ['id'], raw: true,
+    });
+    if (!priorClans.length) return [];
+    return models.AssignedTask.findAll({
+      where: {
+        clanId: { [Op.in]: priorClans.map(c => c.id) },
+        menteeId,
+        status: { [Op.notIn]: ['completed', 'cancelled'] },
+      },
+      attributes: ['id', 'roadmapTaskId', 'titleOverride', 'status', 'dueDate', 'isCustomTask', 'pointsBase'],
+      order: [['assignedAt', 'DESC']],
+      limit: 200,
+    });
+  }
+
+  /**
+   * Carry unfinished work into the standing clan as NEW assignments.
+   *
+   * Deliberately a copy of the intent, never a move of the row. The original
+   * stays in the completed programme, where it was set and where the final
+   * report and the certificate still account for it; what lands here is fresh
+   * work, assigned now, that counts toward this clan's activity because it IS
+   * this clan's activity.
+   */
+  async carryForward(clanId, menteeId, taskIds, actor) {
+    const clan = await models.Clan.findByPk(clanId);
+    if (!clan || clan.kind !== 'standing') throw new ValidationError('This operation is only for standing clans');
+    const resource = await authz.scopeOfClan(clanId);
+    if (!(await authz.can(actor, PERMISSIONS.TASK_ASSIGN, resource))
+      && !(await authz.can(actor, PERMISSIONS.CLAN_MANAGE_MEMBERS, resource))) {
+      throw new ForbiddenError('You cannot assign work in this clan');
+    }
+    if (!Array.isArray(taskIds) || !taskIds.length || taskIds.length > 50) {
+      throw new ValidationError('Select between 1 and 50 tasks to carry forward');
+    }
+    const member = await models.ClanMembership.count({
+      where: { clanId, userId: menteeId, role: 'mentee', status: { [Op.in]: ['active', 'paused'] } },
+    });
+    if (!member) throw new ValidationError('That mentee is not in this clan');
+
+    const available = await this.unfinishedPriorWork(clanId, menteeId, actor);
+    const byId = new Map(available.map(t => [t.id, t]));
+    const chosen = [...new Set(taskIds)].map(id => byId.get(id)).filter(Boolean);
+    if (!chosen.length) throw new ValidationError('None of those tasks are unfinished work from this program');
+
+    return sequelize.transaction(async transaction => {
+      const created = [];
+      for (const source of chosen) {
+        // Already carried forward? Assigning the same thing twice is a mistake
+        // somebody makes once per roster, not an error worth failing on.
+        const existing = await models.AssignedTask.findOne({
+          where: {
+            clanId, menteeId,
+            roadmapTaskId: source.roadmapTaskId,
+            status: { [Op.ne]: 'cancelled' },
+          },
+          transaction,
+        });
+        if (existing) { created.push(existing); continue; }
+        created.push(await models.AssignedTask.create({
+          organizationId: clan.organizationId,
+          clanId,
+          menteeId,
+          mentorId: actor.id,
+          // Required, and the same underlying task: what changes is the clan it
+          // is assigned in, not what the work IS. A custom task carries its
+          // title override across with it.
+          roadmapTaskId: source.roadmapTaskId,
+          titleOverride: source.titleOverride || null,
+          isCustomTask: source.isCustomTask,
+          pointsBase: source.pointsBase,
+          status: 'assigned',
+          assignedAt: new Date(),
+          // The old due date has passed and is not this clan's deadline. The
+          // mentor sets a new one if they want one.
+          dueDate: null,
+        }, { transaction }));
+      }
+      return created;
+    });
+  }
+
+  /**
+   * Who mentors the source clan right now: the lead, and the co-mentors.
+   *
+   * The lead is taken from a live membership rather than `clan.leadMentorId`
+   * alone — a lead who has since left should not be made lead of a brand new
+   * clan they are not part of.
+   */
+  async _mentorTeamOf(sourceClanId, transaction) {
+    const empty = { leadId: null, coMentorIds: [] };
+    if (!sourceClanId) return empty;
+    const memberships = await models.ClanMembership.findAll({
+      where: { clanId: sourceClanId, role: { [Op.in]: ['lead_mentor', 'co_mentor'] }, status: 'active' },
+      attributes: ['userId', 'role'],
+      raw: true,
+      transaction,
+    });
+    if (!memberships.length) return empty;
+
+    const ids = [...new Set(memberships.map(m => m.userId))];
+    const usable = new Set((await models.User.findAll({
+      where: { id: { [Op.in]: ids }, status: { [Op.ne]: 'suspended' } },
+      attributes: ['id'], raw: true, transaction,
+    })).map(u => u.id));
+
+    const lead = memberships.find(m => m.role === 'lead_mentor' && usable.has(m.userId));
+    return {
+      leadId: lead ? lead.userId : null,
+      coMentorIds: [...new Set(memberships
+        .filter(m => m.role === 'co_mentor' && usable.has(m.userId))
+        .map(m => m.userId))],
+    };
   }
 
   async _notifyMentorDecision(request) {
@@ -225,9 +492,26 @@ class StandingClanService {
       const rows = [];
       for (const userId of [...new Set(menteeIds)]) {
         const user = await models.User.findByPk(userId, { transaction });
-        const workspace = await models.OrganizationMembership.findOne({ where: { organizationId: clan.organizationId, userId, status: 'active' }, transaction });
+        const workspace = await models.OrganizationMembership.findOne({ where: { organizationId: clan.organizationId, userId }, transaction });
         const profile = await models.MenteeProfile.findOne({ where: { userId }, transaction });
-        if (!workspace || !user || user.status !== 'active' || !profile) throw new ValidationError('Select active mentees in your organization');
+        if (!workspace || !user || !profile) {
+          throw new ValidationError('Select mentees who belong to your organization');
+        }
+        /**
+         * A dormant account is not a reason to refuse.
+         *
+         * This required `user.status === 'active'` and an active workspace
+         * membership, so a lead mentor could not carry forward somebody who had
+         * gone quiet during the programme — which is often exactly who a
+         * continuation is for. Whether to bring somebody along is the mentor's
+         * call, and they have picked this person by name.
+         *
+         * `suspended` is different in kind: it is a moderation decision, and
+         * re-adding them to a clan would quietly undo an admin's action.
+         */
+        if (user.status === 'suspended') {
+          throw new ValidationError(`${user.firstName || 'That account'} is suspended and cannot be added. An admin can lift it first.`);
+        }
         const existing = await models.ClanMembership.findOne({ where: { clanId, userId, role: 'mentee', status: { [Op.in]: ['active', 'paused'] } }, transaction });
         if (existing) { rows.push(existing); continue; }
         const count = await models.ClanMembership.count({ where: { clanId, role: 'mentee', status: { [Op.in]: ['active', 'paused'] } }, transaction });

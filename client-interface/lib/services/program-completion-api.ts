@@ -49,4 +49,24 @@ export const completionApi = {
   request: (data: { programId: string; sourceClanId: string; name: string; description: string }) => apiClient.post('/clan-requests/standing', data),
   decide: (id: string, decision: 'approved' | 'rejected', note: string) => apiClient.post(`/clan-requests/standing/${id}/decision`, { decision, note }),
   addMentees: (id: string, menteeIds: string[]) => apiClient.post(`/clans/${id}/standing-members`, { menteeIds }),
+
+  /**
+   * What a mentee did before this standing clan. Read-only: their work stays in
+   * the completed programme, where the final report and certificate still
+   * account for it.
+   */
+  priorRecord: (clanId: string) => apiClient.get<{ data: {
+    menteeId: string;
+    certificate: { tier: string; certificateNumber: string | null } | null;
+    priorClans: { clanId: string; clanName: string | null; tasksAssigned: number; tasksCompleted: number; tasksUnfinished: number; openBlockers: number }[];
+  }[] }>(`/clans/${clanId}/prior-record`).then(r => r.data),
+
+  /** The unfinished work a mentor may choose to carry forward. */
+  unfinishedPriorWork: (clanId: string, menteeId: string) => apiClient.get<{ data: {
+    id: string; titleOverride: string | null; status: string; dueDate: string | null;
+  }[] }>(`/clans/${clanId}/mentees/${menteeId}/unfinished-prior-work`).then(r => r.data),
+
+  /** Carry it forward as NEW assignments here; the originals are untouched. */
+  carryForward: (clanId: string, menteeId: string, taskIds: string[]) =>
+    apiClient.post(`/clans/${clanId}/mentees/${menteeId}/carry-forward`, { taskIds }),
 };

@@ -49,6 +49,30 @@ router.get(
   clanController.getStandingActivity
 );
 
+/**
+ * What a mentee did before this clan, and the unfinished work a mentor may
+ * choose to carry forward. Carrying forward creates NEW assignments here; the
+ * originals stay in the completed programme untouched.
+ */
+router.get(
+  '/:id/prior-record',
+  authenticate,
+  validateParams(clanSchemas.idParams),
+  clanController.getStandingPriorRecord
+);
+
+router.get(
+  '/:id/mentees/:menteeId/unfinished-prior-work',
+  authenticate,
+  clanController.getUnfinishedPriorWork
+);
+
+router.post(
+  '/:id/mentees/:menteeId/carry-forward',
+  authenticate,
+  clanController.carryForwardWork
+);
+
 const canEditAvatar = catchAsync(async (req, res, next) => { await avatarService.editableClan(req.params.id, req.user); next(); });
 
 // Crop → upload file → receive URL → save URL (add and change).

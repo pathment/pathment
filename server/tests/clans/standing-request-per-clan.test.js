@@ -102,6 +102,57 @@ describe('standing clan requests are per clan', () => {
     });
   });
 
+  describe('the standing clan keeps the source clan\'s mentor team', () => {
+    /**
+     * Requesting is not a promotion. A co-mentor who asks for a continuation
+     * used to become its lead — over the head of the lead mentor who had
+     * actually run the clan, and who was then left out of the new group
+     * entirely.
+     */
+    let lead;
+    beforeEach(async () => {
+      lead = await createMentor({ email: 'lead@test.com' });
+      await models.Clan.update({ leadMentorId: lead.id }, { where: { id: coreTeam.id } });
+      await clanService.addMember(coreTeam.id, { userId: lead.id, role: 'lead_mentor' });
+    });
+
+    const approveFrom = async (clan) => {
+      const request = await ask(clan, `${clan.name} · Standing`);
+      await standingClanService.decide(request.id, 'approved', '', admin);
+      return models.StandingClanRequest.findByPk(request.id);
+    };
+
+    it('keeps the lead mentor as lead, not the co-mentor who asked', async () => {
+      const decided = await approveFrom(coreTeam);
+      const created = await models.Clan.findByPk(decided.createdClanId);
+      expect(created.leadMentorId).toBe(lead.id);
+      expect(created.leadMentorId).not.toBe(mentor.id);
+    });
+
+    it('carries the requester across as the co-mentor they already were', async () => {
+      const decided = await approveFrom(coreTeam);
+      const membership = await models.ClanMembership.findOne({
+        where: { clanId: decided.createdClanId, userId: mentor.id },
+      });
+      expect(membership).toBeTruthy();
+      expect(membership.role).toBe('co_mentor');
+    });
+
+    it('still makes the requester lead when they ARE the lead', async () => {
+      const decided = await approveFrom(viralLoop);
+      const created = await models.Clan.findByPk(decided.createdClanId);
+      expect(created.leadMentorId).toBe(mentor.id);
+    });
+
+    it('falls back to the requester when the source lead has been suspended', async () => {
+      await lead.update({ status: 'suspended' });
+      const decided = await approveFrom(coreTeam);
+      const created = await models.Clan.findByPk(decided.createdClanId);
+      // Better the requester leads than the clan has no lead at all.
+      expect(created.leadMentorId).toBe(mentor.id);
+    });
+  });
+
   describe('it is still a clan they mentor', () => {
     it('refuses a clan the mentor has nothing to do with', async () => {
       await expect(standingClanService.request({
@@ -125,5 +176,99 @@ describe('standing clan requests are per clan', () => {
     it('refuses a name that is blank', async () => {
       await expect(ask(coreTeam, '   ')).rejects.toThrow(/1–150 characters/i);
     });
+  });
+});
+
+/**
+ * History is linked, never moved.
+ *
+ * A mentee's past work stays in the clan where it happened. Re-pointing those
+ * rows at the standing clan would empty the completed programme's record and
+ * break the certificate awarded on it — the evidence reads them live. Copying
+ * them would inflate the standing clan's activity with work done elsewhere,
+ * and activity is the one thing a standing clan measures.
+ *
+ * So the record is shown, and only UNFINISHED work can be carried forward —
+ * as new assignments the mentor chooses, not as migrated history.
+ */
+describe('carrying a mentee into a standing clan', () => {
+  const { models: m } = require('../../src/db');
+  let admin2, lead2, mentee2, program2, cohort, standing;
+
+  beforeEach(async () => {
+    await cleanDb();
+    admin2 = await createAdmin({ email: 'a2@test.com' });
+    lead2 = await createMentor({ email: 'l2@test.com' });
+    mentee2 = await (require('../helpers/seed').createMentee)({ email: 'm2@test.com' });
+
+    program2 = await createProgram({ createdBy: admin2.id });
+    await program2.update({ status: 'completed', closedAt: new Date() });
+
+    cohort = await m.Clan.create({ programId: program2.id, name: 'Cohort A', kind: 'cohort', leadMentorId: lead2.id, createdBy: admin2.id });
+    standing = await m.Clan.create({ programId: program2.id, name: 'Cohort A · Standing', kind: 'standing', leadMentorId: lead2.id, createdBy: admin2.id });
+    await clanService.addMember(cohort.id, { userId: lead2.id, role: 'lead_mentor' });
+    await clanService.addMember(standing.id, { userId: lead2.id, role: 'lead_mentor' });
+    await clanService.addMember(cohort.id, { userId: mentee2.id, role: 'mentee' });
+
+    // Two finished, one left open, in the COHORT clan. Every assignment points
+    // at a roadmap task — the column is NOT NULL.
+    const { createRoadmap, createRoadmapTask } = require('../helpers/seed');
+    const roadmap = await createRoadmap({ programId: program2.id, createdBy: admin2.id });
+    let order = 0;
+    for (const status of ['completed', 'completed', 'in_progress']) {
+      order += 1;
+      const roadmapTask = await createRoadmapTask({ roadmapId: roadmap.id, title: `Task ${status} ${order}`, taskOrder: order });
+      await m.AssignedTask.create({
+        organizationId: cohort.organizationId, clanId: cohort.id, menteeId: mentee2.id,
+        mentorId: lead2.id, roadmapTaskId: roadmapTask.id, titleOverride: `Task ${status}`,
+        status, assignedAt: new Date(), completedAt: status === 'completed' ? new Date() : null,
+      });
+    }
+    await clanService.addMember(standing.id, { userId: mentee2.id, role: 'mentee' });
+  });
+
+  it('does not move the work — the cohort keeps all of it', async () => {
+    expect(await m.AssignedTask.count({ where: { clanId: cohort.id, menteeId: mentee2.id } })).toBe(3);
+    expect(await m.AssignedTask.count({ where: { clanId: standing.id, menteeId: mentee2.id } })).toBe(0);
+  });
+
+  it('shows what they did before, without counting it here', async () => {
+    const [record] = await standingClanService.priorRecord(standing.id, lead2);
+    expect(record.menteeId).toBe(mentee2.id);
+    expect(record.priorClans[0]).toMatchObject({
+      clanName: 'Cohort A', tasksAssigned: 3, tasksCompleted: 2, tasksUnfinished: 1,
+    });
+  });
+
+  it('offers only the unfinished work for carrying forward', async () => {
+    const open = await standingClanService.unfinishedPriorWork(standing.id, mentee2.id, lead2);
+    expect(open).toHaveLength(1);
+    expect(open[0].titleOverride).toBe('Task in_progress');
+  });
+
+  it('carries it forward as NEW work, leaving the original alone', async () => {
+    const [open] = await standingClanService.unfinishedPriorWork(standing.id, mentee2.id, lead2);
+    const [carried] = await standingClanService.carryForward(standing.id, mentee2.id, [open.id], lead2);
+
+    expect(carried.id).not.toBe(open.id);
+    expect(carried.clanId).toBe(standing.id);
+    expect(carried.status).toBe('assigned');
+    // The original is untouched, so the completed programme still reports it.
+    await open.reload();
+    expect(open.clanId).toBe(cohort.id);
+    expect(open.status).toBe('in_progress');
+  });
+
+  it('does not assign the same thing twice', async () => {
+    const [open] = await standingClanService.unfinishedPriorWork(standing.id, mentee2.id, lead2);
+    await standingClanService.carryForward(standing.id, mentee2.id, [open.id], lead2);
+    await standingClanService.carryForward(standing.id, mentee2.id, [open.id], lead2);
+    expect(await m.AssignedTask.count({ where: { clanId: standing.id, menteeId: mentee2.id } })).toBe(1);
+  });
+
+  it('refuses to carry forward completed work', async () => {
+    const done = await m.AssignedTask.findOne({ where: { clanId: cohort.id, status: 'completed' } });
+    await expect(standingClanService.carryForward(standing.id, mentee2.id, [done.id], lead2))
+      .rejects.toThrow(/unfinished work/i);
   });
 });

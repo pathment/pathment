@@ -999,7 +999,26 @@ function AddCoverDrawer({ clanId, clanName, onClose, onAdded }: { clanId: string
 function AddMenteesDrawer({ clanId, clanName, standing = false, onClose, onChanged }: { clanId: string; clanName: string; standing?: boolean; onClose: () => void; onChanged: () => void }) {
   const { clans } = useClan();
   const [query, setQuery] = useState('');
-  const [people, setPeople] = useState<{ id: string; name: string; email: string; role?: string; placedClanId?: string | null; placedClanName?: string | null }[]>([]);
+  const [people, setPeople] = useState<{ id: string; name: string; email: string; role?: string; avatarUrl?: string | null; status?: string; placedClanId?: string | null; placedClanName?: string | null }[]>([]);
+  /**
+   * Whether to show only people who are still active in the organisation.
+   *
+   * Carrying somebody forward is the mentor's call, and a mentee who went quiet
+   * during the programme is often exactly who a continuation is for — so they
+   * are listed. Defaulting to active keeps the common case short, and the
+   * toggle says plainly how many are being hidden.
+   */
+  const [onlyActive, setOnlyActive] = useState(true);
+  /**
+   * Unfinished work from the completed programme, offered after adding.
+   *
+   * Their history is NOT moved here — it stays in the clan where it happened,
+   * so the final report and the certificate still account for it. The only
+   * thing worth bringing across is work that never got finished, and that is
+   * created as NEW assignments the mentor chooses.
+   */
+  const [carryOver, setCarryOver] = useState<{ menteeId: string; menteeName: string; tasks: { id: string; titleOverride: string | null; status: string }[] }[]>([]);
+  const [carrying, setCarrying] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [inviteEmail, setInviteEmail] = useState('');
@@ -1048,6 +1067,8 @@ function AddMenteesDrawer({ clanId, clanName, standing = false, onClose, onChang
               name: name(m.user),
               email: m.user.email,
               role: m.user.role,
+              avatarUrl: (m.user as { profilePictureUrl?: string | null }).profilePictureUrl ?? null,
+              status: (m.user as { status?: string }).status,
             }));
           setPeople(mentees);
         })
@@ -1062,9 +1083,21 @@ function AddMenteesDrawer({ clanId, clanName, standing = false, onClose, onChang
   const visiblePeople = useMemo(() => {
     if (!fromCompletedClan) return people;
     const q = query.trim().toLowerCase();
-    if (!q) return people;
-    return people.filter((p) => p.name.toLowerCase().includes(q) || p.email.toLowerCase().includes(q));
-  }, [people, query, fromCompletedClan]);
+    // `status` is absent when talking to an API that has not been deployed yet;
+    // treat unknown as active rather than hiding somebody who is fine.
+    const pool = onlyActive
+      ? people.filter((p) => (p.status ?? 'active') === 'active')
+      : people;
+    if (!q) return pool;
+    return pool.filter((p) => p.name.toLowerCase().includes(q) || p.email.toLowerCase().includes(q));
+  }, [people, query, fromCompletedClan, onlyActive]);
+
+  /** How many the active-only filter is holding back, for an honest label. */
+  const hiddenInactiveCount = useMemo(() => (
+    fromCompletedClan && onlyActive
+      ? people.filter((p) => (p.status ?? 'active') !== 'active').length
+      : 0
+  ), [people, fromCompletedClan, onlyActive]);
 
   const add = async (p: { id: string; name: string }) => {
     setBusy(p.id);
@@ -1087,6 +1120,19 @@ function AddMenteesDrawer({ clanId, clanName, standing = false, onClose, onChang
     try {
       await completionApi.addMentees(clanId, ids);
       toast.success(`${ids.length} mentee${ids.length === 1 ? '' : 's'} added to ${clanName}`);
+
+      // Ask only about people who actually left something unfinished, so the
+      // prompt never appears for a roster that has nothing to carry.
+      const added = visiblePeople.filter((p) => ids.includes(p.id));
+      const found = await Promise.all(added.map(async (p) => {
+        try {
+          const tasks = await completionApi.unfinishedPriorWork(clanId, p.id);
+          return tasks.length ? { menteeId: p.id, menteeName: p.name, tasks } : null;
+        } catch {
+          return null;  // never block the add on this
+        }
+      }));
+      setCarryOver(found.filter(Boolean) as typeof carryOver);
       setPeople((prev) => prev.filter((p) => !ids.includes(p.id)));
       setSelected(new Set());
       setAlreadyHere((prev) => {
@@ -1195,11 +1241,25 @@ function AddMenteesDrawer({ clanId, clanName, standing = false, onClose, onChang
               <label className="block text-sm font-medium text-slate-700">
                 {fromCompletedClan ? 'Mentees from that clan' : <>Available people <span className="text-slate-400 font-normal">(including mentees of other clans)</span></>}
               </label>
-              {fromCompletedClan && visiblePeople.length > 0 && (
-                <button type="button" onClick={toggleAll} className="text-xs font-medium text-brand-600 hover:text-brand-700">
-                  {allVisibleSelected ? 'Clear all' : 'Select all'}
-                </button>
-              )}
+              <div className="flex items-center gap-3">
+                {fromCompletedClan && (
+                  <button
+                    type="button"
+                    onClick={() => setOnlyActive((v) => !v)}
+                    className="text-xs font-medium text-slate-500 hover:text-slate-700"
+                    title="Whether to bring somebody forward is your call — inactive mentees can be added too"
+                  >
+                    {onlyActive
+                      ? `Active only${hiddenInactiveCount ? ` · show ${hiddenInactiveCount} more` : ''}`
+                      : 'Showing everyone · active only'}
+                  </button>
+                )}
+                {fromCompletedClan && visiblePeople.length > 0 && (
+                  <button type="button" onClick={toggleAll} className="text-xs font-medium text-brand-600 hover:text-brand-700">
+                    {allVisibleSelected ? 'Clear all' : 'Select all'}
+                  </button>
+                )}
+              </div>
             </div>
             <div className="relative">
               <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
@@ -1222,14 +1282,25 @@ function AddMenteesDrawer({ clanId, clanName, standing = false, onClose, onChang
                       onChange={() => toggle(p.id)}
                       className="w-4 h-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500 shrink-0"
                     />
+                    <Avatar src={p.avatarUrl ?? undefined} name={p.name} size="sm" />
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-slate-900 truncate">{p.name}</p>
+                      <p className="text-sm font-medium text-slate-900 truncate">
+                        {p.name}
+                        {p.status && p.status !== 'active' && (
+                          // Shown rather than hidden: the mentor decides, but
+                          // they should know what they are picking.
+                          <span className="ml-2 align-middle rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600 capitalize">
+                            {p.status}
+                          </span>
+                        )}
+                      </p>
                       <p className="text-xs text-slate-500 truncate">{p.email}</p>
                     </div>
                   </label>
                 ) : (
                   <>
-                    <div className="min-w-0">
+                    <Avatar src={p.avatarUrl ?? undefined} name={p.name} size="sm" />
+                    <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-slate-900 truncate">
                         {p.name}
                         {p.role === 'mentor' && (
@@ -1249,6 +1320,64 @@ function AddMenteesDrawer({ clanId, clanName, standing = false, onClose, onChang
               </div>
             ))}
           </div>
+
+          {/* ── Unfinished work, offered after adding ─────────────────── */}
+          {carryOver.length > 0 && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3 dark:border-amber-900 dark:bg-amber-950/30">
+              <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+                Bring unfinished work across?
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-amber-800/90 dark:text-amber-200/80">
+                {/* Said plainly, because the alternative people expect is a move. */}
+                Their completed-program record stays exactly where it is — this
+                assigns the unfinished items again here, as new work.
+              </p>
+              <ul className="mt-2 space-y-1">
+                {carryOver.map((entry) => (
+                  <li key={entry.menteeId} className="text-xs text-amber-900 dark:text-amber-200">
+                    <span className="font-medium">{entry.menteeName}</span>
+                    {' · '}
+                    {entry.tasks.length} unfinished
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={carrying}
+                  onClick={async () => {
+                    setCarrying(true);
+                    try {
+                      let total = 0;
+                      for (const entry of carryOver) {
+                        await completionApi.carryForward(clanId, entry.menteeId, entry.tasks.map((t) => t.id));
+                        total += entry.tasks.length;
+                      }
+                      toast.success(`${total} task${total === 1 ? '' : 's'} assigned here as new work`);
+                      setCarryOver([]);
+                      onChanged();
+                    } catch (e) {
+                      toast.error(extractApiErrorMessage(e, 'Could not carry the work forward'));
+                    } finally {
+                      setCarrying(false);
+                    }
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+                >
+                  {carrying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                  Assign here as new work
+                </button>
+                <button
+                  type="button"
+                  disabled={carrying}
+                  onClick={() => setCarryOver([])}
+                  className="rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-50 dark:border-amber-800 dark:text-amber-200"
+                >
+                  Start fresh
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </Drawer>
