@@ -42,10 +42,24 @@ const respondCrossClan = catchAsync(async (req, res) => {
   res.status(200).json(successResponse('Response recorded', result));
 });
 
-/** GET /api/clan-requests/standing/eligible-programs */
+/**
+ * GET /api/clan-requests/standing/eligible-programs
+ *
+ * Kept on its old path and shape so an older client keeps working, but it now
+ * answers per CLAN: `clanId` is what a request is keyed on, and the programme
+ * alone could not tell two clans of the same programme apart.
+ */
 const listStandingEligiblePrograms = catchAsync(async (req, res) => {
-  const programs = await standingClanService.eligiblePrograms(req.user);
-  res.status(200).json(successResponse('Eligible programs', programs));
+  const clans = await standingClanService.eligibleClans(req.user);
+  res.status(200).json(successResponse('Eligible clans', clans.map((c) => ({
+    // `id`/`name` stay the programme's, so a client that has not been deployed
+    // yet still matches on programme and behaves exactly as it did.
+    id: c.program.id,
+    name: c.program.name,
+    endDate: c.program.endDate,
+    clanId: c.clanId,
+    clanName: c.clanName,
+  }))));
 });
 
 /** GET /api/clan-requests/standing */

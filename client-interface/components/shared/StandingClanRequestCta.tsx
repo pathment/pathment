@@ -23,9 +23,17 @@ const field = 'mt-2 w-full rounded-xl border border-border bg-card p-3 text-sm o
  */
 export function StandingClanRequestCta({
   programId,
+  sourceClanId,
   programName,
 }: {
   programId: string;
+  /**
+   * The clan this banner is being shown ON. Everything below is scoped to it:
+   * a mentor can run several clans in one programme, and matching on programme
+   * alone made a request raised from one clan read as "requested" on all of
+   * them — and blocked the others from ever having their own.
+   */
+  sourceClanId: string;
   programName?: string;
 }) {
   const closeoutEnabled = useProgramCloseoutEnabled();
@@ -52,14 +60,18 @@ export function StandingClanRequestCta({
         completionApi.eligiblePrograms(),
       ]);
       setRequests(Array.isArray(r) ? r : []);
-      setEligible(Array.isArray(programs) && programs.some((p) => p.id === programId));
+      // Eligibility is per clan now. `clanId` is absent only when talking to an
+      // API that has not been deployed yet, where programme is all there is.
+      setEligible(Array.isArray(programs) && programs.some(
+        (p) => (p.clanId ? p.clanId === sourceClanId : p.id === programId),
+      ));
     } catch {
       setRequests([]);
       setEligible(false);
     } finally {
       setLoading(false);
     }
-  }, [programId, closeoutEnabled]);
+  }, [programId, sourceClanId, closeoutEnabled]);
 
   useEffect(() => {
     void load();
@@ -67,12 +79,24 @@ export function StandingClanRequestCta({
 
   if (!closeoutEnabled) return null;
 
-  const forProgram = requests.filter((r) => r.program?.id === programId);
-  const approved = forProgram.some((r) => r.status === 'approved');
-  const pending = forProgram.find((r) => r.status === 'pending');
-  const hasStandingClan = clans.some(
-    (c) => c.kind === 'standing' && c.programId === programId,
+  /**
+   * This clan's own requests. A row with no source clan predates the column and
+   * cannot be attributed, so it keeps the old programme-wide meaning rather
+   * than disappearing from a banner someone is relying on.
+   */
+  const forThisClan = requests.filter((r) => (
+    r.sourceClanId
+      ? r.sourceClanId === sourceClanId
+      : r.program?.id === programId
+  ));
+  const approved = forThisClan.some((r) => r.status === 'approved');
+  const pending = forThisClan.find((r) => r.status === 'pending');
+  // The standing clan this clan already produced — not merely any standing clan
+  // in the programme, which would hide the CTA on a sibling clan that has none.
+  const createdClanIds = new Set(
+    forThisClan.map((r) => r.createdClanId).filter(Boolean) as string[],
   );
+  const hasStandingClan = clans.some((c) => c.kind === 'standing' && createdClanIds.has(c.id));
 
   // After admin approval (or an existing standing clan for this program), hide the CTA.
   if (approved || hasStandingClan) return null;
@@ -91,6 +115,7 @@ export function StandingClanRequestCta({
     try {
       await completionApi.request({
         programId,
+        sourceClanId,
         name: name.trim(),
         description: description.trim(),
       });

@@ -29,6 +29,13 @@ export interface FinalResults {
 export interface StandingRequest {
   id: string; name: string; description: string | null; status: 'pending' | 'approved' | 'rejected'; decisionNote: string | null;
   createdClanId: string | null; program: { id: string; name: string }; mentor: { firstName: string; lastName: string };
+  /**
+   * The clan this continuation grew out of. A mentor can run several clans in
+   * one programme, so matching on programme alone showed a request raised from
+   * one clan as pending on all of them. Null only on rows that predate this.
+   */
+  sourceClanId?: string | null;
+  sourceClan?: { id: string; name: string } | null;
 }
 export const completionApi = {
   preview: (id: string) => apiClient.get<{ data: ClosurePreview }>(`/programs/${id}/completion`).then(r => r.data),
@@ -37,8 +44,9 @@ export const completionApi = {
   reopen: (id: string, reason: string) => apiClient.post(`/programs/${id}/reopen`, { reason }),
   results: (id: string) => apiClient.get<{ data: FinalResults }>(`/programs/${id}/results`).then(r => r.data),
   requests: () => apiClient.get<{ data: StandingRequest[] }>('/clan-requests/standing').then(r => r.data),
-  eligiblePrograms: () => apiClient.get<{ data: { id: string; name: string }[] }>('/clan-requests/standing/eligible-programs').then(r => r.data),
-  request: (data: { programId: string; name: string; description: string }) => apiClient.post('/clan-requests/standing', data),
+  /** Per CLAN: `clanId` says which clan each eligible entry is for. */
+  eligiblePrograms: () => apiClient.get<{ data: { id: string; name: string; clanId?: string; clanName?: string }[] }>('/clan-requests/standing/eligible-programs').then(r => r.data),
+  request: (data: { programId: string; sourceClanId: string; name: string; description: string }) => apiClient.post('/clan-requests/standing', data),
   decide: (id: string, decision: 'approved' | 'rejected', note: string) => apiClient.post(`/clan-requests/standing/${id}/decision`, { decision, note }),
   addMentees: (id: string, menteeIds: string[]) => apiClient.post(`/clans/${id}/standing-members`, { menteeIds }),
 };

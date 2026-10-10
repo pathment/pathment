@@ -75,7 +75,7 @@ export function ClanWorkspaceNotice({ role }: { role: 'mentor' | 'mentee' }) {
 
         {showStandingRequest && clan.programId ? (
           <div className="shrink-0 border-t border-brand-200/70 pt-4 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0 dark:border-brand-900">
-            <StandingClanRequestCta programId={clan.programId} programName={clan.name} />
+            <StandingClanRequestCta programId={clan.programId} sourceClanId={clan.id} programName={clan.name} />
           </div>
         ) : null}
       </div>

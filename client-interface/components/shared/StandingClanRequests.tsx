@@ -65,11 +65,15 @@ export function StandingClanRequests({
 }) {
   const closeoutEnabled = useProgramCloseoutEnabled();
   const [requests, setRequests] = useState<StandingRequest[]>([]);
-  const [programs, setPrograms] = useState<{ id: string; name: string }[]>([]);
+  const [programs, setPrograms] = useState<{ id: string; name: string; clanId?: string; clanName?: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [open, setOpen] = useState(false);
   const [programId, setProgramId] = useState('');
+  // A request belongs to a clan, not a programme: a mentor can run several
+  // clans in one, and keying on the programme let one request speak for them
+  // all while blocking the rest from ever having their own.
+  const [sourceClanId, setSourceClanId] = useState('');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [review, setReview] = useState<StandingClanReview | null>(null);
@@ -108,6 +112,7 @@ export function StandingClanRequests({
     try {
       await completionApi.request({
         programId,
+        sourceClanId,
         name: name.trim(),
         description: description.trim(),
       });
@@ -309,7 +314,7 @@ export function StandingClanRequests({
           <button
             type="button"
             className={button}
-            disabled={busy || !programId || !name.trim()}
+            disabled={busy || !sourceClanId || !name.trim()}
             onClick={() => void submit()}
           >
             {busy ? 'Sending…' : 'Send request'}
@@ -324,18 +329,22 @@ export function StandingClanRequests({
             </p>
           </div>
           <div>
-            <p className="mb-2 text-sm font-medium">Completed program</p>
+            <p className="mb-2 text-sm font-medium">Clan to continue</p>
             <SelectMenu
-              ariaLabel="Completed program"
-              value={programId}
+              ariaLabel="Clan to continue"
+              value={sourceClanId}
               onChange={(value) => {
-                setProgramId(value);
-                const program = programs.find((item) => item.id === value);
-                if (program && !name.trim()) setName(`${program.name} · Standing`);
+                const entry = programs.find((item) => (item.clanId ?? item.id) === value);
+                setSourceClanId(value);
+                setProgramId(entry?.id ?? '');
+                const label = entry?.clanName ?? entry?.name;
+                if (label && !name.trim()) setName(`${label} · Standing`);
               }}
-              options={programs.map((program) => ({
-                value: program.id,
-                label: program.name,
+              options={programs.map((entry) => ({
+                // Each eligible entry is one clan. Naming its programme too
+                // keeps two same-named clans in different programmes apart.
+                value: entry.clanId ?? entry.id,
+                label: entry.clanName ? `${entry.clanName} · ${entry.name}` : entry.name,
               }))}
             />
           </div>

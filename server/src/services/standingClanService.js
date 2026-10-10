@@ -33,21 +33,76 @@ class StandingClanService {
     return models.Program.findAll({ where: { id: { [Op.in]: [...new Set(mentoredClans.map(c => c.programId))] }, status: 'completed', closedAt: { [Op.ne]: null } }, attributes: ['id', 'name', 'endDate'] });
   }
 
+  /**
+   * The closed-programme clans this mentor could continue — one entry per clan,
+   * not per programme.
+   *
+   * A mentor often runs several clans in one programme (lead of one, co-mentor
+   * of another). Asking "which programmes are eligible" collapsed those into a
+   * single answer, which is what let one request speak for both clans.
+   */
+  async eligibleClans(actor) {
+    const clanIds = await authz.mentoredClanIds(actor.id);
+    if (!clanIds.length) return [];
+    const mentored = await models.Clan.findAll({
+      where: { id: { [Op.in]: clanIds }, kind: 'cohort' },
+      attributes: ['id', 'name', 'programId', 'organizationId'],
+    });
+    if (!mentored.length) return [];
+    const organizationId = mentored[0].organizationId || getRequestContext()?.organizationId;
+    if (organizationId && !(await organizationService.entitlement(organizationId, 'programCompletionStanding'))) {
+      return [];
+    }
+    const programs = await models.Program.findAll({
+      where: {
+        id: { [Op.in]: [...new Set(mentored.map(c => c.programId).filter(Boolean))] },
+        status: 'completed',
+        closedAt: { [Op.ne]: null },
+      },
+      attributes: ['id', 'name', 'endDate'],
+    });
+    const byId = new Map(programs.map(p => [p.id, p]));
+    return mentored
+      .filter(c => byId.has(c.programId))
+      .map(c => ({
+        clanId: c.id,
+        clanName: c.name,
+        program: byId.get(c.programId),
+      }));
+  }
+
   async request(input, actor) {
     const name = String(input.name || '').trim();
     if (!name || name.length > 150) throw new ValidationError('Choose a clan name of 1–150 characters');
-    if (!(await this.eligiblePrograms(actor)).some(p => p.id === input.programId)) throw new ForbiddenError('You can request a standing clan after a program you mentor has been formally closed');
-    const program = await models.Program.findByPk(input.programId, { attributes: ['id', 'name', 'organizationId'] });
+
+    /**
+     * The request belongs to a clan. Without one it would land against the
+     * programme again and reappear on every clan the mentor runs in it.
+     */
+    const sourceClanId = input.sourceClanId || null;
+    if (!sourceClanId) throw new ValidationError('Choose which clan this standing clan continues');
+
+    const eligible = await this.eligibleClans(actor);
+    const match = eligible.find(c => c.clanId === sourceClanId);
+    if (!match) {
+      throw new ForbiddenError('You can request a standing clan for a clan you mentor, once its program has been formally closed');
+    }
+    if (input.programId && input.programId !== match.program.id) {
+      throw new ValidationError('That clan is not part of the program given');
+    }
+
+    const program = await models.Program.findByPk(match.program.id, { attributes: ['id', 'name', 'organizationId'] });
     if (!program) throw new NotFoundError('Program not found');
     await this.assertStandingClanPlan(program.organizationId);
     const created = await sequelize.transaction(async transaction => {
       // Serialize submissions by this mentor so retries return the pending request.
       await models.User.findByPk(actor.id, { transaction, lock: transaction.LOCK.UPDATE });
-      const existing = await models.StandingClanRequest.findOne({ where: { mentorId: actor.id, programId: input.programId, status: 'pending' }, transaction });
+      const existing = await models.StandingClanRequest.findOne({ where: { mentorId: actor.id, sourceClanId, status: 'pending' }, transaction });
       if (existing) return { request: existing, isNew: false };
       const request = await models.StandingClanRequest.create({
         mentorId: actor.id,
-        programId: input.programId,
+        programId: program.id,
+        sourceClanId,
         name,
         description: String(input.description || '').trim().slice(0, 4000) || null,
       }, { transaction });
@@ -88,6 +143,10 @@ class StandingClanService {
     const programScope = admin ? await authz.adminProgramScope(actor, { permission: PERMISSIONS.CLAN_CREATE }) : null;
     return models.StandingClanRequest.findAll({ where: admin ? (Array.isArray(programScope) ? { programId: { [Op.in]: programScope } } : {}) : { mentorId: actor.id },
       include: [{ model: models.Program, as: 'program', attributes: ['id', 'name'] },
+        // The client scopes the "requested" banner by this: without it, a
+        // request raised from one clan showed as pending on every clan the
+        // mentor runs in the same programme.
+        { model: models.Clan, as: 'sourceClan', attributes: ['id', 'name'], required: false },
         { model: models.User, as: 'mentor', attributes: ['id', 'firstName', 'lastName'] },
         { model: models.User, as: 'reviewer', attributes: ['id', 'firstName', 'lastName'] }],
       order: [['createdAt', 'DESC']] });
