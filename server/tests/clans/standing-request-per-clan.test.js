@@ -246,6 +246,32 @@ describe('carrying a mentee into a standing clan', () => {
     expect(await m.MenteeProfile.count({ where: { userId: mentorWhoLearns.id } })).toBe(1);
   });
 
+  /**
+   * 25 is a cohort's number. A standing clan is open-ended, and inheriting that
+   * default meant a 34-person cohort could not be carried into its own
+   * continuation — it filled at 25 and told the mentor to raise a capacity they
+   * had no control over.
+   */
+  it('is created uncapped, so a whole cohort can be carried across', async () => {
+    // The real path: approval is the only way a standing clan is made.
+    const created = await clanService.createClan(
+      { programId: program2.id, name: 'Via service · Standing', kind: 'standing', leadMentorId: lead2.id },
+      admin2.id,
+      { standingApproval: true },
+    );
+    expect(created.maxMentees).toBeNull();
+  });
+
+  it('still caps a cohort clan at 25', async () => {
+    // A cohort cannot be created in a closed programme, so use an open one.
+    const open = await createProgram({ createdBy: admin2.id, name: 'Still running' });
+    const cohortClan = await clanService.createClan(
+      { programId: open.id, name: 'A cohort', kind: 'cohort', leadMentorId: lead2.id },
+      admin2.id,
+    );
+    expect(cohortClan.maxMentees).toBe(25);
+  });
+
   it('still refuses somebody outside the organization', async () => {
     const outsider = await createMentor({ email: 'outsider-org@test.com' });
     await m.OrganizationMembership.destroy({ where: { userId: outsider.id } });

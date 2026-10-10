@@ -525,7 +525,13 @@ class StandingClanService {
         const existing = await models.ClanMembership.findOne({ where: { clanId, userId, role: 'mentee', status: { [Op.in]: ['active', 'paused'] } }, transaction });
         if (existing) { rows.push(existing); continue; }
         const count = await models.ClanMembership.count({ where: { clanId, role: 'mentee', status: { [Op.in]: ['active', 'paused'] } }, transaction });
-        if (clan.maxMentees && count >= clan.maxMentees) throw new ConflictError('This clan is full. Increase its capacity before adding more mentees.');
+        if (clan.maxMentees && count >= clan.maxMentees) {
+          // Say what the limit actually is and how many got in. "This clan is
+          // full" alone, from a screen with no capacity control, is a dead end.
+          throw new ConflictError(
+            `This clan holds ${clan.maxMentees} mentees and already has ${count}. Raise its capacity in clan settings, or select fewer people.`,
+          );
+        }
         rows.push(await clans().addMember(clanId, { userId, role: 'mentee' }, actor, { transaction }));
       }
       return rows;

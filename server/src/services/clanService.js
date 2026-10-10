@@ -266,7 +266,15 @@ class ClanService {
         tags: Array.isArray(data.tags) ? data.tags : [],
         levels: Array.isArray(data.levels) ? data.levels : [],
         countries: Array.isArray(data.countries) ? data.countries : [],
-        maxMentees: data.maxMentees || 25,
+        /**
+         * 25 is a COHORT's size — a programme intake is deliberately bounded.
+         * A standing clan is an open-ended mentoring space its mentor runs, and
+         * giving it the cohort default meant a 34-person cohort could not be
+         * carried into its own continuation: it filled at 25 and said "increase
+         * its capacity", from a screen with no way to do that. Uncapped unless
+         * somebody asks for a cap.
+         */
+        maxMentees: data.maxMentees ?? (data.kind === 'standing' ? null : 25),
         status: data.status || 'active',
         createdBy
       }, { transaction });
