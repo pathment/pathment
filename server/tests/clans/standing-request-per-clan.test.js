@@ -227,6 +227,39 @@ describe('carrying a mentee into a standing clan', () => {
     await clanService.addMember(standing.id, { userId: mentee2.id, role: 'mentee' });
   });
 
+  /**
+   * A core-team clan is made of mentors who also learn. Only `role = 'mentee'`
+   * accounts get a MenteeProfile at signup, so requiring one up front made that
+   * whole roster unaddable to its own continuation — even though the ordinary
+   * cohort path, which calls `ensureMenteeProfile`, had taken them all along.
+   */
+  it('adds a mentor-role account who learns as a mentee, creating their profile', async () => {
+    const mentorWhoLearns = await createMentor({ email: 'learner@test.com' });
+    expect(await m.MenteeProfile.count({ where: { userId: mentorWhoLearns.id } })).toBe(0);
+
+    await standingClanService.addMenteesToStandingClan(standing.id, [mentorWhoLearns.id], lead2);
+
+    const membership = await m.ClanMembership.findOne({
+      where: { clanId: standing.id, userId: mentorWhoLearns.id, role: 'mentee' },
+    });
+    expect(membership).toBeTruthy();
+    expect(await m.MenteeProfile.count({ where: { userId: mentorWhoLearns.id } })).toBe(1);
+  });
+
+  it('still refuses somebody outside the organization', async () => {
+    const outsider = await createMentor({ email: 'outsider-org@test.com' });
+    await m.OrganizationMembership.destroy({ where: { userId: outsider.id } });
+    await expect(standingClanService.addMenteesToStandingClan(standing.id, [outsider.id], lead2))
+      .rejects.toThrow(/belong to your organization/i);
+  });
+
+  it('still refuses a suspended account', async () => {
+    const suspended = await (require('../helpers/seed').createMentee)({ email: 'susp@test.com' });
+    await suspended.update({ status: 'suspended' });
+    await expect(standingClanService.addMenteesToStandingClan(standing.id, [suspended.id], lead2))
+      .rejects.toThrow(/suspended/i);
+  });
+
   it('does not move the work — the cohort keeps all of it', async () => {
     expect(await m.AssignedTask.count({ where: { clanId: cohort.id, menteeId: mentee2.id } })).toBe(3);
     expect(await m.AssignedTask.count({ where: { clanId: standing.id, menteeId: mentee2.id } })).toBe(0);

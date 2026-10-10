@@ -493,10 +493,20 @@ class StandingClanService {
       for (const userId of [...new Set(menteeIds)]) {
         const user = await models.User.findByPk(userId, { transaction });
         const workspace = await models.OrganizationMembership.findOne({ where: { organizationId: clan.organizationId, userId }, transaction });
-        const profile = await models.MenteeProfile.findOne({ where: { userId }, transaction });
-        if (!workspace || !user || !profile) {
-          throw new ValidationError('Select mentees who belong to your organization');
+        if (!workspace || !user) {
+          throw new ValidationError('Select people who belong to your organization');
         }
+        /**
+         * A mentee profile is NOT required up front — `addMember` calls
+         * `ensureMenteeProfile` and creates one.
+         *
+         * Demanding it here refused anyone whose account is a mentor but who
+         * learns as a mentee in a clan, because only `role = 'mentee'` accounts
+         * are given a profile at signup. A core-team clan is made of exactly
+         * those people, so the whole roster was unaddable to its own
+         * continuation — while the ordinary cohort path, which ensures the
+         * profile, had taken them happily all along.
+         */
         /**
          * A dormant account is not a reason to refuse.
          *
