@@ -58,6 +58,8 @@ export const qk = {
     roadmaps: ['mentor', 'roadmaps'] as const,
     tracks: (menteeId: string) => ['mentor', 'tracks', menteeId] as const,
     library: ['mentor', 'library'] as const,
+    talks: (search?: string, categoryId?: string) => ['mentor', 'talks', search || '', categoryId || ''] as const,
+    talkCategories: ['mentor', 'talk-categories'] as const,
     rewards: ['mentor', 'rewards'] as const,
     scheduleTemplates: ['mentor', 'schedule-templates'] as const,
     feedbackSnippets: ['mentor', 'feedback-snippets'] as const,

@@ -46,6 +46,9 @@ export type { UseRewardsReturn, Gift, Redemption } from './useRewards';
 export { useLibrary } from './useLibrary';
 export type { UseLibraryReturn, LibraryDoc } from './useLibrary';
 
+export { useTalks } from './useTalks';
+export type { TalkItem, TalkCategory } from './useTalks';
+
 export { useScheduleTemplates } from './useScheduleTemplates';
 export type { UseScheduleTemplatesReturn, ScheduleTemplate } from './useScheduleTemplates';
 

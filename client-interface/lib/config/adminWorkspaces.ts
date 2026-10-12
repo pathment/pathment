@@ -77,6 +77,10 @@ export const adminWorkspaces: { label: string; tabs: AdminWorkspaceTab[] }[] = [
         label: "Library",
       },
       {
+        href: "/admin/talks",
+        label: "Talks",
+      },
+      {
         href: "/admin/mentor-spec",
         label: "Handbook",
       },
