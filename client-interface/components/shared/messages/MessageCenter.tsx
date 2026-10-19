@@ -12,6 +12,7 @@ import { useAuth } from '@/lib/context/AuthContext';
 import { useClan, ALL_CLANS } from '@/lib/context/ClanContext';
 import { scopeConversationsToClan } from '@/lib/utils/clan-scope';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
+import { isReaderLooking, markThreadRead } from '@/lib/utils/chat-read';
 import { workspacePath } from '@/lib/services/workspace-scope';
 import type { ChatMessage, ConversationSummary, MessageReaction, SearchableUser } from '@/lib/types/messaging';
 
@@ -69,6 +70,11 @@ export default function MessageCenter({ role }: MessageCenterProps) {
   // Stable ref so socket handlers always see the latest selected conversation
   // without needing to be re-registered on every conversation switch.
   const selectedConversationIdRef = useRef<string | null>(null);
+  // Open chats that got new messages while the tab was in the background.
+  const unseenWhileAwayRef = useRef<Set<string>>(new Set());
+  // message:new is sent to both the conversation room and the user room, so an
+  // open chat gets each message twice. Track ids so we only handle it once.
+  const handledMessageIdsRef = useRef<Set<string>>(new Set());
 
   // Mobile layout state: 'list' or 'chat'
   const [activeMobilePane, setActiveMobilePane] = useState<'list' | 'chat'>('list');
@@ -280,11 +286,23 @@ export default function MessageCenter({ role }: MessageCenterProps) {
       const incomingConversationId = payload?.conversationId;
       const incomingMessage = payload?.message;
       if (!incomingConversationId || !incomingMessage) return;
+      if (handledMessageIdsRef.current.has(incomingMessage.id)) return;
+      handledMessageIdsRef.current.add(incomingMessage.id);
 
-      if (incomingConversationId === selectedConversationIdRef.current) {
+      const isOpen = incomingConversationId === selectedConversationIdRef.current;
+      const fromOther = incomingMessage.senderId !== user?.id;
+      // Only count it as read if the user can actually see the chat right now.
+      const seen = isOpen && fromOther && isReaderLooking(document);
+
+      if (isOpen) {
         mergeIncomingMessage(incomingMessage);
-        if (incomingMessage.senderId !== user?.id) {
+        if (seen) {
+          // They're looking at the chat, so clear the unread divider as well.
+          setMessages((prev) => markThreadRead(prev, user?.id, new Date().toISOString()));
           messagingApi.markConversationRead(incomingConversationId).catch(() => {});
+        } else if (fromOther) {
+          // Keep it unread for now. It gets marked read when they come back to the tab.
+          unseenWhileAwayRef.current.add(incomingConversationId);
         }
       }
 
@@ -299,10 +317,7 @@ export default function MessageCenter({ role }: MessageCenterProps) {
               ...c,
               lastMessage: incomingMessage,
               lastMessageAt: incomingMessage.createdAt,
-              unreadCount:
-                incomingConversationId === selectedConversationIdRef.current
-                  ? 0
-                  : (c.unreadCount || 0) + unreadIncrement,
+              unreadCount: seen ? 0 : (c.unreadCount || 0) + unreadIncrement,
             };
           })
           .sort((a, b) => {
@@ -414,6 +429,20 @@ export default function MessageCenter({ role }: MessageCenterProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
+  // When the user comes back to the tab, mark what arrived while they were away
+  // as read. The divider stays so they can see where the new messages start.
+  useEffect(() => {
+    const onReturn = () => {
+      const conversationId = selectedConversationIdRef.current;
+      if (!conversationId || !unseenWhileAwayRef.current.has(conversationId) || !isReaderLooking(document)) return;
+      unseenWhileAwayRef.current.delete(conversationId);
+      messagingApi.markConversationRead(conversationId).catch(() => {});
+      setConversations((prev) => prev.map((c) => (c.id === conversationId ? { ...c, unreadCount: 0 } : c)));
+    };
+    document.addEventListener('visibilitychange', onReturn);
+    return () => document.removeEventListener('visibilitychange', onReturn);
+  }, []);
+
   // Keep ref in sync — handlers read this ref to avoid stale closures
   useEffect(() => {
     selectedConversationIdRef.current = selectedConversationId;
@@ -430,7 +459,19 @@ export default function MessageCenter({ role }: MessageCenterProps) {
     };
   }, [selectedConversationId]);
 
+  // When leaving a chat, mark its messages read locally and in the cache, so the
+  // unread divider isn't still there the next time it's opened.
+  const leaveConversation = (conversationId: string | null) => {
+    if (!conversationId) return;
+    unseenWhileAwayRef.current.delete(conversationId);
+    if (conversationId !== selectedConversationIdRef.current) return;
+    const shown = markThreadRead(messages, user?.id, new Date().toISOString());
+    messageCacheRef.current[conversationId] = shown;
+    setMessages(shown);
+  };
+
   const handleSelectConversation = (id: string) => {
+    if (id !== selectedConversationIdRef.current) leaveConversation(selectedConversationIdRef.current);
     setSelectedConversationId(id);
     setActiveMobilePane('chat');
   };
@@ -482,8 +523,9 @@ export default function MessageCenter({ role }: MessageCenterProps) {
       reactions: [],
     };
 
-    // 1. Instantly append optimistic message & update lastMessage in state
-    setMessages((prev) => [...prev, optimisticMessage]);
+    // 1. Instantly append optimistic message & update lastMessage in state.
+    // Replying means they've read the chat, so drop the unread divider too.
+    setMessages((prev) => [...markThreadRead(prev, user?.id, new Date().toISOString()), optimisticMessage]);
     setComposer('');
     setConversations((prev) =>
       prev.map((c) =>
@@ -943,7 +985,12 @@ export default function MessageCenter({ role }: MessageCenterProps) {
             onSendMessage={handleSendMessage}
             isSending={isSending}
             onReact={handleReactToMessage}
-            onBackToList={() => setActiveMobilePane('list')}
+            onBackToList={() => {
+              // Deselect the chat so new messages show as unread while on the list.
+              leaveConversation(selectedConversationId);
+              setSelectedConversationId(null);
+              setActiveMobilePane('list');
+            }}
             onArchiveConversation={handleArchiveConversation}
             onDeleteConversation={handleDeleteConversation}
             onLoadMore={loadMoreMessages}

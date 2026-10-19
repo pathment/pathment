@@ -5,6 +5,7 @@ import { Avatar } from '@/components/shared/Avatar';
 import { Archive, ArrowLeft, Loader2, MessageSquare, MoreVertical, ShieldCheck, Trash2, User, UserCheck } from 'lucide-react';
 
 import type { ChatMessage, ConversationSummary } from '@/lib/types/messaging';
+import { firstUnreadIndex } from '@/lib/utils/chat-read';
 import MessageItem from './MessageItem';
 import MessageComposer from './MessageComposer';
 import {
@@ -201,9 +202,7 @@ export default function ChatWindow({
     }
   };
 
-  const firstUnreadIdx = useMemo(() => {
-    return messages.findIndex((m) => !m.isRead && m.senderId !== currentUserId);
-  }, [messages, currentUserId]);
+  const firstUnreadIdx = useMemo(() => firstUnreadIndex(messages, currentUserId), [messages, currentUserId]);
 
   const recipient = selectedConversation?.participants?.[0];
 
