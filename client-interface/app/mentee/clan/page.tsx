@@ -195,7 +195,7 @@ export default function MenteeClanPage() {
                     className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:border-brand-400 hover:text-brand-700 transition-colors"
                   >
                     <Repeat className="w-3.5 h-3.5" />
-                    Ask to move
+                    {clan.moveKind === 'placement' ? 'Ask to be placed' : 'Ask to move'}
                   </button>
                 )}
               </div>
@@ -236,36 +236,39 @@ export default function MenteeClanPage() {
                 </div>
               )}
 
-              {clan.standing ? (
+              {clan.moveKind === 'placement' && !open && (
                 <div className="border-t border-slate-200 bg-slate-50/60 px-5 py-3">
                   <p className="text-xs text-slate-500">
-                    This is the group that carried on after{' '}
-                    {clan.programName || 'your program'} finished, so there is no second clan to
-                    move to. If you want to leave it, speak to your admin.
+                    {clan.standing
+                      ? `This is the group that carried on after ${clan.programName || 'your program'} finished.`
+                      : 'This program has finished, so this clan is kept as your record.'}{' '}
+                    You can still ask your admin to place you somewhere new — including another
+                    program. This clan stays exactly as it is, with your work and certificates
+                    intact.
                   </p>
                 </div>
-              ) : clan.closed ? (
-                <div className="border-t border-slate-200 bg-slate-50/60 px-5 py-3">
-                  <p className="text-xs text-slate-500">
-                    This program has finished, so its clans are kept as a record and nobody moves
-                    in or out of them. Your work and certificates stay exactly as they are.
-                  </p>
-                </div>
-              ) : null}
+              )}
 
               {/* Who else they could be with. Shown even with a request open:
                   it is the context for the one they already sent. */}
-              {clan.options.length > 0 && clan.canRequest && (
+              {clan.options.length > 0 && !open && (
                 <div className="border-t border-slate-200 px-5 py-4">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-3">
-                    Other clans in {clan.programName || 'this program'}
+                    {clan.moveKind === 'placement'
+                      ? 'Programs you could ask to join'
+                      : `Other clans in ${clan.programName || 'this program'}`}
                   </p>
                   <ul className="space-y-2">
                     {clan.options.map((option) => (
                       <li key={option.id} className="flex items-center gap-3">
                         <ClanAvatar name={option.name} src={option.avatarUrl} size="sm" />
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium text-slate-800 truncate">{option.name}</p>
+                          <p className="text-sm font-medium text-slate-800 truncate">
+                            {option.name}
+                            {clan.moveKind === 'placement' && option.programName && (
+                              <span className="font-normal text-slate-400"> · {option.programName}</span>
+                            )}
+                          </p>
                           <p className="text-xs text-slate-500">
                             {option.mentor ? `Mentored by ${option.mentor}` : 'Mentor not assigned'}
                             {' · '}
@@ -331,7 +334,7 @@ export default function MenteeClanPage() {
       <Drawer
         open={asking !== null}
         onClose={() => setAsking(null)}
-        title="Ask to change clan"
+        title={asking?.moveKind === 'placement' ? 'Ask to be placed in a clan' : 'Ask to change clan'}
         subtitle={asking ? `You are in ${asking.name}` : undefined}
         footer={(dismiss) => (
           <div className="flex items-center justify-end gap-2">
@@ -356,8 +359,11 @@ export default function MenteeClanPage() {
           <div className="flex items-start gap-2.5 rounded-lg bg-brand-50 px-3 py-2.5">
             <ShieldCheck className="w-4 h-4 text-brand-600 mt-0.5 shrink-0" />
             <p className="text-xs text-brand-900/80">
-              This goes to your program admin, not to your mentor. You stay in {asking?.name} and
-              carry on as normal until they decide, and your work moves with you if they approve.
+              This goes to your program admin, not to your mentor. Nothing changes until they
+              decide.{' '}
+              {asking?.moveKind === 'placement'
+                ? `${asking.name} stays exactly as it is either way — your work and any certificates from it are kept — and they can place you in another program if that is the right fit.`
+                : `If they approve, your tasks, submissions and feedback move with you.`}
             </p>
           </div>
 
@@ -407,13 +413,25 @@ export default function MenteeClanPage() {
             </p>
           </div>
 
+          {/* Nothing live to point at - which is exactly the case a closed
+              programme produces. They can still ask; the admin looks wider. */}
+          {asking && asking.options.length === 0 && (
+            <p className="text-xs text-slate-500 rounded-lg bg-slate-50 px-3 py-2.5">
+              There is nothing open for you to pick from right now, so your admin will find the
+              right place. Say in your message if you have somewhere in mind.
+            </p>
+          )}
+
           {/* A preference, and labelled as one. Offering a clan picker that
               looks like a choice and then landing them elsewhere is how this
               feature would lose their trust the first time a clan is full. */}
           {asking && asking.options.length > 0 && (
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                Is there a clan you would prefer? <span className="font-normal text-slate-400">Optional</span>
+                {asking?.moveKind === 'placement'
+                  ? 'Is there somewhere you would like to go?'
+                  : 'Is there a clan you would prefer?'}{' '}
+                <span className="font-normal text-slate-400">Optional</span>
               </label>
               <div className="space-y-1.5">
                 <label
@@ -448,7 +466,12 @@ export default function MenteeClanPage() {
                     />
                     <ClanAvatar name={option.name} src={option.avatarUrl} size="xs" />
                     <span className="min-w-0 flex-1">
-                      <span className="block text-sm text-slate-700 truncate">{option.name}</span>
+                      <span className="block text-sm text-slate-700 truncate">
+                        {option.name}
+                        {asking?.moveKind === 'placement' && option.programName && (
+                          <span className="text-slate-400"> · {option.programName}</span>
+                        )}
+                      </span>
                       <span className="block text-[11px] text-slate-400">
                         {option.mentor || 'Mentor not assigned'} · {option.mentees}{' '}
                         {option.mentees === 1 ? 'mentee' : 'mentees'}

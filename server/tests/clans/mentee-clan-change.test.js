@@ -73,6 +73,7 @@ describe('mentee clan change requests', () => {
       expect(mine.options.map((c) => c.id)).toEqual([clanB.id]);
       expect(mine.canRequest).toBe(true);
       expect(mine.standing).toBe(false);
+      expect(mine.moveKind).toBe('move');
       expect(mine.options[0].mentor).toContain(mentorB.firstName);
       expect(mine.options[0].mentees).toBe(1);
       // The mentee is choosing a sentence about themselves, so the form must
@@ -114,11 +115,12 @@ describe('mentee clan change requests', () => {
 
       const row = res.body.data.clans.find((c) => c.name === 'Alumni Guild');
       expect(row.standing).toBe(true);
-      expect(row.canRequest).toBe(false);
       // It still carries its programme, which is the point of this test.
       expect(row.programId).toBe(program.id);
-      // And offers no destinations, so no dead picker.
-      expect(row.options).toEqual([]);
+      // A placement, not a move: nothing closes this membership, so the
+      // standing clan survives and they may still ask to go somewhere.
+      expect(row.moveKind).toBe('placement');
+      expect(row.canRequest).toBe(true);
     });
 
     it('never offers a standing clan as a destination', async () => {
@@ -133,25 +135,27 @@ describe('mentee clan change requests', () => {
       expect(own.options.map((c) => c.id)).toEqual([clanB.id]);
     });
 
-    it('refuses an ask raised from a standing clan', async () => {
+    it('lets a mentee in a standing clan ask to be placed', async () => {
       const standing = await createClan({
         programId: program.id, leadMentor: mentorA, mentees: [other], name: 'Alumni Guild',
       });
       await standing.update({ kind: 'standing' });
 
       const res = await api(other).ask({ ...GOOD, fromClanId: standing.id });
-      expect(res.status).toBe(400);
-      expect(res.body.message).toMatch(/standing clans are not moved between/i);
-      expect(await models.ClanChangeRequest.count()).toBe(0);
+      expect(res.status).toBe(201);
+      const row = await models.ClanChangeRequest.findOne({ where: { menteeId: other.id } });
+      expect(row.fromClanId).toBe(standing.id);
+      expect(row.origin).toBe('mentee');
     });
 
-    it('marks their own clan closed, so the page does not offer a dead button', async () => {
+    it('still lets a mentee of a CLOSED program ask, which is when they need it most', async () => {
       await clanA.update({ frozenAt: new Date() });
       const res = await api(mentee).options();
-      expect(res.body.data.clans[0].closed).toBe(true);
-      expect(res.body.data.clans[0].canRequest).toBe(false);
-      // And asking really is refused, which is what `closed` is warning about.
-      expect((await api(mentee).ask(GOOD)).status).toBe(409);
+      const row = res.body.data.clans[0];
+      expect(row.closed).toBe(true);
+      expect(row.canRequest).toBe(true);
+      expect(row.moveKind).toBe('placement');
+      expect((await api(mentee).ask(GOOD)).status).toBe(201);
     });
 
     it('omits a frozen clan, which is taking nobody', async () => {
@@ -187,7 +191,7 @@ describe('mentee clan change requests', () => {
       expect(res.body.data.request.toClan).toBe('Dusk Clan');
     });
 
-    it('refuses a clan in another program', async () => {
+    it('refuses a clan in another program while their own is still running', async () => {
       const otherProgram = await createProgram({ createdBy: admin.id, name: 'Other Program' });
       const outside = await createClan({ programId: otherProgram.id, leadMentor: mentorB, name: 'Outside' });
 
@@ -230,11 +234,31 @@ describe('mentee clan change requests', () => {
       expect((await api(mentee).ask(GOOD)).status).toBe(201);
     });
 
-    it('refuses a mentee whose clan has closed', async () => {
+    it('places a mentee out of a closed program into another program', async () => {
+      // The case the first version refused outright: their fellowship ended,
+      // and the only clans left anywhere are in a different programme.
+      const otherProgram = await createProgram({ createdBy: admin.id, name: 'Next Cohort' });
+      const nextClan = await createClan({
+        programId: otherProgram.id, leadMentor: mentorB, name: 'Next Clan',
+      });
       await clanA.update({ frozenAt: new Date() });
-      const res = await api(mentee).ask(GOOD);
-      // ClanFrozenError - a conflict with the clan's state, not a permission.
-      expect(res.status).toBe(409);
+
+      const options = await api(mentee).options();
+      expect(options.body.data.clans[0].options.map((c) => c.id)).toContain(nextClan.id);
+
+      const asked = await api(mentee).ask({ ...GOOD, toClanId: nextClan.id });
+      expect(asked.status).toBe(201);
+
+      const approved = await api(admin).resolve(asked.body.data.request.id, {
+        status: 'approved', toClanId: nextClan.id,
+      });
+      expect(approved.status).toBe(200);
+
+      // Placed in the new clan...
+      expect((await membership(mentee.id, nextClan.id)).status).toBe('active');
+      // ...and the finished programme is left exactly as it was, which is
+      // what makes a cross-programme placement safe where a move is not.
+      expect((await membership(mentee.id, clanA.id)).status).toBe('active');
     });
 
     it('refuses somebody who is in no clan at all', async () => {
@@ -355,6 +379,18 @@ describe('mentee clan change requests', () => {
       expect(row.toClan).toBeNull();
       // The programme must travel with it or the admin's scope filter hides it.
       expect(row.programId).toBe(program.id);
+      expect(row.moveKind).toBe('move');
+    });
+
+    it('marks a closed-program ask as a placement, so the picker is not bounded by it', async () => {
+      await clanA.update({ frozenAt: new Date() });
+      await api(mentee).ask(GOOD);
+
+      const res = await api(admin).queue();
+      const row = res.body.data.requests.find((r) => r.origin === 'mentee');
+      // Without this the admin's destination list is filtered to the closed
+      // programme, which has no live clan - an undecidable request.
+      expect(row.moveKind).toBe('placement');
     });
   });
 

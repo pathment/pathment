@@ -51,7 +51,7 @@ function AdminClanRequestsInner() {
   const [ccUser, setCcUser] = useState<{ id: string; name: string } | null>(null);
   const [ccToClan, setCcToClan] = useState('');
   const [ccFromClan, setCcFromClan] = useState('');
-  const [clans, setClans] = useState<{ id: string; name: string; programId: string | null }[]>([]);
+  const [clans, setClans] = useState<{ id: string; name: string; programId: string | null; kind: string; takingPeople: boolean }[]>([]);
   const [showCcForm, setShowCcForm] = useState(false);
 
   const act = async (id: string, fn: () => Promise<unknown>, msg = 'Done') => {
@@ -103,15 +103,30 @@ function AdminClanRequestsInner() {
     } finally { setBusy(null); }
   };
 
-  /** Live cohort clans of the request's programme, minus the one they are leaving. */
-  const destinationsFor = (request: ChangeRequest) => clans.filter(
-    (c) => c.id !== request.fromClanId && (!request.programId || c.programId === request.programId),
-  );
+  /**
+   * Where this person can actually be sent.
+   *
+   * Bounded by the request's programme only for a MOVE. A placement comes out
+   * of a closed or standing clan, which approving does not end, so bounding it
+   * by that clan's programme offered an empty picker for exactly the people
+   * with nowhere left to go — the case the mentee raised it about.
+   */
+  const destinationsFor = (request: ChangeRequest) => clans.filter((c) => {
+    if (c.id === request.fromClanId || !c.takingPeople) return false;
+    if (request.moveKind === 'placement') return true;
+    return !request.programId || c.programId === request.programId;
+  });
 
   // Load clans for the cross-clan pickers.
   useEffect(() => {
     apiClient.get<any>('/clans').then((r) => setClans(((r.data?.clans) || r.data || []).map((c: any) => ({
-      id: c.id, name: c.name, programId: c.programId ?? c.program?.id ?? null,
+      id: c.id,
+      name: c.name,
+      programId: c.programId ?? c.program?.id ?? null,
+      kind: c.kind ?? 'cohort',
+      // A frozen clan, a standing clan or one whose program has closed is a
+      // record, not somewhere to send a person.
+      takingPeople: (c.kind ?? 'cohort') === 'cohort' && !c.frozenAt && !c.program?.closedAt,
     })))).catch(() => {});
   }, []);
 
@@ -394,7 +409,9 @@ function AdminClanRequestsInner() {
         open={deciding !== null}
         onClose={() => setDeciding(null)}
         width="md"
-        title={deciding?.approve ? 'Approve the move' : 'Deny the request'}
+        title={deciding?.approve
+          ? (deciding.request.moveKind === 'placement' ? 'Approve the placement' : 'Approve the move')
+          : 'Deny the request'}
         subtitle={deciding ? `${deciding.request.mentee || 'This mentee'} · out of ${deciding.request.fromClan || 'their clan'}` : undefined}
       >
         {deciding && (
@@ -417,6 +434,12 @@ function AdminClanRequestsInner() {
                     placeholder="Select a clan…"
                     ariaLabel="Clan to move them into"
                   />
+                  {destinationsFor(deciding.request).length === 0 && (
+                    <p className="text-[11px] text-amber-700 mt-1">
+                      No clan is currently taking people. Open one, or deny with a note saying when
+                      to ask again.
+                    </p>
+                  )}
                   {deciding.request.toClanId ? (
                     <p className="text-[11px] text-slate-400 mt-1">
                       They asked for {deciding.request.toClan}. You can place them elsewhere.
@@ -428,8 +451,9 @@ function AdminClanRequestsInner() {
                   )}
                 </div>
                 <p className="text-xs text-slate-500">
-                  Their tasks, submissions, feedback and day log come with them. The old clan&apos;s
-                  record is left exactly as it is.
+                  {deciding.request.moveKind === 'placement'
+                    ? `${deciding.request.fromClan || 'Their current clan'} has closed or is a standing clan, so this adds them to the new clan and leaves that record untouched — including any certificates from it. They may be placed in a different program.`
+                    : 'Their tasks, submissions, feedback and day log come with them. The old clan\u2019s record is left exactly as it is.'}
                 </p>
               </>
             ) : null}

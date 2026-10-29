@@ -2,7 +2,6 @@ const { Op } = require('sequelize');
 const { models, sequelize } = require('../db');
 const { NotFoundError, ValidationError, AuthorizationError } = require('../utils/errors/errorTypes');
 const clanService = require('./clanService');
-const clanLifecycleService = require('./clanLifecycleService');
 const notificationOrchestrator = require('./notificationOrchestrator');
 const { NOTIFICATION_EVENTS } = require('../config/notificationMatrix');
 const { VISIBLE_MEMBERSHIP_STATUSES } = require('../config/membership');
@@ -68,7 +67,7 @@ class ClanRequestsService {
           // The programme each clan belongs to travels with it, so the admin
           // screen can filter this queue by programme — with forty-odd clans
           // in a workspace, "which of these are mine" is the first question.
-          { model: models.Clan, as: 'fromClan', attributes: ['name', 'programId'] },
+          { model: models.Clan, as: 'fromClan', attributes: ['name', 'programId', 'kind', 'frozenAt'] },
           { model: models.Clan, as: 'toClan', attributes: ['name', 'programId'] }
         ]
       }),
@@ -98,6 +97,16 @@ class ClanRequestsService {
         // 'mentor' rows are waiting on the RECEIVING clan, not on the admin —
         // the admin can still decide, but should know they're stepping in.
         origin: r.origin || 'admin',
+        /*
+         * Whether approving ENDS the old membership or merely adds a new one.
+         *
+         * The admin's destination picker was bounded by the request's
+         * programme, which is right for a move and wrong for a placement: a
+         * mentee asking out of a CLOSED programme has no live clan in it, so
+         * that bound left the picker empty and the request undecidable.
+         */
+        moveKind: r.fromClan && r.fromClan.kind === 'cohort' && !r.fromClan.frozenAt
+          ? 'move' : 'placement',
         requestedBy: fullName(r.requester),
         at: r.createdAt
       })),
@@ -156,36 +165,42 @@ class ClanRequestsService {
       attributes: ['id', 'name', 'kind', 'programId', 'frozenAt', 'avatarUrl'],
     });
     if (!clan) throw new NotFoundError('Clan not found');
-    /*
-     * Not from a standing clan.
-     *
-     * A standing clan DOES belong to a programme - `clans.program_id` is NOT
-     * NULL and it inherits the programme it continues - so the reason is not
-     * the one it would be easy to assume. It is that `reassignMentee` builds
-     * its list of memberships to close with `where: { kind: 'cohort' }`, so a
-     * standing membership is never ended by a move. Approving one would add
-     * the mentee to a cohort clan and leave them in the standing clan as
-     * well: two placements, not a transfer.
-     *
-     * Leaving a standing clan is a different act from being moved between
-     * parallel clans of a running cohort, and it is not this feature.
-     */
-    if (clan.kind === 'standing') {
-      throw new ValidationError('Standing clans are not moved between. Ask your admin directly if you want to leave this one.');
-    }
-    await clanLifecycleService.assertClanWritable(clan.id);
     return clan;
+  }
+
+  /**
+   * A move and a placement are not the same act, and the difference is the
+   * mentee's CURRENT clan, not the one they want.
+   *
+   * `reassignMentee` only ever closes LIVE COHORT memberships
+   * (`where: { kind: 'cohort', frozenAt: null }`). Everything follows from
+   * that one line:
+   *
+   *   from a live cohort clan   -> a MOVE. The old membership is closed and,
+   *     within one programme, the work is mirrored across. Across programmes
+   *     it would WIPE the enrolment and its tasks to make room for a different
+   *     roadmap, so a mentee may not set that off from a form.
+   *
+   *   from a closed clan or a standing clan -> a PLACEMENT. There is no live
+   *     cohort membership to close, so nothing is ended and nothing is wiped:
+   *     they are added to the new clan and their finished programme stays
+   *     exactly as it is, certificates and all. That is safe ACROSS
+   *     programmes, which matters because a closed programme has no live clan
+   *     left to offer - refusing cross-programme here would mean refusing
+   *     everything, which is what it did.
+   */
+  _moveKind(clan) {
+    return clan.kind === 'cohort' && !clan.frozenAt ? 'move' : 'placement';
   }
 
   /**
    * What the mentee's own page needs in one read: where they are, where they
    * could ask to go, what they have already asked, and why they might.
    *
-   * Siblings are the other live cohort clans of the SAME programme. A mentee
-   * cannot ask to be moved into another programme - that is an enrolment
-   * decision with a different roadmap behind it, and `reassignMentee` would
-   * wipe their work to make it, which is not something a mentee should be able
-   * to set in motion from a form.
+   * Everyone with a clan may ask. The first version refused a closed programme
+   * and a standing clan outright, which left the people with the strongest
+   * reason to ask - a fellowship that has ended under them - with a dead
+   * screen and no route to an admin at all.
    */
   async myClanChangeOptions(userId) {
     const memberships = await models.ClanMembership.findAll({
@@ -198,38 +213,38 @@ class ClanRequestsService {
       }],
     });
 
-    /*
-     * Every clan they are in, standing ones included.
-     *
-     * Filtering these out was a small lie with a loud symptom: a mentee whose
-     * only membership is a standing clan got an empty list, and the page told
-     * them "you are not in a clan yet" while they were sitting in one. They
-     * cannot ask to be moved out of it (see `_menteeClan`), so it carries
-     * `canRequest: false` and is shown without the button rather than hidden.
-     */
     const mine = memberships.filter((m) => m.clan);
-    const programIds = [...new Set(
-      mine.filter((m) => m.clan.kind === 'cohort').map((m) => m.clan.programId).filter(Boolean),
+    const mineIds = new Set(mine.map((m) => m.clanId));
+    const needsAnyProgram = mine.some((m) => this._moveKind(m.clan) === 'placement');
+    const sameProgramIds = [...new Set(
+      mine.filter((m) => this._moveKind(m.clan) === 'move').map((m) => m.clan.programId).filter(Boolean),
     )];
 
-    // Every live cohort clan of those programmes, with the lead mentor's name
-    // and how many mentees are in it. No capacity figure: `Clan` has no such
-    // column, and inventing one from member counts would read as a promise.
-    const siblings = programIds.length
-      ? await models.Clan.findAll({
-        where: { programId: { [Op.in]: programIds }, kind: 'cohort', frozenAt: null },
-        attributes: ['id', 'name', 'programId', 'avatarUrl'],
-        include: [{
-          model: models.User, as: 'leadMentor', attributes: ['id', 'firstName', 'lastName'], required: false,
-        }],
-        order: [['name', 'ASC']],
-      })
-      : [];
+    /*
+     * Candidate destinations: live cohort clans, and for a placement any of
+     * them whose PROGRAMME is still open. A closed programme's clans are a
+     * record, not somewhere to be sent.
+     */
+    const where = { kind: 'cohort', frozenAt: null };
+    if (!needsAnyProgram) {
+      if (!sameProgramIds.length) return this._emptyOptions(mine, userId);
+      where.programId = { [Op.in]: sameProgramIds };
+    }
 
-    const counts = siblings.length
+    const candidates = await models.Clan.findAll({
+      where,
+      attributes: ['id', 'name', 'programId', 'avatarUrl'],
+      include: [
+        { model: models.User, as: 'leadMentor', attributes: ['id', 'firstName', 'lastName'], required: false },
+        { model: models.Program, as: 'program', attributes: ['id', 'name'], required: true, where: { closedAt: null } },
+      ],
+      order: [['name', 'ASC']],
+    });
+
+    const counts = candidates.length
       ? await models.ClanMembership.findAll({
         where: {
-          clanId: { [Op.in]: siblings.map((c) => c.id) },
+          clanId: { [Op.in]: candidates.map((c) => c.id) },
           role: 'mentee',
           status: { [Op.in]: VISIBLE_MEMBERSHIP_STATUSES },
         },
@@ -240,36 +255,66 @@ class ClanRequestsService {
       : [];
     const countOf = Object.fromEntries(counts.map((r) => [r.clanId, Number(r.n)]));
 
+    const shape = (c) => ({
+      id: c.id,
+      name: c.name,
+      avatarUrl: c.avatarUrl || null,
+      mentor: c.leadMentor ? fullName(c.leadMentor) : null,
+      mentees: countOf[c.id] || 0,
+      programId: c.programId,
+      // Named for a placement, where the destination may be a programme they
+      // have never been in and the clan name alone would mean nothing.
+      programName: c.program?.name || null,
+    });
+
     const requests = await this.myClanChangeRequests(userId);
 
+    return {
+      clans: mine.map((m) => {
+        const kind = this._moveKind(m.clan);
+        const options = candidates
+          .filter((c) => !mineIds.has(c.id))
+          .filter((c) => kind === 'placement' || c.programId === m.clan.programId)
+          .map(shape);
+        return {
+          id: m.clan.id,
+          name: m.clan.name,
+          avatarUrl: m.clan.avatarUrl || null,
+          paused: m.status === 'paused',
+          closed: Boolean(m.clan.frozenAt),
+          standing: m.clan.kind === 'standing',
+          programId: m.clan.programId,
+          programName: m.clan.program?.name || null,
+          /** 'move' = they leave this clan. 'placement' = this record stays. */
+          moveKind: kind,
+          // Everyone with a clan may ask; the admin decides.
+          canRequest: true,
+          options,
+        };
+      }),
+      reasons: Object.entries(MENTEE_REASON_CODES).map(([code, label]) => ({ code, label: label.mine })),
+      requests,
+    };
+  }
+
+  /** No destinations exist, but they may still ask - an admin can look wider. */
+  async _emptyOptions(mine, userId) {
     return {
       clans: mine.map((m) => ({
         id: m.clan.id,
         name: m.clan.name,
         avatarUrl: m.clan.avatarUrl || null,
         paused: m.status === 'paused',
-        // A closed cohort is read-only, so `requestOwnMove` will refuse it.
-        // Said here too, or the page offers a button that can only ever fail.
         closed: Boolean(m.clan.frozenAt),
         standing: m.clan.kind === 'standing',
-        // The single answer to "may they ask about this clan", so the page
-        // never has to re-derive it and disagree with the server.
-        canRequest: m.clan.kind === 'cohort' && !m.clan.frozenAt,
         programId: m.clan.programId,
         programName: m.clan.program?.name || null,
-        // Their own clan is never offered as a destination.
-        options: (m.clan.kind === 'cohort' ? siblings : [])
-          .filter((c) => c.programId === m.clan.programId && c.id !== m.clan.id)
-          .map((c) => ({
-            id: c.id,
-            name: c.name,
-            avatarUrl: c.avatarUrl || null,
-            mentor: c.leadMentor ? fullName(c.leadMentor) : null,
-            mentees: countOf[c.id] || 0,
-          })),
+        moveKind: this._moveKind(m.clan),
+        canRequest: true,
+        options: [],
       })),
       reasons: Object.entries(MENTEE_REASON_CODES).map(([code, label]) => ({ code, label: label.mine })),
-      requests,
+      requests: await this.myClanChangeRequests(userId),
     };
   }
 
@@ -333,16 +378,26 @@ class ClanRequestsService {
     if (toClanId) {
       target = await models.Clan.findByPk(toClanId, {
         attributes: ['id', 'name', 'kind', 'programId', 'frozenAt'],
+        include: [{ model: models.Program, as: 'program', attributes: ['id', 'closedAt'] }],
       });
       if (!target) throw new NotFoundError('That clan no longer exists');
       if (target.id === from.id) throw new ValidationError('That is the clan you are already in');
-      if (target.kind !== 'cohort' || target.frozenAt) {
+      if (target.kind !== 'cohort' || target.frozenAt || target.program?.closedAt) {
         throw new ValidationError('That clan is not taking people');
       }
-      // The cross-programme bar, enforced here rather than trusted from the
-      // form: a different programme means a different roadmap, and the move
-      // would discard this mentee's work to make room for it.
-      if (target.programId !== from.programId) {
+      /*
+       * The cross-programme bar applies to a MOVE only, and is enforced here
+       * rather than trusted from the form.
+       *
+       * Leaving a live cohort clan for another programme makes
+       * `reassignMentee` wipe the enrolment and its tasks, because the new
+       * roadmap is a different one - not something a mentee should set off
+       * from a form. A placement out of a closed or standing clan wipes
+       * nothing (there is no live membership to close), so the bar would only
+       * stop the people it was never about: a closed programme has no live
+       * clan of its own left to name.
+       */
+      if (this._moveKind(from) === 'move' && target.programId !== from.programId) {
         throw new ValidationError('You can only ask to move within your own program');
       }
     }

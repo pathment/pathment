@@ -21,6 +21,12 @@ export interface ChangeRequest {
    *  only origin where `toClanId` may be null, because they were allowed to
    *  leave the destination to whoever picks it up. */
   origin?: 'admin' | 'mentor' | 'mentee';
+  /**
+   * 'move' — approving ends the mentee's current membership. 'placement' —
+   * they are asking out of a closed or standing clan, which approving leaves
+   * untouched, so the destination is not bounded by that clan's program.
+   */
+  moveKind?: 'move' | 'placement';
   requestedBy?: string | null;
   at: string;
 }

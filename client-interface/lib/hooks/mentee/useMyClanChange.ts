@@ -10,6 +10,9 @@ export interface ClanOption {
   avatarUrl: string | null;
   mentor: string | null;
   mentees: number;
+  programId: string;
+  /** Shown for a placement, where the clan may be in a program they do not know. */
+  programName: string | null;
 }
 
 /** One of the mentee's own clans, with where it could lead. */
@@ -27,8 +30,18 @@ export interface MyClanPlacement {
    * without the ask.
    */
   standing: boolean;
-  /** The server's single answer to "may they ask about this clan". */
+  /** The server's single answer to "may they ask about this clan" — now always true. */
   canRequest: boolean;
+  /**
+   * What approval would actually do.
+   *
+   * 'move' — they leave this clan; within one program their work is mirrored
+   * across. 'placement' — there is no live membership to close, so this clan
+   * stays exactly as it is (a finished program keeps its record and
+   * certificates) and they are added somewhere new, which may be another
+   * program entirely.
+   */
+  moveKind: 'move' | 'placement';
   programId: string;
   programName: string | null;
   options: ClanOption[];
