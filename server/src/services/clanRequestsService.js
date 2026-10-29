@@ -156,11 +156,22 @@ class ClanRequestsService {
       attributes: ['id', 'name', 'kind', 'programId', 'frozenAt', 'avatarUrl'],
     });
     if (!clan) throw new NotFoundError('Clan not found');
-    // A standing clan has no programme and no roster to move between, and a
-    // frozen one belongs to a closed cohort - asking to be moved inside either
-    // is asking for something that does not exist.
+    /*
+     * Not from a standing clan.
+     *
+     * A standing clan DOES belong to a programme - `clans.program_id` is NOT
+     * NULL and it inherits the programme it continues - so the reason is not
+     * the one it would be easy to assume. It is that `reassignMentee` builds
+     * its list of memberships to close with `where: { kind: 'cohort' }`, so a
+     * standing membership is never ended by a move. Approving one would add
+     * the mentee to a cohort clan and leave them in the standing clan as
+     * well: two placements, not a transfer.
+     *
+     * Leaving a standing clan is a different act from being moved between
+     * parallel clans of a running cohort, and it is not this feature.
+     */
     if (clan.kind === 'standing') {
-      throw new ValidationError('This is a standing clan. There is no other clan in it to move to.');
+      throw new ValidationError('Standing clans are not moved between. Ask your admin directly if you want to leave this one.');
     }
     await clanLifecycleService.assertClanWritable(clan.id);
     return clan;
@@ -187,8 +198,19 @@ class ClanRequestsService {
       }],
     });
 
-    const mine = memberships.filter((m) => m.clan && m.clan.kind === 'cohort');
-    const programIds = [...new Set(mine.map((m) => m.clan.programId).filter(Boolean))];
+    /*
+     * Every clan they are in, standing ones included.
+     *
+     * Filtering these out was a small lie with a loud symptom: a mentee whose
+     * only membership is a standing clan got an empty list, and the page told
+     * them "you are not in a clan yet" while they were sitting in one. They
+     * cannot ask to be moved out of it (see `_menteeClan`), so it carries
+     * `canRequest: false` and is shown without the button rather than hidden.
+     */
+    const mine = memberships.filter((m) => m.clan);
+    const programIds = [...new Set(
+      mine.filter((m) => m.clan.kind === 'cohort').map((m) => m.clan.programId).filter(Boolean),
+    )];
 
     // Every live cohort clan of those programmes, with the lead mentor's name
     // and how many mentees are in it. No capacity figure: `Clan` has no such
@@ -229,10 +251,14 @@ class ClanRequestsService {
         // A closed cohort is read-only, so `requestOwnMove` will refuse it.
         // Said here too, or the page offers a button that can only ever fail.
         closed: Boolean(m.clan.frozenAt),
+        standing: m.clan.kind === 'standing',
+        // The single answer to "may they ask about this clan", so the page
+        // never has to re-derive it and disagree with the server.
+        canRequest: m.clan.kind === 'cohort' && !m.clan.frozenAt,
         programId: m.clan.programId,
         programName: m.clan.program?.name || null,
         // Their own clan is never offered as a destination.
-        options: siblings
+        options: (m.clan.kind === 'cohort' ? siblings : [])
           .filter((c) => c.programId === m.clan.programId && c.id !== m.clan.id)
           .map((c) => ({
             id: c.id,

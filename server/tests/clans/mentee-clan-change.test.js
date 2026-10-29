@@ -71,6 +71,8 @@ describe('mentee clan change requests', () => {
       expect(mine.id).toBe(clanA.id);
       expect(mine.programName).toBe(program.name);
       expect(mine.options.map((c) => c.id)).toEqual([clanB.id]);
+      expect(mine.canRequest).toBe(true);
+      expect(mine.standing).toBe(false);
       expect(mine.options[0].mentor).toContain(mentorB.firstName);
       expect(mine.options[0].mentees).toBe(1);
       // The mentee is choosing a sentence about themselves, so the form must
@@ -92,10 +94,62 @@ describe('mentee clan change requests', () => {
       expect(ids).not.toContain(outside.id);
     });
 
+    /*
+     * A standing clan belongs to a programme - `clans.program_id` is NOT NULL
+     * and it inherits the one it continues - so it is NOT filtered out by
+     * programme. It is excluded from the ask because `reassignMentee` closes
+     * only cohort memberships, so "moving" out of one would leave the mentee
+     * in both places.
+     */
+    it('shows a standing clan rather than claiming they have no clan', async () => {
+      const standing = await createClan({
+        programId: program.id, leadMentor: mentorA, mentees: [other], name: 'Alumni Guild',
+      });
+      await standing.update({ kind: 'standing' });
+
+      const res = await api(other).options();
+      expect(res.status).toBe(200);
+      const names = res.body.data.clans.map((c) => c.name);
+      expect(names).toContain('Alumni Guild');
+
+      const row = res.body.data.clans.find((c) => c.name === 'Alumni Guild');
+      expect(row.standing).toBe(true);
+      expect(row.canRequest).toBe(false);
+      // It still carries its programme, which is the point of this test.
+      expect(row.programId).toBe(program.id);
+      // And offers no destinations, so no dead picker.
+      expect(row.options).toEqual([]);
+    });
+
+    it('never offers a standing clan as a destination', async () => {
+      const standing = await createClan({
+        programId: program.id, leadMentor: mentorA, name: 'Alumni Guild',
+      });
+      await standing.update({ kind: 'standing' });
+
+      const res = await api(mentee).options();
+      const own = res.body.data.clans.find((c) => c.id === clanA.id);
+      expect(own.canRequest).toBe(true);
+      expect(own.options.map((c) => c.id)).toEqual([clanB.id]);
+    });
+
+    it('refuses an ask raised from a standing clan', async () => {
+      const standing = await createClan({
+        programId: program.id, leadMentor: mentorA, mentees: [other], name: 'Alumni Guild',
+      });
+      await standing.update({ kind: 'standing' });
+
+      const res = await api(other).ask({ ...GOOD, fromClanId: standing.id });
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/standing clans are not moved between/i);
+      expect(await models.ClanChangeRequest.count()).toBe(0);
+    });
+
     it('marks their own clan closed, so the page does not offer a dead button', async () => {
       await clanA.update({ frozenAt: new Date() });
       const res = await api(mentee).options();
       expect(res.body.data.clans[0].closed).toBe(true);
+      expect(res.body.data.clans[0].canRequest).toBe(false);
       // And asking really is refused, which is what `closed` is warning about.
       expect((await api(mentee).ask(GOOD)).status).toBe(409);
     });

@@ -176,7 +176,12 @@ export default function MenteeClanPage() {
                         Paused here
                       </span>
                     )}
-                    {clan.closed && (
+                    {clan.standing && (
+                      <span className="inline-flex items-center rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-medium text-violet-700">
+                        Standing clan
+                      </span>
+                    )}
+                    {clan.closed && !clan.standing && (
                       <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
                         Program closed
                       </span>
@@ -184,7 +189,7 @@ export default function MenteeClanPage() {
                   </div>
                   {clan.programName && <p className="text-sm text-slate-500 mt-0.5">{clan.programName}</p>}
                 </div>
-                {!open && !clan.closed && (
+                {!open && clan.canRequest && (
                   <button
                     onClick={() => openAsk(clan)}
                     className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:border-brand-400 hover:text-brand-700 transition-colors"
@@ -231,18 +236,26 @@ export default function MenteeClanPage() {
                 </div>
               )}
 
-              {clan.closed && (
+              {clan.standing ? (
+                <div className="border-t border-slate-200 bg-slate-50/60 px-5 py-3">
+                  <p className="text-xs text-slate-500">
+                    This is the group that carried on after{' '}
+                    {clan.programName || 'your program'} finished, so there is no second clan to
+                    move to. If you want to leave it, speak to your admin.
+                  </p>
+                </div>
+              ) : clan.closed ? (
                 <div className="border-t border-slate-200 bg-slate-50/60 px-5 py-3">
                   <p className="text-xs text-slate-500">
                     This program has finished, so its clans are kept as a record and nobody moves
                     in or out of them. Your work and certificates stay exactly as they are.
                   </p>
                 </div>
-              )}
+              ) : null}
 
               {/* Who else they could be with. Shown even with a request open:
                   it is the context for the one they already sent. */}
-              {clan.options.length > 0 && !clan.closed && (
+              {clan.options.length > 0 && clan.canRequest && (
                 <div className="border-t border-slate-200 px-5 py-4">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-3">
                     Other clans in {clan.programName || 'this program'}

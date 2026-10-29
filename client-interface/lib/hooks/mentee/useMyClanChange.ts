@@ -20,6 +20,15 @@ export interface MyClanPlacement {
   paused: boolean;
   /** Its programme has closed, so it is read-only and cannot be left. */
   closed: boolean;
+  /**
+   * A standing clan — the group that continues after a cohort ends. It DOES
+   * belong to a programme (it inherits the one it continues), but it is not
+   * one of several parallel clans you can be shuffled between, so it is shown
+   * without the ask.
+   */
+  standing: boolean;
+  /** The server's single answer to "may they ask about this clan". */
+  canRequest: boolean;
   programId: string;
   programName: string | null;
   options: ClanOption[];
