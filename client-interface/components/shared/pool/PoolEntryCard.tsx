@@ -1,6 +1,6 @@
 'use client';
 
-import { Clock, Snowflake, CheckCircle2, Loader2, Undo2 } from 'lucide-react';
+import { Clock, Snowflake, CheckCircle2, Loader2, Undo2, Map } from 'lucide-react';
 import { Avatar } from '@/components/shared/Avatar';
 import type { PoolEntry, HandoverReason } from '@/lib/services/handover-pool-api';
 
@@ -101,12 +101,26 @@ export function PoolEntryCard({
             {entry.pushedByName && <> &middot; handed over by {entry.pushedByName}</>}
           </p>
 
-          {/* What they would inherit. The actual reason to take this one. */}
           <p className="mt-2 text-sm text-foreground">
             <span className="font-medium">{entry.work.completed}</span>
             <span className="text-muted-foreground"> of {entry.work.tasks} tasks done</span>
             <span className="text-muted-foreground"> &middot; {lastSeen(entry.work.lastActiveAt)}</span>
           </p>
+
+          {!!entry.work.roadmaps?.length && (
+            <div className="mt-2.5 flex flex-wrap gap-2">
+              {entry.work.roadmaps.slice(0, 3).map((roadmap) => (
+                <span key={roadmap.id} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/30 px-2.5 py-1 text-xs text-foreground">
+                  <Map className="h-3 w-3 text-muted-foreground" aria-hidden />
+                  <span className="max-w-48 truncate">{roadmap.name}</span>
+                  <span className="text-muted-foreground">{roadmap.completed}/{roadmap.tasks}</span>
+                </span>
+              ))}
+              {entry.work.roadmaps.length > 3 && (
+                <span className="px-1 py-1 text-xs text-muted-foreground">+{entry.work.roadmaps.length - 3} more</span>
+              )}
+            </div>
+          )}
 
           <div className="mt-2 flex flex-wrap items-center gap-2">
             {entry.reason && (
@@ -139,7 +153,7 @@ export function PoolEntryCard({
                 type="button" onClick={() => onWithdraw(entry)} disabled={busy}
                 className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted disabled:opacity-50"
               >
-                <Undo2 className="h-4 w-4" aria-hidden /> Withdraw
+                <Undo2 className="h-4 w-4" aria-hidden /> Remove from pool
               </button>
             )}
           </div>

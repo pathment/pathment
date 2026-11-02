@@ -28,7 +28,20 @@ export interface PoolEntry {
   claimedClan: { id: string; name: string } | null;
   program: { id: string; name: string } | null;
   /** What a puller would inherit — the reason to take this one. */
-  work: { tasks: number; completed: number; lastActiveAt: string | null };
+  work: {
+    tasks: number;
+    completed: number;
+    lastActiveAt: string | null;
+    roadmaps: {
+      id: string;
+      name: string;
+      tasks: number;
+      completed: number;
+      recentTasks: { id: string; title: string; status: string }[];
+    }[];
+    customTasks: { id: string; title: string; status: string }[];
+  };
+  canWithdraw: boolean;
   carried: { tasks?: number; submissions?: number; feedback?: number; progress?: number };
 }
 
@@ -37,6 +50,10 @@ export interface ClaimableClan {
   name: string;
   programId: string | null;
   programName: string | null;
+  programStatus: string | null;
+  kind: 'cohort' | 'standing';
+  available: boolean;
+  unavailableReason: string | null;
   seated: number;
   maxMentees: number | null;
   full: boolean;

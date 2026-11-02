@@ -317,7 +317,7 @@ export default function MentorPoolPage() {
                   key={entry.id}
                   entry={entry}
                   busy={busyId === entry.id}
-                  onClaim={clans?.length ? setClaiming : undefined}
+                  onClaim={clans?.some((clan) => clan.available && !clan.full) ? setClaiming : undefined}
                 />
               ))}
             </ul>

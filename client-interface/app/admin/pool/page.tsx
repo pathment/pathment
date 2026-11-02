@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { Users2, AlarmClock, Inbox, Hourglass } from 'lucide-react';
 import { PageHeader } from '@/components/admin/ui';
@@ -97,6 +97,8 @@ export default function AdminPoolPage() {
     },
     { label: 'Longest wait', value: `${data?.oldestDays ?? 0}d`, icon: Hourglass, tone: 'text-foreground' },
   ];
+  const entries = useMemo(() => (data?.entries ?? []).filter((entry) =>
+    !scope.clanId || entry.fromClan?.id === scope.clanId), [data?.entries, scope.clanId]);
 
   return (
     <div className="space-y-6">
@@ -152,7 +154,7 @@ export default function AdminPoolPage() {
             <div key={i} className="h-28 animate-pulse rounded-2xl border border-border bg-muted/40" />
           ))}
         </div>
-      ) : !data?.entries?.length ? (
+      ) : !entries.length ? (
         <div className="rounded-2xl border border-border bg-card py-14 text-center">
           <Users2 className="mx-auto mb-3 h-10 w-10 text-muted-foreground/40" aria-hidden />
           <p className="text-sm font-medium text-foreground">Nobody is waiting for a clan</p>
@@ -163,13 +165,13 @@ export default function AdminPoolPage() {
         </div>
       ) : (
         <ul className="space-y-3">
-          {data.entries.map((entry) => (
+          {entries.map((entry) => (
             <PoolEntryCard
               key={entry.id}
               entry={entry}
               busy={busyId === entry.id}
-              onClaim={clans?.length ? setClaiming : undefined}
-              onWithdraw={withdraw}
+              onClaim={clans?.some((clan) => clan.available && !clan.full) ? setClaiming : undefined}
+              onWithdraw={entry.canWithdraw ? withdraw : undefined}
             />
           ))}
         </ul>

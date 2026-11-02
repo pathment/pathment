@@ -316,19 +316,19 @@ class HandoverPoolService {
     if (!entry) throw new NotFoundError('Pool entry not found');
     if (entry.status !== 'open') throw new ConflictError('Somebody else has already taken that mentee');
 
-    const toClan = await models.Clan.findByPk(toClanId, { attributes: ['id', 'programId', 'name', 'kind', 'maxMentees'] });
+    const toClan = await models.Clan.findByPk(toClanId, {
+      attributes: ['id', 'programId', 'name', 'kind', 'status', 'frozenAt', 'maxMentees'],
+      include: [{ model: models.Program, as: 'program', attributes: ['id', 'status'] }],
+    });
     if (!toClan) throw new NotFoundError('Target clan not found');
     if (toClan.id === entry.fromClanId) throw new ValidationError('That mentee is already in this clan');
-    /*
-     * A standing clan is never offered by `claimableClans`, and refusing it
-     * here rather than trusting that is the difference between an error and a
-     * silent loss: a standing clan carries no programme, so `sameProgram`
-     * would come out false and the mentee would arrive with none of the work
-     * this whole feature exists to bring with them. Standing clans have their
-     * own route for taking people on.
-     */
-    if (toClan.kind === 'standing') {
-      throw new ValidationError('Add mentees to a standing clan from the standing clan itself, not the pool');
+    const programClosed = ['completed', 'archived'].includes(toClan.program?.status);
+    if (toClan.status !== 'active') throw new ValidationError('That clan is not active');
+    if (programClosed && toClan.kind !== 'standing') {
+      throw new ValidationError('That programme is closed. Place the mentee into one of its standing clans.');
+    }
+    if (!programClosed && toClan.kind === 'standing') {
+      throw new ValidationError('Standing clans can receive pool handovers after their programme closes');
     }
     // The target has to be somewhere work can actually happen.
     await clanLifecycleService.assertClanWritable(toClanId);
@@ -451,7 +451,11 @@ class HandoverPoolService {
       limit: Math.min(Number(limit) || 100, 300),
     });
 
-    const history = await this._workSummary(rows.map((r) => r.menteeId));
+    const history = await this._workSummary(rows.map((r) => ({
+      menteeId: r.menteeId,
+      programId: r.programId,
+    })));
+    const adminHat = await this._hat(user) === 'admin';
     return {
       entries: rows.map((r) => ({
         ...this._shape(r),
@@ -467,35 +471,78 @@ class HandoverPoolService {
         claimedClan: r.claimedClan ? { id: r.claimedClan.id, name: r.claimedClan.name } : null,
         program: r.program ? { id: r.program.id, name: r.program.name } : null,
         /** What a puller would inherit. The reason to take this one. */
-        work: history.get(r.menteeId) || { tasks: 0, completed: 0, lastActiveAt: null },
+        work: history.get(`${r.menteeId}:${r.programId}`) || {
+          tasks: 0, completed: 0, lastActiveAt: null, roadmaps: [], customTasks: [],
+        },
+        // The UI must not guess this from the account's other hats. The offer's
+        // author can withdraw it; an admin can resolve anything in this scoped
+        // result. Clan co-mentors still have the server-authorized action from
+        // their own roster, where the clan relationship is known.
+        canWithdraw: adminHat || r.pushedBy === user.id,
       })),
       programIds: visible,
     };
   }
 
   /**
-   * One cheap grouped count per mentee, instead of a metrics preload per row.
-   * The pool is a shopping list: it needs "16 tasks, 11 done, last seen
-   * Tuesday", not a full risk model. The detail is one click away on the
-   * mentee's own page.
+   * A compact, programme-safe work preview: totals plus each roadmap and a few
+   * recent task titles. It is enough to make the placement decision without
+   * leaking submissions, feedback or private task content into the pool.
    */
-  async _workSummary(menteeIds) {
+  async _workSummary(subjects) {
     const out = new Map();
-    if (!menteeIds.length) return out;
+    if (!subjects.length) return out;
+    const uniqueSubjects = [...new Map(subjects.map((s) => [
+      `${s.menteeId}:${s.programId}`, s,
+    ])).values()];
+    const menteeIds = [...new Set(uniqueSubjects.map((s) => s.menteeId))];
     const [rows] = await sequelize.query(`
-      SELECT mentee_id,
-             COUNT(*)::int AS tasks,
-             COUNT(*) FILTER (WHERE status = 'completed')::int AS completed,
-             MAX(GREATEST(COALESCE(submitted_at, 'epoch'::timestamptz),
-                          COALESCE(started_at, 'epoch'::timestamptz))) AS last_active_at
-        FROM assigned_tasks
-       WHERE mentee_id IN (:menteeIds)
-         AND pool_member_id IS NULL
-         AND status <> 'cancelled'
-       GROUP BY mentee_id`, { replacements: { menteeIds } });
+      SELECT at.mentee_id, r.program_id, r.id AS roadmap_id,
+             COALESCE(r.name, 'Custom work') AS roadmap_name,
+             at.id AS task_id,
+             COALESCE(at.title_override, rt.title) AS task_title,
+             at.status,
+             GREATEST(COALESCE(at.submitted_at, 'epoch'::timestamptz),
+                      COALESCE(at.started_at, 'epoch'::timestamptz)) AS last_active_at
+        FROM assigned_tasks at
+        JOIN roadmap_tasks rt ON rt.id = at.roadmap_task_id
+        LEFT JOIN roadmaps r ON r.id = rt.roadmap_id
+       WHERE at.mentee_id IN (:menteeIds)
+         AND at.pool_member_id IS NULL
+         AND at.status <> 'cancelled'
+       ORDER BY at.assigned_at DESC`, { replacements: { menteeIds } });
     for (const r of rows) {
-      const last = r.last_active_at && new Date(r.last_active_at).getFullYear() > 1970 ? r.last_active_at : null;
-      out.set(r.mentee_id, { tasks: r.tasks, completed: r.completed, lastActiveAt: last });
+      // A custom task has no roadmap/program. It belongs with each programme
+      // offer for this mentee; roadmap work only belongs to its own programme.
+      const matching = uniqueSubjects.filter((s) => s.menteeId === r.mentee_id
+        && (!r.program_id || s.programId === r.program_id));
+      for (const subject of matching) {
+        const key = `${subject.menteeId}:${subject.programId}`;
+        const detail = out.get(key) || {
+          tasks: 0, completed: 0, lastActiveAt: null, roadmaps: [], customTasks: [],
+        };
+        detail.tasks += 1;
+        if (r.status === 'completed') detail.completed += 1;
+        const active = r.last_active_at && new Date(r.last_active_at).getFullYear() > 1970
+          ? r.last_active_at : null;
+        if (active && (!detail.lastActiveAt || new Date(active) > new Date(detail.lastActiveAt))) {
+          detail.lastActiveAt = active;
+        }
+        const task = { id: r.task_id, title: r.task_title, status: r.status };
+        if (!r.roadmap_id) {
+          if (detail.customTasks.length < 6) detail.customTasks.push(task);
+        } else {
+          let roadmap = detail.roadmaps.find((item) => item.id === r.roadmap_id);
+          if (!roadmap) {
+            roadmap = { id: r.roadmap_id, name: r.roadmap_name, tasks: 0, completed: 0, recentTasks: [] };
+            detail.roadmaps.push(roadmap);
+          }
+          roadmap.tasks += 1;
+          if (r.status === 'completed') roadmap.completed += 1;
+          if (roadmap.recentTasks.length < 6) roadmap.recentTasks.push(task);
+        }
+        out.set(key, detail);
+      }
     }
     return out;
   }
@@ -543,7 +590,7 @@ class HandoverPoolService {
    */
   async claimableClans(user) {
     const scope = await authzService.programScopeFor(user, await this._hat(user));
-    const where = { kind: 'cohort', frozenAt: null };
+    const where = {};
     if (!scope.unrestricted) {
       /*
        * `clanIds`, not `programIds`. A scope carries both and they answer
@@ -559,8 +606,8 @@ class HandoverPoolService {
       where.id = { [Op.in]: clanIds };
     }
     const clans = await models.Clan.findAll({
-      where, attributes: ['id', 'name', 'programId', 'maxMentees'],
-      include: [{ model: models.Program, as: 'program', attributes: ['id', 'name'] }],
+      where, attributes: ['id', 'name', 'programId', 'maxMentees', 'kind', 'status', 'frozenAt'],
+      include: [{ model: models.Program, as: 'program', attributes: ['id', 'name', 'status'] }],
     });
     const counts = clans.length
       ? await models.ClanMembership.findAll({
@@ -570,15 +617,27 @@ class HandoverPoolService {
         })
       : [];
     const seated = new Map(counts.map((c) => [c.clanId, Number(c.n)]));
-    return clans.map((c) => ({
+    return clans.map((c) => {
+      const programClosed = ['completed', 'archived'].includes(c.program?.status);
+      const available = c.status === 'active'
+        && (programClosed ? c.kind === 'standing' : c.kind === 'cohort' && !c.frozenAt);
+      return {
       id: c.id,
       name: c.name,
+      kind: c.kind,
       programId: c.programId,
       programName: c.program?.name || null,
+      programStatus: c.program?.status || null,
+      available,
+      unavailableReason: available ? null
+        : programClosed && c.kind !== 'standing' ? 'Programme closed — use a standing clan'
+          : !programClosed && c.kind === 'standing' ? 'Available after the programme closes'
+            : c.status !== 'active' ? `Clan ${c.status}` : 'Clan is read-only',
       seated: seated.get(c.id) || 0,
       maxMentees: c.maxMentees || null,
       full: !!c.maxMentees && (seated.get(c.id) || 0) >= c.maxMentees,
-    }));
+      };
+    });
   }
 
   // ── notifications ─────────────────────────────────────────────────────────
