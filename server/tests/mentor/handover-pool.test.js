@@ -362,12 +362,29 @@ describe('handover pool', () => {
       expect(entries[0].fromClan.name).toBe('Leaving');
     });
 
+    it('lets a pool viewer inspect the rich profile before taking the mentee', async () => {
+      const { entry } = await pool.push(giver, { menteeId: mentee.id, clanId: fromClan.id });
+
+      const result = await pool.profile(taker, entry.id);
+
+      expect(result.profile.id).toBe(mentee.id);
+      expect(result.profile.email).toBe(mentee.email);
+      expect(result.profile.tasksByStatus).toBeTruthy();
+    });
+
     /** The pool is other people's mentees; it must not be a staff directory. */
     it('shows nothing to a mentor with no clan in that programme', async () => {
       const outsider = await createMentor({ email: `hp-out-${Date.now()}@test.com` });
       await pool.push(giver, { menteeId: mentee.id, clanId: fromClan.id });
       const { entries } = await pool.list(outsider, {});
       expect(entries).toEqual([]);
+    });
+
+    it('does not reveal a pool profile outside the viewer programme scope', async () => {
+      const outsider = await createMentor({ email: `hp-profile-out-${Date.now()}@test.com` });
+      const { entry } = await pool.push(giver, { menteeId: mentee.id, clanId: fromClan.id });
+
+      await expect(pool.profile(outsider, entry.id)).rejects.toThrow(/not found/i);
     });
 
     it('puts the longest-waiting first and says how long', async () => {

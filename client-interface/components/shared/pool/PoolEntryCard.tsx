@@ -52,11 +52,13 @@ const lastSeen = (iso: string | null) => {
 export function PoolEntryCard({
   entry,
   busy = false,
+  onViewProfile,
   onClaim,
   onWithdraw,
 }: {
   entry: PoolEntry;
   busy?: boolean;
+  onViewProfile?: (entry: PoolEntry) => void;
   /** Omitted when the viewer has nowhere to pull them into. */
   onClaim?: (entry: PoolEntry) => void;
   /** Omitted when the viewer did not push them and is not an admin. */
@@ -67,11 +69,32 @@ export function PoolEntryCard({
   return (
     <li className="rounded-2xl border border-border bg-card p-4">
       <div className="flex flex-wrap items-start gap-3">
-        <Avatar name={entry.mentee?.name} src={entry.mentee?.avatarUrl} size="md" />
+        {onViewProfile ? (
+          <button
+            type="button"
+            onClick={() => onViewProfile(entry)}
+            aria-label={`View ${entry.mentee?.name || 'mentee'} profile`}
+            className="rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2"
+          >
+            <Avatar name={entry.mentee?.name} src={entry.mentee?.avatarUrl} size="md" />
+          </button>
+        ) : (
+          <Avatar name={entry.mentee?.name} src={entry.mentee?.avatarUrl} size="md" />
+        )}
 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="truncate font-semibold text-foreground">{entry.mentee?.name || 'Mentee'}</p>
+            {onViewProfile ? (
+              <button
+                type="button"
+                onClick={() => onViewProfile(entry)}
+                className="truncate text-left font-semibold text-foreground decoration-brand-300 underline-offset-4 hover:text-brand-700 hover:underline focus:outline-none focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-500"
+              >
+                {entry.mentee?.name || 'Mentee'}
+              </button>
+            ) : (
+              <p className="truncate font-semibold text-foreground">{entry.mentee?.name || 'Mentee'}</p>
+            )}
             {entry.status === 'open' && <Waiting days={entry.waitingDays} />}
             {entry.status === 'claimed' && (
               <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">

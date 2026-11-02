@@ -1,4 +1,5 @@
 import { apiClient } from './api-client';
+import type { MenteeProfile } from '@/lib/hooks/mentor/useMenteeProfile';
 
 /**
  * The handover pool: mentees offered out of one clan and taken into another.
@@ -88,6 +89,11 @@ export const handoverPoolApi = {
     apiClient
       .get<{ data: { clans: ClaimableClan[] } }>('/handover-pool/claimable-clans')
       .then((r) => r.data.clans),
+
+  profile: (entryId: string) =>
+    apiClient
+      .get<{ data: { profile: MenteeProfile } }>(`/handover-pool/${entryId}/profile`)
+      .then((r) => r.data.profile),
 
   /** Offer one mentee out of a clan. Nothing moves until somebody claims it. */
   push: (input: { menteeId: string; clanId: string; reason?: HandoverReason; handoverNote?: string }) =>

@@ -10,6 +10,7 @@ const notificationOrchestrator = require('./notificationOrchestrator');
 const { NOTIFICATION_EVENTS } = require('../config/notificationMatrix');
 const { createAuditLog } = require('../utils/auditContext');
 const { mirrorPriorWork } = require('./standingWorkMirror');
+const cohortService = require('./cohortService');
 const { PERMISSIONS: P } = require('../config/permissions');
 const { VISIBLE_MEMBERSHIP_STATUSES } = require('../config/membership');
 
@@ -578,6 +579,34 @@ class HandoverPoolService {
       recentlyClaimed: claimedRows.entries,
       recentlyWithdrawn: withdrawnRows.entries,
     };
+  }
+
+  /**
+   * The established rich mentee profile, opened from one visible pool entry.
+   *
+   * A pool viewer may not mentor this person yet — that is the point of the
+   * pool — so the ordinary mentor-profile authorization cannot be used here.
+   * The entry is the capability: it must still exist and its programme must be
+   * inside the caller's portal-aware pool scope. The profile itself is scoped
+   * to the clan the person is being handed out of.
+   */
+  async profile(user, entryId) {
+    const entry = await models.HandoverPoolEntry.findByPk(entryId, {
+      attributes: ['id', 'menteeId', 'fromClanId', 'programId', 'status'],
+    });
+    if (!entry) throw new NotFoundError('Pool entry not found');
+
+    const visible = await this._visibleProgramIds(user);
+    if (visible && !visible.includes(entry.programId)) {
+      // Do not reveal whether an out-of-scope pool entry exists.
+      throw new NotFoundError('Pool entry not found');
+    }
+
+    const profile = await cohortService.getMenteeDetail(entry.menteeId, {
+      clanId: entry.fromClanId || null,
+    });
+    if (!profile) throw new NotFoundError('Mentee not found');
+    return { profile };
   }
 
   /**

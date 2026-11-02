@@ -10,6 +10,7 @@ import { handoverPoolApi, type PoolEntry } from '@/lib/services/handover-pool-ap
 import { useMentorCohort, type CohortMentee } from '@/lib/hooks/mentor';
 import { PoolEntryCard } from '@/components/shared/pool/PoolEntryCard';
 import { ClaimDrawer } from '@/components/shared/pool/ClaimDrawer';
+import { PoolMenteeProfileDrawer } from '@/components/shared/pool/PoolMenteeProfileDrawer';
 import { PushToPoolDrawer } from '@/components/shared/pool/PushToPoolDrawer';
 import { Avatar } from '@/components/shared/Avatar';
 import { useConfirm } from '@/lib/context/ConfirmContext';
@@ -107,6 +108,7 @@ export default function MentorPoolPage() {
   const invalidate = useInvalidate();
   const confirm = useConfirm();
   const [claiming, setClaiming] = useState<PoolEntry | null>(null);
+  const [viewingProfile, setViewingProfile] = useState<PoolEntry | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [takeSearch, setTakeSearch] = useState('');
   const [giveSearch, setGiveSearch] = useState('');
@@ -317,6 +319,7 @@ export default function MentorPoolPage() {
                   key={entry.id}
                   entry={entry}
                   busy={busyId === entry.id}
+                  onViewProfile={setViewingProfile}
                   onClaim={clans?.some((clan) => clan.available && !clan.full) ? setClaiming : undefined}
                 />
               ))}
@@ -451,6 +454,7 @@ export default function MentorPoolPage() {
         onClose={() => setClaiming(null)}
         onConfirm={claim}
       />
+      <PoolMenteeProfileDrawer entry={viewingProfile} onClose={() => setViewingProfile(null)} />
     </div>
   );
 }

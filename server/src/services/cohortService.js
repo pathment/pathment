@@ -481,7 +481,7 @@ class CohortService {
     // the profile can't render — fail loudly so the controller returns a 404.
     const [mentee, optional] = await Promise.all([
       models.User.findByPk(menteeId, {
-        attributes: ['id', 'firstName', 'lastName', 'email', 'profilePictureUrl'],
+        attributes: ['id', 'firstName', 'lastName', 'email', 'phone', 'profilePictureUrl'],
         include: [
           // The streak comes with the profile because showing up is the one
           // progress signal a standing clan HAS — it has no enrollment, so no
@@ -592,6 +592,7 @@ class CohortService {
 
     return {
       ...row,
+      currentOccupation: mentee.menteeProfile?.currentOccupation || null,
       aiSummary,
       aiSignals,
       blockers: allBlockers.map((b) => ({

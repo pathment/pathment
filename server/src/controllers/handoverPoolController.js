@@ -36,6 +36,12 @@ const claimableClans = catchAsync(async (req, res) => {
   res.status(200).json(successResponse('Clans you can pull into', { clans }));
 });
 
+/** GET /api/handover-pool/:entryId/profile — read-only decision context. */
+const profile = catchAsync(async (req, res) => {
+  const result = await pool.profile(req.user, req.params.entryId);
+  res.status(200).json(successResponse('Pool mentee profile', result));
+});
+
 /** POST /api/pool/push  { menteeId, clanId?, reason?, handoverNote? } */
 const push = catchAsync(async (req, res) => {
   const { menteeId, reason, handoverNote } = req.body || {};
@@ -85,4 +91,4 @@ const withdraw = catchAsync(async (req, res) => {
 });
 
 module.exports = { list, overview, claimableClans, push, pushClan,
-  pushMany, claim, withdraw };
+  pushMany, profile, claim, withdraw };

@@ -9,6 +9,7 @@ import { qk, useApiQuery, STALE, useInvalidate } from '@/lib/query';
 import { handoverPoolApi, type PoolEntry } from '@/lib/services/handover-pool-api';
 import { PoolEntryCard } from '@/components/shared/pool/PoolEntryCard';
 import { ClaimDrawer } from '@/components/shared/pool/ClaimDrawer';
+import { PoolMenteeProfileDrawer } from '@/components/shared/pool/PoolMenteeProfileDrawer';
 import { useConfirm } from '@/lib/context/ConfirmContext';
 
 /**
@@ -30,6 +31,7 @@ export default function AdminPoolPage() {
   const confirm = useConfirm();
   const [scope, setScope] = useState({ programId: '', clanId: '' });
   const [claiming, setClaiming] = useState<PoolEntry | null>(null);
+  const [viewingProfile, setViewingProfile] = useState<PoolEntry | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const { data, loading, refetch } = useApiQuery({
@@ -170,6 +172,7 @@ export default function AdminPoolPage() {
               key={entry.id}
               entry={entry}
               busy={busyId === entry.id}
+              onViewProfile={setViewingProfile}
               onClaim={clans?.some((clan) => clan.available && !clan.full) ? setClaiming : undefined}
               onWithdraw={entry.canWithdraw ? withdraw : undefined}
             />
@@ -197,6 +200,7 @@ export default function AdminPoolPage() {
         onClose={() => setClaiming(null)}
         onConfirm={place}
       />
+      <PoolMenteeProfileDrawer entry={viewingProfile} onClose={() => setViewingProfile(null)} />
     </div>
   );
 }
