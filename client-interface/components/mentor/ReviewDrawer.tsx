@@ -12,6 +12,8 @@ import { looksLikeHtml } from '@/lib/utils/html';
 import { toExternalHref } from '@/lib/utils/url';
 import { RichContent } from '@/components/shared/RichContent';
 import { SubmissionFileList } from '@/components/shared/SubmissionFileList';
+import { VideoLinks, nonVideoLinks } from '@/components/shared/VideoPlayerModal';
+import { DiscussionParticipation } from '@/components/mentor/discussions/DiscussionParticipation';
 import { TaskProgressTimeline } from '@/components/shared/TaskProgressTimeline';
 import type { ApprovalItem } from '@/lib/hooks/mentor';
 
@@ -302,6 +304,9 @@ export function ReviewDrawer({
         <TaskProgressTimeline taskId={item.taskId} mode="mentor" />
 
         {/* Submission */}
+        {/* A Group Discussion task is judged on how they took part, so that comes first. */}
+        {item.type === 'group_discussion' && <DiscussionParticipation taskId={item.taskId} />}
+
         <div>
           <h3 className="text-sm font-medium text-slate-700 mb-2">Submission</h3>
           <RichContent
@@ -315,8 +320,13 @@ export function ReviewDrawer({
             </div>
           )}
           {item.submissionUrls.length > 0 && (
+            <div className="mt-3">
+              <VideoLinks urls={item.submissionUrls} />
+            </div>
+          )}
+          {nonVideoLinks(item.submissionUrls).length > 0 && (
             <div className="mt-2 space-y-1">
-              {item.submissionUrls.map((u, i) => (
+              {nonVideoLinks(item.submissionUrls).map((u, i) => (
                 <a key={i} href={toExternalHref(u)} target="_blank" rel="noopener noreferrer"
                   className="inline-flex items-center gap-1 text-sm text-brand-600 hover:text-brand-700 break-all">
                   <ExternalLink className="w-3.5 h-3.5 shrink-0" />{u}
@@ -446,3 +456,4 @@ export function ReviewDrawer({
     </Drawer>
   );
 }
+

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { TaskSubmissionHistory } from "./TaskSubmissionHistory";
+import { DiscussionParticipation } from "./discussions/DiscussionParticipation";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -204,6 +205,9 @@ export function MenteeTaskDrawer({
           }
         >
           <div className="space-y-5">
+            {(task.roadmapTask?.type || task.type) === "group_discussion" && (
+              <DiscussionParticipation taskId={task.id} />
+            )}
             {showSubmissions && <TaskSubmissionHistory taskId={task.id} />}
 
             <div className="bg-card rounded-2xl border border-slate-200 dark:border-slate-800 p-4 sm:p-5 space-y-4 shadow-sm">
