@@ -12,6 +12,8 @@ import type { ReactNode } from 'react';
  *
  * The whole card opens `href` (a stretched link behind the content), and any
  * buttons in `actions` sit above that link, so they still work on their own.
+ * A card that holds links of its own (`children`, e.g. a scenario's groups)
+ * leaves `href` out and gives its main button an action with `onPrimary`.
  */
 export interface EntityCardStat {
   label: string;
@@ -28,11 +30,14 @@ export function EntityCard({
   description,
   tags = [],
   stats,
+  children,
   footer,
   actions,
   primaryLabel = 'Open',
+  onPrimary,
 }: {
-  href: string;
+  /** Where the card opens. Leave out for a card whose content holds its own links. */
+  href?: string;
   status: { label: string; cls: string };
   /** A photo or avatar for the thing, shown beside its name. */
   icon?: ReactNode;
@@ -42,10 +47,15 @@ export function EntityCard({
   stats: EntityCardStat[];
   /** Muted text on the left of the footer — usually the dates. */
   footer?: ReactNode;
+  /** Shown under the facts, above the footer (a list of what the item holds). */
+  children?: ReactNode;
   /** Secondary buttons beside the primary one. */
   actions?: ReactNode;
-  primaryLabel?: string;
+  primaryLabel?: ReactNode;
+  /** The primary button runs this instead of opening `href`. */
+  onPrimary?: () => void;
 }) {
+  const primaryClass = 'inline-flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700';
   return (
     <div className="group relative flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-card transition-all hover:border-brand-300 hover:shadow-md">
       <div className="h-2 bg-gradient-to-r from-brand-600 via-brand-400 to-brand-200" aria-hidden="true" />
@@ -56,9 +66,11 @@ export function EntityCard({
           {icon}
           <h3 className="min-w-0 text-lg font-semibold text-slate-900">
             {/* Stretched link: the whole card opens the item. */}
-            <Link href={workspacePath(href)} className="after:absolute after:inset-0 after:content-[''] focus:outline-none focus-visible:underline">
-              {title}
-            </Link>
+            {href ? (
+              <Link href={workspacePath(href)} className="after:absolute after:inset-0 after:content-[''] focus:outline-none focus-visible:underline">
+                {title}
+              </Link>
+            ) : title}
           </h3>
         </div>
         {description && <p className="mt-1.5 line-clamp-2 text-sm text-slate-500">{description}</p>}
@@ -82,14 +94,18 @@ export function EntityCard({
           ))}
         </dl>
 
+        {children && <div className="relative z-10 mt-4">{children}</div>}
+
         <div className="mt-auto flex flex-wrap items-center justify-between gap-3 pt-4">
           <span className="min-w-0 truncate text-sm text-slate-500">{footer}</span>
           {/* Above the stretched link, so these stay clickable. */}
           <div className="relative z-10 flex items-center gap-2">
             {actions}
-            <Link href={workspacePath(href)} className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700">
-              {primaryLabel}
-            </Link>
+            {onPrimary ? (
+              <button type="button" onClick={onPrimary} className={primaryClass}>{primaryLabel}</button>
+            ) : href ? (
+              <Link href={workspacePath(href)} className={primaryClass}>{primaryLabel}</Link>
+            ) : null}
           </div>
         </div>
       </div>
