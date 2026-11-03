@@ -47,11 +47,11 @@ type EntryStatus = 'pending' | 'reviewed' | 'deferred';
 interface ReviewEntry { id?: string; menteeId: string; attendance: Attendance | null; status: EntryStatus; note?: string | null; mentee?: { id: string; name: string } | null }
 // `draft` = today's session that doesn't exist on the server yet. It's created
 // lazily on the first real action so merely opening the page leaves no record.
-interface ReviewSession { id: string; sessionDate: string; title: string | null; status: 'in_progress' | 'finished' | 'draft'; note: string | null; finishedAt?: string | null; entries: ReviewEntry[]; kind?: 'review' | 'discussion' | 'presentation'; scenario?: string | null }
+interface ReviewSession { id: string; sessionDate: string; title: string | null; status: 'in_progress' | 'finished' | 'draft'; note: string | null; finishedAt?: string | null; entries: ReviewEntry[]; kind?: string }
 interface ReviewSessionSummary extends Omit<ReviewSession, 'entries'> { counts: { total: number; present: number; absent: number; excused: number; reviewed: number; deferred: number } }
 
-// Discussion and presentation sessions are hidden from this page for now. Their
-// rows stay on the server, so only the daily reviews are shown and edited here.
+// Only daily reviews are run here. The server lists and opens reviews alone; an
+// older discussion or presentation session reached by its link is turned away.
 const isReviewSession = (s: { kind?: string | null }) => !s.kind || s.kind === 'review';
 
 const RISK_PILL: Record<CohortRisk, { label: string; cls: string; dot: string }> = {
@@ -237,15 +237,8 @@ export default function CohortReview() {
       const r: any = sessionParam // eslint-disable-line @typescript-eslint/no-explicit-any
         ? await mentorApi.getReviewSession(sessionParam)
         : await mentorApi.getTodayReviewSession(effectiveClanId);
-      let loaded = r?.data?.session ?? null;
-      if (loaded && !isReviewSession(loaded)) {
-        if (sessionParam) { router.replace('/mentor/review'); return; }
-        // "Today" returns the newest session of any kind, so find today's review.
-        const list: any = await mentorApi.listReviewSessions(effectiveClanId); // eslint-disable-line @typescript-eslint/no-explicit-any
-        const review = (list?.data?.sessions ?? []).find((s: ReviewSessionSummary) => s.sessionDate === r?.data?.today && isReviewSession(s));
-        const full: any = review ? await mentorApi.getReviewSession(review.id) : null; // eslint-disable-line @typescript-eslint/no-explicit-any
-        loaded = full?.data?.session ?? null;
-      }
+      const loaded = r?.data?.session ?? null;
+      if (loaded && sessionParam && !isReviewSession(loaded)) { router.replace('/mentor/review'); return; }
       if (loaded) {
         setSession(loaded);
         setSessionError(false);
@@ -910,7 +903,7 @@ export default function CohortReview() {
     setHistoryOpen(true);
     setRequestingAccess(false); setAccessReason('');
     loadLockState();
-    try { const r: any = await mentorApi.listReviewSessions(effectiveClanId); setSessions((r?.data?.sessions ?? []).filter(isReviewSession)); } // eslint-disable-line @typescript-eslint/no-explicit-any
+    try { const r: any = await mentorApi.listReviewSessions(effectiveClanId); setSessions(r?.data?.sessions ?? []); } // eslint-disable-line @typescript-eslint/no-explicit-any
     catch { setSessions([]); }
   }, [loadLockState, effectiveClanId]);
 
@@ -1879,7 +1872,6 @@ export default function CohortReview() {
                     <span className="text-sm font-medium text-slate-900 inline-flex flex-wrap items-center gap-1.5"><CalendarDays className="w-3.5 h-3.5 text-slate-400" />{dateLabel}
                     </span>
                     {s.title && <p className="text-xs text-slate-500 mt-0.5">{s.title}</p>}
-                    {!s.title && s.scenario && <p className="text-xs text-slate-500 mt-0.5 line-clamp-1">{s.scenario}</p>}
                     <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1.5 text-[11px] text-slate-500">
                       <span>{s.counts.reviewed}/{s.counts.total} reviewed</span>
                       <span className="text-emerald-600">{s.counts.present} present</span>

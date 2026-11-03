@@ -220,11 +220,6 @@ export const qk = {
   },
 
   // Platform console (operator surface) - all cross-workspace.
-  /** The rubric: workspace-wide, so one key for everybody. */
-  competencies: {
-    list: ['competencies', 'list'] as const,
-    standing: (menteeIds: string[]) => ['competencies', 'standing', menteeIds.join(',')] as const,
-  },
   platform: {
     all: ['platform'] as const,
     me: ['platform', 'me'] as const,

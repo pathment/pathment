@@ -27,11 +27,6 @@ module.exports = (sequelize, DataTypes) => {
     autoPresent: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, field: 'auto_present' },
     talkSeconds: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0, field: 'talk_seconds' },
     contributionPoints: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0, field: 'contribution_points' },
-    /**
-     * Where this person comes in the running order of a presentation. Null for
-     * a discussion, where nobody has a turn, and for a plain review.
-     */
-    speakingOrder: { type: DataTypes.INTEGER, allowNull: true, field: 'speaking_order' },
   }, {
     tableName: 'cohort_review_entries',
     underscored: true,

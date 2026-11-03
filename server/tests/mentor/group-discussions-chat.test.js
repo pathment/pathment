@@ -54,7 +54,25 @@ describe('group discussions', () => {
     scenario = await service.createScenario(mentor.id, { clanId: clan.id, title: 'Missed deadline', prompt: 'What do you do?' });
   });
 
-  const makeGroup = (extra = {}) => service.createGroup(mentor.id, { scenarioId: scenario.id, name: 'Group A', ...extra });
+  /*
+   * A group needs both dates now. A test that leaves one out means a group made
+   * before they were required, so it is created with both and the missing one
+   * is cleared on the row: the fallbacks those older groups take stay tested.
+   */
+  const makeGroup = async (extra = {}) => {
+    const asked = extra.schedule;
+    if (asked?.repeat === 'weekly') {
+      return service.createGroup(mentor.id, { scenarioId: scenario.id, name: 'Group A', ...extra });
+    }
+    const schedule = { repeat: 'none', startsAt: past(1), endsAt: future(24 * 30), ...(asked || {}) };
+    const group = await service.createGroup(mentor.id, { scenarioId: scenario.id, name: 'Group A', ...extra, schedule });
+    const legacy = {};
+    if (!asked?.startsAt) legacy.startsAt = null;
+    if (!asked?.endsAt) legacy.endsAt = null;
+    if (!Object.keys(legacy).length) return group;
+    await models.DiscussionGroup.update(legacy, { where: { id: group.id } });
+    return service.getForMentor(mentor.id, group.id);
+  };
   const say = (userId, group, messageText = 'hello') => messaging.sendMessage(userId, { conversationId: group.conversationId, messageText });
   const ids = (group) => group.members.map((m) => m.userId).sort();
   const freeze = (group) => models.DiscussionGroup.update({ endsAt: new Date(Date.now() - HOUR) }, { where: { id: group.id } });

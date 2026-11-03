@@ -95,10 +95,6 @@ router.get('/review/sessions/:id', mentorOnly, cohortReviewController.get);
 router.patch('/review/sessions/:id', mentorOnly, cohortReviewController.update);
 router.put('/review/sessions/:id/entries/:menteeId', mentorOnly, cohortReviewController.setEntry);
 router.post('/review/sessions/:id/finish', mentorOnly, cohortReviewController.finish);
-// A discussion or presentation: score somebody against the rubric while it runs,
-// and set who speaks when.
-router.post('/review/sessions/:id/entries/:menteeId/scores', mentorOnly, cohortReviewController.scoreEntry);
-router.put('/review/sessions/:id/order', mentorOnly, cohortReviewController.setOrder);
 router.post('/review/sessions/:id/reopen', mentorOnly, cohortReviewController.reopen);
 router.delete('/review/sessions/:id', mentorOnly, cohortReviewController.remove);
 // Live video (Jitsi) for a review — host controls (mentor is the source of truth).

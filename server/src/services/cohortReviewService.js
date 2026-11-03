@@ -8,10 +8,13 @@ const authzService = require('./authzService');
 const mentorshipPauseService = require('./mentorshipPauseService');
 const lockService = require('./cohortReviewLockService');
 const clanLifecycleService = require('./clanLifecycleService');
-const competencyService = require('./competencyService');
 
-/** A review, a group discussion, or a presentation - one session shape. */
-const SESSION_KINDS = ['review', 'discussion', 'presentation'];
+/**
+ * Only daily reviews are made and shown here. Older discussion and presentation
+ * sessions (the rubric-scored ones, since replaced by chat group discussions
+ * and video presentation tasks) stay in the table but are never read as a review.
+ */
+const REVIEW = { kind: 'review' };
 
 /**
  * cohortReviewService - dated, saved, editable cohort-review sessions.
@@ -48,43 +51,7 @@ class CohortReviewService {
       order: [['created_at', 'ASC']],
     });
 
-    /*
-     * A discussion carries its scores back with it. Without them the rubric
-     * reopens blank every time the session is refreshed, and a facilitator
-     * halfway through scoring a room cannot tell who they have already done.
-     */
-    const scores = session.kind && session.kind !== 'review' && entries.length
-      ? await this._scoresForEntries(entries.map((e) => e.id))
-      : new Map();
-
-    const ordered = session.kind === 'presentation'
-      ? [...entries].sort((a, b) => (a.speakingOrder ?? 1e9) - (b.speakingOrder ?? 1e9))
-      : entries;
-
-    return {
-      ...session.toJSON(),
-      entries: ordered.map((e) => ({
-        ...this._entryJson(e),
-        speakingOrder: e.speakingOrder ?? null,
-        competencyScores: scores.get(e.id) || [],
-      })),
-    };
-  }
-
-  /** Scores given in this session, keyed by the entry they were given on. */
-  async _scoresForEntries(entryIds) {
-    const out = new Map();
-    if (!entryIds.length) return out;
-    const rows = await models.CompetencyScore.findAll({
-      where: { sourceType: 'review_entry', sourceId: { [Op.in]: entryIds } },
-      attributes: ['competencyId', 'score', 'note', 'sourceId'],
-      raw: true,
-    });
-    for (const row of rows) {
-      if (!out.has(row.sourceId)) out.set(row.sourceId, []);
-      out.get(row.sourceId).push({ competencyId: row.competencyId, score: row.score, note: row.note });
-    }
-    return out;
+    return { ...session.toJSON(), entries: entries.map((e) => this._entryJson(e)) };
   }
 
   /**
@@ -156,11 +123,11 @@ class CohortReviewService {
     const tz = await this._mentorTz(mentorId);
     const today = todayInZone(tz);
     let session = await models.CohortReviewSession.findOne({
-      where: { clanId: resolvedClanId, sessionDate: today },
+      where: { clanId: resolvedClanId, sessionDate: today, ...REVIEW },
       order: [['created_at', 'DESC']],
     });
     if (!session) {
-      session = await models.CohortReviewSession.create({ mentorId, clanId: resolvedClanId, sessionDate: today, status: 'in_progress' });
+      session = await models.CohortReviewSession.create({ mentorId, clanId: resolvedClanId, sessionDate: today, status: 'in_progress', ...REVIEW });
     }
     await this._reconcileEntries(session);
     return this._withEntries(session);
@@ -177,7 +144,7 @@ class CohortReviewService {
     const tz = await this._mentorTz(mentorId);
     const today = todayInZone(tz);
     const session = await models.CohortReviewSession.findOne({
-      where: { clanId: resolvedClanId, sessionDate: today },
+      where: { clanId: resolvedClanId, sessionDate: today, ...REVIEW },
       order: [['created_at', 'DESC']],
     });
     if (!session) return { session: null, today, clanId: resolvedClanId };
@@ -189,7 +156,7 @@ class CohortReviewService {
   async listSessions(mentorId, clanId) {
     const resolvedClanId = await this._resolveClanId(mentorId, clanId);
     const all = await models.CohortReviewSession.findAll({
-      where: { clanId: resolvedClanId },
+      where: { clanId: resolvedClanId, ...REVIEW },
       order: [['session_date', 'DESC'], ['created_at', 'DESC']],
     });
     // History = PAST reviews. A recurring schedule pre-creates the next couple
@@ -247,30 +214,17 @@ class CohortReviewService {
     return this._withEntries(session);
   }
 
-  async createSession(mentorId, { date, title, clanId, kind = 'review', scenario, facilitatorId } = {}) {
+  async createSession(mentorId, { date, title, clanId } = {}) {
     const resolvedClanId = await this._resolveClanId(mentorId, clanId);
     await clanLifecycleService.assertClanWritable(resolvedClanId);
-    if (!SESSION_KINDS.includes(kind)) {
-      throw new ValidationError(`kind must be one of: ${SESSION_KINDS.join(', ')}`);
-    }
     const tz = await this._mentorTz(mentorId);
     const sessionDate = date && /^\d{4}-\d{2}-\d{2}$/.test(String(date)) ? String(date) : todayInZone(tz);
 
-    /**
-     * One REVIEW per clan per day, reused rather than duplicated - that is
-     * what "today's review" means, and two of them would split the clan's
-     * attendance in half.
-     *
-     * A discussion or a presentation is not that. Two discussions on one
-     * afternoon, on different scenarios, are two different events with
-     * different scores attached, so each one is its own session.
-     */
-    let session = kind === 'review'
-      ? await models.CohortReviewSession.findOne({
-        where: { clanId: resolvedClanId, sessionDate, kind: 'review' },
-        order: [['created_at', 'DESC']],
-      })
-      : null;
+    // One review per clan per day: reuse an existing one rather than duplicating.
+    let session = await models.CohortReviewSession.findOne({
+      where: { clanId: resolvedClanId, sessionDate, ...REVIEW },
+      order: [['created_at', 'DESC']],
+    });
 
     if (!session) {
       session = await models.CohortReviewSession.create({
@@ -279,9 +233,7 @@ class CohortReviewService {
         sessionDate,
         title: (title || '').trim().slice(0, 150) || null,
         status: 'in_progress',
-        kind,
-        scenario: kind === 'review' ? null : (scenario ? String(scenario).trim().slice(0, 4000) : null),
-        facilitatorId: facilitatorId || null,
+        ...REVIEW,
       });
     }
     await this._reconcileEntries(session);
@@ -294,15 +246,6 @@ class CohortReviewService {
     if (updates.title !== undefined) session.title = String(updates.title || '').trim().slice(0, 150) || null;
     if (updates.note !== undefined) session.note = updates.note || null;
     if (updates.sessionDate !== undefined && /^\d{4}-\d{2}-\d{2}$/.test(String(updates.sessionDate))) session.sessionDate = updates.sessionDate;
-    /*
-     * The scenario is editable while the session runs: a facilitator sharpens
-     * the prompt once they see how the room is reading it, and that is a
-     * better outcome than being stuck with the first wording.
-     */
-    if (updates.scenario !== undefined) {
-      session.scenario = updates.scenario ? String(updates.scenario).trim().slice(0, 4000) : null;
-    }
-    if (updates.facilitatorId !== undefined) session.facilitatorId = updates.facilitatorId || null;
     await session.save();
     return this._withEntries(session);
   }
@@ -381,75 +324,6 @@ class CohortReviewService {
     } catch (err) {
       console.error('[review] _notifyAbsentMentees failed (non-fatal):', err.message);
     }
-  }
-
-  /**
-   * Where somebody comes in the running order of a presentation.
-   *
-   * Kept on the entry rather than inferred from a list, because the order is
-   * decided before the session and then changed during it - somebody's
-   * connection drops and they move to last - and a facilitator doing that in
-   * their head while also scoring is how people get missed.
-   */
-  async setSpeakingOrder(mentorId, sessionId, order = []) {
-    const session = await this._canAccess(mentorId, sessionId);
-    await clanLifecycleService.assertClanWritable(session.clanId);
-    if (session.kind !== 'presentation') {
-      throw new ValidationError('A running order only means something for a presentation');
-    }
-    const ids = [...new Set((Array.isArray(order) ? order : []).filter(Boolean))];
-    const entries = await models.CohortReviewEntry.findAll({ where: { sessionId: session.id } });
-    const byMentee = new Map(entries.map((e) => [e.menteeId, e]));
-
-    for (const [index, menteeId] of ids.entries()) {
-      const entry = byMentee.get(menteeId);
-      if (!entry) continue;
-      // eslint-disable-next-line no-await-in-loop
-      await entry.update({ speakingOrder: index + 1 });
-      byMentee.delete(menteeId);
-    }
-    // Anybody left out has no turn rather than a stale one.
-    for (const entry of byMentee.values()) {
-      if (entry.speakingOrder == null) continue;
-      // eslint-disable-next-line no-await-in-loop
-      await entry.update({ speakingOrder: null });
-    }
-    return this._withEntries(session);
-  }
-
-  /**
-   * Score one person against the rubric, from inside the session.
-   *
-   * Scored WHILE it happens, which is the whole reason this lives on the live
-   * session rather than on a form afterwards: a facilitator who finishes a
-   * sixty minute discussion and then tries to recall six people produces
-   * numbers that are really a memory of the loudest one.
-   *
-   * The entry id is the source, so a correction made two minutes later
-   * replaces the first answer instead of sitting beside it.
-   */
-  async scoreEntry(mentorId, sessionId, menteeId, scores = []) {
-    const session = await this._canAccess(mentorId, sessionId);
-    await clanLifecycleService.assertClanWritable(session.clanId);
-    if (session.kind === 'review') {
-      throw new ValidationError('The rubric is for a discussion or a presentation');
-    }
-
-    let entry = await models.CohortReviewEntry.findOne({ where: { sessionId: session.id, menteeId } });
-    if (!entry) entry = await models.CohortReviewEntry.create({ sessionId: session.id, menteeId, status: 'pending' });
-
-    const saved = await competencyService.score({
-      menteeId,
-      sourceType: 'review_entry',
-      sourceId: entry.id,
-      scores,
-      scoredBy: mentorId,
-    });
-
-    // Scoring somebody IS reviewing them; making the mentor also tick a box
-    // afterwards is a second action for one decision.
-    if (entry.status === 'pending') await entry.update({ status: 'reviewed' });
-    return saved;
   }
 
   async finishSession(mentorId, sessionId) {

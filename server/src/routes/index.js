@@ -20,7 +20,6 @@ const activityRoutes = require('./activity');
 const clanRoutes = require('./clans');
 const mentorAreaRoutes = require('./mentor');
 const handoverPoolRoutes = require('./handoverPool');
-const competencyRoutes = require('./competencies');
 const groupDiscussionRoutes = require('./groupDiscussions');
 const menteeAreaRoutes = require('./mentee');
 const frictionRoutes = require('./friction');
@@ -121,8 +120,6 @@ router.use('/mentee', menteeAreaRoutes);
 // Named apart from /pools (the candidate selection pools) on purpose — they are
 // different features and the two paths must not read as the same one.
 router.use('/handover-pool', handoverPoolRoutes);
-// The rubric: what this workspace judges people on, and where they stand.
-router.use('/competencies', competencyRoutes);
 // Group discussions: scenarios, their groups, and each group's chat members.
 router.use('/group-discussions', groupDiscussionRoutes);
 
