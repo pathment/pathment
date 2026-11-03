@@ -9,6 +9,7 @@ const schedulingService = require('./schedulingService');
 const { VISIBLE_MEMBERSHIP_STATUSES, HISTORICAL_MEMBERSHIP_STATUSES } = require('../config/membership');
 const { getRequestContext } = require('../utils/auditContext');
 const logger = require('../utils/logger');
+const { uploadToCloudinary } = require('../utils/cloudinaryUpload');
 
 // Clan roles that mean "I mentor the people in this clan". Mirrors
 // authzService.mentoredClanIds — kept local because this file only needs the
@@ -519,20 +520,34 @@ class MessagingService {
     return this.getConversationByIdForUser(conversation.id, userId);
   }
 
+  /**
+   * A group chat belongs to its discussion, not to one member's inbox: who is in
+   * it is the mentor's decision, so nobody archives or leaves it from here.
+   */
+  async #assertNotGroupConversation(conversationId) {
+    const conversation = await models.Conversation.findByPk(conversationId, { attributes: ['id', 'type'] });
+    if (conversation?.type === 'group') {
+      throw new ForbiddenError('A group discussion is managed by its mentor');
+    }
+  }
+
   async archiveConversation(userId, conversationId) {
     const participant = await this.assertUserInConversation(userId, conversationId);
+    await this.#assertNotGroupConversation(conversationId);
     await participant.update({ isArchived: true });
     return { archived: true };
   }
 
   async unarchiveConversation(userId, conversationId) {
     const participant = await this.assertUserInConversation(userId, conversationId);
+    await this.#assertNotGroupConversation(conversationId);
     await participant.update({ isArchived: false });
     return { archived: false };
   }
 
   async deleteConversation(userId, conversationId) {
     const participant = await this.assertUserInConversation(userId, conversationId);
+    await this.#assertNotGroupConversation(conversationId);
     await participant.update({ leftAt: new Date() });
     return { deleted: true };
   }
@@ -587,7 +602,8 @@ class MessagingService {
           model: models.Conversation,
           as: 'conversation',
           attributes: ['id', 'lastMessageAt'],
-          where: { isArchived: false },
+          // A group chat lives on its discussion's page, not in the inbox.
+          where: { isArchived: false, type: { [Op.ne]: 'group' } },
           required: true
         }
       ],
@@ -856,7 +872,36 @@ class MessagingService {
     }
   }
 
-  async sendMessage(senderId, payload) {
+  /**
+   * An image, video or voice note in a group discussion. Whether they may post
+   * is checked before the upload, so a frozen chat cannot store a file first.
+   */
+  async sendGroupAttachment(senderId, { conversationId, messageText }, file) {
+    if (!file) throw new ValidationError('Choose a file to send');
+    if (!/^(image|video|audio)\//.test(file.mimetype || '')) {
+      throw new ValidationError('Only images, videos and voice notes can be sent here');
+    }
+    const conversation = await models.Conversation.findByPk(conversationId, { attributes: ['id', 'type'] });
+    if (!conversation) throw new NotFoundError('Conversation not found');
+    if (conversation.type !== 'group') throw new ValidationError('Files can only be sent in a group discussion');
+    await require('./groupDiscussionService').assertCanPost(conversationId, senderId);
+
+    const uploaded = await uploadToCloudinary(file.buffer, 'pathment/discussions', 'auto');
+    return this.sendMessage(
+      senderId,
+      { conversationId, messageText: String(messageText || '').trim().slice(0, 5000) },
+      {
+        attachment: {
+          fileName: String(file.originalname || 'file').slice(0, 255),
+          fileUrl: uploaded.secure_url,
+          fileType: String(file.mimetype).slice(0, 50),
+          fileSizeBytes: file.size,
+        },
+      },
+    );
+  }
+
+  async sendMessage(senderId, payload, { attachment = null } = {}) {
     const result = await sequelize.transaction(async (transaction) => {
       const { conversationId, messageText, subject, parentMessageId, relatedTaskId, relatedEnrollmentId } = payload;
 
@@ -884,6 +929,14 @@ class MessagingService {
       if (!participantIds.includes(senderId)) {
         throw new ForbiddenError('You are not a participant in this conversation');
       }
+
+      // The discussion decides who may speak, and when. Everything below this
+      // for a direct thread (restoring somebody who left, the allow-list) is
+      // about two people; a group's membership is the mentor's to set.
+      const isGroup = conversation.type === 'group';
+      const discussionGroup = isGroup
+        ? await require('./groupDiscussionService').assertCanPost(conversationId, senderId, transaction)
+        : null;
 
       // If direct conversation, restore any participant who left. They have to
       // come back or the message would be sent into a conversation they are not
@@ -939,9 +992,11 @@ class MessagingService {
 
       // Defense in depth: a mentee can't message into a conversation with someone
       // outside their allowed set (e.g. after a clan/match was removed).
-      const allowed = await this.getAllowedRecipientIds(senderId);
-      if (allowed !== null && recipientIds.some((id) => !allowed.includes(id))) {
-        throw new ForbiddenError('You can only message your mentor or members of your clan');
+      if (!isGroup) {
+        const allowed = await this.getAllowedRecipientIds(senderId);
+        if (allowed !== null && recipientIds.some((id) => !allowed.includes(id))) {
+          throw new ForbiddenError('You can only message your mentor or members of your clan');
+        }
       }
 
       const recipientId = recipientIds[0];
@@ -977,22 +1032,38 @@ class MessagingService {
         subject: subject || null,
         messageText,
         deliveredAt,
+        // recipientId/isRead describe one reader, which a group does not have.
+        // Its read position is each member's lastReadAt; leaving this false
+        // would only inflate the first member's unread count.
+        isRead: isGroup,
         relatedTaskId: relatedTaskId || conversation.relatedTaskId || null,
         relatedEnrollmentId: relatedEnrollmentId || conversation.relatedEnrollmentId || null
       }, { transaction });
+
+      if (attachment) {
+        await models.MessageAttachment.create({ ...attachment, messageId: message.id }, { transaction });
+      }
 
       await conversation.update({
         lastMessageId: message.id,
         lastMessageAt: message.createdAt
       }, { transaction });
 
+      const preview = messageText || 'Sent a file';
       const notifications = await Promise.all(recipientIds.map(async (userId) => {
+        const role = recipientRoleById[userId] || 'mentee';
         return models.Notification.create({
           userId,
           type: 'message',
-          title: 'New message',
-          message: messageText.length > 140 ? `${messageText.slice(0, 140)}...` : messageText,
-          actionUrl: `/${recipientRoleById[userId] || 'mentee'}/messages?conversationId=${conversationId}`,
+          title: isGroup ? `New message in ${discussionGroup.name}` : 'New message',
+          message: preview.length > 140 ? `${preview.slice(0, 140)}...` : preview,
+          // conversationId stays in the URL: markConversationRead finds these by it.
+          // A mentor reads group chats in Messages, a mentee on the discussion's page.
+          actionUrl: isGroup
+            ? (role === 'mentee'
+              ? `/mentee/discussions/${discussionGroup.id}?conversationId=${conversationId}`
+              : `/mentor/messages?discussion=${discussionGroup.id}&conversationId=${conversationId}`)
+            : `/${role}/messages?conversationId=${conversationId}`,
           actionLabel: 'Open Chat',
           relatedEntityType: 'message',
           relatedEntityId: message.id,
@@ -1019,7 +1090,7 @@ class MessagingService {
 
       // [RAG Core] Fire Orchestrator asynchronously if sender is a mentee
       // (Mentors don't auto-reply to themselves)
-      if (recipientRoleById[recipientIds[0]] === 'mentor') {
+      if (!isGroup && recipientRoleById[recipientIds[0]] === 'mentor') {
         const { RagFacade } = require('../features/rag');
         // Fire and forget (do not await)
         RagFacade.handleNewMessage(hydratedMessage).catch(err => {
@@ -1046,7 +1117,7 @@ class MessagingService {
   async markConversationRead(userId, conversationId) {
     await this.assertUserInConversation(userId, conversationId);
 
-    return sequelize.transaction(async (transaction) => {
+    const result = await sequelize.transaction(async (transaction) => {
       const [updatedCount] = await models.Message.update({
         isRead: true,
         readAt: new Date()
@@ -1093,6 +1164,13 @@ class MessagingService {
 
       return { updatedCount };
     });
+
+    // Opening a group's chat is taking part in it, wherever it was opened from,
+    // so the mentee's Group Discussion task starts. Never fails the read.
+    await require('./groupDiscussionService').startTasksOnOpen(conversationId, userId)
+      .catch((error) => logger.warn('[messaging] could not start a discussion task', { conversationId, error: error.message }));
+
+    return result;
   }
 
   /**
