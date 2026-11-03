@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { Send, Loader2, Link as LinkIcon, ShieldCheck, CheckCircle2, Upload, X, File as FileIcon, Image, FileText } from 'lucide-react';
+import { Send, Loader2, Link as LinkIcon, ShieldCheck, CheckCircle2, Upload, X, File as FileIcon, Image, FileText, Video } from 'lucide-react';
 import { Drawer } from '@/components/shared/Drawer';
 import { FileDragDrop } from '@/components/shared/FileDragDrop';
 import RichTextEditor from '@/components/shared/RichTextEditor';
@@ -16,6 +16,7 @@ import {
   SUBMISSION_FILE_HINT,
   SUBMISSION_MAX_FILE_SIZE,
   SUBMISSION_MAX_FILES,
+  formatMaxSizeMb,
   getSubmissionFileRejectReason,
 } from '@/lib/utils/submission-files';
 
@@ -34,7 +35,17 @@ export interface SubmitTaskTarget {
   status?: string;
   deliverable?: string | null;
   acceptanceCriteria?: string[];
+  /** With `isCustomTask`, says whether this is a video presentation. */
+  type?: string | null;
+  isCustomTask?: boolean;
 }
+
+/**
+ * A mentor's own Video task is a video presentation, handed in as a recording
+ * or a link to one. A roadmap 'video' step means "watch this", so it is not.
+ */
+export const isVideoPresentation = (task?: { type?: string | null; isCustomTask?: boolean } | null) =>
+  task?.type === 'video' && !!task.isCustomTask;
 
 /**
  * In-context task submission - opens as the shared side Drawer right where the
@@ -75,12 +86,23 @@ export function SubmitTaskDrawer({
   const optional = criteria.slice(reqCount);
 
   const validLinks = links.map((l) => l.trim()).filter(Boolean);
-  const canSubmit = !isBlankHtml(description) || validLinks.length > 0 || files.length > 0;
+  // A video presentation is the video itself: a recording, or a link to one.
+  const videoPresentation = isVideoPresentation(task);
+  const hasVideoFile = files.some((f) => f.type.startsWith('video/'));
+  const canSubmit = videoPresentation
+    ? hasVideoFile || validLinks.length > 0
+    : !isBlankHtml(description) || validLinks.length > 0 || files.length > 0;
   const isResubmit = task?.status === 'revision_needed';
+  const maxMb = formatMaxSizeMb(SUBMISSION_MAX_FILE_SIZE);
 
   const submit = async () => {
     if (!task || readOnly) return;
-    if (!canSubmit) { toast.error('Add a note, a link, or a file before submitting'); return; }
+    if (!canSubmit) {
+      toast.error(videoPresentation
+        ? 'Add your video — upload the recording or paste a link to it'
+        : 'Add a note, a link, or a file before submitting');
+      return;
+    }
     try {
       setSaving(true);
       if (source === 'pool') {
@@ -117,7 +139,7 @@ export function SubmitTaskDrawer({
       open={open && !!task}
       onClose={onClose}
       title={`${isResubmit ? 'Re-submit' : 'Submit'} · ${task?.title ?? 'Task'}`}
-      subtitle="Share your work - link, notes, or files."
+      subtitle={videoPresentation ? 'Upload your presentation video, or share a link to it.' : 'Share your work - link, notes, or files.'}
       width="md"
       footer={
         <>
@@ -129,6 +151,24 @@ export function SubmitTaskDrawer({
       }
     >
       <div className="space-y-5">
+        {videoPresentation && (
+          <div className="rounded-xl border border-brand-200 bg-brand-50/60 p-4 dark:border-brand-500/20 dark:bg-brand-500/5">
+            <h3 className="mb-2 flex items-center gap-1.5 text-sm font-medium text-slate-900">
+              <Video className="h-4 w-4 text-brand-600" aria-hidden />
+              How to hand in your video presentation
+            </h3>
+            <ol className="list-decimal space-y-1 pl-5 text-sm text-slate-700 dark:text-slate-300">
+              <li>Record yourself presenting: a screen recording with your voice, or on camera.</li>
+              <li>Upload the video below (MP4, MOV or WebM, up to {maxMb}MB).</li>
+              <li>
+                Longer than that? Put it on YouTube (unlisted), Loom or Google Drive and paste the link.
+                Make sure anyone with the link can watch it.
+              </li>
+            </ol>
+            <p className="mt-2 text-xs text-slate-500">A video file or a video link is required to submit.</p>
+          </div>
+        )}
+
         {/* What passes - same bar the mentor grades against */}
         {criteria.length > 0 && (
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
@@ -157,14 +197,16 @@ export function SubmitTaskDrawer({
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Project links</label>
+          <label className="block text-sm font-medium text-slate-700 mb-1">
+            {videoPresentation ? <>Video link <span className="text-slate-400 font-normal">(or upload the file below)</span></> : 'Project links'}
+          </label>
           <div className="space-y-2">
             {links.map((link, i) => (
               <div key={i} className="flex gap-2">
                 <div className="relative flex-1">
                   <LinkIcon className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
                   <input type="url" value={link} onChange={(e) => setLinks((prev) => prev.map((x, j) => (j === i ? e.target.value : x)))}
-                    placeholder="https://github.com/you/project" className={`${field} pl-9`} />
+                    placeholder={videoPresentation ? 'https://youtu.be/… or a Loom / Google Drive link' : 'https://github.com/you/project'} className={`${field} pl-9`} />
                 </div>
                 {links.length > 1 && (
                   <button type="button" onClick={() => setLinks((prev) => prev.filter((_, j) => j !== i))} className="px-3 text-slate-500 hover:bg-slate-100 rounded-lg text-sm">Remove</button>
@@ -176,7 +218,11 @@ export function SubmitTaskDrawer({
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Files <span className="text-slate-400 font-normal">(optional)</span></label>
+          <label className="block text-sm font-medium text-slate-700 mb-1">
+            {videoPresentation
+              ? <>Video file <span className="text-slate-400 font-normal">(or paste a link above)</span></>
+              : <>Files <span className="text-slate-400 font-normal">(optional)</span></>}
+          </label>
           <FileDragDrop
             onFilesSelected={(newFiles) => {
               setFiles((p) => {
@@ -210,7 +256,9 @@ export function SubmitTaskDrawer({
                 >
                   <Upload className={`w-12 h-12 mx-auto mb-4 ${isDragging ? 'text-brand-500' : 'text-slate-400'}`} />
                   <p className="text-slate-700 mb-2">
-                    {isDragging ? 'Drop files here...' : 'Drag & drop files here, or click to select'}
+                    {isDragging
+                      ? 'Drop files here...'
+                      : videoPresentation ? 'Drag & drop your video here, or click to select' : 'Drag & drop files here, or click to select'}
                   </p>
                   <p className="text-sm text-slate-500">
                     {SUBMISSION_FILE_HINT}
@@ -225,7 +273,9 @@ export function SubmitTaskDrawer({
                         key={index}
                         className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-lg"
                       >
-                        {file.type.startsWith('image/') ? (
+                        {file.type.startsWith('video/') ? (
+                          <Video className="w-5 h-5 text-brand-600" aria-label="Video file" />
+                        ) : file.type.startsWith('image/') ? (
                           <Image className="w-5 h-5 text-blue-600" aria-label="Image file" />
                         ) : file.type === 'application/pdf' ? (
                           <FileText className="w-5 h-5 text-red-600" aria-label="PDF file" />

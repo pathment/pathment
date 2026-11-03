@@ -31,7 +31,10 @@ import { PageHeader, StatusBadge } from "@/components/admin/ui";
 import { useActivityTracker } from "@/lib/hooks/shared/useActivityTracker";
 import { FrictionPanel } from "@/components/mentee/FrictionPanel";
 import { TaskProgressTimeline } from "@/components/shared/TaskProgressTimeline";
-import { SubmitTaskDrawer } from "@/components/mentee/SubmitTaskDrawer";
+import { SubmitTaskDrawer, isVideoPresentation } from "@/components/mentee/SubmitTaskDrawer";
+import { participateHref } from "@/components/mentee/tasks/MenteeTaskRow";
+import { RichContent } from "@/components/shared/RichContent";
+import Link from "next/link";
 import { InterviewReviewDrawer } from "@/components/mentor/InterviewReviewDrawer";
 import { isMissingDescription } from "@/lib/utils/html";
 import { TalkReviewSection } from "@/components/mentee/TalkReviewSection";
@@ -177,6 +180,10 @@ function ClanTaskDetail({ id }: { id: string }) {
   const isTalk = (task.roadmapTask?.type || task.type) === "talk" || (task.talks && task.talks.length > 0);
   // Course tasks are studied on Buildment and complete themselves from its progress.
   const isCourse = (task.roadmapTask?.type || task.type) === "course";
+  // Handed in as a recording or a link to one; the submit drawer says how.
+  const videoPresentation = isVideoPresentation({ type: task.roadmapTask?.type || task.type, isCustomTask: task.isCustomTask });
+  // A Group Discussion task is taken part in from its chat, then submitted.
+  const discussion = participateHref({ type: task.roadmapTask?.type || task.type, discussionGroupId: task.discussionGroupId });
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -201,6 +208,11 @@ function ClanTaskDetail({ id }: { id: string }) {
               {isTalk && (
                 <span className="px-2 py-1 bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 rounded text-xs font-medium flex items-center gap-1">
                   <Video className="w-3 h-3" /> Talk / Podcast
+                </span>
+              )}
+              {videoPresentation && (
+                <span className="px-2 py-1 bg-brand-100 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300 rounded text-xs font-medium flex items-center gap-1">
+                  <Video className="w-3 h-3" /> Video Presentation
                 </span>
               )}
             </div>
@@ -390,6 +402,19 @@ function ClanTaskDetail({ id }: { id: string }) {
         )
       ) : isCourse ? (
         <CourseProgressCard taskId={task.id} viewer="mentee" onTaskStatusChange={refetch} />
+      ) : discussion && task.status === "assigned" ? (
+        <div className="flex flex-col items-end gap-1">
+          {historical ? (
+            <button disabled title={HISTORICAL_TITLE} className="px-6 py-2.5 bg-brand-600 text-white rounded-xl font-medium opacity-50">
+              Participate
+            </button>
+          ) : (
+            <Link href={discussion} className="px-6 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-medium transition-colors">
+              Participate
+            </Link>
+          )}
+          <p className="text-xs text-slate-400">Join the group chat; you can submit once you have taken part.</p>
+        </div>
       ) : (
         canSubmit && (
           <div className="flex flex-col items-end gap-1">
@@ -436,21 +461,24 @@ function ClanTaskDetail({ id }: { id: string }) {
       </nav>
       {activeSection === "brief" && (
         <section aria-label="Task brief" className="space-y-5">
-          <div className="rounded-2xl border border-border bg-card p-6">
-            <h2 className="font-semibold mb-4">What you’ll work on</h2>{" "}
-            {isMissingDescription(taskDescription, taskTitle) ? (
-              <p className="text-sm text-slate-400">No description provided.</p>
-            ) : descriptionIsHtml ? (
-              <div
-                className="prose prose-sm max-w-none dark:prose-invert text-slate-600 dark:text-slate-300"
-                dangerouslySetInnerHTML={{ __html: taskDescription }}
-              />
-            ) : (
-              <p className="text-slate-600 whitespace-pre-wrap">
-                {taskDescription}
-              </p>
-            )}
-          </div>
+          {/* A group discussion's scenario is its brief, shown with the group below. */}
+          {!(task.discussionGroup && isMissingDescription(taskDescription, taskTitle)) && (
+            <div className="rounded-2xl border border-border bg-card p-6">
+              <h2 className="font-semibold mb-4">What you’ll work on</h2>{" "}
+              {isMissingDescription(taskDescription, taskTitle) ? (
+                <p className="text-sm text-slate-400">No description provided.</p>
+              ) : descriptionIsHtml ? (
+                <div
+                  className="prose prose-sm max-w-none dark:prose-invert text-slate-600 dark:text-slate-300"
+                  dangerouslySetInnerHTML={{ __html: taskDescription }}
+                />
+              ) : (
+                <p className="text-slate-600 whitespace-pre-wrap">
+                  {taskDescription}
+                </p>
+              )}
+            </div>
+          )}
           {/* Task Requirements */}
           <div className="bg-card rounded-2xl border border-slate-200 p-6 space-y-5">
             <h2 className="text-lg font-semibold text-slate-900">
@@ -491,6 +519,27 @@ function ClanTaskDetail({ id }: { id: string }) {
 
             {task?.talks && task.talks.length > 0 && (
               <TalkReviewSection talks={task.talks} />
+            )}
+
+            {task?.discussionGroup && (
+              <div className="rounded-xl border border-brand-200 bg-brand-50/50 p-4 dark:border-brand-500/20 dark:bg-brand-500/5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-slate-900">
+                    {task.discussionGroup.scenario?.title || task.discussionGroup.name}
+                    <span className="ml-2 font-normal text-slate-500">{task.discussionGroup.name}</span>
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => router.push(`/mentee/discussions/${task.discussionGroup.id}`)}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700"
+                  >
+                    <MessageSquare className="h-4 w-4" /> Open discussion
+                  </button>
+                </div>
+                {task.discussionGroup.scenario?.prompt && (
+                  <RichContent html={task.discussionGroup.scenario.prompt} className="mt-2 text-slate-700 dark:text-slate-300" />
+                )}
+              </div>
             )}
 
             {taskDeliverable && (
@@ -559,6 +608,8 @@ function ClanTaskDetail({ id }: { id: string }) {
                   ? "There is nothing to hand in — this task completes automatically when you finish the course on Buildment."
                   : isQuiz || isInterview
                   ? "Use the assessment button above to open your work or view your results."
+                  : videoPresentation
+                  ? "Record your presentation, then submit the video file or a link to it (YouTube unlisted, Loom or Google Drive). Your mentor’s feedback will appear here."
                   : "Submit your work when it’s ready. Your files and mentor’s feedback will stay together here."}
               </p>
             </div>
@@ -876,6 +927,8 @@ function ClanTaskDetail({ id }: { id: string }) {
             status: task.status,
             deliverable: taskDeliverable,
             acceptanceCriteria,
+            type: task.roadmapTask?.type || task.type,
+            isCustomTask: task.isCustomTask,
           }}
           onClose={() => setSubmitOpen(false)}
           onSubmitted={refetch}

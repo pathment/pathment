@@ -43,7 +43,18 @@ export interface MenteeTaskView {
   pointsAwarded?: number | null;
   /** The note attached to a "changes requested", shown under the row. */
   revisionNote?: string | null;
+  /** A Group Discussion task's group: Participate opens its chat. */
+  discussionGroupId?: string | null;
 }
+
+/**
+ * Where a Group Discussion task is done: its group's chat in Messages. Opening
+ * that chat starts the task, so Participate then gives way to Submit Work.
+ */
+export const participateHref = (task: { type?: string | null; discussionGroupId?: string | null }) =>
+  task.type === 'group_discussion' && task.discussionGroupId
+    ? `/mentee/messages?discussion=${task.discussionGroupId}`
+    : null;
 
 const DIFFICULTY_CHIP: Record<string, string> = {
   easy: 'bg-green-50 text-green-700 border-green-200',
@@ -52,7 +63,7 @@ const DIFFICULTY_CHIP: Record<string, string> = {
   expert: 'bg-red-50 text-red-700 border-red-200',
 };
 
-const ACTION = 'px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm transition-colors w-full sm:w-auto break-words disabled:opacity-50';
+const ACTION = 'px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm transition-colors w-full sm:w-auto wrap-break-word disabled:opacity-50';
 
 const isOverdue = (due?: string | null, status?: string) =>
   Boolean(due) && new Date(due as string) < new Date() && !['completed', 'submitted', 'cancelled'].includes(status || '');
@@ -96,6 +107,7 @@ export function MenteeTaskRow({
   const open = () => onOpen?.(task.id);
 
   const runner = isCourse ? courseHref!(task.id) : isInterview ? interviewHref!(task.id) : isQuiz ? quizHref!(task.id) : null;
+  const discussion = participateHref(task);
 
   /**
    * A link, unless the scope is read-only.
@@ -104,11 +116,11 @@ export function MenteeTaskRow({
    * closed round) has to stop a quiz being opened and answered. So read-only
    * renders the real disabled control and gives up the ⌘-click.
    */
-  const runnerButton = (label: string) =>
+  const runnerButton = (label: string, to = runner) =>
     readOnly ? (
       <button disabled title={blocked} className={ACTION}>{label}</button>
     ) : (
-      <Link href={runner as string} className={`${ACTION} inline-block text-center`}>{label}</Link>
+      <Link href={to as string} className={`${ACTION} inline-block text-center`}>{label}</Link>
     );
 
   return (
@@ -116,7 +128,7 @@ export function MenteeTaskRow({
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-4">
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2 mb-2">
-            <h3 className="text-slate-900 break-words min-w-0 flex-1">
+            <h3 className="text-slate-900 wrap-break-word min-w-0 flex-1">
               {/* Still an anchor, so ⌘-click and "open in new tab" reach the
                   real page; a plain click opens the drawer instead. */}
               <Link
@@ -166,15 +178,15 @@ export function MenteeTaskRow({
               <div className="flex items-start gap-2">
                 <XCircle className="w-4 h-4 text-red-600 mt-0.5 shrink-0" />
                 <div className="min-w-0">
-                  <p className="text-red-900 font-medium text-sm break-words">Task Cancelled</p>
-                  <p className="text-red-700 text-sm mt-1 break-words">{task.cancellationReason}</p>
+                  <p className="text-red-900 font-medium text-sm wrap-break-word">Task Cancelled</p>
+                  <p className="text-red-700 text-sm mt-1 wrap-break-word">{task.cancellationReason}</p>
                 </div>
               </div>
             </div>
           )}
 
           {task.description && (
-            <p className="text-slate-600 text-sm line-clamp-2 mb-3 break-words">{stripHtml(task.description)}</p>
+            <p className="text-slate-600 text-sm line-clamp-2 mb-3 wrap-break-word">{stripHtml(task.description)}</p>
           )}
 
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-600">
@@ -222,7 +234,7 @@ export function MenteeTaskRow({
           </div>
 
           {task.status === 'assigned' && (
-            runner ? (
+            discussion ? runnerButton('Participate', discussion) : runner ? (
               // A course is studied elsewhere and is never locked by the scope.
               isCourse
                 ? <Link href={runner} className={`${ACTION} inline-block text-center`}>View course</Link>

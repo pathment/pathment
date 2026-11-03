@@ -205,8 +205,11 @@ function MenteeDashboardInner() {
     id: string;
     title?: string;
     status?: string;
+    type?: string;
+    isCustomTask?: boolean;
     roadmapTask?: {
       title?: string;
+      type?: string;
       deliverable?: string | null;
       acceptanceCriteria?: string[];
     };
@@ -216,6 +219,8 @@ function MenteeDashboardInner() {
     status: task.status,
     deliverable: task.roadmapTask?.deliverable,
     acceptanceCriteria: task.roadmapTask?.acceptanceCriteria || [],
+    type: task.roadmapTask?.type || task.type,
+    isCustomTask: task.isCustomTask,
   });
 
   /**

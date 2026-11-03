@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 
 import { Drawer } from '@/components/shared/Drawer';
+import { participateHref } from '@/components/mentee/tasks/MenteeTaskRow';
 import { StatusBadge } from '@/components/admin/ui';
 import { SubmissionFileList } from '@/components/shared/SubmissionFileList';
 import { ResourceLink } from '@/components/shared/ResourceLink';
@@ -90,7 +91,8 @@ export function TaskDrawer({
   const assessmentHref = assessment === 'interview'
     ? `/mentee/interviews/${task?.id}` : `/mentee/quizzes/${task?.id}`;
 
-  const canStart = status === 'assigned' && !assessment;
+  const discussion = participateHref({ type: taskType, discussionGroupId: task?.discussionGroupId });
+  const canStart = status === 'assigned' && !assessment && !discussion;
   const canSubmit = (status === 'in_progress' || needsRevision) && !assessment;
 
   const start = async () => {
@@ -132,6 +134,14 @@ export function TaskDrawer({
                 {isDone || status === 'submitted'
                   ? `View ${assessment}`
                   : status === 'assigned' ? `Start ${assessment}` : `Resume ${assessment}`}
+              </Link>
+            )}
+            {!readOnly && status === 'assigned' && discussion && (
+              <Link
+                href={discussion}
+                className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+              >
+                Participate
               </Link>
             )}
             {!readOnly && canStart && onStart && (

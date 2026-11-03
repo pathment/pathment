@@ -55,6 +55,8 @@ function MenteeTasksContent() {
     status: task.status,
     deliverable: task.roadmapTask?.deliverable,
     acceptanceCriteria: task.roadmapTask?.acceptanceCriteria || [],
+    type: task.roadmapTask?.type || task.type,
+    isCustomTask: task.isCustomTask,
   });
   /**
    * A clan task in the shape the shared row reads.
@@ -77,6 +79,7 @@ function MenteeTasksContent() {
     finalRating: task.finalRating ?? null,
     pointsAwarded: task.pointsAwarded ?? null,
     revisionNote: task.submissions?.[0]?.feedback?.[0]?.comments ?? null,
+    discussionGroupId: task.discussionGroupId ?? null,
   });
 
   const {
