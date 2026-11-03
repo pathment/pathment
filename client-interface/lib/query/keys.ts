@@ -81,6 +81,11 @@ export const qk = {
     meetings: ['mentor', 'meetings'] as const,
     taskStats: (mentorId: string) => ['mentor', 'task-stats', mentorId] as const,
     pendingReviews: (mentorId: string) => ['mentor', 'pending-reviews', mentorId] as const,
+    /** A clan's scenarios with their groups, and one group with its progress. */
+    groupDiscussions: (clanId: string | null) => ['mentor', 'group-discussions', clanId ?? ''] as const,
+    groupDiscussion: (id: string) => ['mentor', 'group-discussion', id] as const,
+    /** How a mentee took part in the group behind one of their tasks. */
+    discussionParticipation: (taskId: string) => ['mentor', 'discussion-participation', taskId] as const,
   },
 
   mentee: {
@@ -93,6 +98,11 @@ export const qk = {
     schedule: (menteeId: string, clanId?: string | null) => ['mentee', 'schedule', menteeId, clanId ?? ''] as const,
     /** Today's blocks and their counts — the compact read for clan review. */
     planStrip: (menteeId: string, clanId?: string | null) => ['mentee', 'plan-strip', menteeId, clanId ?? ''] as const,
+    /** The signed-in mentee's own group discussions. */
+    groupDiscussions: ['mentee', 'group-discussions'] as const,
+    groupDiscussion: (id: string) => ['mentee', 'group-discussion', id] as const,
+    /** Who is in a group's chat; mentors read it through the same endpoint. */
+    groupDiscussionMembers: (id: string) => ['mentee', 'group-discussion-members', id] as const,
   },
 
   /** Selection pools: the pre-clan qualifying round. */
