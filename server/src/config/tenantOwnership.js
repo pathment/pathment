@@ -4,6 +4,8 @@ const WORKSPACE_MODELS = {
   StandingClanRequest: 'standing_clan_requests',
   Competency: 'competencies',
   CompetencyScore: 'competency_scores',
+  DiscussionScenario: 'discussion_scenarios',
+  DiscussionGroup: 'discussion_groups',
   HandoverPoolEntry: 'handover_pool_entries',
   Skill: 'skills',
   OpenSourceOrg: 'open_source_orgs',

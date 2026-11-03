@@ -11,7 +11,7 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       defaultValue: 'direct',
       validate: {
-        isIn: [['direct', 'system']]
+        isIn: [['direct', 'system', 'group']]
       }
     },
     createdBy: {

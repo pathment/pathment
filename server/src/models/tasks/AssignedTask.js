@@ -179,7 +179,9 @@ module.exports = (sequelize, DataTypes) => {
     resourcesOverride: { type: DataTypes.JSONB, allowNull: true, field: 'resources_override' },
     mentorNote: { type: DataTypes.TEXT, allowNull: true, field: 'mentor_note' },
     openSourceOrgIds: { type: DataTypes.ARRAY(DataTypes.UUID), allowNull: true, field: 'open_source_org_ids' },
-    talkIds: { type: DataTypes.ARRAY(DataTypes.UUID), allowNull: true, field: 'talk_ids' }
+    talkIds: { type: DataTypes.ARRAY(DataTypes.UUID), allowNull: true, field: 'talk_ids' },
+    // The group a Group Discussion task sends the mentee to.
+    discussionGroupId: { type: DataTypes.UUID, allowNull: true, field: 'discussion_group_id' }
   }, {
     tableName: 'assigned_tasks',
     underscored: true,
