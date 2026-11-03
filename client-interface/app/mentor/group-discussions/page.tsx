@@ -7,7 +7,7 @@ import { CalendarClock, ChevronRight, Loader2, MessageCircle, MessageSquareQuote
 import { Drawer } from '@/components/shared/Drawer';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { DiscussionStateBadge, discussionTimeLabel } from '@/components/shared/discussions/DiscussionStatus';
-import { ScenarioDrawer, scenarioPreview } from '@/components/shared/discussions/ScenarioDrawer';
+import { ScenarioDrawer } from '@/components/shared/discussions/ScenarioDrawer';
 import { EntityCard, entityCardSecondaryBtn, formatDateRange } from '@/components/admin/EntityCard';
 import RichTextEditor from '@/components/shared/RichTextEditor';
 import { cleanHtml, isBlankHtml } from '@/lib/utils/html';
@@ -54,7 +54,6 @@ function ScenarioCard({ scenario, onRead, onNewGroup, onDelete }: {
   const open = groups.filter((group) => group.state === 'open').length;
   const mentees = groups.reduce((sum, group) => sum + group.memberCount, 0);
   const messages = groups.reduce((sum, group) => sum + group.messageCount, 0);
-  const preview = scenarioPreview(scenario.prompt);
 
   return (
     <EntityCard
@@ -65,7 +64,6 @@ function ScenarioCard({ scenario, onRead, onNewGroup, onDelete }: {
         </span>
       )}
       title={scenario.title}
-      description={preview || 'No scenario written yet.'}
       stats={[
         { label: 'Groups', value: groups.length },
         { label: 'Open now', value: open, tone: open ? 'good' : 'default' },
