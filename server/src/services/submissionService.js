@@ -87,6 +87,16 @@ class SubmissionService {
     if (taskType === 'course') {
       throw new ValidationError('This is a course task — it completes automatically when you finish the course.');
     }
+    // A mentor's own Video task is a video presentation: the work is the video,
+    // an uploaded recording or a link to one. A roadmap 'video' step means
+    // "watch this", so it is left alone. Checked before anything is uploaded,
+    // so a refused hand-in stores nothing.
+    if (taskType === 'video' && task.isCustomTask && !toBoolean(submissionData.extensionRequested)) {
+      const hasVideoFile = files.some((file) => String(file.mimetype || '').startsWith('video/'));
+      if (!hasVideoFile && !toStringList(submissionData.submissionUrls).length) {
+        throw new ValidationError('Add your presentation video — upload the recording or paste a link to it.');
+      }
+    }
 
     // Upload files to Cloudinary
     // PDFs and documents must use 'raw' so Cloudinary delivers them via
