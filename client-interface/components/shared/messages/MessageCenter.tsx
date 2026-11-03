@@ -13,11 +13,14 @@ import { useClan, ALL_CLANS } from '@/lib/context/ClanContext';
 import { scopeConversationsToClan } from '@/lib/utils/clan-scope';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { workspacePath } from '@/lib/services/workspace-scope';
+import { groupDiscussionsApi } from '@/lib/services/group-discussions-api';
+import { useApiQuery, qk } from '@/lib/query';
 import type { ChatMessage, ConversationSummary, MessageReaction, SearchableUser } from '@/lib/types/messaging';
 
-import ConversationList from './ConversationList';
+import ConversationList, { type ConversationTab } from './ConversationList';
 import ChatWindow from './ChatWindow';
 import { ReplyAssistantDrawer } from '@/components/mentor/ReplyAssistantDrawer';
+import { DiscussionRows, DiscussionThread, type InboxDiscussion } from '@/components/mentee/discussions/DiscussionInbox';
 import { useAutoReply } from '@/lib/hooks/mentor/useAutoReply';
 
 interface MessageCenterProps {
@@ -59,7 +62,12 @@ export default function MessageCenter({ role }: MessageCenterProps) {
    */
   const { status: assistantStatus } = useAutoReply();
   const [generatingConversationIds, setGeneratingConversationIds] = useState<Set<string>>(new Set());
-  const [activeTab, setActiveTab] = useState<'all' | 'unread' | 'archived'>('all');
+  // `?discussion=<group id>` opens that group chat (a mentor's "Open chat", or a
+  // notification); `?tab=discussions` opens the list of them.
+  const queryDiscussionId = searchParams.get('discussion');
+  const [activeTab, setActiveTab] = useState<ConversationTab>(
+    queryDiscussionId || searchParams.get('tab') === 'discussions' ? 'discussions' : 'all',
+  );
   const [hasMore, setHasMore] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
 
@@ -71,10 +79,55 @@ export default function MessageCenter({ role }: MessageCenterProps) {
   const selectedConversationIdRef = useRef<string | null>(null);
 
   // Mobile layout state: 'list' or 'chat'
-  const [activeMobilePane, setActiveMobilePane] = useState<'list' | 'chat'>('list');
+  const [activeMobilePane, setActiveMobilePane] = useState<'list' | 'chat'>(queryDiscussionId ? 'chat' : 'list');
 
   const participantId = searchParams.get('participantId');
   const queryConversationId = searchParams.get('conversationId');
+
+  // Group discussions. They open and close on a clock, so the tab follows it
+  // without a refresh. A mentee sees the groups they are in; a mentor sees the
+  // groups of the clan picked in the sidebar.
+  const [selectedDiscussionId, setSelectedDiscussionId] = useState<string | null>(queryDiscussionId);
+  useEffect(() => {
+    if (!queryDiscussionId) return;
+    setSelectedDiscussionId(queryDiscussionId);
+    setActiveTab('discussions');
+    setActiveMobilePane('chat');
+  }, [queryDiscussionId]);
+  const { data: discussionData, loading: menteeDiscussionsLoading } = useApiQuery({
+    queryKey: qk.mentee.groupDiscussions,
+    queryFn: () => groupDiscussionsApi.mine(),
+    enabled: role === 'mentee',
+    refetchInterval: 60_000,
+  });
+  const discussionClanId = activeClanId === ALL_CLANS ? null : activeClanId;
+  const discussionNeedsClan = activeClanId === ALL_CLANS && clans.length > 1;
+  const { data: mentorDiscussionData, loading: mentorDiscussionsLoading } = useApiQuery({
+    queryKey: qk.mentor.groupDiscussions(discussionClanId),
+    queryFn: () => groupDiscussionsApi.list(discussionClanId),
+    enabled: role === 'mentor' && !discussionNeedsClan,
+    refetchInterval: 60_000,
+  });
+  // The open group is fetched on its own: a link can name a group of another
+  // clan, and reading it is what seats the mentor in its chat.
+  const { data: mentorOpenGroup, loading: mentorGroupLoading } = useApiQuery({
+    queryKey: qk.mentor.groupDiscussion(selectedDiscussionId ?? ''),
+    queryFn: () => groupDiscussionsApi.getGroup(selectedDiscussionId!),
+    enabled: role === 'mentor' && activeTab === 'discussions' && !!selectedDiscussionId,
+  });
+  const discussionGroups: InboxDiscussion[] = useMemo(
+    () => role === 'mentor'
+      ? (mentorDiscussionData?.scenarios ?? []).flatMap((scenario) =>
+        scenario.groups.map((group) => ({ ...group, scenario: { title: scenario.title, prompt: scenario.prompt } })))
+      : discussionData ?? [],
+    [role, mentorDiscussionData, discussionData],
+  );
+  const discussionsLoading = role === 'mentor' ? mentorDiscussionsLoading : menteeDiscussionsLoading;
+  const openDiscussion: InboxDiscussion | null = activeTab !== 'discussions' || !selectedDiscussionId
+    ? null
+    : role === 'mentor'
+      ? (mentorOpenGroup?.id === selectedDiscussionId ? mentorOpenGroup : null)
+      : discussionGroups.find((group) => group.id === selectedDiscussionId) ?? null;
 
   // Scope the list to the clan picked in the sidebar (mentor + mentee dual-clan).
   // Shared with the sidebar unread badge — see lib/utils/clan-scope.ts.
@@ -145,7 +198,7 @@ export default function MessageCenter({ role }: MessageCenterProps) {
     }
   };
 
-  const handleTabChange = (tab: 'all' | 'unread' | 'archived') => {
+  const handleTabChange = (tab: ConversationTab) => {
     setActiveTab(tab);
   };
 
@@ -222,7 +275,9 @@ export default function MessageCenter({ role }: MessageCenterProps) {
             router.replace(workspacePath(`/${role}/messages?conversationId=${conversation.id}`));
           }
         } else {
-          const initialConversationId = queryConversationId || null;
+          // A discussion link carries its group chat's id too, but that chat
+          // opens in the Discussions tab, not as a direct conversation.
+          const initialConversationId = queryDiscussionId ? null : queryConversationId || null;
           setSelectedConversationId(initialConversationId);
           if (initialConversationId) {
             await loadMessages(initialConversationId);
@@ -240,7 +295,7 @@ export default function MessageCenter({ role }: MessageCenterProps) {
     };
 
     boot();
-  }, [participantId, queryConversationId, role, router]);
+  }, [participantId, queryConversationId, queryDiscussionId, role, router]);
 
   const loadPendingDrafts = async () => {
     if (role !== 'mentor') return;
@@ -745,6 +800,21 @@ export default function MessageCenter({ role }: MessageCenterProps) {
             onDeleteConversation={handleDeleteConversation}
             activeTab={activeTab}
             onTabChange={handleTabChange}
+            discussions={role === 'mentee' || role === 'mentor' ? {
+              count: discussionGroups.length,
+              render: (searchQuery) => role === 'mentor' && discussionNeedsClan ? (
+                <p className="p-8 text-center text-sm text-muted-foreground">Select a clan in the sidebar to see its group discussions.</p>
+              ) : (
+                <DiscussionRows
+                  groups={discussionGroups}
+                  loading={discussionsLoading}
+                  query={searchQuery}
+                  selectedId={selectedDiscussionId}
+                  onOpen={(id) => { setSelectedDiscussionId(id); setActiveMobilePane('chat'); }}
+                  owner={role === 'mentor'}
+                />
+              ),
+            } : undefined}
             isBootstrapping={isBootstrapping}
             hiddenByClan={hiddenByClan}
             activeClanName={clans.find((c) => c.id === activeClanId)?.name ?? null}
@@ -932,24 +1002,30 @@ export default function MessageCenter({ role }: MessageCenterProps) {
               role={role === 'admin' ? 'admin' : 'mentor'}
             />
           )}
-          <ChatWindow
-            selectedConversation={selectedConversation}
-            selectedTitle={selectedTitle}
-            messages={messages}
-            currentUserId={user?.id}
-            isLoading={isMessagesLoading}
-            composerValue={composer}
-            onComposerChange={setComposer}
-            onSendMessage={handleSendMessage}
-            isSending={isSending}
-            onReact={handleReactToMessage}
-            onBackToList={() => setActiveMobilePane('list')}
-            onArchiveConversation={handleArchiveConversation}
-            onDeleteConversation={handleDeleteConversation}
-            onLoadMore={loadMoreMessages}
-            hasMore={hasMore}
-            isLoadingMore={isLoadingMore}
-          />
+          {openDiscussion ? (
+            <DiscussionThread group={openDiscussion} onBack={() => setActiveMobilePane('list')} owner={role === 'mentor'} />
+          ) : role === 'mentor' && activeTab === 'discussions' && selectedDiscussionId && mentorGroupLoading ? (
+            <div className="flex h-full items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-brand-600" /></div>
+          ) : (
+            <ChatWindow
+              selectedConversation={selectedConversation}
+              selectedTitle={selectedTitle}
+              messages={messages}
+              currentUserId={user?.id}
+              isLoading={isMessagesLoading}
+              composerValue={composer}
+              onComposerChange={setComposer}
+              onSendMessage={handleSendMessage}
+              isSending={isSending}
+              onReact={handleReactToMessage}
+              onBackToList={() => setActiveMobilePane('list')}
+              onArchiveConversation={handleArchiveConversation}
+              onDeleteConversation={handleDeleteConversation}
+              onLoadMore={loadMoreMessages}
+              hasMore={hasMore}
+              isLoadingMore={isLoadingMore}
+            />
+          )}
         </div>
       </div>
     </div>
