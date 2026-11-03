@@ -59,23 +59,4 @@ const remove = catchAsync(async (req, res) => {
   res.status(200).json(successResponse('Review session deleted', result));
 });
 
-/**
- * POST /api/mentor/review/sessions/:id/entries/:menteeId/scores
- *   { scores: [{ competencyId, score, note? }] }
- *
- * Scored while the session runs, not from a form afterwards.
- */
-const scoreEntry = catchAsync(async (req, res) => {
-  const saved = await cohortReviewService.scoreEntry(
-    req.user.id, req.params.id, req.params.menteeId, req.body?.scores || [],
-  );
-  res.status(200).json(successResponse(`${saved.length} scored`, { scores: saved }));
-});
-
-/** PUT /api/mentor/review/sessions/:id/order  { order: [menteeId, ...] } */
-const setOrder = catchAsync(async (req, res) => {
-  const session = await cohortReviewService.setSpeakingOrder(req.user.id, req.params.id, req.body?.order || []);
-  res.status(200).json(successResponse('Running order saved', { session }));
-});
-
-module.exports = { today, list, create, get, update, setEntry, finish, reopen, remove, scoreEntry, setOrder };
+module.exports = { today, list, create, get, update, setEntry, finish, reopen, remove };

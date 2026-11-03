@@ -29,8 +29,8 @@ const WEEKDAYS = [1, 2, 3, 4, 5];
 const EVERY_DAY = [0, 1, 2, 3, 4, 5, 6];
 
 /** 'YYYY-MM-DD' in the viewer's zone — an ISO instant is a day off west of UTC. */
-const dayKey = (d: Date) => d.toLocaleDateString('en-CA');
-const inDays = (n: number) => { const d = new Date(); d.setDate(d.getDate() + n); return d; };
+export const dayKey = (d: Date) => d.toLocaleDateString('en-CA');
+export const inDays = (n: number) => { const d = new Date(); d.setDate(d.getDate() + n); return d; };
 /** The coming Monday — what "next week" means when you are planning work. */
 const comingMonday = () => {
   const d = new Date();
@@ -40,7 +40,7 @@ const comingMonday = () => {
 const sameDays = (a: number[], b: number[]) =>
   a.length === b.length && [...a].sort().join() === [...b].sort().join();
 
-const niceDate = (key: string) => {
+export const niceDate = (key: string) => {
   if (!key) return '';
   const d = new Date(`${key}T00:00:00`);
   if (Number.isNaN(d.getTime())) return key;

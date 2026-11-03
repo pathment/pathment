@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const upload = multer({ storage: multer.memoryStorage() });
+const uploadMedia = require('../middlewares/upload');
 
 const messagingController = require('../controllers/messagingController');
 const { authenticate, authorize } = require('../middlewares/auth');
@@ -21,6 +22,8 @@ router.post('/conversations/:conversationId/unarchive', validateParams(messaging
 router.delete('/conversations/:conversationId', validateParams(messagingSchemas.conversationParams), messagingController.deleteConversation);
 
 router.post('/messages', validateBody(messagingSchemas.sendMessage), messagingController.sendMessage);
+// An image, video or voice note in a group discussion (up to 25MB).
+router.post('/messages/attachment', uploadMedia.singleSafeLarge('file'), messagingController.sendGroupAttachment);
 router.post('/messages/:messageId/reactions', messagingController.toggleReaction);
 
 router.get('/notifications', messagingController.getNotifications);

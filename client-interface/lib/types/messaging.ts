@@ -42,7 +42,7 @@ export interface MessageReaction {
 
 export interface ConversationSummary {
   id: string;
-  type: 'direct' | 'system';
+  type: 'direct' | 'system' | 'group';
   relatedTaskId?: string;
   relatedEnrollmentId?: string;
   lastMessageAt?: string;

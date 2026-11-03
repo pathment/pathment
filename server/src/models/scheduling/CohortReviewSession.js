@@ -17,24 +17,15 @@ module.exports = (sequelize, DataTypes) => {
     sessionDate: { type: DataTypes.DATEONLY, allowNull: false, field: 'session_date' },
     title: { type: DataTypes.STRING(150), allowNull: true },
     /**
-     * What this session IS. A discussion and a presentation are the same
-     * session with a prompt attached and somebody watching, so they share the
-     * schedule, the call, the attendance and the talk-time rather than
-     * growing a parallel set of all four. Defaults to `review`, so every
-     * session that already exists keeps meaning exactly what it meant.
+     * Every session made now is a `review`. Older `discussion` and
+     * `presentation` rows (the rubric-scored live sessions, replaced by chat
+     * group discussions and video presentation tasks) are kept, and the
+     * review service reads only reviews, so they never pass for one.
      */
     kind: {
       type: DataTypes.STRING(16), allowNull: false, defaultValue: 'review',
       validate: { isIn: [['review', 'discussion', 'presentation']] },
     },
-    /** The prompt being discussed or presented on. Null for a plain review. */
-    scenario: { type: DataTypes.TEXT, allowNull: true },
-    /**
-     * Who is running it, when that is not the clan's own mentor - an external
-     * assessor, or another mentor brought in so the clan's own is not marking
-     * their own teaching.
-     */
-    facilitatorId: { type: DataTypes.UUID, allowNull: true, field: 'facilitator_id' },
     status: {
       type: DataTypes.STRING(20), allowNull: false, defaultValue: 'in_progress',
       validate: { isIn: [['in_progress', 'finished']] },
@@ -76,7 +67,6 @@ module.exports = (sequelize, DataTypes) => {
     CohortReviewSession.hasMany(models.CohortReviewEntry, { foreignKey: 'session_id', as: 'entries' });
     CohortReviewSession.belongsTo(models.User, { foreignKey: 'mentor_id', as: 'mentor' });
     if (models.Clan) CohortReviewSession.belongsTo(models.Clan, { foreignKey: 'clan_id', as: 'clan' });
-    CohortReviewSession.belongsTo(models.User, { foreignKey: 'facilitator_id', as: 'facilitator' });
   };
 
   return CohortReviewSession;

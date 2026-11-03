@@ -5,6 +5,7 @@ import taskApi from "@/lib/services/task-api";
 import { RichContent } from "@/components/shared/RichContent";
 import { ResourceLink } from "@/components/shared/ResourceLink";
 import { SubmissionFileList } from "@/components/shared/SubmissionFileList";
+import { VideoLinks, nonVideoLinks } from "@/components/shared/VideoPlayerModal";
 import type { SubmissionFile } from "@/lib/types/submission";
 import { Star, FileText, MessageSquare, Clock, CheckCircle2, User, ExternalLink, Check } from "lucide-react";
 import { toExternalHref } from "@/lib/utils/url";
@@ -120,8 +121,9 @@ export function TaskSubmissionHistory({ taskId }: { taskId: string }) {
               {Array.isArray(submission.submissionUrls) && submission.submissionUrls.length > 0 && (
                 <div className="space-y-1.5 pt-1">
                   <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Project Links</p>
+                  <VideoLinks urls={submission.submissionUrls} />
                   <ul className="space-y-1.5">
-                    {submission.submissionUrls.map((url: string, i: number) => (
+                    {nonVideoLinks(submission.submissionUrls).map((url: string, i: number) => (
                       <li key={i}>
                         <a
                           href={toExternalHref(url)}

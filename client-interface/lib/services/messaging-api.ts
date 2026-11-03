@@ -40,6 +40,16 @@ export const messagingApi = {
     return response.data?.message;
   },
 
+  /** An image, video or voice note in a group discussion. */
+  async sendAttachment(conversationId: string, file: File, messageText?: string): Promise<ChatMessage> {
+    const form = new FormData();
+    form.append('conversationId', conversationId);
+    if (messageText) form.append('messageText', messageText);
+    form.append('file', file);
+    const response = await apiClient.post<any>('/messaging/messages/attachment', form);
+    return response.data?.message;
+  },
+
   async markConversationRead(conversationId: string): Promise<{ updatedCount: number }> {
     const response = await apiClient.post<any>(`/messaging/conversations/${conversationId}/read`, {});
     return {

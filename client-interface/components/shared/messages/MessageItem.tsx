@@ -1,15 +1,18 @@
 'use client';
 
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, CheckCheck, SmilePlus } from 'lucide-react';
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Check, CheckCheck, FileText, SmilePlus } from 'lucide-react';
 
 import {
   Popover,
   PopoverAnchor,
   PopoverContent,
 } from '@/components/ui/popover';
-import type { ChatMessage } from '@/lib/types/messaging';
+import type { ChatMessage, MessageAttachment } from '@/lib/types/messaging';
+import { Avatar } from '@/components/shared/Avatar';
 import { Spinner } from '@/components/shared/LoadingSpinner';
+import { VoiceNote } from './VoiceNote';
+import { ImageLightbox } from '@/components/shared/ImageLightbox';
 
 const QUICK_REACTIONS = ['👍', '❤️', '😂', '🎉', '😢', '🙏'];
 const LONG_PRESS_MS = 420;
@@ -18,8 +21,108 @@ interface MessageItemProps {
   message: ChatMessage;
   isMine: boolean;
   startsRun: boolean;
+  /** A group chat: other people's messages carry the sender's photo. */
+  showAvatar?: boolean;
+  /** A group discussion: the sender's part in it, beside their name. */
+  senderTag?: SenderTag;
   currentUserId?: string;
   onReact: (messageId: string, emoji: string) => void | Promise<void>;
+}
+
+export interface SenderTag { label: string; lead?: boolean }
+
+const isVisual = (file: MessageAttachment) => /^(image|video)\//.test(file.fileType || '');
+
+/**
+ * Images, videos and voice notes, played where they were sent. Photos and
+ * videos fill the bubble edge to edge (it keeps a thin frame); the rest sit in
+ * the bubble's own padding.
+ */
+function MessageAttachments({ attachments, isMine, framed, meta, ignoreTap }: {
+  attachments: MessageAttachment[];
+  isMine: boolean;
+  /** The time and ticks, when a voice note is the whole message. */
+  meta?: ReactNode;
+  /** The bubble has the thin media frame, so non-visual items add their own padding. */
+  framed: boolean;
+  /** True for the tap that ends a long press: that one opened the reactions, not the image. */
+  ignoreTap?: () => boolean;
+}) {
+  const media = 'block max-h-80 w-64 max-w-full rounded-xl bg-black/5 object-cover sm:w-72';
+  // A picture opens in the app's image viewer, the one submissions use, not
+  // as a bare file link in a new tab.
+  const images = attachments.filter((file) => (file.fileType || '').startsWith('image/'));
+  const [zoomIndex, setZoomIndex] = useState<number | null>(null);
+  const zoomed = zoomIndex !== null ? images[zoomIndex] : null;
+  return (
+    <div className="space-y-1">
+      {attachments.map((file) => {
+        const type = file.fileType || '';
+        if (type.startsWith('image/')) {
+          return (
+            <button
+              key={file.id}
+              type="button"
+              onClick={() => { if (!ignoreTap?.()) setZoomIndex(images.findIndex((image) => image.id === file.id)); }}
+              className="block cursor-zoom-in"
+              aria-label={`View ${file.fileName}`}
+            >
+              {/* A plain img: next/image throws on any host missing from its config. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={file.fileUrl} alt={file.fileName} loading="lazy" className={media} />
+            </button>
+          );
+        }
+        if (type.startsWith('video/')) {
+          return <video key={file.id} src={file.fileUrl} controls preload="metadata" className={media} />;
+        }
+        if (type.startsWith('audio/')) {
+          return (
+            <div key={file.id} className={framed ? 'px-2 pt-1' : ''}>
+              <VoiceNote src={file.fileUrl} onBrand={isMine} meta={meta} />
+            </div>
+          );
+        }
+        return (
+          <a
+            key={file.id}
+            href={file.fileUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`flex w-64 max-w-full items-center gap-3 rounded-xl p-2.5 transition-colors ${
+              isMine ? 'bg-white/15 hover:bg-white/20' : 'bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10'
+            } ${framed ? 'm-1' : ''}`}
+          >
+            <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${isMine ? 'bg-white/20' : 'bg-brand-500/10 text-brand-600'}`}>
+              <FileText className="h-4 w-4" aria-hidden />
+            </span>
+            <span className="min-w-0 flex-1 truncate text-sm font-medium">{file.fileName}</span>
+          </a>
+        );
+      })}
+      {/* The viewer is portalled, but React still bubbles its events through the
+          bubble, whose long press and right click open reactions; stop them here. */}
+      {zoomed && zoomIndex !== null && (
+        <span
+          className="contents"
+          onClick={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+          onContextMenu={(e) => e.stopPropagation()}
+        >
+        <ImageLightbox
+          file={zoomed}
+          open
+          onOpenChange={(open) => !open && setZoomIndex(null)}
+          onPrev={images.length > 1 ? () => setZoomIndex((i) => (i === null ? i : Math.max(0, i - 1))) : undefined}
+          onNext={images.length > 1 ? () => setZoomIndex((i) => (i === null ? i : Math.min(images.length - 1, i + 1))) : undefined}
+          canPrev={zoomIndex > 0}
+          canNext={zoomIndex < images.length - 1}
+          positionLabel={images.length > 1 ? `${zoomIndex + 1} / ${images.length}` : undefined}
+        />
+        </span>
+      )}
+    </div>
+  );
 }
 
 /**
@@ -104,6 +207,8 @@ export default function MessageItem({
   message,
   isMine,
   startsRun,
+  showAvatar = false,
+  senderTag,
   currentUserId,
   onReact,
 }: MessageItemProps) {
@@ -192,10 +297,88 @@ export default function MessageItem({
     .filter(Boolean)
     .join(' ');
 
+  const senderName = `${message.sender?.firstName || ''} ${message.sender?.lastName || ''}`.trim() || 'User';
+  const withAvatar = showAvatar && !isMine;
+
+  // A photo or video gets a thin frame instead of the text padding, and when
+  // nothing else is in the bubble the time sits on the picture, as in WhatsApp.
+  const attachments = message.attachments ?? [];
+  const framed = attachments.some(isVisual);
+  const metaOnMedia = framed && !message.messageText && attachments.every(isVisual);
+  const inset = framed ? 'px-2' : '';
+  // A voice note on its own carries the time on its own line, as WhatsApp does,
+  // so the bubble reads the same whoever sent it.
+  const voiceOnly = !message.messageText && !!attachments.length
+    && attachments.every((file) => (file.fileType || '').startsWith('audio/'));
+
+  // The time, and for my messages whether it was seen.
+  const meta = (
+    <>
+      <span
+        className={`text-[10px] ${metaOnMedia ? 'text-white' : isMine ? 'text-white/70' : 'text-muted-foreground'}`}
+      >
+        {new Date(message.createdAt).toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit',
+        })}
+      </span>
+
+      {isMine &&
+        (() => {
+          const isRead = Boolean(message.isRead || message.readAt);
+          const isDelivered = Boolean(message.deliveredAt);
+
+          if (isTemp) {
+            return (
+              <span className="inline-flex" title="Sending...">
+                <Spinner size="xs" className="h-3 w-3 self-center text-white" />
+              </span>
+            );
+          }
+
+          if (isRead) {
+            return (
+              <span className="inline-flex" title="Seen">
+                <CheckCheck
+                  className="w-3.5 h-3.5 text-sky-300"
+                  aria-label="Seen"
+                />
+              </span>
+            );
+          }
+
+          if (isDelivered) {
+            return (
+              <span className="inline-flex" title="Delivered">
+                <CheckCheck
+                  className="w-3.5 h-3.5 text-white/70"
+                  aria-label="Delivered"
+                />
+              </span>
+            );
+          }
+
+          return (
+            <span className="inline-flex" title="Sent">
+              <Check
+                className="w-3.5 h-3.5 text-white/60"
+                aria-label="Sent"
+              />
+            </span>
+          );
+        })()}
+    </>
+  );
+
   return (
     <div
-      className={`flex flex-col ${isMine ? 'items-end' : 'items-start'} ${stackSpacingClass}`}
+      className={`flex ${withAvatar ? 'gap-2 items-start' : `flex-col ${isMine ? 'items-end' : 'items-start'}`} ${stackSpacingClass}`}
     >
+      {/* The photo sits on the first message of a run, as in a WhatsApp group;
+          the rest of the run keeps its width so the bubbles stay lined up. */}
+      {withAvatar && (startsRun
+        ? <Avatar name={senderName} src={message.sender?.profilePictureUrl} size="sm" />
+        : <span className="w-8 shrink-0" aria-hidden />)}
       <Popover open={reactionsOpen} onOpenChange={setReactionsOpen}>
         {/* Side padding = hover bridge to the smile button (avoids a dead gap). */}
         <div
@@ -205,7 +388,7 @@ export default function MessageItem({
         >
           <PopoverAnchor asChild>
             <div
-              className={`relative px-4 py-2.5 shadow-xs select-none ${bubbleCornersClass} ${
+              className={`relative shadow-xs select-none ${framed ? 'p-1' : 'px-4 py-2.5'} ${bubbleCornersClass} ${
                 isMine
                   ? 'bg-brand-600 text-white shadow-brand-600/10'
                   : 'bg-card border border-border text-foreground'
@@ -233,71 +416,42 @@ export default function MessageItem({
               }}
             >
               {startsRun && !isMine && (
-                <p className="text-[11px] font-semibold text-brand-600 dark:text-brand-400 mb-0.5">
-                  {`${message.sender?.firstName || ''} ${message.sender?.lastName || ''}`.trim() ||
-                    'User'}
+                <p className={`mb-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] ${framed ? 'px-2 pt-1' : ''}`}>
+                  <span className="font-semibold text-brand-600 dark:text-brand-400">{senderName}</span>
+                  {senderTag && (
+                    <span
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold leading-none ${
+                        senderTag.lead
+                          ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300'
+                          : 'bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300'
+                      }`}
+                    >
+                      {senderTag.label}
+                    </span>
+                  )}
                 </p>
               )}
 
-              <FormattedMessageText text={message.messageText} />
+              {!!attachments.length && (
+                <MessageAttachments attachments={attachments} isMine={isMine} framed={framed} meta={voiceOnly ? meta : undefined} ignoreTap={() => longPressFired.current} />
+              )}
+              {!!message.messageText && (
+                <div className={framed ? 'px-2 pt-1.5' : attachments.length ? 'mt-1.5' : ''}>
+                  <FormattedMessageText text={message.messageText} />
+                </div>
+              )}
 
-              <div
-                className={`flex items-center gap-1.5 mt-1 ${isMine ? 'justify-end' : 'justify-start'}`}
-              >
-                <span
-                  className={`text-[10px] ${isMine ? 'text-white/70' : 'text-muted-foreground'}`}
+              {!voiceOnly && (
+                <div
+                  className={
+                    metaOnMedia
+                      ? 'absolute bottom-2.5 right-2.5 flex items-center gap-1 rounded-full bg-black/45 px-2 py-0.5 backdrop-blur-sm'
+                      : `flex items-center gap-1.5 mt-1 ${inset} ${framed ? 'pb-0.5' : ''} ${isMine ? 'justify-end' : 'justify-start'}`
+                  }
                 >
-                  {new Date(message.createdAt).toLocaleTimeString([], {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
-                </span>
-
-                {isMine &&
-                  (() => {
-                    const isRead = Boolean(message.isRead || message.readAt);
-                    const isDelivered = Boolean(message.deliveredAt);
-
-                    if (isTemp) {
-                      return (
-                        <span className="inline-flex" title="Sending...">
-                          <Spinner size="xs" className="h-3 w-3 self-center text-white" />
-                        </span>
-                      );
-                    }
-
-                    if (isRead) {
-                      return (
-                        <span className="inline-flex" title="Seen">
-                          <CheckCheck
-                            className="w-3.5 h-3.5 text-sky-300"
-                            aria-label="Seen"
-                          />
-                        </span>
-                      );
-                    }
-
-                    if (isDelivered) {
-                      return (
-                        <span className="inline-flex" title="Delivered">
-                          <CheckCheck
-                            className="w-3.5 h-3.5 text-white/70"
-                            aria-label="Delivered"
-                          />
-                        </span>
-                      );
-                    }
-
-                    return (
-                      <span className="inline-flex" title="Sent">
-                        <Check
-                          className="w-3.5 h-3.5 text-white/60"
-                          aria-label="Sent"
-                        />
-                      </span>
-                    );
-                  })()}
-              </div>
+                  {meta}
+                </div>
+              )}
             </div>
           </PopoverAnchor>
 
@@ -320,7 +474,7 @@ export default function MessageItem({
                   date divider. Top-aligned, the button and the keys it opens
                   are always next to each other, whatever the message's height.
               */
-              className={`absolute top-1.5 z-[1] inline-flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-sm opacity-0 transition-opacity duration-150 motion-reduce:transition-none group-hover/msg:opacity-100 hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-brand-500 ${
+              className={`absolute top-1.5 z-1 inline-flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-sm opacity-0 transition-opacity duration-150 motion-reduce:transition-none group-hover/msg:opacity-100 hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-brand-500 ${
                 isMine ? 'left-0' : 'right-0'
               } ${reactionsOpen ? 'opacity-100' : ''}`}
             >
@@ -331,7 +485,7 @@ export default function MessageItem({
           {/* Reaction chips - hug the bubble edge, still in-flow so the next message shifts down */}
           {hasReactions && (
             <div
-              className={`relative z-[2] -mt-2.5 flex max-w-full flex-wrap gap-0.5 pt-0.5 ${
+              className={`relative z-2 -mt-2.5 flex max-w-full flex-wrap gap-0.5 pt-0.5 ${
                 isMine ? 'justify-end pr-1' : 'justify-start pl-1'
               }`}
             >
@@ -411,7 +565,7 @@ export default function MessageItem({
                       void react(emoji);
                     }}
                     style={{ animationDelay: `${i * 28}ms` }}
-                    className={`flex h-10 w-10 items-center justify-center rounded-full text-[1.55rem] leading-none transition-transform duration-200 ease-out motion-reduce:transition-none hover:scale-125 hover:bg-muted active:scale-110 focus-visible:outline-2 focus-visible:outline-brand-500 animate-in fade-in zoom-in-75 duration-200 fill-mode-both motion-reduce:animate-none ${
+                    className={`flex h-10 w-10 items-center justify-center rounded-full text-[1.55rem] leading-none transition-transform duration-200 ease-out motion-reduce:transition-none hover:scale-125 hover:bg-muted active:scale-110 focus-visible:outline-2 focus-visible:outline-brand-500 animate-in fade-in zoom-in-75 fill-mode-both motion-reduce:animate-none ${
                       mine ? 'bg-muted scale-110 ring-1 ring-brand-500/30' : ''
                     }`}
                   >

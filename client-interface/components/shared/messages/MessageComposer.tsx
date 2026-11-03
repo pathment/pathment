@@ -9,6 +9,8 @@ interface MessageComposerProps {
   onSend: () => void;
   disabled?: boolean;
   isSending?: boolean;
+  /** Extra controls before the text box, such as attach and voice note. */
+  leading?: React.ReactNode;
 }
 
 export default function MessageComposer({
@@ -17,6 +19,7 @@ export default function MessageComposer({
   onSend,
   disabled = false,
   isSending = false,
+  leading,
 }: MessageComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -32,6 +35,7 @@ export default function MessageComposer({
   return (
     <div className="p-3 md:p-4 border-t border-border bg-card/90 backdrop-blur-sm">
       <div className="flex items-end gap-2 bg-slate-100/70 dark:bg-black/30 p-2 rounded-2xl border border-border focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-500/20 transition-all">
+        {leading}
         <textarea
           ref={textareaRef}
           value={value}

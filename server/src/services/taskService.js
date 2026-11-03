@@ -123,7 +123,8 @@ class TaskService {
       acceptanceCriteria,
       resources, // Optional: learning resources (links) attached to the task
       openSourceOrgIds,
-      talkIds
+      talkIds,
+      discussionGroupId
     } = data;
     let { enrollmentId } = data;
 
@@ -176,6 +177,15 @@ class TaskService {
         schedule: { ...rec, mode: 'weekly', timezone: rec.timezone || 'UTC',
           startsOn: rec.startsOn || new Date().toISOString().slice(0, 10),
           timeLocal: rec.timeLocal || '09:00', daysOfWeek: rec.daysOfWeek?.length ? rec.daysOfWeek.map(Number) : [1] } }, mentorId);
+    }
+
+    // Checked before any rows exist, so a bad link cannot leave an orphan task.
+    // A group has its own schedule, so the task itself is assigned right away.
+    let discussionGroup = null;
+    if (type === 'group_discussion') {
+      if (!discussionGroupId) throw new ValidationError('Choose the group discussion for this task');
+      if (data.schedule) throw new ValidationError('A group discussion task is assigned right away; the group has its own schedule');
+      discussionGroup = await require('./groupDiscussionService').groupForTask(discussionGroupId, clanId);
     }
 
     // Interview tasks carry a kit + options (retake / camera / AI / timing) under
@@ -277,7 +287,15 @@ class TaskService {
     // a date-only value (YYYY-MM-DD), so "today" means their whole day — never an
     // instant that's already overdue or that drifts a calendar day across zones.
     const defaultDueDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-    const resolvedDueDate = await this._resolveDueDate(menteeId, dueDate || defaultDueDate);
+    let resolvedDueDate = await this._resolveDueDate(menteeId, dueDate || defaultDueDate);
+    // A deadline never falls before its discussion is over. The drawer stops an
+    // earlier pick by the mentor's calendar day; this is moved, not refused, as
+    // that same day can end sooner in the mentee's timezone.
+    if (discussionGroup) {
+      const { opensAt, closesAt } = require('../utils/discussionWindow').discussionWindow(discussionGroup);
+      const earliest = closesAt || opensAt;
+      if (earliest && resolvedDueDate < new Date(earliest)) resolvedDueDate = new Date(earliest);
+    }
 
     const resolvedPointsBase = Number.isFinite(Number(pointsBase)) && Number(pointsBase) > 0
       ? Math.min(200, Math.round(Number(pointsBase)))
@@ -300,8 +318,14 @@ class TaskService {
       scheduleSlotId: scheduleSlotId || null,
       occurrenceDate: occurrenceDate || null,
       openSourceOrgIds: orgIds,
-      talkIds: resolvedTalkIds
+      talkIds: resolvedTalkIds,
+      discussionGroupId: discussionGroup?.id || null
     });
+
+    // The task and the group must agree: somebody removed earlier comes back.
+    if (discussionGroup) {
+      await require('./groupDiscussionService').seatForTask(discussionGroup, menteeId);
+    }
 
     // Enroll on the provider. The task only exists if the enrollment does: a
     // refusal (no seats, expired, enrolled elsewhere…) removes the rows again.
@@ -711,6 +735,20 @@ class TaskService {
       res.talks = talkRows.map((o) => (o.toJSON ? o.toJSON() : o));
     } else {
       res.talks = [];
+    }
+    res.discussionGroup = null;
+    if (res.discussionGroupId) {
+      const group = await models.DiscussionGroup.findByPk(res.discussionGroupId, {
+        include: [{ model: models.DiscussionScenario, as: 'scenario', attributes: ['title', 'prompt'] }],
+      });
+      if (group) {
+        res.discussionGroup = {
+          id: group.id,
+          name: group.name,
+          scenario: group.scenario ? { title: group.scenario.title, prompt: group.scenario.prompt } : null,
+          ...require('../utils/discussionWindow').discussionWindow(group),
+        };
+      }
     }
     res.schedule = await require('./taskEditScheduleService').read(task);
     return res;

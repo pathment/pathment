@@ -29,7 +29,7 @@ module.exports = (sequelize, DataTypes) => {
         // (assignment/project/quiz/reading/video/discussion). 'interview' =
         // structured voice/code/text interview backed by an InterviewKit.
         // 'course' = an external course (Buildment) backed by a CourseEnrollment.
-        isIn: [['reading', 'video', 'exercise', 'project', 'quiz', 'discussion', 'practical', 'assessment', 'custom', 'assignment', 'interview', 'open_source', 'course', 'talk']]
+        isIn: [['reading', 'video', 'exercise', 'project', 'quiz', 'discussion', 'practical', 'assessment', 'custom', 'assignment', 'interview', 'open_source', 'course', 'talk', 'group_discussion']]
       }
     },
     difficulty: {

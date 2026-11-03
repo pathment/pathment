@@ -511,6 +511,8 @@ export function DayPlanner({
                 status: task.status,
                 deliverable: task.roadmapTask?.deliverable,
                 acceptanceCriteria: task.roadmapTask?.acceptanceCriteria || [],
+                type: task.roadmapTask?.type || task.type,
+                isCustomTask: task.isCustomTask,
               });
             }}
           />

@@ -53,9 +53,8 @@ exports.createDirectConversation = catchAsync(async (req, res) => {
   res.status(201).json(successResponse('Conversation ready', { conversation }, 201));
 });
 
-exports.sendMessage = catchAsync(async (req, res) => {
-  const result = await messagingService.sendMessage(req.user.id, req.body);
-
+/** Tell everybody in the conversation about a message that was just saved. */
+const broadcastMessage = (result) => {
   const msgPayload = { conversationId: result.conversationId, message: result.message };
   emitToConversation(result.conversationId, 'message:new', msgPayload);
 
@@ -81,6 +80,21 @@ exports.sendMessage = catchAsync(async (req, res) => {
       conversationId: result.conversationId
     });
   });
+};
+
+exports.sendMessage = catchAsync(async (req, res) => {
+  const result = await messagingService.sendMessage(req.user.id, req.body);
+  broadcastMessage(result);
+
+  res.status(201).json(successResponse('Message sent successfully', {
+    message: result.message
+  }, 201));
+});
+
+/** POST /api/messaging/messages/attachment  multipart: file, conversationId, messageText? */
+exports.sendGroupAttachment = catchAsync(async (req, res) => {
+  const result = await messagingService.sendGroupAttachment(req.user.id, req.body, req.file);
+  broadcastMessage(result);
 
   res.status(201).json(successResponse('Message sent successfully', {
     message: result.message

@@ -3,8 +3,9 @@
 import { useState } from 'react';
 import { Download, FileText } from 'lucide-react';
 import { formatFileSize } from '@/lib/utils/formatting';
-import { isImageFile } from '@/lib/utils/file-type';
+import { isImageFile, isVideoFile } from '@/lib/utils/file-type';
 import { ImageLightbox } from '@/components/shared/ImageLightbox';
+import { VideoCard, useVideoPlayer } from '@/components/shared/VideoPlayerModal';
 import type { SubmissionFile } from '@/lib/types/submission';
 
 interface SubmissionFileListProps {
@@ -15,6 +16,8 @@ interface SubmissionFileListProps {
  * Renders a submission's attached files.
  *
  * - Images render inline with a click-to-zoom lightbox (plus download).
+ * - Videos show their first frame and play in the video player (full screen,
+ *   download), so a recorded presentation is watched where it is reviewed.
  * - Everything else renders as an icon row with a download link.
  *
  * Open/closed: rendering per file kind is delegated so new kinds (video, pdf
@@ -23,6 +26,19 @@ interface SubmissionFileListProps {
 export function SubmissionFileList({ files }: SubmissionFileListProps) {
   const images = files.filter((file) => isImageFile(file.fileType));
   const [zoomIndex, setZoomIndex] = useState<number | null>(null);
+  const { play, player } = useVideoPlayer();
+
+  const renderVideo = (file: SubmissionFile) => (
+    <VideoCard
+      key={file.id}
+      title={file.fileName}
+      subtitle={Number(file.fileSizeBytes) > 0 ? formatFileSize(Number(file.fileSizeBytes)) : null}
+      url={file.fileUrl}
+      downloadUrl={file.fileUrl}
+      direct
+      onPlay={() => play({ title: file.fileName, url: file.fileUrl, downloadUrl: file.fileUrl, direct: true })}
+    />
+  );
 
   const renderImage = (file: SubmissionFile) => (
     <div
@@ -99,7 +115,11 @@ export function SubmissionFileList({ files }: SubmissionFileListProps) {
   return (
     <>
       <div className="flex flex-wrap gap-1.5">
-        {files.map((file) => (isImageFile(file.fileType) ? renderImage(file) : renderOther(file)))}
+        {files.map((file) => (
+          isImageFile(file.fileType) ? renderImage(file)
+            : isVideoFile(file.fileType, file.fileName) ? renderVideo(file)
+              : renderOther(file)
+        ))}
       </div>
 
       {zoomed && zoomIndex !== null && (
@@ -114,6 +134,8 @@ export function SubmissionFileList({ files }: SubmissionFileListProps) {
           positionLabel={`${zoomIndex + 1} / ${images.length}`}
         />
       )}
+
+      {player}
     </>
   );
 }

@@ -9,20 +9,24 @@ import { Avatar } from '@/components/shared/Avatar';
 import { taskApi } from '@/lib/services/task-api';
 import { tracksApi, type Track } from '@/lib/services/tracks-api';
 import { mentorApi } from '@/lib/services/mentor-api';
+import { groupDiscussionsApi, scenarioLength, SCENARIO_MAX_CHARS } from '@/lib/services/group-discussions-api';
+import { CharacterCount } from '@/components/shared/CharacterCount';
+import { useApiQuery, useInvalidate, qk } from '@/lib/query';
 import { useMentorRoadmaps } from '@/lib/hooks/mentor';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { RoadmapStepsDrawer } from '@/components/mentor/RoadmapStepsDrawer';
 import { StepCustomizeModal } from '@/components/mentor/StepCustomizeModal';
 import RichTextEditor from '@/components/shared/RichTextEditor';
 import { initialTaskSchedule, type TaskScheduleDraft } from './TaskScheduleFields';
-import { TaskTimingRow } from './TaskTimingRow';
-import { cleanHtml } from '@/lib/utils/html';
+import { TaskTimingRow, dayKey, inDays, niceDate } from './TaskTimingRow';
+import { cleanHtml, isBlankHtml } from '@/lib/utils/html';
+import { renderRichContent } from '@/lib/utils/richText';
 import { pointsForDifficulty } from '@/lib/config/points';
 import { useFormDraft, clearFormDraft } from '@/lib/hooks/shared/useFormDraft';
 import { interviewApi, type InterviewKitSummary } from '@/lib/services/interview-api';
 import { quizApi, type QuizKitSummary } from '@/lib/services/quiz-api';
 import Link from 'next/link';
-import { Mic, ListChecks, Code2, CalendarRange, ChevronDown, Video, GraduationCap } from 'lucide-react';
+import { Mic, ListChecks, Code2, CalendarRange, ChevronDown, Video, GraduationCap, MessageSquareQuote } from 'lucide-react';
 import { useCoursesStatus, useCourses } from '@/lib/hooks/shared';
 import { coursesApi, formatCoursePrice, type CourseEnrollResult, type CourseLifecycle } from '@/lib/services/courses-api';
 import { OpenSourceOrgPicker } from '@/components/shared/OpenSourceOrgPicker';
@@ -34,14 +38,20 @@ import { useScrollLock } from '@/lib/hooks/useScrollLock';
 
 type AssignSource = 'custom' | 'roadmap';
 
-const TYPES = ['assignment', 'project', 'quiz', 'reading', 'video', 'discussion', 'interview', 'open_source', 'talk'] as const;
+const TYPES = ['assignment', 'project', 'quiz', 'reading', 'interview', 'group_discussion', 'video', 'open_source', 'talk'] as const;
 const TYPE_LABEL: Record<string, string> = {
-  assignment: 'Assignment', project: 'Project', quiz: 'Quiz', quizKit: 'Quiz', reading: 'Reading', video: 'Video', discussion: 'Discussion', interview: 'Interview', open_source: 'Open Source', talk: 'Talk / Podcast', course: 'Course',
+  assignment: 'Assignment', project: 'Project', quiz: 'Quiz', quizKit: 'Quiz', reading: 'Reading', video: 'Video Presentation', discussion: 'Discussion', group_discussion: 'Group Discussion', interview: 'Interview', open_source: 'Open Source', talk: 'Talk / Podcast', course: 'Course',
 };
 const DIFFICULTIES = ['easy', 'medium', 'hard', 'expert'] as const;
 const DUE_PRESETS: { label: string; days: number }[] = [
   { label: 'Today', days: 0 }, { label: '+3 days', days: 3 }, { label: '+1 week', days: 7 }, { label: '+2 weeks', days: 14 },
 ];
+/** The first day a Group Discussion task can be due: when it closes, or else when it opens. */
+const discussionDueDay = (group?: { opensAt: string | null; closesAt: string | null } | null) => {
+  const at = group?.closesAt ?? group?.opensAt;
+  const day = at ? dayKey(new Date(at)) : '';
+  return day >= dayKey(new Date()) ? day : '';
+};
 // Roadmap assignment deadline is optional — `null` = "Default" (use step timing).
 const ROADMAP_DUE_PRESETS: { label: string; days: number | null }[] = [
   { label: 'Default', days: null }, { label: '+3 days', days: 3 }, { label: '+1 week', days: 7 }, { label: '+2 weeks', days: 14 },
@@ -224,6 +234,46 @@ export function AssignTaskDrawer({
   const { connected: coursesConnected, loading: coursesStatusLoading } = useCoursesStatus();
   const isCourse = type === 'course';
   const { courses, loading: coursesLoading, refetch: refetchCourses } = useCourses(coursesConnected && isCourse);
+
+  // A Group Discussion task points at a group of this clan that has not ended.
+  // The group has its own schedule, so the task is assigned now with a plain
+  // deadline, like a course. The id is resolved against the list, so a clan
+  // switch cannot send a group from the previous clan.
+  const isGroupDiscussion = type === 'group_discussion';
+  const assignedNow = isCourse || isGroupDiscussion;
+  const discussionClanId = activeClanId === ALL_CLANS ? null : activeClanId;
+  const { data: discussionData, loading: discussionsLoading } = useApiQuery({
+    queryKey: qk.mentor.groupDiscussions(discussionClanId),
+    queryFn: () => groupDiscussionsApi.list(discussionClanId),
+    enabled: isGroupDiscussion,
+  });
+  const discussionOptions = (discussionData?.scenarios ?? []).flatMap((scenario) => scenario.groups
+    .filter((group) => group.state !== 'ended')
+    .map((group) => ({
+      id: group.id,
+      label: `${scenario.title} · ${group.name}`,
+      repeat: group.repeat,
+      opensAt: group.opensAt,
+      closesAt: group.closesAt,
+      scenarioId: scenario.id,
+      scenarioTitle: scenario.title,
+      scenarioPrompt: scenario.prompt ?? '',
+      scenarioGroupIds: scenario.groups.map((sibling) => sibling.id),
+    })));
+  const [discussionGroupId, setDiscussionGroupId] = useState('');
+  const linkedDiscussion = discussionOptions.find((option) => option.id === discussionGroupId) ?? null;
+  const earliestDue = isGroupDiscussion ? discussionDueDay(linkedDiscussion) : '';
+  // The scenario belongs to the group discussion, not the task: it is plain text
+  // read live by the chat and the task page, so it is edited here and saved back
+  // rather than copied into the task's brief. Compared with what was picked, so a
+  // refetch while this is open cannot make an untouched text overwrite a newer one.
+  const [scenarioText, setScenarioText] = useState('');
+  const [scenarioPicked, setScenarioPicked] = useState('');
+  const scenarioChanged = !!linkedDiscussion && scenarioText.trim() !== scenarioPicked;
+  const scenarioCleared = scenarioChanged && isBlankHtml(scenarioText);
+  // Only an edit is held to the limit: an older, longer scenario left as it is still assigns.
+  const scenarioTooLong = scenarioChanged && scenarioLength(scenarioText) > SCENARIO_MAX_CHARS;
+  const invalidate = useInvalidate();
   const [courseId, setCourseId] = useState('');
   const selectedCourse = courses.find((c) => c.courseId === courseId) || null;
   // Seats held for the picked course, by mentee id. One that never becomes a
@@ -317,7 +367,8 @@ export function AssignTaskDrawer({
     if (d.source === 'custom' || d.source === 'roadmap') setSource(d.source);
     if (typeof d.roadmapId === 'string') setRoadmapId(d.roadmapId);
     if (typeof d.title === 'string') setTitle(d.title);
-    if (typeof d.type === 'string') setType(d.type === 'recurring' ? 'discussion' : d.type);
+    // A plain discussion is no longer offered here, so an old draft starts as an assignment.
+    if (typeof d.type === 'string') setType(['recurring', 'discussion'].includes(d.type) ? 'assignment' : d.type);
     if (d.schedule && ['now', 'once', 'weekly'].includes(d.schedule.mode)) setSchedule({ ...initialTaskSchedule(), ...d.schedule });
     if (typeof d.description === 'string') setDescription(d.description);
     if (typeof d.difficulty === 'string') setDifficulty(d.difficulty);
@@ -431,6 +482,7 @@ export function AssignTaskDrawer({
     const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, '0'); const day = String(d.getDate()).padStart(2, '0');
     return `${y}-${m}-${day}`;
   };
+  const dueTooEarly = !!earliestDue && dueISO() < earliestDue;
   const cleanCriteria = criteria.map((c) => c.trim()).filter(Boolean);
 
   const rawTargetIds = mode === 'bulk' ? [...selected] : (mentee ? [mentee.id] : []);
@@ -477,7 +529,7 @@ export function AssignTaskDrawer({
 
   // Single-mode roadmap where the one mentee already has this roadmap.
   const canSubmit = !historical && targetCount > 0 && (source === 'custom'
-    ? (!!title.trim() && (type !== 'interview' || !!kitId) && (type !== 'quiz' || !!quizKitId) && (type !== 'open_source' || openSourceOrgs.length > 0) && (type !== 'talk' || talks.length > 0) && (type !== 'course' || courseReady) && (type === 'course' || schedule.mode === 'now' || (!!schedule.startsOn && !!schedule.timeLocal && schedule.dueOffsetDays > 0 && (schedule.mode !== 'weekly' || schedule.daysOfWeek.length > 0))))
+    ? (!!title.trim() && (type !== 'interview' || !!kitId) && (type !== 'quiz' || !!quizKitId) && (type !== 'open_source' || openSourceOrgs.length > 0) && (type !== 'talk' || talks.length > 0) && (type !== 'course' || courseReady) && (!isGroupDiscussion || (!!linkedDiscussion && !scenarioCleared && !scenarioTooLong && !dueTooEarly)) &&(assignedNow || schedule.mode === 'now' || (!!schedule.startsOn && !!schedule.timeLocal && schedule.dueOffsetDays > 0 && (schedule.mode !== 'weekly' || schedule.daysOfWeek.length > 0))))
     : (!!roadmapId && selectedSteps.size > 0));
 
   const submit = async () => {
@@ -513,16 +565,24 @@ export function AssignTaskDrawer({
       }
 
       // ── Assign a custom task ─────────────────────────────────────────────
+      // Saved first, so a scenario that cannot be saved assigns nothing.
+      if (isGroupDiscussion && linkedDiscussion && scenarioChanged) {
+        await groupDiscussionsApi.updateScenario(linkedDiscussion.scenarioId, { prompt: cleanHtml(scenarioText) });
+        await invalidate(
+          qk.mentor.groupDiscussions(discussionClanId),
+          ...linkedDiscussion.scenarioGroupIds.map((id) => qk.mentor.groupDiscussion(id)),
+        );
+      }
       const cleanResources = resources
         .map((r) => ({ title: r.title.trim(), url: r.url.trim() }))
         .filter((r) => r.url)
         .map((r) => ({ title: r.title || r.url, url: r.url }));
       const base = {
         title: title.trim(),
-        description: cleanHtml(description),
+        description: isGroupDiscussion ? '' : cleanHtml(description),
         type,
         difficulty,
-        dueDate: schedule.mode === 'now' || type === 'course' ? dueISO() : undefined,
+        dueDate: schedule.mode === 'now' || assignedNow ? dueISO() : undefined,
         pointsBase: Number.isFinite(pointsBase) && pointsBase > 0 ? Math.min(200, Math.round(pointsBase)) : undefined,
         deliverable: (deliverable.trim() || undefined),
         acceptanceCriteria: cleanCriteria,
@@ -547,7 +607,8 @@ export function AssignTaskDrawer({
             ? { courseId, assignmentIds: Object.fromEntries(targetIds.map((id) => [id, enrolled[id]?.assignmentId])) }
             : { courseId, assignmentId: enrolled[mentee!.id]?.assignmentId } }
           : {}),
-        ...(schedule.mode !== 'now' && type !== 'course' ? { schedule: { ...schedule, mode: schedule.mode } } : {}),
+        ...(isGroupDiscussion && linkedDiscussion ? { discussionGroupId: linkedDiscussion.id } : {}),
+        ...(schedule.mode !== 'now' && !assignedNow ? { schedule: { ...schedule, mode: schedule.mode } } : {}),
         ...(scheduleSlotId ? { scheduleSlotId } : {}),
       };
       if (mode === 'bulk') {
@@ -560,7 +621,7 @@ export function AssignTaskDrawer({
           return;
         }
         if (failed.length) toast.error(`${failed.length} mentee${failed.length > 1 ? 's' : ''} couldn't be assigned`);
-        toast.success(`Task ${schedule.mode === 'now' || type === 'course' ? 'assigned' : 'scheduled'} for ${assigned} mentee${assigned > 1 ? 's' : ''}`);
+        toast.success(`Task ${schedule.mode === 'now' || assignedNow ? 'assigned' : 'scheduled'} for ${assigned} mentee${assigned > 1 ? 's' : ''}`);
         // Enrolled but not assigned (deselected, or their task failed): give the seat back.
         const assignedIds = new Set<string>(((res?.data?.results || []) as { menteeId: string; ok: boolean }[]).filter((r) => r.ok).map((r) => r.menteeId));
         releaseSeats(Object.keys(enrolled).filter((id) => !assignedIds.has(id)));
@@ -723,6 +784,55 @@ export function AssignTaskDrawer({
                     )}
                   </div>
                 )}
+
+              {isGroupDiscussion && (
+                <div className="rounded-xl border border-brand-200 bg-brand-50/50 dark:border-brand-500/20 dark:bg-brand-500/5 p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm font-medium text-slate-800 dark:text-slate-200">
+                      <MessageSquareQuote className="w-4 h-4 text-brand-600 dark:text-brand-400" /> Group discussion <span className="text-red-500">*</span>
+                    </div>
+                    <Link href="/mentor/group-discussions" className="text-xs text-brand-600 hover:text-brand-700">
+                      View or create →
+                    </Link>
+                  </div>
+                  {activeClanId === ALL_CLANS && clans.length > 1 ? (
+                    <p className="text-sm text-slate-500">Select a clan in the sidebar to see its group discussions.</p>
+                  ) : discussionsLoading ? (
+                    <div className="flex items-center gap-2 text-sm text-slate-400 py-1"><Loader2 className="w-4 h-4 animate-spin text-brand-600" />Loading group discussions…</div>
+                  ) : discussionOptions.length === 0 ? (
+                    <p className="text-sm text-slate-500">
+                      No open group discussions in this clan.{' '}
+                      <Link href="/mentor/group-discussions" className="text-brand-600 hover:text-brand-700 font-medium">Create one →</Link>
+                    </p>
+                  ) : (
+                    <>
+                      <select
+                        value={discussionGroupId}
+                        onChange={(e) => {
+                          setDiscussionGroupId(e.target.value);
+                          const picked = discussionOptions.find((option) => option.id === e.target.value);
+                          if (picked && !title.trim()) setTitle(`Discuss: ${picked.scenarioTitle}`);
+                          setScenarioText(picked?.scenarioPrompt ?? '');
+                          setScenarioPicked(picked?.scenarioPrompt ?? '');
+                          // The deadline follows the group: its close, or a date moved
+                          // up to its start. A date the last group set leaves with it.
+                          const kept = dueExact === earliestDue ? '' : dueExact;
+                          const pickedDay = discussionDueDay(picked);
+                          setDueExact(picked?.closesAt || pickedDay > (kept || dayKey(inDays(dueDays))) ? pickedDay : kept);
+                        }}
+                        className={field}
+                        aria-label="Group discussion"
+                      >
+                        <option value="">Select a group…</option>
+                        {discussionOptions.map((option) => (
+                          <option key={option.id} value={option.id}>{option.label}</option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-slate-500">The mentee is added to the group if they are not in it already.</p>
+                    </>
+                  )}
+                </div>
+              )}
 
               {type === 'talk' && (
                 <div className="rounded-xl border border-brand-200 bg-brand-50/50 dark:border-brand-500/20 dark:bg-brand-500/5 p-4 space-y-3">
@@ -901,7 +1011,7 @@ export function AssignTaskDrawer({
                 {/* Two menus where there used to be a three-way mode switch
                     and, below it, a second "Due" block that only appeared in
                     one of the three modes. Same two facts, asked once each. */}
-                {!isCourse && (
+                {!assignedNow && (
                   <TaskTimingRow
                     due={{ days: dueDays, exact: dueExact }}
                     onDueChange={(next) => { setDueDays(next.days); setDueExact(next.exact); }}
@@ -910,7 +1020,39 @@ export function AssignTaskDrawer({
                   />
                 )}
 
-                {(
+                {isGroupDiscussion ? (
+                  <div>
+                    <span className="block text-sm font-medium text-slate-700 mb-1">Scenario</span>
+                    {/* Keyed by the group: the editor reads its content once. A
+                        scenario written before the editor (plain text or
+                        markdown) opens formatted. */}
+                    {linkedDiscussion ? (
+                      <>
+                        <RichTextEditor
+                          key={linkedDiscussion.id}
+                          content={renderRichContent(scenarioPicked)}
+                          onChange={setScenarioText}
+                          placeholder="What should the group discuss?"
+                          minHeight="160px"
+                        />
+                        <CharacterCount count={scenarioLength(scenarioText)} max={SCENARIO_MAX_CHARS} />
+                      </>
+                    ) : (
+                      <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-6 text-center text-sm text-slate-400">
+                        Select a group to see its scenario
+                      </p>
+                    )}
+                    {linkedDiscussion && (
+                      <p className={`text-xs mt-1 ${scenarioCleared ? 'text-red-500' : 'text-slate-500'}`}>
+                        {scenarioCleared
+                          ? 'This group discussion needs its scenario.'
+                          : linkedDiscussion.scenarioGroupIds.length > 1
+                            ? `Changes are saved when you assign, and show in all ${linkedDiscussion.scenarioGroupIds.length} groups on this scenario.`
+                            : 'Changes are saved to the group discussion when you assign.'}
+                      </p>
+                    )}
+                  </div>
+                ) : (
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Brief</label>
                     <RichTextEditor content={description} onChange={setDescription} placeholder="Optional — what should they do?" minHeight="120px" />
@@ -919,19 +1061,24 @@ export function AssignTaskDrawer({
 
                 <div className="grid grid-cols-2 gap-4">
                     {/* A course is enrolled on the provider the moment it is
-                        assigned and cannot repeat, so it keeps a plain
-                        deadline rather than the timing row above. */}
-                    {isCourse && <div>
+                        assigned and cannot repeat, and a group discussion has
+                        its own schedule, so both keep a plain deadline rather
+                        than the timing row above. */}
+                    {assignedNow && <div>
                       <span className="block text-sm font-medium text-slate-700 mb-1.5">Due</span>
                       <div className="flex flex-wrap gap-1.5">
                         {DUE_PRESETS.map((d) => (
-                          <button key={d.label} type="button" onClick={() => { setDueDays(d.days); setDueExact(''); }} className={pill(!dueExact && dueDays === d.days)} aria-pressed={!dueExact && dueDays === d.days}>{d.label}</button>
+                          <button key={d.label} type="button" disabled={dayKey(inDays(d.days)) < earliestDue} onClick={() => { setDueDays(d.days); setDueExact(''); }} className={`${pill(!dueExact && dueDays === d.days)} disabled:cursor-not-allowed disabled:opacity-40`} aria-pressed={!dueExact && dueDays === d.days}>{d.label}</button>
                         ))}
                       </div>
                       <input aria-label="Exact due date" type="date" value={dueExact} onChange={(e) => setDueExact(e.target.value)}
-                        min={new Date().toISOString().split('T')[0]}
+                        min={earliestDue || new Date().toISOString().split('T')[0]}
                         className="mt-1.5 w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500" />
-                      <p className="text-[11px] text-slate-400 mt-1">Pick a preset or an exact date.</p>
+                      <p className={`text-[11px] mt-1 ${dueTooEarly ? 'text-red-500' : 'text-slate-400'}`}>
+                        {earliestDue
+                          ? `${!linkedDiscussion?.closesAt ? 'Discussion opens' : linkedDiscussion.repeat === 'weekly' ? 'Session closes' : 'Discussion closes'} ${niceDate(earliestDue)}. The task can't be due before this.`
+                          : 'Pick a preset or an exact date.'}
+                      </p>
                     </div>}
                     <div>
                       <span className="block text-sm font-medium text-slate-700 mb-1.5">Difficulty</span>

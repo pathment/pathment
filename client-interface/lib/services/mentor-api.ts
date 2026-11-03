@@ -134,24 +134,9 @@ export const mentorApi = {
     apiClient.get('/mentor/review/sessions/today', clanId ? { params: { clanId } } : undefined),
   listReviewSessions: (clanId?: string | null) =>
     apiClient.get('/mentor/review/sessions', clanId ? { params: { clanId } } : undefined),
-  createReviewSession: (data: {
-    date?: string; title?: string; clanId?: string | null;
-    /** A discussion or a presentation is the same session with a prompt. */
-    kind?: 'review' | 'discussion' | 'presentation';
-    scenario?: string;
-    facilitatorId?: string | null;
-  }) => apiClient.post('/mentor/review/sessions', data),
-  /** Score one person against the rubric, while the session is running. */
-  scoreReviewEntry: (
-    sessionId: string,
-    menteeId: string,
-    scores: { competencyId: string; score: number; note?: string }[],
-  ) => apiClient.post(`/mentor/review/sessions/${sessionId}/entries/${menteeId}/scores`, { scores }),
-  /** Who speaks when, for a presentation. */
-  setSpeakingOrder: (sessionId: string, order: string[]) =>
-    apiClient.put(`/mentor/review/sessions/${sessionId}/order`, { order }),
+  createReviewSession: (data: { date?: string; title?: string; clanId?: string | null }) => apiClient.post('/mentor/review/sessions', data),
   getReviewSession: (id: string) => apiClient.get(`/mentor/review/sessions/${id}`),
-  updateReviewSession: (id: string, data: { title?: string; note?: string; sessionDate?: string; scenario?: string | null; facilitatorId?: string | null }) =>
+  updateReviewSession: (id: string, data: { title?: string; note?: string; sessionDate?: string }) =>
     apiClient.patch(`/mentor/review/sessions/${id}`, data),
   setReviewEntry: (id: string, menteeId: string, data: { attendance?: 'present' | 'absent' | 'excused' | null; status?: 'pending' | 'reviewed' | 'deferred'; note?: string }) =>
     apiClient.put(`/mentor/review/sessions/${id}/entries/${menteeId}`, data),

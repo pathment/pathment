@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Avatar } from '@/components/shared/Avatar';
 import { Archive, ArchiveRestore, Filter, MessageSquare, MoreVertical, RefreshCw, Search, Trash2, Check, CheckCheck } from 'lucide-react';
 
@@ -13,6 +13,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
+export type ConversationTab = 'all' | 'unread' | 'archived' | 'discussions';
+
 interface ConversationListProps {
   conversations: ConversationSummary[];
   selectedConversationId: string | null;
@@ -23,8 +25,10 @@ interface ConversationListProps {
   onArchiveConversation?: (id: string) => void;
   onUnarchiveConversation?: (id: string) => void;
   onDeleteConversation?: (id: string) => void;
-  activeTab: 'all' | 'unread' | 'archived';
-  onTabChange: (tab: 'all' | 'unread' | 'archived') => void;
+  activeTab: ConversationTab;
+  onTabChange: (tab: ConversationTab) => void;
+  /** Adds a Discussions tab, whose list is drawn by the caller. */
+  discussions?: { count: number; render: (searchQuery: string) => ReactNode };
   allCount?: number;
   archivedCount?: number;
   isBootstrapping?: boolean;
@@ -70,6 +74,7 @@ export default function ConversationList({
   onDeleteConversation,
   activeTab,
   onTabChange,
+  discussions,
   allCount,
   archivedCount,
   hiddenByClan = 0,
@@ -131,13 +136,13 @@ export default function ConversationList({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            aria-label="Search conversations" placeholder="Search by name or email…"
+            aria-label="Search conversations" placeholder={activeTab === 'discussions' ? 'Search discussions…' : 'Search by name or email…'}
             className="w-full pl-9 pr-3 py-1.5 bg-slate-100/70 dark:bg-black/30 border border-border rounded-xl text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
           />
         </div>
 
         {/* Filter tabs */}
-        <div className="flex items-center gap-1 p-0.5 bg-slate-100/80 dark:bg-black/40 border border-transparent dark:border-border/60 rounded-xl">
+        <div className="flex items-center gap-1 overflow-x-auto whitespace-nowrap p-0.5 bg-slate-100/80 dark:bg-black/40 border border-transparent dark:border-border/60 rounded-xl">
           <button
             aria-pressed={activeTab === 'all'} onClick={() => onTabChange('all')}
             className={`flex-1 py-1 px-2.5 text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-1 ${
@@ -173,12 +178,24 @@ export default function ConversationList({
           >
             Archived {archivedCount !== undefined ? `(${archivedCount})` : ''}
           </button>
+          {discussions && (
+            <button
+              aria-pressed={activeTab === 'discussions'} onClick={() => onTabChange('discussions')}
+              className={`flex-1 py-1 px-2.5 text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-1 ${
+                activeTab === 'discussions'
+                  ? 'bg-card text-foreground shadow-2xs font-semibold'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Discussions ({discussions.count})
+            </button>
+          )}
         </div>
       </div>
 
       {/* Conversations list stream */}
       <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-border/60">
-        {isBootstrapping ? (
+        {activeTab === 'discussions' && discussions ? discussions.render(searchQuery) : isBootstrapping ? (
           <div className="p-3 space-y-3">
             {[1, 2, 3, 4].map((i) => (
               <div key={i} className="flex items-center gap-3 p-2 animate-pulse">
