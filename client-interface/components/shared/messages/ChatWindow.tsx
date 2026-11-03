@@ -5,7 +5,7 @@ import { Avatar } from '@/components/shared/Avatar';
 import { Archive, ArrowLeft, Loader2, MessageSquare, MoreVertical, ShieldCheck, Trash2, User, UserCheck } from 'lucide-react';
 
 import type { ChatMessage, ConversationSummary } from '@/lib/types/messaging';
-import MessageItem from './MessageItem';
+import MessageItem, { type SenderTag } from './MessageItem';
 import MessageComposer from './MessageComposer';
 import {
   DropdownMenu,
@@ -31,6 +31,12 @@ interface ChatWindowProps {
   onLoadMore?: () => Promise<void>;
   hasMore?: boolean;
   isLoadingMore?: boolean;
+  /** Replaces the one-to-one header, for a chat that is not with one person. */
+  header?: React.ReactNode;
+  /** Replaces the composer, for a chat that adds to it or is read-only. */
+  composer?: React.ReactNode;
+  /** A group discussion's role label for each sender. */
+  senderTag?: (senderId: string) => SenderTag | undefined;
 }
 
 /** Check if two ISO dates are on the same calendar day */
@@ -73,6 +79,9 @@ export default function ChatWindow({
   onLoadMore,
   hasMore = false,
   isLoadingMore = false,
+  header,
+  composer,
+  senderTag,
 }: ChatWindowProps) {
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const lastConversationIdRef = useRef<string | null>(null);
@@ -210,6 +219,7 @@ export default function ChatWindow({
   return (
     <div className="conversation-thread flex flex-col h-full bg-card rounded-2xl border border-border overflow-hidden shadow-xs">
       {/* Header */}
+      {header ?? (
       <div className="p-3 sm:p-4 border-b border-border flex items-center justify-between bg-card/90 backdrop-blur-sm z-10">
         <div className="flex items-center gap-3 min-w-0">
           {/* Mobile back button */}
@@ -302,6 +312,7 @@ export default function ChatWindow({
           </DropdownMenu>
         )}
       </div>
+      )}
 
       {/* Messages Stream */}
       <div
@@ -383,6 +394,8 @@ export default function ChatWindow({
                     message={message}
                     isMine={mine}
                     startsRun={startsRun}
+                    showAvatar={selectedConversation?.type === 'group'}
+                    senderTag={senderTag?.(message.senderId)}
                     currentUserId={currentUserId}
                     onReact={onReact}
                   />
@@ -394,7 +407,7 @@ export default function ChatWindow({
       </div>
 
       {/* Composer Input */}
-      {selectedConversation && (
+      {selectedConversation && (composer ?? (
         <MessageComposer
           value={composerValue}
           onChange={onComposerChange}
@@ -402,7 +415,7 @@ export default function ChatWindow({
           disabled={!selectedConversation || isLoading}
           isSending={isSending}
         />
-      )}
+      ))}
     </div>
   );
 }
