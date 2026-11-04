@@ -110,20 +110,25 @@ async function up() {
       await sequelize.query('ALTER TABLE roadmap_tasks ADD COLUMN talk_ids UUID[] DEFAULT \'{}\'');
       console.log('Added column roadmap_tasks.talk_ids');
     }
-    /**
-     * The FULL list, not this feature's addition to it.
-     *
-     * This drops and recreates the constraint, so anything left out is
-     * retroactively illegal. The list here was copied from migration 107 and
-     * therefore predated 'course' (added by 127 for Buildment): adding the
-     * constraint would have been validated against existing rows and failed
-     * outright on any workspace with a course task, after the tables above had
-     * already been created.
-     */
+    // Preserve every value admitted by the current constraint. This migration
+    // may still be pending where a later schema was created by db:sync, and a
+    // historical hardcoded list must not reject newer values.
+    const [constraint] = await sequelize.query(`
+      SELECT pg_get_constraintdef(oid) AS definition
+        FROM pg_constraint
+       WHERE conrelid = 'roadmap_tasks'::regclass
+         AND conname = 'roadmap_tasks_type_check'`,
+      { type: Sequelize.QueryTypes.SELECT });
+    const admitted = constraint
+      ? [...constraint.definition.matchAll(/'([a-z_]+)'::/g)].map((match) => match[1])
+      : [];
+    const types = [...new Set([...admitted, 'talk'])];
+    if (!types.length) throw new Error('Could not determine roadmap task types');
+    const quoted = types.map((type) => sequelize.escape(type)).join(', ');
     await sequelize.query(`
       ALTER TABLE roadmap_tasks DROP CONSTRAINT IF EXISTS "roadmap_tasks_type_check";
       ALTER TABLE roadmap_tasks ADD CONSTRAINT "roadmap_tasks_type_check"
-        CHECK (type IN ('article','interactive','reading','video','exercise','project','quiz','discussion','practical','assessment','custom','assignment','interview','open_source','course','talk'))
+        CHECK (type IN (${quoted}))
     `);
   }
 }

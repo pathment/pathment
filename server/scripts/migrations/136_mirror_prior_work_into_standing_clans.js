@@ -87,6 +87,7 @@ async function up({ dryRun = false } = {}) {
         JOIN clans src ON src.id = t.clan_id
         LEFT JOIN roadmap_tasks rt ON rt.id = t.roadmap_task_id
        WHERE sc.kind = 'standing'
+         AND t.pool_member_id IS NULL
          AND src.organization_id = sc.organization_id
          AND src.program_id IS NOT DISTINCT FROM sc.program_id
          AND COALESCE(t.type_override, rt.type, '') NOT IN ${ATTEMPT_BACKED}
@@ -104,7 +105,9 @@ async function up({ dryRun = false } = {}) {
     for (const key of Object.keys(totals)) totals[key] += result[key];
   }
   console.log(`  \u2713 mirrored ${totals.tasks} tasks, ${totals.submissions} submissions, ${totals.feedback} feedback rows, ${totals.progress} progress entries`);
-  if (totals.failed) console.log(`  \u26a0 ${totals.failed} task(s) could not be copied \u2014 re-run to retry just those`);
+  if (totals.failed) {
+    throw new Error(`${totals.failed} task(s) could not be copied; migration must be retried`);
+  }
   return { ...totals, skipped: skipped.n };
 }
 

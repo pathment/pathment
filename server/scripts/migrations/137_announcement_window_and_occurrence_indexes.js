@@ -53,9 +53,10 @@ async function up() {
     for (const d of dupes) {
       console.log(`    mentee ${d.mentee_id} slot ${d.schedule_slot_id} on ${d.occurrence_date}: ${d.n} rows`);
     }
-    console.log('  The unique index was NOT created. Resolve these first (keep the one');
-    console.log('  with work on it, cancel the rest), then run this migration again.');
-    return;
+    throw new Error(
+      'The unique index was not created. Resolve duplicate occurrences first ' +
+      '(keep the row with work on it and cancel the rest), then retry the migration.'
+    );
   }
 
   console.log('→ assigned_tasks: UNIQUE (mentee_id, schedule_slot_id, occurrence_date)');
