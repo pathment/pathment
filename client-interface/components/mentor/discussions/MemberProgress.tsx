@@ -1,11 +1,13 @@
 'use client';
 
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
-  CircleDashed, ClipboardList, Eye, MessageCircle, Paperclip, TrendingDown, TrendingUp, UserCheck, UserX, X, type LucideIcon,
+  CircleDashed, ClipboardList, Eye, MessageCircle, Paperclip, Search, TrendingDown, TrendingUp, UserCheck, UserX, X, type LucideIcon,
 } from 'lucide-react';
 import { Avatar } from '@/components/shared/Avatar';
 import { MetricTile } from '@/components/shared/MetricTile';
+import { TablePagination } from '@/components/shared/TablePagination';
+import { usePagination } from '@/lib/hooks/shared/usePagination';
 import { formatRelativeTime } from '@/lib/utils/date';
 import type { DiscussionMember, MemberActivity } from '@/lib/services/group-discussions-api';
 
@@ -18,6 +20,7 @@ export const ACTIVITY: Record<MemberActivity, { label: string; tone: string; ico
 
 type Filter = 'all' | MemberActivity;
 const FILTERS: Filter[] = ['all', 'more_active', 'less_active', 'read_only', 'not_joined'];
+const PAGE_SIZES = [10, 20, 50, 100];
 
 export const memberName = (member: DiscussionMember) => `${member.firstName} ${member.lastName}`.trim() || 'Mentee';
 
@@ -45,6 +48,8 @@ export function MemberProgress({ members, action, onRemove }: {
   onRemove: (member: DiscussionMember) => void;
 }) {
   const [filter, setFilter] = useState<Filter>('all');
+  const [search, setSearch] = useState('');
+  const pagination = usePagination({ initialLimit: PAGE_SIZES[0] });
 
   const counts = useMemo(() => {
     const out: Record<Filter, number> = {
@@ -62,8 +67,20 @@ export function MemberProgress({ members, action, onRemove }: {
   const busiest = Math.max(1, ...members.map((m) => m.messageCount));
   const taking = counts.more_active + counts.less_active;
   const silent = counts.read_only + counts.not_joined;
-  const visible = filter === 'all' ? members : members.filter((m) => m.activity === filter);
+  const query = search.trim().toLowerCase();
+  const visible = useMemo(() => members.filter((m) => (
+    (filter === 'all' || m.activity === filter)
+    && (!query || memberName(m).toLowerCase().includes(query))
+  )), [members, filter, query]);
   const hasTasks = members.some((m) => m.task);
+
+  const { setTotal, reset, goToPage, page, totalPages, offset, limit } = pagination;
+  useEffect(() => { setTotal(visible.length); }, [visible.length, setTotal]);
+  // A new filter or search starts from the first page.
+  useEffect(() => { reset(); }, [filter, query, reset]);
+  // Removing the last member on the last page must not leave an empty page.
+  useEffect(() => { if (page > totalPages) goToPage(totalPages); }, [page, totalPages, goToPage]);
+  const paged = visible.slice(offset, offset + limit);
 
   return (
     <div className="space-y-4">
@@ -80,7 +97,8 @@ export function MemberProgress({ members, action, onRemove }: {
           {action}
         </div>
 
-        <div className="flex gap-1.5 overflow-x-auto border-b border-border px-4 py-2.5">
+        <div className="flex flex-col gap-2 border-b border-border px-4 py-2.5 md:flex-row md:items-center">
+          <div className="flex min-w-0 gap-1.5 overflow-x-auto">
           {FILTERS.map((key) => {
             const Icon = key === 'all' ? null : ACTIVITY[key].icon;
             const active = filter === key;
@@ -102,15 +120,31 @@ export function MemberProgress({ members, action, onRemove }: {
               </button>
             );
           })}
+          </div>
+          {members.length > 0 && (
+            <div className="relative md:ml-auto md:w-64 md:shrink-0">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+              <input
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search mentees…"
+                aria-label="Search mentees"
+                className="w-full rounded-xl border border-border bg-background py-1.5 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-500"
+              />
+            </div>
+          )}
         </div>
 
         {!members.length ? (
           <p className="px-4 py-8 text-center text-sm text-muted-foreground">Nobody in this group yet.</p>
         ) : !visible.length ? (
-          <p className="px-4 py-8 text-center text-sm text-muted-foreground">Nobody here right now.</p>
+          <p className="px-4 py-8 text-center text-sm text-muted-foreground">
+            {query ? `No mentee matches "${search.trim()}".` : 'Nobody here right now.'}
+          </p>
         ) : (
           <ul className="divide-y divide-border">
-            {visible.map((member) => {
+            {paged.map((member) => {
               const activity = ACTIVITY[member.activity];
               const ActivityIcon = activity.icon;
               const width = member.messageCount ? Math.max(4, (member.messageCount / busiest) * 100) : 0;
@@ -162,6 +196,10 @@ export function MemberProgress({ members, action, onRemove }: {
               );
             })}
           </ul>
+        )}
+
+        {visible.length > PAGE_SIZES[0] && (
+          <TablePagination pagination={pagination} pageSizeOptions={PAGE_SIZES} className="border-t border-border !px-4" />
         )}
       </section>
     </div>
