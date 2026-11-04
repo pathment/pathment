@@ -10,3 +10,12 @@
 build:
   docker:
     web: Dockerfile
+
+# Apply every pending, non-destructive schema migration before a new web image
+# is released. The migration runner is idempotent and records each successful
+# migration, so a failed migration stops the release instead of deploying code
+# against an older database schema.
+release:
+  image: web
+  command:
+    - npm run db:migrate
