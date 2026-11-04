@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { Users2, AlarmClock, Inbox, Hourglass } from 'lucide-react';
 import { PageHeader } from '@/components/admin/ui';
@@ -9,6 +9,7 @@ import { qk, useApiQuery, STALE, useInvalidate } from '@/lib/query';
 import { handoverPoolApi, type PoolEntry } from '@/lib/services/handover-pool-api';
 import { PoolEntryCard } from '@/components/shared/pool/PoolEntryCard';
 import { ClaimDrawer } from '@/components/shared/pool/ClaimDrawer';
+import { PoolMenteeProfileDrawer } from '@/components/shared/pool/PoolMenteeProfileDrawer';
 import { useConfirm } from '@/lib/context/ConfirmContext';
 
 /**
@@ -30,6 +31,7 @@ export default function AdminPoolPage() {
   const confirm = useConfirm();
   const [scope, setScope] = useState({ programId: '', clanId: '' });
   const [claiming, setClaiming] = useState<PoolEntry | null>(null);
+  const [viewingProfile, setViewingProfile] = useState<PoolEntry | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const { data, loading, refetch } = useApiQuery({
@@ -97,6 +99,8 @@ export default function AdminPoolPage() {
     },
     { label: 'Longest wait', value: `${data?.oldestDays ?? 0}d`, icon: Hourglass, tone: 'text-foreground' },
   ];
+  const entries = useMemo(() => (data?.entries ?? []).filter((entry) =>
+    !scope.clanId || entry.fromClan?.id === scope.clanId), [data?.entries, scope.clanId]);
 
   return (
     <div className="space-y-6">
@@ -152,7 +156,7 @@ export default function AdminPoolPage() {
             <div key={i} className="h-28 animate-pulse rounded-2xl border border-border bg-muted/40" />
           ))}
         </div>
-      ) : !data?.entries?.length ? (
+      ) : !entries.length ? (
         <div className="rounded-2xl border border-border bg-card py-14 text-center">
           <Users2 className="mx-auto mb-3 h-10 w-10 text-muted-foreground/40" aria-hidden />
           <p className="text-sm font-medium text-foreground">Nobody is waiting for a clan</p>
@@ -163,13 +167,14 @@ export default function AdminPoolPage() {
         </div>
       ) : (
         <ul className="space-y-3">
-          {data.entries.map((entry) => (
+          {entries.map((entry) => (
             <PoolEntryCard
               key={entry.id}
               entry={entry}
               busy={busyId === entry.id}
-              onClaim={clans?.length ? setClaiming : undefined}
-              onWithdraw={withdraw}
+              onViewProfile={setViewingProfile}
+              onClaim={clans?.some((clan) => clan.available && !clan.full) ? setClaiming : undefined}
+              onWithdraw={entry.canWithdraw ? withdraw : undefined}
             />
           ))}
         </ul>
@@ -195,6 +200,7 @@ export default function AdminPoolPage() {
         onClose={() => setClaiming(null)}
         onConfirm={place}
       />
+      <PoolMenteeProfileDrawer entry={viewingProfile} onClose={() => setViewingProfile(null)} />
     </div>
   );
 }

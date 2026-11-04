@@ -1,6 +1,6 @@
 'use client';
 
-import { Clock, Snowflake, CheckCircle2, Loader2, Undo2 } from 'lucide-react';
+import { Clock, Snowflake, CheckCircle2, Loader2, Undo2, Map } from 'lucide-react';
 import { Avatar } from '@/components/shared/Avatar';
 import type { PoolEntry, HandoverReason } from '@/lib/services/handover-pool-api';
 
@@ -52,11 +52,13 @@ const lastSeen = (iso: string | null) => {
 export function PoolEntryCard({
   entry,
   busy = false,
+  onViewProfile,
   onClaim,
   onWithdraw,
 }: {
   entry: PoolEntry;
   busy?: boolean;
+  onViewProfile?: (entry: PoolEntry) => void;
   /** Omitted when the viewer has nowhere to pull them into. */
   onClaim?: (entry: PoolEntry) => void;
   /** Omitted when the viewer did not push them and is not an admin. */
@@ -67,11 +69,32 @@ export function PoolEntryCard({
   return (
     <li className="rounded-2xl border border-border bg-card p-4">
       <div className="flex flex-wrap items-start gap-3">
-        <Avatar name={entry.mentee?.name} src={entry.mentee?.avatarUrl} size="md" />
+        {onViewProfile ? (
+          <button
+            type="button"
+            onClick={() => onViewProfile(entry)}
+            aria-label={`View ${entry.mentee?.name || 'mentee'} profile`}
+            className="rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2"
+          >
+            <Avatar name={entry.mentee?.name} src={entry.mentee?.avatarUrl} size="md" />
+          </button>
+        ) : (
+          <Avatar name={entry.mentee?.name} src={entry.mentee?.avatarUrl} size="md" />
+        )}
 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="truncate font-semibold text-foreground">{entry.mentee?.name || 'Mentee'}</p>
+            {onViewProfile ? (
+              <button
+                type="button"
+                onClick={() => onViewProfile(entry)}
+                className="truncate text-left font-semibold text-foreground decoration-brand-300 underline-offset-4 hover:text-brand-700 hover:underline focus:outline-none focus-visible:rounded focus-visible:ring-2 focus-visible:ring-brand-500"
+              >
+                {entry.mentee?.name || 'Mentee'}
+              </button>
+            ) : (
+              <p className="truncate font-semibold text-foreground">{entry.mentee?.name || 'Mentee'}</p>
+            )}
             {entry.status === 'open' && <Waiting days={entry.waitingDays} />}
             {entry.status === 'claimed' && (
               <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
@@ -101,12 +124,26 @@ export function PoolEntryCard({
             {entry.pushedByName && <> &middot; handed over by {entry.pushedByName}</>}
           </p>
 
-          {/* What they would inherit. The actual reason to take this one. */}
           <p className="mt-2 text-sm text-foreground">
             <span className="font-medium">{entry.work.completed}</span>
             <span className="text-muted-foreground"> of {entry.work.tasks} tasks done</span>
             <span className="text-muted-foreground"> &middot; {lastSeen(entry.work.lastActiveAt)}</span>
           </p>
+
+          {!!entry.work.roadmaps?.length && (
+            <div className="mt-2.5 flex flex-wrap gap-2">
+              {entry.work.roadmaps.slice(0, 3).map((roadmap) => (
+                <span key={roadmap.id} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/30 px-2.5 py-1 text-xs text-foreground">
+                  <Map className="h-3 w-3 text-muted-foreground" aria-hidden />
+                  <span className="max-w-48 truncate">{roadmap.name}</span>
+                  <span className="text-muted-foreground">{roadmap.completed}/{roadmap.tasks}</span>
+                </span>
+              ))}
+              {entry.work.roadmaps.length > 3 && (
+                <span className="px-1 py-1 text-xs text-muted-foreground">+{entry.work.roadmaps.length - 3} more</span>
+              )}
+            </div>
+          )}
 
           <div className="mt-2 flex flex-wrap items-center gap-2">
             {entry.reason && (
@@ -139,7 +176,7 @@ export function PoolEntryCard({
                 type="button" onClick={() => onWithdraw(entry)} disabled={busy}
                 className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted disabled:opacity-50"
               >
-                <Undo2 className="h-4 w-4" aria-hidden /> Withdraw
+                <Undo2 className="h-4 w-4" aria-hidden /> Remove from pool
               </button>
             )}
           </div>

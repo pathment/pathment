@@ -21,6 +21,7 @@ const mentorOrAdmin = [authenticate, authorize(['mentor', 'admin'])];
 router.get('/', mentorOrAdmin, handoverPoolController.list);
 router.get('/overview', mentorOrAdmin, handoverPoolController.overview);
 router.get('/claimable-clans', mentorOrAdmin, handoverPoolController.claimableClans);
+router.get('/:entryId/profile', mentorOrAdmin, handoverPoolController.profile);
 
 router.post('/push', mentorOrAdmin, handoverPoolController.push);
 router.post('/push-clan', mentorOrAdmin, handoverPoolController.pushClan);

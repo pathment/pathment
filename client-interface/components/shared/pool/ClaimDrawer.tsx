@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Loader2, Users, AlertTriangle } from 'lucide-react';
+import { Loader2, Users, AlertTriangle, Map as MapIcon, CheckCircle2, CircleDot } from 'lucide-react';
 import { Drawer } from '@/components/shared/Drawer';
 import { Avatar } from '@/components/shared/Avatar';
 import type { PoolEntry, ClaimableClan } from '@/lib/services/handover-pool-api';
@@ -36,18 +36,33 @@ export function ClaimDrawer({
   onConfirm: (toClanId: string) => void;
 }) {
   const [clanId, setClanId] = useState('');
+  const [programId, setProgramId] = useState('');
 
+  const programs = useMemo(() => {
+    const seen = new Map<string, { id: string; name: string; status: string | null }>();
+    for (const clan of clans) if (clan.programId) seen.set(clan.programId, {
+      id: clan.programId, name: clan.programName || 'Programme', status: clan.programStatus,
+    });
+    return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [clans]);
+  const effectiveProgramId = programId || entry?.program?.id || programs[0]?.id || '';
   const options = useMemo(
-    () => clans.filter((c) => c.id !== entry?.fromClan?.id),
-    [clans, entry?.fromClan?.id],
+    () => clans.filter((c) => c.id !== entry?.fromClan?.id && c.programId === effectiveProgramId),
+    [clans, entry?.fromClan?.id, effectiveProgramId],
   );
   const chosen = options.find((c) => c.id === clanId) || null;
   const sameProgram = !!chosen && !!entry?.program && chosen.programId === entry.program.id;
 
+  const close = () => {
+    setClanId('');
+    setProgramId('');
+    onClose();
+  };
+
   return (
     <Drawer
       open={!!entry}
-      onClose={onClose}
+      onClose={close}
       width="md"
       title="Take this mentee into your clan"
       subtitle={entry?.mentee?.name ? `${entry.mentee.name} will move out of ${entry.fromClan?.name || 'their clan'} and into yours.` : undefined}
@@ -60,8 +75,8 @@ export function ClaimDrawer({
             Cancel
           </button>
           <button
-            type="button" onClick={() => clanId && onConfirm(clanId)}
-            disabled={busy || !clanId || !!chosen?.full}
+            type="button" onClick={() => chosen && onConfirm(chosen.id)}
+            disabled={busy || !chosen || !!chosen.full || !chosen.available}
             className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
           >
             {busy && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
@@ -91,6 +106,71 @@ export function ClaimDrawer({
             </div>
           )}
 
+          {!!entry.work.roadmaps?.length && (
+            <div>
+              <p className="text-sm font-medium text-foreground">Work that will come with them</p>
+              <ul className="mt-2 space-y-2">
+                {entry.work.roadmaps.map((roadmap) => (
+                  <li key={roadmap.id} className="rounded-xl border border-border bg-muted/20 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="flex min-w-0 items-center gap-2 text-sm font-medium text-foreground">
+                        <MapIcon className="h-4 w-4 shrink-0 text-brand-600" aria-hidden />
+                        <span className="truncate">{roadmap.name}</span>
+                      </span>
+                      <span className="shrink-0 text-xs text-muted-foreground">{roadmap.completed} of {roadmap.tasks} done</span>
+                    </div>
+                    {!!roadmap.recentTasks.length && (
+                      <ul className="mt-2 space-y-1 border-t border-border pt-2">
+                        {roadmap.recentTasks.slice(0, 4).map((task) => (
+                          <li key={task.id} className="flex items-center gap-2 text-xs text-muted-foreground">
+                            {task.status === 'completed'
+                              ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" aria-hidden />
+                              : <CircleDot className="h-3.5 w-3.5 shrink-0 text-amber-600" aria-hidden />}
+                            <span className="truncate">{task.title}</span>
+                            <span className="ml-auto shrink-0 capitalize">{task.status.replaceAll('_', ' ')}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {!!entry.work.customTasks?.length && (
+            <div>
+              <p className="text-sm font-medium text-foreground">Custom tasks</p>
+              <ul className="mt-2 rounded-xl border border-border bg-muted/20 p-3">
+                {entry.work.customTasks.map((task) => (
+                  <li key={task.id} className="flex items-center gap-2 py-1 text-xs text-muted-foreground">
+                    {task.status === 'completed'
+                      ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" aria-hidden />
+                      : <CircleDot className="h-3.5 w-3.5 shrink-0 text-amber-600" aria-hidden />}
+                    <span className="truncate">{task.title}</span>
+                    <span className="ml-auto shrink-0 capitalize">{task.status.replaceAll('_', ' ')}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <div>
+            <label htmlFor="claim-program" className="text-sm font-medium text-foreground">Programme</label>
+            <select
+              id="claim-program"
+              value={effectiveProgramId}
+              onChange={(event) => { setProgramId(event.target.value); setClanId(''); }}
+              className="mt-1.5 w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-brand-500"
+            >
+              {programs.map((program) => (
+                <option key={program.id} value={program.id}>
+                  {program.name} · {['completed', 'archived'].includes(program.status || '') ? 'Closed' : program.status === 'published' ? 'Open' : program.status || 'Open'}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <fieldset>
             <legend className="text-sm font-medium text-foreground">Which of your clans?</legend>
             {!options.length ? (
@@ -104,12 +184,12 @@ export function ClaimDrawer({
                     <label
                       className={`flex cursor-pointer items-center gap-3 rounded-xl border p-3 transition-colors ${
                         clanId === clan.id ? 'border-brand-400 bg-brand-50/60 dark:bg-brand-950/20' : 'border-border hover:bg-muted/50'
-                      } ${clan.full ? 'cursor-not-allowed opacity-60' : ''}`}
+                      } ${clan.full || !clan.available ? 'cursor-not-allowed opacity-60' : ''}`}
                     >
                       <input
                         type="radio" name="claim-clan" value={clan.id}
                         checked={clanId === clan.id}
-                        disabled={clan.full}
+                        disabled={clan.full || !clan.available}
                         onChange={() => setClanId(clan.id)}
                         className="h-4 w-4 accent-brand-600"
                       />
@@ -117,11 +197,13 @@ export function ClaimDrawer({
                         <span className="block truncate text-sm font-medium text-foreground">{clan.name}</span>
                         <span className="block text-xs text-muted-foreground">
                           {clan.programName || 'No programme'}
+                          {' '}· {clan.kind === 'standing' ? 'Standing clan' : 'Cohort clan'}
                           {' '}&middot;{' '}
                           <Users className="inline h-3 w-3" aria-hidden />{' '}
                           {clan.maxMentees ? `${clan.seated} of ${clan.maxMentees} seats` : `${clan.seated} mentees`}
                           {clan.full && ' — full'}
                         </span>
+                        {!clan.available && <span className="mt-0.5 block text-xs text-amber-700 dark:text-amber-300">{clan.unavailableReason}</span>}
                       </span>
                     </label>
                   </li>

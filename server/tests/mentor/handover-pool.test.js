@@ -188,6 +188,25 @@ describe('handover pool', () => {
       expect((await models.HandoverPoolEntry.findByPk(entryId)).status).toBe('open');
     });
 
+    it('places into a standing clan after the programme closes', async () => {
+      const standing = await models.Clan.create({
+        programId: program.id, kind: 'standing', name: 'Alumni', leadMentorId: taker.id, createdBy: admin.id,
+      });
+      await models.ClanMembership.create({
+        clanId: standing.id, userId: taker.id, role: 'lead_mentor', status: 'active', joinedAt: new Date(),
+      });
+      await program.update({ status: 'completed', closedAt: new Date() });
+
+      const result = await pool.claim(taker, { entryId, toClanId: standing.id });
+
+      expect(result.freshStart).toBe(false);
+      const seat = await models.ClanMembership.findOne({
+        where: { clanId: standing.id, userId: mentee.id, role: 'mentee', status: 'active' },
+      });
+      expect(seat).toBeTruthy();
+      expect(seat.enrollmentId).toBeNull();
+    });
+
     it('will not seat them past the clan limit', async () => {
       await toClan.update({ maxMentees: 1 });
       const filler = await createMentee({ email: `hp-filler-${Date.now()}@test.com` });
@@ -343,12 +362,29 @@ describe('handover pool', () => {
       expect(entries[0].fromClan.name).toBe('Leaving');
     });
 
+    it('lets a pool viewer inspect the rich profile before taking the mentee', async () => {
+      const { entry } = await pool.push(giver, { menteeId: mentee.id, clanId: fromClan.id });
+
+      const result = await pool.profile(taker, entry.id);
+
+      expect(result.profile.id).toBe(mentee.id);
+      expect(result.profile.email).toBe(mentee.email);
+      expect(result.profile.tasksByStatus).toBeTruthy();
+    });
+
     /** The pool is other people's mentees; it must not be a staff directory. */
     it('shows nothing to a mentor with no clan in that programme', async () => {
       const outsider = await createMentor({ email: `hp-out-${Date.now()}@test.com` });
       await pool.push(giver, { menteeId: mentee.id, clanId: fromClan.id });
       const { entries } = await pool.list(outsider, {});
       expect(entries).toEqual([]);
+    });
+
+    it('does not reveal a pool profile outside the viewer programme scope', async () => {
+      const outsider = await createMentor({ email: `hp-profile-out-${Date.now()}@test.com` });
+      const { entry } = await pool.push(giver, { menteeId: mentee.id, clanId: fromClan.id });
+
+      await expect(pool.profile(outsider, entry.id)).rejects.toThrow(/not found/i);
     });
 
     it('puts the longest-waiting first and says how long', async () => {
@@ -366,8 +402,8 @@ describe('handover pool', () => {
     });
 
     it('tells a puller what they would inherit', async () => {
-      const roadmap = await createRoadmap({ programId: program.id, createdBy: admin.id });
-      const rt = await createRoadmapTask({ roadmapId: roadmap.id });
+      const roadmap = await createRoadmap({ programId: program.id, createdBy: admin.id, name: 'Backend foundations' });
+      const rt = await createRoadmapTask({ roadmapId: roadmap.id, title: 'Build an API' });
       const enrollment = await models.Enrollment.findOne({ where: { menteeId: mentee.id, programId: program.id } });
       const t = await createAssignedTask({
         menteeId: mentee.id, mentorId: giver.id, roadmapTaskId: rt.id,
@@ -379,12 +415,35 @@ describe('handover pool', () => {
       const { entries } = await pool.list(taker, {});
       expect(entries[0].work.tasks).toBe(1);
       expect(entries[0].work.completed).toBe(1);
+      expect(entries[0].work.roadmaps).toEqual([expect.objectContaining({
+        id: roadmap.id, name: 'Backend foundations', tasks: 1, completed: 1,
+        recentTasks: [expect.objectContaining({ title: 'Build an API', status: 'completed' })],
+      })]);
     });
 
     it('offers the claimer only clans they can actually pull into', async () => {
       const clans = await pool.claimableClans(taker);
       expect(clans.map((c) => c.id)).toEqual([toClan.id]);
       expect(clans[0].seated).toBe(0);
+      expect(clans[0].available).toBe(true);
+    });
+
+    it('switches a closed programme from cohort clans to standing clans', async () => {
+      const standing = await models.Clan.create({
+        programId: program.id, kind: 'standing', name: 'Alumni', leadMentorId: taker.id, createdBy: admin.id,
+      });
+      await models.ClanMembership.create({
+        clanId: standing.id, userId: taker.id, role: 'lead_mentor', status: 'active', joinedAt: new Date(),
+      });
+      await program.update({ status: 'completed', closedAt: new Date() });
+
+      const clans = await pool.claimableClans(taker);
+      expect(clans.find((c) => c.id === standing.id)).toEqual(expect.objectContaining({
+        available: true, kind: 'standing', programStatus: 'completed',
+      }));
+      expect(clans.find((c) => c.id === toClan.id)).toEqual(expect.objectContaining({
+        available: false, kind: 'cohort',
+      }));
     });
   });
 

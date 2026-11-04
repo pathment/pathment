@@ -63,6 +63,8 @@ export interface ProfileCollaborator {
 }
 
 export interface MenteeProfile extends CohortMentee {
+  phone?: string | null;
+  currentOccupation?: string | null;
   aiSummary: string;
   aiSignals: string[];
   blockers: ProfileBlocker[];
