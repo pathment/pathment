@@ -1,14 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { CalendarClock, ChevronRight, Loader2, MessageCircle, MessageSquareQuote, Plus, Trash2, Users } from 'lucide-react';
 import { Drawer } from '@/components/shared/Drawer';
 import { EmptyState } from '@/components/shared/EmptyState';
-import { DiscussionStateBadge, discussionTimeLabel } from '@/components/shared/discussions/DiscussionStatus';
+import { DiscussionStateBadge, discussionTimeLabel, sortDiscussions } from '@/components/shared/discussions/DiscussionStatus';
 import { ScenarioDrawer } from '@/components/shared/discussions/ScenarioDrawer';
-import { EntityCard, entityCardSecondaryBtn, formatDateRange } from '@/components/admin/EntityCard';
+import { EntityCard, entityCardSecondaryBtn, formatDateRange, type EntityCardStat } from '@/components/admin/EntityCard';
+import { ScenarioGroupsDrawer } from '@/components/mentor/discussions/ScenarioGroupsDrawer';
 import RichTextEditor from '@/components/shared/RichTextEditor';
 import { cleanHtml, isBlankHtml } from '@/lib/utils/html';
 import { NewGroupDrawer } from '@/components/mentor/discussions/NewGroupDrawer';
@@ -39,10 +40,38 @@ function scenarioDates(groups: DiscussionScenario['groups']) {
   return formatDateRange(opens[0], closes[closes.length - 1]) || 'No time limit';
 }
 
+type ScenarioGroup = DiscussionScenario['groups'][number];
+
+/** The groups as rows, each opening its page. */
+function GroupList({ groups }: { groups: ScenarioGroup[] }) {
+  return (
+    <ul className="divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-muted/30 dark:divide-slate-800 dark:border-slate-800">
+      {groups.map((group) => (
+        <li key={group.id}>
+          <Link href={`/mentor/group-discussions/${group.id}`} className="group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/60">
+            <div className="min-w-0 flex-1">
+              <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-slate-900 group-hover:text-brand-600">
+                <span className="truncate">{group.name}</span>
+                <DiscussionStateBadge state={group.state} />
+              </p>
+              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+                <span className="inline-flex items-center gap-1"><CalendarClock className="h-3.5 w-3.5" aria-hidden />{discussionTimeLabel(group)}</span>
+                <span className="inline-flex items-center gap-1 tabular-nums"><Users className="h-3.5 w-3.5" aria-hidden />{plural(group.memberCount, 'mentee')}</span>
+                <span className="inline-flex items-center gap-1 tabular-nums"><MessageCircle className="h-3.5 w-3.5" aria-hidden />{plural(group.messageCount, 'message')}</span>
+              </div>
+            </div>
+            <ChevronRight className="h-4 w-4 shrink-0 text-slate-400 transition-transform group-hover:translate-x-0.5" aria-hidden />
+          </Link>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /**
  * One scenario as a card, in the design of the Intake and Pools cards: what
- * it is, the facts across its groups, the groups themselves (each opening its
- * page), and what to do next.
+ * it is, the facts across its groups, its most current group (the rest open
+ * in a drawer, so the card keeps its size), and what to do next.
  */
 function ScenarioCard({ scenario, onRead, onNewGroup, onDelete }: {
   scenario: DiscussionScenario;
@@ -51,9 +80,19 @@ function ScenarioCard({ scenario, onRead, onNewGroup, onDelete }: {
   onDelete: () => void;
 }) {
   const { groups } = scenario;
+  const [showingAll, setShowingAll] = useState(false);
+  // The one running now leads, then the next to open.
+  const first = useMemo(() => sortDiscussions(groups)[0], [groups]);
   const open = groups.filter((group) => group.state === 'open').length;
   const mentees = groups.reduce((sum, group) => sum + group.memberCount, 0);
   const messages = groups.reduce((sum, group) => sum + group.messageCount, 0);
+  const stats: EntityCardStat[] = [
+    { label: 'Groups', value: groups.length },
+    { label: 'Open now', value: open, tone: open ? 'good' : 'default' },
+    { label: 'Mentees', value: mentees },
+    { label: 'Messages', value: messages },
+  ];
+  const dates = scenarioDates(groups);
 
   return (
     <EntityCard
@@ -64,13 +103,8 @@ function ScenarioCard({ scenario, onRead, onNewGroup, onDelete }: {
         </span>
       )}
       title={scenario.title}
-      stats={[
-        { label: 'Groups', value: groups.length },
-        { label: 'Open now', value: open, tone: open ? 'good' : 'default' },
-        { label: 'Mentees', value: mentees },
-        { label: 'Messages', value: messages },
-      ]}
-      footer={scenarioDates(groups)}
+      stats={stats}
+      footer={dates}
       actions={(
         <>
           {scenario.prompt && (
@@ -95,26 +129,30 @@ function ScenarioCard({ scenario, onRead, onNewGroup, onDelete }: {
       {!groups.length ? (
         <p className="rounded-xl bg-muted/40 px-4 py-3 text-sm text-slate-500">No groups yet. Add one to start this discussion.</p>
       ) : (
-        <ul className="divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-muted/30 dark:divide-slate-800 dark:border-slate-800">
-          {groups.map((group) => (
-            <li key={group.id}>
-              <Link href={`/mentor/group-discussions/${group.id}`} className="group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/60">
-                <div className="min-w-0 flex-1">
-                  <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-slate-900 group-hover:text-brand-600">
-                    <span className="truncate">{group.name}</span>
-                    <DiscussionStateBadge state={group.state} />
-                  </p>
-                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
-                    <span className="inline-flex items-center gap-1"><CalendarClock className="h-3.5 w-3.5" aria-hidden />{discussionTimeLabel(group)}</span>
-                    <span className="inline-flex items-center gap-1 tabular-nums"><Users className="h-3.5 w-3.5" aria-hidden />{plural(group.memberCount, 'mentee')}</span>
-                    <span className="inline-flex items-center gap-1 tabular-nums"><MessageCircle className="h-3.5 w-3.5" aria-hidden />{plural(group.messageCount, 'message')}</span>
-                  </div>
-                </div>
-                <ChevronRight className="h-4 w-4 shrink-0 text-slate-400 transition-transform group-hover:translate-x-0.5" aria-hidden />
-              </Link>
-            </li>
-          ))}
-        </ul>
+        <div className="space-y-2">
+          <GroupList groups={[first]} />
+          {groups.length > 1 && (
+            <button
+              type="button"
+              onClick={() => setShowingAll(true)}
+              aria-haspopup="dialog"
+              className="inline-flex items-center gap-1 rounded-lg px-1 text-sm font-medium text-brand-600 hover:text-brand-700 hover:underline"
+            >
+              View all {groups.length} groups
+              <ChevronRight className="h-4 w-4" aria-hidden />
+            </button>
+          )}
+        </div>
+      )}
+      {groups.length > 1 && (
+        <ScenarioGroupsDrawer
+          open={showingAll}
+          onClose={() => setShowingAll(false)}
+          scenario={scenario}
+          stats={stats}
+          dates={dates}
+          onNewGroup={onNewGroup}
+        />
       )}
     </EntityCard>
   );
