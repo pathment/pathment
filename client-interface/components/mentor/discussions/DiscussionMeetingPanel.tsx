@@ -14,7 +14,7 @@ import { useMentorApprovals } from '@/lib/hooks/mentor';
 import { fmtTalk, meetingTimeLabel, untilLabel, viewerZone } from '@/components/shared/discussions/meeting/meetingFormat';
 import { useCall } from '@/lib/context/CallContext';
 import { useConfirm } from '@/lib/context/ConfirmContext';
-import { groupDiscussionsApi, type MeetingRosterRow, type MeetingState } from '@/lib/services/group-discussions-api';
+import { groupDiscussionsApi, type MeetingJoin, type MeetingRosterRow, type MeetingState } from '@/lib/services/group-discussions-api';
 import { useApiQuery, useInvalidate, qk } from '@/lib/query';
 
 const STATE_BADGE: Record<MeetingState, { label: string; cls: string }> = {
@@ -105,12 +105,13 @@ export function DiscussionMeetingPanel({ groupId, groupName }: { groupId: string
     refetch();
   }, [endedNonce, refetch]);
 
-  const hostCall = useCallback((join: { domain: string; room: string; displayName: string | null; avatarUrl: string | null; title: string }) => {
+  const hostCall = useCallback((join: Pick<MeetingJoin, 'domain' | 'room' | 'jwt' | 'displayName' | 'avatarUrl' | 'title'>) => {
     startCall({
       kind: 'discussion',
       sessionId: groupId,
       domain: join.domain,
       room: join.room,
+      jwt: join.jwt,
       displayName: join.displayName,
       avatarUrl: join.avatarUrl,
       role: 'host',

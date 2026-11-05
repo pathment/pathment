@@ -28,6 +28,7 @@ export function useJoinDiscussionMeeting() {
         sessionId: groupId,
         domain: room.domain,
         room: room.room,
+        jwt: room.jwt,
         displayName: room.displayName,
         avatarUrl: room.avatarUrl,
         role: 'guest',

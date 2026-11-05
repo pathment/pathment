@@ -13,6 +13,7 @@
  *   ONE REMINDER. Ten minutes out, claimed once however often the worker runs.
  */
 
+const jwt = require('jsonwebtoken');
 const { models } = require('../../src/db');
 const cfg = require('../../src/config/reviewMeeting');
 const notificationOrchestrator = require('../../src/services/notificationOrchestrator');
@@ -34,9 +35,11 @@ const at = (ms) => new Date(Date.now() + ms).toISOString();
 describe('group discussion meetings', () => {
   let admin, mentor, alice, bob, clan, scenario, group;
   const wasEnabled = cfg.enabled;
+  const wasSecret = cfg.jitsiAppSecret;
+  const SECRET = 'test-secret-that-is-long-enough-for-unit-tests';
 
-  beforeAll(() => { cfg.enabled = true; });
-  afterAll(() => { cfg.enabled = wasEnabled; });
+  beforeAll(() => { cfg.enabled = true; cfg.jitsiAppSecret = SECRET; });
+  afterAll(() => { cfg.enabled = wasEnabled; cfg.jitsiAppSecret = wasSecret; });
 
   beforeEach(async () => {
     await cleanDb();
@@ -118,6 +121,50 @@ describe('group discussion meetings', () => {
     it('is refused to a mentor who does not run the clan', async () => {
       const other = await createMentor({ email: `dm-other-${Date.now()}@test.com` });
       await expect(meetings.scheduleMeeting(other.id, group.id, { startsAt: at(HOUR) })).rejects.toThrow(/do not mentor/);
+    });
+  });
+
+  describe('who moderates (Jitsi token)', () => {
+    const claims = (token) => jwt.verify(token, SECRET, { algorithms: ['HS256'] });
+
+    it('makes any mentor of the clan the moderator, and a mentee never, whoever arrives first', async () => {
+      const coMentor = await createMentor({ email: `dm-co-tok-${Date.now()}@test.com` });
+      await clanService.addMember(clan.id, { userId: coMentor.id, role: 'co_mentor' });
+      await schedule(MINUTE);
+
+      // The mentee is in first, and still only a member.
+      const menteeJoin = await meetings.joinInfo(alice.id, group.id);
+      const room = (await sessionOf()).meetingRoom;
+      expect(claims(menteeJoin.jwt)).toMatchObject({ room, context: { user: { id: alice.id, moderator: false, affiliation: 'member' } } });
+
+      const leadJoin = await meetings.startMeeting(mentor.id, group.id);
+      expect(claims(leadJoin.jwt)).toMatchObject({ room, context: { user: { id: mentor.id, moderator: true, affiliation: 'owner' } } });
+
+      // A co-mentor who did not schedule it moderates too, and so does a host rejoining from the panel.
+      const coJoin = (await meetings.hostView(coMentor.id, group.id)).join;
+      expect(claims(coJoin.jwt)).toMatchObject({ room, context: { user: { id: coMentor.id, moderator: true, affiliation: 'owner' } } });
+    });
+
+    it('gives a mentor of another clan nothing to join with', async () => {
+      await schedule(MINUTE);
+      const other = await createMentor({ email: `dm-other-tok-${Date.now()}@test.com` });
+      await expect(meetings.startMeeting(other.id, group.id)).rejects.toThrow(/do not mentor/);
+      await expect(meetings.hostView(other.id, group.id)).rejects.toThrow(/do not mentor/);
+    });
+
+    it('still shows the host panel when no token can be issued, but will not start the call', async () => {
+      await schedule(MINUTE);
+      cfg.jitsiAppSecret = '';
+      try {
+        const view = await meetings.hostView(mentor.id, group.id);
+        expect(view.meeting).toBeTruthy();
+        expect(view.join).toBeNull();
+        await expect(meetings.startMeeting(mentor.id, group.id)).rejects.toThrow(/JITSI_APP_SECRET/);
+        // Refused before anything changed: the meeting did not go live.
+        expect((await sessionOf()).meetingStartedAt).toBeNull();
+      } finally {
+        cfg.jitsiAppSecret = SECRET;
+      }
     });
   });
 

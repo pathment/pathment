@@ -12,6 +12,7 @@ const { buildEventIcs } = require('../utils/ics');
 const { renderEmail, plainText } = require('../utils/emailTemplate');
 const { pageLink } = require('../utils/links');
 const { discussionRating, CRITERIA } = require('../utils/discussionRating');
+const { issueJitsiToken } = require('./jitsiTokenService');
 const {
   meetingView, REMINDER_LEAD_MINUTES, OPEN_HOURS_WITHOUT_END, MINUTE, HOUR,
 } = require('../utils/discussionMeeting');
@@ -22,6 +23,8 @@ const MENTOR_ROLES = ['lead_mentor', 'co_mentor'];
 const NOTE_MAX = 2000;
 const MAX_SECONDS = 24 * 3600;
 const USER_ATTRS = ['id', 'firstName', 'lastName', 'profilePictureUrl'];
+/** The person a Jitsi token is issued to: the token carries their email too. */
+const JOINER_ATTRS = [...USER_ATTRS, 'email'];
 
 const escHtml = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const fullName = (u) => (u ? `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'Someone' : 'Someone');
@@ -112,12 +115,20 @@ class DiscussionMeetingService {
     return { meetingProvider: cfg.provider, meetingRoom: room, meetingUrl: `https://${cfg.jitsiDomain}/${room}` };
   }
 
-  _joinConfig(group, session, user) {
+  /**
+   * What the browser needs to enter the room, with a Jitsi token bound to this
+   * person and this room, as the Clan Review call does. `moderator` is decided
+   * here from the database (a mentor of the group's clan), never by the client.
+   */
+  _joinConfig(group, session, user, moderator = false) {
     return {
       groupId: group.id,
       domain: cfg.jitsiDomain,
       room: session.meetingRoom,
       url: session.meetingUrl,
+      jwt: user && session.meetingRoom
+        ? issueJitsiToken({ room: session.meetingRoom, user, moderator })
+        : null,
       displayName: user ? fullName(user) : null,
       avatarUrl: user?.profilePictureUrl || null,
       title: group.scenario?.title ? `${group.name} · ${group.scenario.title}` : group.name,
@@ -234,6 +245,9 @@ class DiscussionMeetingService {
   /** Open the room. Works early, and again after it was ended (in a fresh room). */
   async startMeeting(mentorId, groupId) {
     if (!cfg.enabled) throw new ForbiddenError('Live video meetings are not enabled');
+    // Checked before anything changes: without it no token can be issued, and
+    // the meeting must not go live (and tell everyone) with nobody able to enter.
+    if (!cfg.jitsiAppSecret) throw new Error('JITSI_APP_SECRET is required for live meetings');
     const group = await this._mentorGroup(mentorId, groupId);
     await clanLifecycleService.assertClanWritable(group.clanId);
     const session = await this._session(group.id);
@@ -250,8 +264,9 @@ class DiscussionMeetingService {
       this._notifyLive(group, mentorId)
         .catch((error) => console.error('[discussionMeeting] live notify failed (non-fatal):', error.message));
     }
-    const host = await models.User.findByPk(mentorId, { attributes: USER_ATTRS });
-    return this._joinConfig(group, session, host);
+    const host = await models.User.findByPk(mentorId, { attributes: JOINER_ATTRS });
+    // _mentorGroup let them in, so they are a lead or co-mentor of this clan: the room is theirs to run.
+    return this._joinConfig(group, session, host, true);
   }
 
   async endMeeting(mentorId, groupId) {
@@ -281,7 +296,7 @@ class DiscussionMeetingService {
       }),
       session ? models.CohortReviewEntry.findAll({ where: { sessionId: session.id } }) : [],
       models.DiscussionFeedback.findAll({ where: { groupId: group.id, mentorId } }),
-      models.User.findByPk(mentorId, { attributes: USER_ATTRS }),
+      models.User.findByPk(mentorId, { attributes: JOINER_ATTRS }),
       // Each mentee's Group Discussion task, so the panel can open its review.
       models.AssignedTask.findAll({
         where: { discussionGroupId: group.id, status: { [Op.ne]: 'cancelled' } },
@@ -316,9 +331,24 @@ class DiscussionMeetingService {
     return {
       enabled: true,
       meeting: view,
-      join: view && session.meetingRoom ? this._joinConfig(group, session, host) : null,
+      join: view && session.meetingRoom ? this._hostJoin(group, session, host) : null,
       roster,
     };
+  }
+
+  /**
+   * The host's way back into a live call after a reload. The panel (and the
+   * schedule that returns it) must still load when a token cannot be issued,
+   * so that failure is logged and only rejoining is unavailable; Start and Join
+   * still refuse loudly.
+   */
+  _hostJoin(group, session, host) {
+    try {
+      return this._joinConfig(group, session, host, true);
+    } catch (error) {
+      console.error('[discussionMeeting] host join config unavailable:', error.message);
+      return null;
+    }
   }
 
   /** Host-observed talk time (Jitsi dominant speaker, mapped by name). Never lowers a value. */
@@ -353,10 +383,11 @@ class DiscussionMeetingService {
       throw new ValidationError(view.state === 'scheduled' ? 'The meeting has not opened yet' : 'The meeting is over');
     }
     const [user, entry] = await Promise.all([
-      models.User.findByPk(userId, { attributes: USER_ATTRS }),
+      models.User.findByPk(userId, { attributes: JOINER_ATTRS }),
       models.CohortReviewEntry.findOne({ where: { sessionId: session.id, menteeId: userId }, attributes: ['talkSeconds'] }),
     ]);
-    return { ...this._joinConfig(group, session, user), meeting: view, talkSeconds: entry?.talkSeconds || 0 };
+    // A mentee is never a moderator, whenever they arrive.
+    return { ...this._joinConfig(group, session, user, false), meeting: view, talkSeconds: entry?.talkSeconds || 0 };
   }
 
   /**

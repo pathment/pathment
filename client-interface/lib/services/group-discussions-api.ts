@@ -73,6 +73,8 @@ export interface MeetingJoin {
   domain: string;
   room: string;
   url: string;
+  /** Backend-issued, room-scoped Jitsi token: the server decides who moderates. */
+  jwt: string;
   displayName: string | null;
   avatarUrl: string | null;
   title: string;
