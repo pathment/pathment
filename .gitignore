@@ -55,3 +55,7 @@ promote.sh
 changelog.json
 TASK_RUN_REPORT.md
 create-github-issues-*.sh
+
+# Infrastructure runbooks live in the private pathment-infra repository.
+# Never commit hostnames, package inventories, config snapshots or secrets here.
+infrastructure/
