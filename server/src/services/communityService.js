@@ -246,22 +246,26 @@ class CommunityService {
 
     // Pull the activity that feeds the score.
     const [kudos, posts] = await Promise.all([
-      models.CommunityPost.findAll({ where: { type: 'kudos', toId: { [Op.in]: memberIds }, deletedAt: null, ...scopeWhere, ...timeWhere }, attributes: ['toId'] }),
+      models.CommunityPost.findAll({ where: { type: 'kudos', toId: { [Op.in]: memberIds }, deletedAt: null, ...scopeWhere, ...timeWhere }, attributes: ['toId', 'authorId'] }),
       models.CommunityPost.findAll({ where: { authorId: { [Op.in]: memberIds }, deletedAt: null, ...scopeWhere, ...timeWhere }, attributes: ['id', 'authorId', 'acceptedCommentId'] })
     ]);
     const acceptedIds = posts.map((p) => p.acceptedCommentId).filter(Boolean);
     const postIds = posts.map((p) => p.id);
     const [acceptedComments, reactions] = await Promise.all([
-      acceptedIds.length ? models.CommunityComment.findAll({ where: { id: { [Op.in]: acceptedIds } }, attributes: ['authorId'] }) : [],
-      postIds.length ? models.CommunityReaction.findAll({ where: { postId: { [Op.in]: postIds }, type: { [Op.in]: REACTION_TYPES } }, attributes: ['postId'] }) : []
+      acceptedIds.length ? models.CommunityComment.findAll({ where: { id: { [Op.in]: acceptedIds } }, attributes: ['id', 'authorId'] }) : [],
+      postIds.length ? models.CommunityReaction.findAll({ where: { postId: { [Op.in]: postIds }, type: { [Op.in]: REACTION_TYPES } }, attributes: ['postId', 'userId'] }) : []
     ]);
     const postAuthor = new Map(posts.map((p) => [p.id, p.authorId]));
+    const askerOfAnswer = new Map(posts.filter((p) => p.acceptedCommentId).map((p) => [p.acceptedCommentId, p.authorId]));
 
+    // You can't earn points from yourself: kudos to yourself, an answer you accepted
+    // on your own question, or reactions on your own post don't count. XP already
+    // works this way (see createPost and acceptAnswer).
     const tally = new Map(memberIds.map((id) => [id, { kudos: 0, answers: 0, posts: 0, reactions: 0 }]));
-    kudos.forEach((k) => { const t = tally.get(k.toId); if (t) t.kudos += 1; });
+    kudos.forEach((k) => { const t = k.authorId !== k.toId && tally.get(k.toId); if (t) t.kudos += 1; });
     posts.forEach((p) => { const t = tally.get(p.authorId); if (t) t.posts += 1; });
-    acceptedComments.forEach((c) => { const t = tally.get(c.authorId); if (t) t.answers += 1; });
-    reactions.forEach((r) => { const a = postAuthor.get(r.postId); const t = a && tally.get(a); if (t) t.reactions += 1; });
+    acceptedComments.forEach((c) => { const t = c.authorId !== askerOfAnswer.get(c.id) && tally.get(c.authorId); if (t) t.answers += 1; });
+    reactions.forEach((r) => { const a = postAuthor.get(r.postId); const t = a && r.userId !== a && tally.get(a); if (t) t.reactions += 1; });
 
     let rows = memberIds.map((id) => {
       const s = tally.get(id);
