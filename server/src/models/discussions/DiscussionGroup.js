@@ -36,6 +36,8 @@ module.exports = (sequelize, DataTypes) => {
     DiscussionGroup.belongsTo(models.DiscussionScenario, { foreignKey: 'scenario_id', as: 'scenario' });
     DiscussionGroup.belongsTo(models.Conversation, { foreignKey: 'conversation_id', as: 'conversation' });
     if (models.Clan) DiscussionGroup.belongsTo(models.Clan, { foreignKey: 'clan_id', as: 'clan' });
+    // Its live meeting is a CohortReviewSession of kind 'discussion' with this
+    // group's id (migration 147); discussionMeetingService looks it up.
   };
 
   return DiscussionGroup;
