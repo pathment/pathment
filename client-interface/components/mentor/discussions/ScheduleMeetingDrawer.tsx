@@ -4,8 +4,18 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { Globe, Loader2 } from 'lucide-react';
 import { Drawer } from '@/components/shared/Drawer';
-import { toLocalInput, viewerZone } from '@/components/shared/discussions/meeting/meetingFormat';
+import { getBrowserTimeZone, splitLocal } from '@/lib/utils/datetime';
 import { groupDiscussionsApi, type DiscussionMeeting } from '@/lib/services/group-discussions-api';
+
+/**
+ * A stored instant as a datetime-local value. The input reads and writes the
+ * browser's own clock (`new Date(value)` below), so this and the zone named
+ * under the fields are the browser's too.
+ */
+const toLocalInput = (iso?: string | null) => {
+  const { date, time } = splitLocal(iso);
+  return date ? `${date}T${time}` : '';
+};
 
 const FIELD = 'w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500';
 const LABEL = 'mb-1 block text-sm font-medium text-slate-700';
@@ -87,7 +97,7 @@ export function ScheduleMeetingDrawer({ groupId, groupName, meeting, onClose, on
         ) : (
           <p className="-mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
             <Globe className="h-3.5 w-3.5 shrink-0" aria-hidden />
-            Times are in your timezone ({viewerZone()}). Everyone sees them in their own.
+            Times are in your timezone ({getBrowserTimeZone()}). Everyone sees them in their own.
           </p>
         )}
 

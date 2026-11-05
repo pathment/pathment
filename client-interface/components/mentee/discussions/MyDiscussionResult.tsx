@@ -1,9 +1,9 @@
 'use client';
 
 import { Clock, Image as ImageIcon, MessageCircle, Mic, Sparkles } from 'lucide-react';
-import { MetricTile } from '@/components/shared/MetricTile';
-import { StarRating } from '@/components/shared/discussions/meeting/StarRating';
+import { StarRating } from '@/components/shared/StarRating';
 import { CriteriaBars } from '@/components/shared/discussions/meeting/CriteriaBars';
+import { ParticipationStats } from '@/components/shared/discussions/meeting/ParticipationStats';
 import { fmtTalk } from '@/components/shared/discussions/meeting/meetingFormat';
 import { groupDiscussionsApi } from '@/lib/services/group-discussions-api';
 import { useApiQuery, qk } from '@/lib/query';
@@ -105,12 +105,17 @@ export function MyDiscussionResult({ groupId, embedded = false }: { groupId: str
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <MetricTile compact label="Speaking time" value={fmtTalk(member.meeting.talkSeconds)} icon={Clock} tone={0} hint={member.meeting.joined ? 'In the meeting' : 'You did not join the meeting'} />
-        <MetricTile compact label="Messages" value={member.messageCount} icon={MessageCircle} tone={1} hint="In the group chat" />
-        <MetricTile compact label="Voice notes" value={member.voiceCount} icon={Mic} tone={2} hint="Recorded in the chat" />
-        <MetricTile compact label="Files shared" value={files} icon={ImageIcon} tone={3} hint="Images, videos and files" />
-      </div>
+      <ParticipationStats
+        className="grid grid-cols-2 gap-3 lg:grid-cols-4"
+        talkSeconds={member.meeting.talkSeconds}
+        messageCount={member.messageCount}
+        voiceCount={member.voiceCount}
+        imageCount={member.imageCount}
+        videoCount={member.videoCount}
+        fileCount={member.fileCount}
+        talkHint={member.meeting.joined ? 'In the meeting' : 'You did not join the meeting'}
+        messagesHint="In the group chat"
+      />
 
       {data.feedbackHiddenUntilEnd ? (
         <p className="rounded-xl bg-muted/50 px-3 py-4 text-center text-xs text-muted-foreground">

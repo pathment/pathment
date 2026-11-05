@@ -168,6 +168,19 @@ describe('group discussion meetings', () => {
     });
   });
 
+  describe('talk time', () => {
+    it('is refused once the clan is read-only, as in Clan Review', async () => {
+      await schedule(MINUTE);
+      await meetings.startMeeting(mentor.id, group.id);
+      await meetings.recordTalkTime(mentor.id, group.id, [{ menteeId: alice.id, seconds: 30 }]);
+      await models.Clan.update({ frozenAt: new Date() }, { where: { id: clan.id } });
+      await expect(meetings.recordTalkTime(mentor.id, group.id, [{ menteeId: alice.id, seconds: 90 }]))
+        .rejects.toThrow(/read-only/);
+      const row = await models.CohortReviewEntry.findOne({ where: { sessionId: (await sessionOf()).id, menteeId: alice.id } });
+      expect(row.talkSeconds).toBe(30);
+    });
+  });
+
   describe('joining', () => {
     it('opens two minutes before the start, not earlier', async () => {
       await schedule(30 * MINUTE);

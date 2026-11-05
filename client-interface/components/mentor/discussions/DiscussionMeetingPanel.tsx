@@ -11,7 +11,8 @@ import { ScheduleMeetingDrawer } from './ScheduleMeetingDrawer';
 import { MeetingSummaryModal } from './MeetingSummaryModal';
 import { DiscussionFeedbackDrawer } from './DiscussionFeedbackDrawer';
 import { useMentorApprovals } from '@/lib/hooks/mentor';
-import { fmtTalk, meetingTimeLabel, untilLabel, viewerZone } from '@/components/shared/discussions/meeting/meetingFormat';
+import { fmtTalk, meetingTimeLabel, untilLabel } from '@/components/shared/discussions/meeting/meetingFormat';
+import { getViewerTimeZone } from '@/lib/utils/datetime';
 import { useCall } from '@/lib/context/CallContext';
 import { useConfirm } from '@/lib/context/ConfirmContext';
 import { groupDiscussionsApi, type MeetingJoin, type MeetingRosterRow, type MeetingState } from '@/lib/services/group-discussions-api';
@@ -223,7 +224,7 @@ export function DiscussionMeetingPanel({ groupId, groupName }: { groupId: string
           <Video className="h-4 w-4 text-brand-600" aria-hidden /> Live meeting
         </span>
         <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${badge.cls}`}>{badge.label}</span>
-        <span className="inline-flex min-w-0 flex-1 items-center gap-1.5 text-xs text-muted-foreground" title={`Your timezone: ${viewerZone()}`}>
+        <span className="inline-flex min-w-0 flex-1 items-center gap-1.5 text-xs text-muted-foreground" title={`Your timezone: ${getViewerTimeZone()}`}>
           <CalendarClock className="h-3.5 w-3.5 shrink-0" aria-hidden />
           <span className="truncate">
             {meetingTimeLabel(meeting)}

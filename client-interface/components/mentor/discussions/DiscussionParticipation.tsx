@@ -4,11 +4,11 @@ import Link from 'next/link';
 import { useMemo } from 'react';
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import {
-  Check, ChevronDown, Clock, Heart, Image as ImageIcon, Loader2, MessageCircle, MessageSquareQuote, Mic, Star, Video,
+  Check, ChevronDown, Heart, Loader2, MessageSquareQuote, Star, Video,
 } from 'lucide-react';
-import { MetricTile } from '@/components/shared/MetricTile';
-import { StarRating } from '@/components/shared/discussions/meeting/StarRating';
+import { StarRating } from '@/components/shared/StarRating';
 import { CriteriaBars } from '@/components/shared/discussions/meeting/CriteriaBars';
+import { ParticipationStats } from '@/components/shared/discussions/meeting/ParticipationStats';
 import { fmtTalk } from '@/components/shared/discussions/meeting/meetingFormat';
 import { DiscussionStateBadge } from '@/components/shared/discussions/DiscussionStatus';
 import { ACTIVITY, lastSeen } from './MemberProgress';
@@ -118,7 +118,6 @@ export function DiscussionParticipation({ taskId, menteeId, menteeName, canRate 
   const { group, member, groupStats, rating, meeting, feedback = [] } = data;
   const chat = ACTIVITY[member.activity];
   const ChatIcon = chat.icon;
-  const files = member.imageCount + member.videoCount + member.fileCount;
   const scale = Math.max(groupStats.maxMessages, member.messageCount, 1);
   const average = Math.round(groupStats.averageMessages * 10) / 10;
   const activeDays = days.filter((day) => day.count > 0).length;
@@ -167,33 +166,16 @@ export function DiscussionParticipation({ taskId, menteeId, menteeName, canRate 
       )}
 
       {/* 2. What they did: the app's stat tiles, as on the group's own page. */}
-      <div className="grid grid-cols-2 gap-3">
-        <MetricTile
-          compact
-          tone={0}
-          icon={Clock}
-          label="Speaking time"
-          value={fmtTalk(meeting?.talkSeconds ?? 0)}
-          hint={data.groupMax?.talk ? `Most in the group: ${fmtTalk(data.groupMax.talk)}` : 'Nobody has spoken yet'}
-        />
-        <MetricTile
-          compact
-          tone={1}
-          icon={MessageCircle}
-          label="Messages"
-          value={member.messageCount}
-          hint={groupStats.rank ? `#${groupStats.rank} of ${groupStats.memberCount} in the group` : `${groupStats.memberCount} in the group`}
-        />
-        <MetricTile compact tone={2} icon={Mic} label="Voice notes" value={member.voiceCount} hint="Recorded in the chat" />
-        <MetricTile
-          compact
-          tone={3}
-          icon={ImageIcon}
-          label="Files shared"
-          value={files}
-          hint={files ? `${member.imageCount} images, ${member.videoCount} videos, ${member.fileCount} other` : 'Images, videos and files'}
-        />
-      </div>
+      <ParticipationStats
+        talkSeconds={meeting?.talkSeconds ?? 0}
+        messageCount={member.messageCount}
+        voiceCount={member.voiceCount}
+        imageCount={member.imageCount}
+        videoCount={member.videoCount}
+        fileCount={member.fileCount}
+        talkHint={data.groupMax?.talk ? `Most in the group: ${fmtTalk(data.groupMax.talk)}` : 'Nobody has spoken yet'}
+        messagesHint={groupStats.rank ? `#${groupStats.rank} of ${groupStats.memberCount} in the group` : `${groupStats.memberCount} in the group`}
+      />
 
       {/* 3. The mentor's feedback */}
       {rateHere ? (

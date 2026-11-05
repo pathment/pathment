@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ChevronRight, Clock, Image as ImageIcon, Loader2, MessageCircle, Mic, X } from 'lucide-react';
 import { Avatar } from '@/components/shared/Avatar';
-import { StarRating } from '@/components/shared/discussions/meeting/StarRating';
+import { StarRating } from '@/components/shared/StarRating';
 import { fmtTalk } from '@/components/shared/discussions/meeting/meetingFormat';
 import { DiscussionFeedbackDrawer } from './DiscussionFeedbackDrawer';
 import { useScrollLock } from '@/lib/hooks/useScrollLock';

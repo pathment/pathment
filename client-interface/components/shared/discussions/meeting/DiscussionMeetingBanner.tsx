@@ -9,7 +9,8 @@ import { acquireSocket } from '@/lib/services/socket-client';
 import { useCall } from '@/lib/context/CallContext';
 import { groupDiscussionsApi, type UpcomingMeeting } from '@/lib/services/group-discussions-api';
 import { useApiQuery, qk } from '@/lib/query';
-import { fmtWhen, untilLabel } from './meetingFormat';
+import { formatMeeting } from '@/lib/utils/datetime';
+import { untilLabel } from './meetingFormat';
 
 /**
  * Join a group discussion meeting as a mentee: fetch the room (the server
@@ -190,7 +191,7 @@ function BannerBody({ role }: { role: 'mentor' | 'mentee' }) {
           {live ? 'Group discussion is live' : `Group discussion starts ${untilLabel(shown.meeting.startsAt, now)}`} · {shown.groupName}
         </p>
         <p className="truncate text-xs text-slate-500">
-          {shown.scenarioTitle ? `${shown.scenarioTitle} · ` : ''}{fmtWhen(shown.meeting.startsAt)}
+          {shown.scenarioTitle ? `${shown.scenarioTitle} · ` : ''}{formatMeeting(shown.meeting.startsAt)}
           {role === 'mentee' ? ' · joining submits your task' : ''}
         </p>
       </div>

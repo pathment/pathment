@@ -354,6 +354,8 @@ class DiscussionMeetingService {
   /** Host-observed talk time (Jitsi dominant speaker, mapped by name). Never lowers a value. */
   async recordTalkTime(mentorId, groupId, items = []) {
     const group = await this._mentorGroup(mentorId, groupId);
+    // As Clan Review's recordTalkTime: a frozen or closed clan takes no new writes.
+    await clanLifecycleService.assertClanWritable(group.clanId);
     if (!Array.isArray(items)) throw new ValidationError('items must be an array');
     const session = await this._session(group.id);
     if (!session) return { ok: true };
