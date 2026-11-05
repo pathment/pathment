@@ -16,7 +16,7 @@
  *   const text = plainText({ heading, bodyText, cta, unsubscribeUrl });
  */
 
-const BRAND = '#2563eb';
+const BRAND = '#00796b';
 const esc = (s) => String(s == null ? '' : s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -64,7 +64,7 @@ function renderEmail({ heading, bodyHtml, cta, preheader, footerNote, unsubscrib
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;">
     <tr><td align="center" style="padding:32px 16px;">
       <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e2e8f0;">
-        <tr><td style="background:${BRAND};padding:22px 24px;">
+        <tr><td style="background:#102a27;border-top:4px solid ${BRAND};padding:22px 24px;">
           <span style="color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;letter-spacing:.3px;">Pathment</span>
         </td></tr>
         <tr><td style="padding:32px 32px 12px;font-family:Arial,Helvetica,sans-serif;color:#0f172a;">

@@ -1468,7 +1468,7 @@ export default function CohortReview() {
                       className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors ${
                         active
                           ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300'
-                          : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800 dark:hover:bg-slate-800'
+                          : 'text-muted-foreground hover:bg-slate-50 hover:text-slate-800 dark:hover:bg-white/5 dark:hover:text-white'
                       }`}
                     >
                       <Icon className={`h-4 w-4 ${active ? 'text-brand-600' : 'text-slate-400'}`} aria-hidden />

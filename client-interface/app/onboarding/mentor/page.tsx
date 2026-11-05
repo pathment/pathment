@@ -88,24 +88,25 @@ export default function MentorOnboardingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-brand-50 dark:from-brand-500/10 via-card to-brand-50 dark:to-transparent py-12 px-4">
+    <div className="min-h-screen bg-canvas px-4 py-10 sm:py-12">
       <div className="max-w-3xl mx-auto">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-brand-600 rounded-2xl mb-4">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-brand-600 dark:text-brand-300">Mentor onboarding · Step 1 of 3</p>
+          <div className="inline-flex items-center justify-center w-14 h-14 bg-brand-600 rounded-2xl mb-4 shadow-sm shadow-brand-600/20">
             <Award className="w-8 h-8 text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-brand-900 mb-2">Set up your mentor profile</h1>
-          <p className="text-slate-600">Help mentees find and connect with you</p>
+          <h1 className="text-3xl font-bold text-foreground mb-2">Set up your mentor profile</h1>
+          <p className="text-muted-foreground">Tell your mentees who will be guiding them and how you can help.</p>
           <div className="flex items-center justify-center gap-2 mt-4">
-            <div className="w-8 h-2 bg-brand-600 rounded-full"></div>
-            <div className="w-8 h-2 bg-slate-200 rounded-full"></div>
-            <div className="w-8 h-2 bg-slate-200 rounded-full"></div>
+            <div className="w-8 h-1.5 bg-brand-600 rounded-full"></div>
+            <div className="w-8 h-1.5 bg-border rounded-full"></div>
+            <div className="w-8 h-1.5 bg-border rounded-full"></div>
           </div>
         </div>
 
         {/* Form */}
-        <div className="bg-card rounded-2xl shadow-xl border border-slate-100 p-8">
+        <div className="rounded-2xl border border-border bg-card p-6 shadow-sm sm:p-8">
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Title */}
             <div>
@@ -180,7 +181,7 @@ export default function MentorOnboardingPage() {
                 {formData.specialization.map((spec) => (
                   <span
                     key={spec}
-                    className="inline-flex items-center gap-2 px-3 py-1 bg-brand-50 text-brand-700 rounded-lg"
+                    className="inline-flex items-center gap-2 px-3 py-1 bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-200 rounded-lg"
                   >
                     {spec}
                     <button
@@ -286,7 +287,7 @@ export default function MentorOnboardingPage() {
                     onClick={() => toggleMenteeLevel(level)}
                     className={`p-3 rounded-xl border-2 capitalize transition-all ${
                       formData.preferredMenteeLevel.includes(level)
-                        ? 'border-brand-600 bg-brand-50 text-brand-700'
+                        ? 'border-brand-600 bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-200'
                         : 'border-slate-200 text-slate-700 hover:border-slate-300'
                     }`}
                   >
