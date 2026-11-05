@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Check, CheckCheck, FileText, SmilePlus } from 'lucide-react';
+import { Check, CheckCheck, SmilePlus } from 'lucide-react';
 
 import {
   Popover,
@@ -12,6 +12,7 @@ import type { ChatMessage, MessageAttachment } from '@/lib/types/messaging';
 import { Avatar } from '@/components/shared/Avatar';
 import { Spinner } from '@/components/shared/LoadingSpinner';
 import { VoiceNote } from './VoiceNote';
+import { DocumentAttachment } from './DocumentAttachment';
 import { ImageLightbox } from '@/components/shared/ImageLightbox';
 
 const QUICK_REACTIONS = ['👍', '❤️', '😂', '🎉', '😢', '🙏'];
@@ -34,7 +35,7 @@ export interface SenderTag { label: string; lead?: boolean }
 const isVisual = (file: MessageAttachment) => /^(image|video)\//.test(file.fileType || '');
 
 /**
- * Images, videos and voice notes, played where they were sent. Photos and
+ * Images, videos, voice notes and documents, opened where they were sent. Photos and
  * videos fill the bubble edge to edge (it keeps a thin frame); the rest sit in
  * the bubble's own padding.
  */
@@ -83,22 +84,8 @@ function MessageAttachments({ attachments, isMine, framed, meta, ignoreTap }: {
             </div>
           );
         }
-        return (
-          <a
-            key={file.id}
-            href={file.fileUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={`flex w-64 max-w-full items-center gap-3 rounded-xl p-2.5 transition-colors ${
-              isMine ? 'bg-white/15 hover:bg-white/20' : 'bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10'
-            } ${framed ? 'm-1' : ''}`}
-          >
-            <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${isMine ? 'bg-white/20' : 'bg-brand-500/10 text-brand-600'}`}>
-              <FileText className="h-4 w-4" aria-hidden />
-            </span>
-            <span className="min-w-0 flex-1 truncate text-sm font-medium">{file.fileName}</span>
-          </a>
-        );
+        // A document: its type and size, opened in the app (PDF, text) or downloaded (Office).
+        return <DocumentAttachment key={file.id} file={file} isMine={isMine} framed={framed} ignoreTap={ignoreTap} />;
       })}
       {/* The viewer is portalled, but React still bubbles its events through the
           bubble, whose long press and right click open reactions; stop them here. */}

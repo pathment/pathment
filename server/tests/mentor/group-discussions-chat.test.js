@@ -211,8 +211,26 @@ describe('group discussions', () => {
       const result = await messaging.sendGroupAttachment(alice.id, { conversationId: group.conversationId }, note);
       expect(result.message.attachments).toHaveLength(1);
       expect(result.message.attachments[0].fileType).toBe('audio/webm');
-      await expect(messaging.sendGroupAttachment(alice.id, { conversationId: group.conversationId }, { ...note, mimetype: 'application/pdf' }))
-        .rejects.toThrow(/images, videos and voice notes/);
+      const zip = { ...note, mimetype: 'application/zip', originalname: 'code.zip' };
+      await expect(messaging.sendGroupAttachment(alice.id, { conversationId: group.conversationId }, zip))
+        .rejects.toThrow(/PDF, Word, Excel, PowerPoint or text file/);
+    });
+
+    it('sends a PDF or Word file as a raw upload that keeps its name', async () => {
+      const { uploadToCloudinary } = require('../../src/utils/cloudinaryUpload');
+      uploadToCloudinary.mockClear();
+      const group = await makeGroup();
+      const pdf = { buffer: Buffer.from('%PDF'), mimetype: 'application/pdf', originalname: 'Team plan.v2.pdf', size: 4 };
+      const result = await messaging.sendGroupAttachment(alice.id, { conversationId: group.conversationId }, pdf);
+      expect(result.message.attachments[0]).toMatchObject({ fileName: 'Team plan.v2.pdf', fileType: 'application/pdf' });
+      const [, folder, resourceType, extra] = uploadToCloudinary.mock.calls[0];
+      expect([folder, resourceType]).toEqual(['pathment/discussions', 'raw']);
+      expect(extra.filename_override).toBe('Team plan_v2.pdf');
+
+      const docx = {
+        buffer: Buffer.from('x'), mimetype: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', originalname: 'notes.docx', size: 1,
+      };
+      await expect(messaging.sendGroupAttachment(alice.id, { conversationId: group.conversationId }, docx)).resolves.toBeTruthy();
     });
 
     it('does not store a file in a frozen chat', async () => {

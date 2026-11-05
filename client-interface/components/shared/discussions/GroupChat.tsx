@@ -11,6 +11,7 @@ import { messagingApi } from '@/lib/services/messaging-api';
 import { acquireSocket } from '@/lib/services/socket-client';
 import { useAuth } from '@/lib/context/AuthContext';
 import { useInvalidate } from '@/lib/query';
+import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import type { ChatMessage, ConversationSummary, MessageReaction } from '@/lib/types/messaging';
 
 const PAGE_SIZE = 30;
@@ -108,7 +109,8 @@ export function GroupChat({ conversationId, groupId, title, subtitle, canPost, c
       merge(await messagingApi.sendMessage({ conversationId, messageText: text }));
       setDraft('');
     } catch (error) {
-      toast.error((error as { message?: string })?.message || 'Could not send that');
+      // The server's own reason (frozen chat, not a member), not axios's status line.
+      toast.error(extractApiErrorMessage(error, 'Could not send that'));
     } finally {
       setSending(false);
     }
@@ -119,7 +121,8 @@ export function GroupChat({ conversationId, groupId, title, subtitle, canPost, c
       merge(await messagingApi.sendAttachment(conversationId, file, draft.trim() || undefined));
       setDraft('');
     } catch (error) {
-      toast.error((error as { message?: string })?.message || 'Could not send that file');
+      // e.g. "is over 10MB", "Send an image, video … or text file", an upload failure.
+      toast.error(extractApiErrorMessage(error, 'Could not send that file'));
     }
   };
 
