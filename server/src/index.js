@@ -170,6 +170,9 @@ async function start() {
 
     if (process.env.NOTIFICATION_SCHEDULER_DISABLED !== 'true') {
       notificationScheduler.start();
+      // Group discussion meetings remind 10 minutes out, which an hourly
+      // scheduler cannot do, so they run on their own one-minute loop.
+      require('./workers/discussionMeetingWorker').start();
     }
 
     // Pull progress for open course enrollments (Buildment) every 15 minutes.

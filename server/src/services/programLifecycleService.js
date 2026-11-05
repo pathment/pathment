@@ -194,6 +194,21 @@ class ProgramLifecycleService {
             transaction,
           },
         );
+        // Group discussion meetings are sessions too (kind 'discussion', hidden
+        // from the call above by the model's default scope): close the ones
+        // still to come the same way, so a closed clan is not reminded of them.
+        await models.CohortReviewSession.scope('discussion').update(
+          { status: 'finished', meetingEndedAt: closedAt },
+          {
+            where: {
+              clanId: { [Op.in]: cohortClanIds },
+              discussionGroupId: { [Op.ne]: null },
+              scheduledAt: { [Op.gt]: closedAt },
+              meetingStartedAt: null,
+            },
+            transaction,
+          },
+        );
       }
       await models.Cohort.update({ status: 'completed' }, { where: { programId }, transaction });
       await program.update({ status: 'completed', closedAt }, { transaction });

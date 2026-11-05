@@ -303,3 +303,5 @@ class AdminMeetingService {
 }
 
 module.exports = new AdminMeetingService();
+// Shared with the group discussion meetings, which mail their invites the same way.
+module.exports.fmtInZone = fmtInZone;
