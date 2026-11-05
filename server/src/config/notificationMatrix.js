@@ -63,6 +63,10 @@ EXTENSION_HANDLED: 'extension_handled',
   REVIEW_REMINDER: 'review_reminder',
   ADMIN_MEETING_INVITE: 'admin_meeting_invite',
   ADMIN_MEETING_REMINDER: 'admin_meeting_reminder',
+  // Group discussion meetings: scheduled (in-app; the email + .ics is sent by
+  // discussionMeetingService), and the 10 minute reminder / went-live nudge.
+  DISCUSSION_MEETING_SCHEDULED: 'discussion_meeting_scheduled',
+  DISCUSSION_MEETING_REMINDER: 'discussion_meeting_reminder',
   CERTIFICATE_AWARDED: 'certificate_awarded',
   // Certificates are graded by AI and then signed off by the mentor who
   // actually knows the person. These two carry that round.
@@ -546,6 +550,22 @@ const NOTIFICATION_MATRIX = {
     audience: 'any',
     preferenceKey: 'admin_meeting_reminder',
     channels: { inApp: true, email: false, chat: false }
+  },
+  // Group discussion meeting scheduled - in-app here; the invite email with the
+  // calendar .ics is enqueued directly by discussionMeetingService.
+  [NOTIFICATION_EVENTS.DISCUSSION_MEETING_SCHEDULED]: {
+    type: 'system',
+    audience: 'any',
+    preferenceKey: 'discussion_meeting_scheduled',
+    channels: { inApp: true, email: false, chat: false }
+  },
+  // 10 minutes before: in-app for whoever is on the platform, email for whoever
+  // is not (the service splits them by live socket). Also the went-live nudge.
+  [NOTIFICATION_EVENTS.DISCUSSION_MEETING_REMINDER]: {
+    type: 'system',
+    audience: 'any',
+    preferenceKey: 'discussion_meeting_reminder',
+    channels: { inApp: true, email: true, chat: false }
   }
 };
 
@@ -597,6 +617,8 @@ const EMAIL_PREFERENCE_CATEGORIES = [
   { group: 'Program', key: 'meeting_booked', label: 'A 1:1 is booked' },
   { group: 'Program', key: 'meeting_cancelled', label: 'A 1:1 is cancelled' },
   { group: 'Program', key: 'meeting_reminder', label: 'A 1:1 meeting reminder is sent (30m before)' },
+  { group: 'Program', key: 'discussion_meeting_scheduled', label: 'A group discussion meeting is scheduled for me' },
+  { group: 'Program', key: 'discussion_meeting_reminder', label: 'A group discussion meeting starts in 10 minutes (when I am not on Pathment)' },
   { group: 'Program', key: 'cross_clan_assigned', label: 'I\'m asked to cover or help another clan' },
   { group: 'Program', key: 'new_mentee_in_clan', label: 'A new mentee joins my clan' },
   { group: 'Program', key: 'promotion_nominated', label: 'A mentee is nominated for promotion (admins)' },

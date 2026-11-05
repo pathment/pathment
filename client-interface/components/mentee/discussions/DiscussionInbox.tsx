@@ -7,8 +7,9 @@ import {
 import { GroupChat } from '@/components/shared/discussions/GroupChat';
 import { PinnedScenario } from '@/components/shared/discussions/PinnedScenario';
 import { GroupMembersButton } from '@/components/shared/discussions/GroupMembers';
-import type { DiscussionWindowFields, MyDiscussionTask } from '@/lib/services/group-discussions-api';
+import type { DiscussionMeeting, DiscussionWindowFields, MyDiscussionTask } from '@/lib/services/group-discussions-api';
 import { DiscussionSubmitButton } from './DiscussionSubmitButton';
+import { MyParticipationButton } from './DiscussionMeetingArea';
 
 /** What a row and its chat need: a mentee's own groups and a mentor's both fit. */
 export type InboxDiscussion = DiscussionWindowFields & {
@@ -19,6 +20,8 @@ export type InboxDiscussion = DiscussionWindowFields & {
   scenario: { title: string; prompt: string | null } | null;
   /** A mentee's own task for the group, handed in from the chat. */
   myTask?: MyDiscussionTask | null;
+  /** The group's live meeting, joined from the top of the chat. */
+  meeting?: DiscussionMeeting | null;
 };
 
 const titleOf = (group: InboxDiscussion) => group.scenario?.title || group.name;
@@ -101,7 +104,12 @@ export function DiscussionRows({ groups, loading, query, selectedId, onOpen, own
   );
 }
 
-/** One open discussion in the Messages pane. Its mentor (`owner`) can post at any time. */
+/**
+ * One open discussion in the Messages pane: the one place a discussion opens.
+ * Its mentor (`owner`) can post at any time. A mentee also gets their own
+ * participation here; the group's meeting is joined from the banner at the
+ * top of the page, and its video sits above Messages.
+ */
 export function DiscussionThread({ group, onBack, owner = false }: { group: InboxDiscussion; onBack: () => void; owner?: boolean }) {
   return (
     <GroupChat
@@ -112,17 +120,20 @@ export function DiscussionThread({ group, onBack, owner = false }: { group: Inbo
       canPost={owner || group.state === 'open'}
       closedNote={DISCUSSION_CLOSED_NOTE[group.state]}
       header={(
-        <PinnedScenario
-          title={titleOf(group)}
-          prompt={group.scenario?.prompt}
-          onBack={onBack}
-          trailing={(
-            <>
-              {!owner && <DiscussionSubmitButton task={group.myTask} groupId={group.id} />}
-              <GroupMembersButton groupId={group.id} />
-            </>
-          )}
-        />
+        <>
+          <PinnedScenario
+            title={titleOf(group)}
+            prompt={group.scenario?.prompt}
+            onBack={onBack}
+            trailing={(
+              <>
+                {!owner && <MyParticipationButton groupId={group.id} />}
+                {!owner && <DiscussionSubmitButton task={group.myTask} groupId={group.id} />}
+                <GroupMembersButton groupId={group.id} />
+              </>
+            )}
+          />
+        </>
       )}
     />
   );

@@ -86,6 +86,9 @@ export const qk = {
     groupDiscussion: (id: string) => ['mentor', 'group-discussion', id] as const,
     /** How a mentee took part in the group behind one of their tasks. */
     discussionParticipation: (taskId: string) => ['mentor', 'discussion-participation', taskId] as const,
+    /** A group's live meeting with its roster, and the post-meeting summary. */
+    discussionMeeting: (groupId: string) => ['mentor', 'discussion-meeting', groupId] as const,
+    discussionMeetingSummary: (groupId: string) => ['mentor', 'discussion-meeting-summary', groupId] as const,
   },
 
   mentee: {
@@ -103,6 +106,10 @@ export const qk = {
     groupDiscussion: (id: string) => ['mentee', 'group-discussion', id] as const,
     /** Who is in a group's chat; mentors read it through the same endpoint. */
     groupDiscussionMembers: (id: string) => ['mentee', 'group-discussion-members', id] as const,
+    /** Their own speaking time, participation and mentor feedback in one group. */
+    groupDiscussionResult: (id: string) => ['mentee', 'group-discussion-result', id] as const,
+    /** Group discussion meetings live or about to start, for the Join banner (any role). */
+    upcomingDiscussionMeetings: ['me', 'discussion-meetings', 'upcoming'] as const,
   },
 
   /** Selection pools: the pre-clan qualifying round. */

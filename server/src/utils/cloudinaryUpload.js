@@ -8,7 +8,13 @@ const { Readable } = require('stream');
  * @param {string} resourceType - Type of resource (image, video, raw, auto)
  * @returns {Promise<Object>} Cloudinary upload result
  */
-const uploadToCloudinary = (fileBuffer, folder = 'pathment/submissions', resourceType = 'auto') => {
+/**
+ * `extra` is optional upload options merged over the defaults, e.g.
+ * `{ filename_override: 'report.pdf' }` so a raw file keeps its name and
+ * extension (a buffer has none, and a raw file without an extension is served
+ * as a generic download rather than opened by the browser).
+ */
+const uploadToCloudinary = (fileBuffer, folder = 'pathment/submissions', resourceType = 'auto', extra = {}) => {
   return new Promise((resolve, reject) => {
     const uploadStream = cloudinary.uploader.upload_stream(
       {
@@ -16,7 +22,8 @@ const uploadToCloudinary = (fileBuffer, folder = 'pathment/submissions', resourc
         resource_type: resourceType,
         type: 'upload',         // explicit public delivery
         use_filename: true,
-        unique_filename: true
+        unique_filename: true,
+        ...extra,
       },
       (error, result) => {
         if (error) {

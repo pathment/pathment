@@ -17,10 +17,10 @@ module.exports = (sequelize, DataTypes) => {
     sessionDate: { type: DataTypes.DATEONLY, allowNull: false, field: 'session_date' },
     title: { type: DataTypes.STRING(150), allowNull: true },
     /**
-     * Every session made now is a `review`. Older `discussion` and
-     * `presentation` rows (the rubric-scored live sessions, replaced by chat
-     * group discussions and video presentation tasks) are kept, and the
-     * review service reads only reviews, so they never pass for one.
+     * `review` is a Clan Review. `discussion` is a group discussion's live
+     * meeting when `discussionGroupId` is set; older `discussion` and
+     * `presentation` rows without one are the retired rubric-scored sessions,
+     * kept as they were. Only reviews are visible by default (see defaultScope).
      */
     kind: {
       type: DataTypes.STRING(16), allowNull: false, defaultValue: 'review',
@@ -53,10 +53,27 @@ module.exports = (sequelize, DataTypes) => {
     invitesSentAt: { type: DataTypes.DATE, allowNull: true, field: 'invites_sent_at' },
     reminded24hAt: { type: DataTypes.DATE, allowNull: true, field: 'reminded_24h_at' },
     reminded1hAt: { type: DataTypes.DATE, allowNull: true, field: 'reminded_1h_at' },
+    // ── A group discussion's meeting (kind 'discussion'), migration 147 ──
+    // The group it belongs to. `scheduledAt` is its start, `scheduledEndAt`
+    // its optional end, and `reminded1hAt` marks its 10 minute reminder.
+    discussionGroupId: { type: DataTypes.UUID, allowNull: true, field: 'discussion_group_id' },
+    scheduledEndAt: { type: DataTypes.DATE, allowNull: true, field: 'scheduled_end_at' },
   }, {
     tableName: 'cohort_review_sessions',
     underscored: true,
     timestamps: true,
+    /**
+     * Everything that reads this table as Clan Review sees reviews only:
+     * finds, counts, updates, deletes and every include from an entry. A group
+     * discussion's meeting lives here too (kind 'discussion'), and without this
+     * it would show a clan-wide Join banner, open on a review schedule, count
+     * in attendance and appear in review history. Discussion code asks for its
+     * own rows with `.scope('discussion')`.
+     */
+    defaultScope: { where: { kind: 'review' } },
+    scopes: {
+      discussion: { where: { kind: 'discussion' } },
+    },
     indexes: [
       { fields: ['mentor_id', 'session_date'] },
       { fields: ['clan_id', 'session_date'] },
@@ -67,6 +84,7 @@ module.exports = (sequelize, DataTypes) => {
     CohortReviewSession.hasMany(models.CohortReviewEntry, { foreignKey: 'session_id', as: 'entries' });
     CohortReviewSession.belongsTo(models.User, { foreignKey: 'mentor_id', as: 'mentor' });
     if (models.Clan) CohortReviewSession.belongsTo(models.Clan, { foreignKey: 'clan_id', as: 'clan' });
+    if (models.DiscussionGroup) CohortReviewSession.belongsTo(models.DiscussionGroup, { foreignKey: 'discussion_group_id', as: 'discussionGroup' });
   };
 
   return CohortReviewSession;

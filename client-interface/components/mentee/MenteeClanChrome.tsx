@@ -3,6 +3,7 @@
 import { InterviewResumeBar } from '@/components/mentee/InterviewResumeBar';
 import { ReviewJoinBar } from '@/components/mentee/ReviewJoinBar';
 import { PausedBanner } from '@/components/mentee/PausedBanner';
+import { DiscussionMeetingBanner } from '@/components/shared/discussions/meeting/DiscussionMeetingBanner';
 import { useMenteeScope } from '@/lib/hooks/mentee';
 
 /**
@@ -24,6 +25,7 @@ export function MenteeClanChrome() {
     <>
       <PausedBanner />
       <ReviewJoinBar />
+      <DiscussionMeetingBanner role="mentee" />
     </>
   );
 }

@@ -16,6 +16,8 @@ import { VideoLinks, nonVideoLinks } from '@/components/shared/VideoPlayerModal'
 import { DiscussionParticipation } from '@/components/mentor/discussions/DiscussionParticipation';
 import { TaskProgressTimeline } from '@/components/shared/TaskProgressTimeline';
 import type { ApprovalItem } from '@/lib/hooks/mentor';
+import { groupDiscussionsApi } from '@/lib/services/group-discussions-api';
+import { useApiQuery, qk } from '@/lib/query';
 
 type Decision = 'approved' | 'approved_notes' | 'changes' | 'rejected';
 
@@ -29,6 +31,9 @@ const FEEDBACK_TEMPLATES = [
 // Default penalty for a LATE submission: knock 20% off the points and drop the
 // quality rating to 4/5. The mentor can override both, but must give a reason.
 const LATE_PENALTY_PCT = 0.2;
+
+/** A suggested rating as words read it: "4", or "3.5" for a half. */
+const starsText = (stars: number) => (Number.isInteger(stars) ? String(stars) : stars.toFixed(1));
 
 // Shared look of the Back / Next buttons in the header (padding differs per side).
 const STEP_BUTTON =
@@ -69,6 +74,22 @@ export function ReviewDrawer({
   const [notes, setNotes] = useState(isLate ? 'Submitted late — points and rating reduced accordingly.' : '');
   const [busy, setBusy] = useState<Decision | null>(null);
 
+  // A group discussion's rating starts at the average of its feedback (the
+  // stars on the participation section) and follows it as the mentor rates,
+  // until the mentor picks a rating of their own.
+  const isDiscussion = item.type === 'group_discussion';
+  const [ratingTouched, setRatingTouched] = useState(false);
+  const { data: participation } = useApiQuery({
+    queryKey: qk.mentor.discussionParticipation(item.taskId),
+    queryFn: () => groupDiscussionsApi.participation(item.taskId),
+    enabled: isDiscussion,
+  });
+  const discussionStars = isDiscussion ? (participation?.rating?.stars ?? null) : null;
+  useEffect(() => {
+    // 0 is a real suggestion here (no feedback and no activity), so no floor of 1.
+    if (discussionStars != null && !ratingTouched) setRating(Math.round(discussionStars));
+  }, [discussionStars, ratingTouched]);
+
   // Stepping to another submission keeps the drawer open, so the form has to
   // start over — one mentee's ticks, points and notes must never carry across.
   const [formFor, setFormFor] = useState(item.submissionId);
@@ -77,6 +98,7 @@ export function ReviewDrawer({
     setChecked(new Set());
     setPoints(total - latePenalty);
     setRating(isLate ? 4 : 5);
+    setRatingTouched(false);
     setNotes(isLate ? 'Submitted late — points and rating reduced accordingly.' : '');
   }
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -273,6 +295,17 @@ export function ReviewDrawer({
       }
     >
       <div ref={bodyRef} className="space-y-6">
+        {/* A Group Discussion task is judged on how they took part: that, and the
+            feedback that rates it, come before everything else. */}
+        {isDiscussion && (
+          <DiscussionParticipation
+            taskId={item.taskId}
+            menteeId={item.mentee?.id}
+            menteeName={item.mentee?.name}
+            canRate={!readOnly}
+          />
+        )}
+
         {item.isLate && (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400 text-xs"><Clock className="w-3 h-3" />Submitted late</span>
         )}
@@ -304,9 +337,6 @@ export function ReviewDrawer({
         <TaskProgressTimeline taskId={item.taskId} mode="mentor" />
 
         {/* Submission */}
-        {/* A Group Discussion task is judged on how they took part, so that comes first. */}
-        {item.type === 'group_discussion' && <DiscussionParticipation taskId={item.taskId} />}
-
         <div>
           <h3 className="text-sm font-medium text-slate-700 mb-2">Submission</h3>
           <RichContent
@@ -368,11 +398,32 @@ export function ReviewDrawer({
           </h3>
           <div className="flex items-center gap-1" role="radiogroup" aria-label="Quality rating">
             {[1, 2, 3, 4, 5].map((n) => (
-              <button key={n} onClick={() => setRating(n)} className="p-0.5" aria-label={`${n} star${n > 1 ? 's' : ''}`} aria-pressed={n === rating}>
+              <button key={n} onClick={() => { setRating(n); setRatingTouched(true); }} className="p-0.5" aria-label={`${n} star${n > 1 ? 's' : ''}`} aria-pressed={n === rating}>
                 <Star className={`w-6 h-6 ${n <= rating ? 'fill-amber-400 text-amber-400' : 'text-slate-300'}`} />
               </button>
             ))}
           </div>
+          {isDiscussion && (
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              {discussionStars == null
+                ? 'Give your feedback above and a rating is suggested from it. You can also pick one yourself.'
+                : ratingTouched
+                  ? <>
+                    You picked <span className="font-semibold text-slate-700 dark:text-slate-300">{rating} out of 5</span>.
+                    {' '}The suggested rating is {starsText(discussionStars)} out of 5.{' '}
+                    <button type="button" onClick={() => { setRating(Math.round(discussionStars)); setRatingTouched(false); }} className="font-medium text-brand-600 hover:underline">Use the suggested rating</button>
+                  </>
+                  : <>
+                    Suggested rating: <span className="font-semibold text-slate-700 dark:text-slate-300">{starsText(discussionStars)} out of 5</span>
+                    {participation?.rating?.basis === 'both'
+                      ? ', based on your feedback (70%) and their activity in the group (30%)'
+                      : participation?.rating?.basis === 'activity'
+                        ? ', based on their activity in the group only (no feedback yet)'
+                        : ', based on your feedback'}.
+                    {' '}Click a star to choose a different rating.
+                  </>}
+            </p>
+          )}
         </div>
 
         {/* Points — full by default; the mentor can award less if work fell short. */}

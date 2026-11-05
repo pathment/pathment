@@ -10,6 +10,23 @@ const { VISIBLE_MEMBERSHIP_STATUSES, HISTORICAL_MEMBERSHIP_STATUSES } = require(
 const { getRequestContext } = require('../utils/auditContext');
 const logger = require('../utils/logger');
 const { uploadToCloudinary } = require('../utils/cloudinaryUpload');
+const path = require('path');
+
+/** Documents a group discussion chat accepts, besides images, video and voice notes. */
+const GROUP_DOCUMENT_MIME_TYPES = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'text/plain',
+  'text/csv',
+]);
+const GROUP_DOCUMENT_EXTENSIONS = new Set(['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.txt', '.csv']);
+/** Cloudinary's cap on a raw (document) upload. Images and videos may be larger. */
+const GROUP_DOCUMENT_MAX_BYTES = 10 * 1024 * 1024;
 
 // Clan roles that mean "I mentor the people in this clan". Mirrors
 // authzService.mentoredClanIds — kept local because this file only needs the
@@ -873,20 +890,50 @@ class MessagingService {
   }
 
   /**
-   * An image, video or voice note in a group discussion. Whether they may post
-   * is checked before the upload, so a frozen chat cannot store a file first.
+   * An image, video, voice note or document in a group discussion. Whether they
+   * may post is checked before the upload, so a frozen chat cannot store a
+   * file first.
+   *
+   * Documents (PDF, Word, Excel, PowerPoint, plain text, CSV) are uploaded as
+   * Cloudinary `raw` with their own name and extension. `auto` would put a PDF
+   * through the image pipeline, which needs signing and answers 401 (the task
+   * submission upload has the same rule), and without the extension the file
+   * is served as a generic download rather than opened.
    */
   async sendGroupAttachment(senderId, { conversationId, messageText }, file) {
     if (!file) throw new ValidationError('Choose a file to send');
-    if (!/^(image|video|audio)\//.test(file.mimetype || '')) {
-      throw new ValidationError('Only images, videos and voice notes can be sent here');
+    const mime = String(file.mimetype || '');
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    const isMedia = /^(image|video|audio)\//.test(mime);
+    const isDocument = GROUP_DOCUMENT_MIME_TYPES.has(mime) || GROUP_DOCUMENT_EXTENSIONS.has(ext);
+    if (!isMedia && !isDocument) {
+      throw new ValidationError('Send an image, video, voice note, or a PDF, Word, Excel, PowerPoint or text file');
+    }
+    // Cloudinary takes raw files (documents) up to 10MB, unlike media; said up
+    // front rather than as a failed upload. The task submission limit is the same.
+    if (!isMedia && file.size > GROUP_DOCUMENT_MAX_BYTES) {
+      throw new ValidationError(`"${file.originalname}" is over 10MB. Documents can be up to 10MB; images and videos up to 25MB.`);
     }
     const conversation = await models.Conversation.findByPk(conversationId, { attributes: ['id', 'type'] });
     if (!conversation) throw new NotFoundError('Conversation not found');
     if (conversation.type !== 'group') throw new ValidationError('Files can only be sent in a group discussion');
     await require('./groupDiscussionService').assertCanPost(conversationId, senderId);
 
-    const uploaded = await uploadToCloudinary(file.buffer, 'pathment/discussions', 'auto');
+    let uploaded;
+    try {
+      uploaded = isMedia
+        ? await uploadToCloudinary(file.buffer, 'pathment/discussions', 'auto')
+        : await uploadToCloudinary(file.buffer, 'pathment/discussions', 'raw', {
+          // Only the extension's dot survives, so the stored id reads back cleanly.
+          filename_override: `${path.basename(String(file.originalname || 'document'), ext).replace(/[^\w\- ]+/g, '_').slice(0, 100) || 'document'}${ext}`,
+        });
+    } catch (error) {
+      // Cloudinary rejects with a plain object, which would surface as a bare
+      // 500. Say what failed and why, as the task submission upload does.
+      logger.error('[messaging] group attachment upload failed', { message: error?.message, http: error?.http_code });
+      const detail = error?.message ? ` (${error.message})` : '';
+      throw new ValidationError(`Could not upload "${file.originalname || 'the file'}"${detail}. Check its type and size, then try again.`);
+    }
     return this.sendMessage(
       senderId,
       { conversationId, messageText: String(messageText || '').trim().slice(0, 5000) },
@@ -1058,11 +1105,9 @@ class MessagingService {
           title: isGroup ? `New message in ${discussionGroup.name}` : 'New message',
           message: preview.length > 140 ? `${preview.slice(0, 140)}...` : preview,
           // conversationId stays in the URL: markConversationRead finds these by it.
-          // A mentor reads group chats in Messages, a mentee on the discussion's page.
+          // Mentors and mentees both read group chats in Messages.
           actionUrl: isGroup
-            ? (role === 'mentee'
-              ? `/mentee/discussions/${discussionGroup.id}?conversationId=${conversationId}`
-              : `/mentor/messages?discussion=${discussionGroup.id}&conversationId=${conversationId}`)
+            ? `/${role === 'mentee' ? 'mentee' : 'mentor'}/messages?discussion=${discussionGroup.id}&conversationId=${conversationId}`
             : `/${role}/messages?conversationId=${conversationId}`,
           actionLabel: 'Open Chat',
           relatedEntityType: 'message',

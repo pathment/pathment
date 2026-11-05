@@ -221,9 +221,10 @@ class GroupDiscussionService {
     const conversationIds = scenarios
       .flatMap((s) => s.groups.map((g) => g.conversationId))
       .filter(Boolean);
-    const [memberCounts, messageCounts] = await Promise.all([
+    const [memberCounts, messageCounts, meetings] = await Promise.all([
       this._countByConversation(models.ConversationParticipant, 'conversationId', conversationIds, { leftAt: null, role: 'participant' }),
       this._countByConversation(models.Message, 'threadId', conversationIds),
+      this._meetings(scenarios.flatMap((s) => s.groups.map((g) => g.id))),
     ]);
     return {
       clanId: resolvedClanId,
@@ -232,6 +233,7 @@ class GroupDiscussionService {
         groups: s.groups.map((g) => ({
           ...g.toJSON(),
           ...discussionWindow(g),
+          meeting: meetings.get(g.id) || null,
           memberCount: memberCounts.get(g.conversationId) || 0,
           messageCount: messageCounts.get(g.conversationId) || 0,
         })),
@@ -435,11 +437,32 @@ class GroupDiscussionService {
     return { deleted: true };
   }
 
+  /**
+   * The group's meeting is a Clan Review session of kind 'discussion', and its
+   * entries have no foreign key to it, so both go by hand. Feedback rows go
+   * with the group (ON DELETE CASCADE).
+   */
+  async _destroyMeeting(group, transaction) {
+    const sessions = await models.CohortReviewSession.scope('discussion').findAll({
+      where: { discussionGroupId: group.id }, attributes: ['id'], raw: true, transaction,
+    });
+    const ids = sessions.map((s) => s.id);
+    if (!ids.length) return;
+    await models.CohortReviewEntry.destroy({ where: { sessionId: { [Op.in]: ids } }, transaction });
+    await models.CohortReviewSession.scope('discussion').destroy({ where: { id: { [Op.in]: ids } }, transaction });
+  }
+
+  /** Each group's meeting, read from its session. */
+  _meetings(groupIds) {
+    return require('./discussionMeetingService').viewsFor(groupIds);
+  }
+
   /** The conversation tables do not cascade, so every layer is removed by hand. */
   async _destroyGroup(group) {
     const conversationId = group.conversationId;
     const files = await sequelize.transaction(async (transaction) => {
       if (!conversationId) {
+        await this._destroyMeeting(group, transaction);
         await group.destroy({ transaction });
         return [];
       }
@@ -451,6 +474,7 @@ class GroupDiscussionService {
         ? await models.MessageAttachment.findAll({ where: { messageId: { [Op.in]: messageIds } }, transaction })
         : [];
       await models.Conversation.update({ lastMessageId: null }, { where: { id: conversationId }, transaction });
+      await this._destroyMeeting(group, transaction);
       await group.destroy({ transaction });
       if (messageIds.length) {
         await models.MessageAttachment.destroy({ where: { messageId: { [Op.in]: messageIds } }, force: true, transaction });
@@ -468,9 +492,18 @@ class GroupDiscussionService {
     // After the commit, and best-effort: a file left on Cloudinary is tidiness,
     // not a reason to keep a discussion the mentor asked to delete.
     for (const file of files) {
-      const publicId = extractPublicId(file.url);
+      const type = String(file.type || '');
+      // Images and video (voice notes are video to Cloudinary) are stored as
+      // media; documents as `raw`, whose public id keeps its extension.
+      const isRaw = String(file.url || '').includes('/raw/upload/') || !/^(image|video|audio)\//.test(type);
+      let publicId = extractPublicId(file.url);
       if (!publicId) continue;
-      const resourceType = String(file.type || '').startsWith('image/') ? 'image' : 'video';
+      if (isRaw) {
+        const last = String(file.url).split('?')[0].split('/').pop() || '';
+        const dot = last.lastIndexOf('.');
+        if (dot > 0) publicId += last.slice(dot);
+      }
+      const resourceType = isRaw ? 'raw' : type.startsWith('image/') ? 'image' : 'video';
       deleteFromCloudinary(publicId, resourceType)
         .catch((error) => logger.warn('Discussion file could not be removed', { message: error.message }));
     }
@@ -481,9 +514,11 @@ class GroupDiscussionService {
   async getForMentor(mentorId, groupId) {
     const group = await this._mentorGroup(mentorId, groupId);
     await this._ensureMentorInChat(group, mentorId);
+    const meetings = await this._meetings([group.id]);
     return {
       ...group.toJSON(),
       ...discussionWindow(group),
+      meeting: meetings.get(group.id) || null,
       members: await this.contribution(group),
     };
   }
@@ -605,7 +640,14 @@ class GroupDiscussionService {
     const counts = members.map((m) => m.messageCount);
     const total = counts.reduce((sum, n) => sum + n, 0);
     const own = member?.messageCount || 0;
+    // The live meeting, the mentors' feedback and the star rating built from
+    // both. The mentor reviewing the task sees every mentor's feedback.
+    const result = await require('./discussionMeetingService').resultFor(group, task.menteeId);
     return {
+      meeting: result.meeting ? { ...result.meeting, ...(result.member?.meeting || { joined: false, joinedAt: null, secondsPresent: 0, talkSeconds: 0 }) } : null,
+      rating: result.rating,
+      feedback: result.feedback,
+      groupMax: result.groupMax,
       group: {
         id: group.id,
         name: group.name,
@@ -670,7 +712,7 @@ class GroupDiscussionService {
   }
 
   /** What a mentee sees about one group; their own contribution, nobody else's. */
-  _forMentee(group, participant, ownMessages, myTask = null) {
+  _forMentee(group, participant, ownMessages, myTask = null, meeting = null) {
     return {
       id: group.id,
       name: group.name,
@@ -684,6 +726,7 @@ class GroupDiscussionService {
       timezone: group.timezone,
       scenario: group.scenario ? { id: group.scenario.id, title: group.scenario.title, prompt: group.scenario.prompt } : null,
       ...discussionWindow(group),
+      meeting,
       myMessageCount: ownMessages,
       lastReadAt: participant.lastReadAt || null,
       myTask,
@@ -706,15 +749,17 @@ class GroupDiscussionService {
       ],
       order: [['created_at', 'DESC']],
     });
-    const [counts, tasks] = await Promise.all([
+    const [counts, tasks, meetings] = await Promise.all([
       this._countByConversation(models.Message, 'threadId', conversationIds, { senderId: userId }),
       this._myTasks(userId, groups.map((group) => group.id)),
+      this._meetings(groups.map((group) => group.id)),
     ]);
     return groups.map((group) => this._forMentee(
       group,
       participantByConversation.get(group.conversationId),
       counts.get(group.conversationId) || 0,
       tasks.get(group.id) || null,
+      meetings.get(group.id) || null,
     ));
   }
 
@@ -730,11 +775,12 @@ class GroupDiscussionService {
       where: { conversationId: group.conversationId, userId, leftAt: null },
     });
     if (!participant) throw new ForbiddenError('You are not part of this discussion');
-    const [own, tasks] = await Promise.all([
+    const [own, tasks, meetings] = await Promise.all([
       models.Message.count({ where: { threadId: group.conversationId, senderId: userId } }),
       this._myTasks(userId, [group.id]),
+      this._meetings([group.id]),
     ]);
-    return this._forMentee(group, participant, own, tasks.get(group.id) || null);
+    return this._forMentee(group, participant, own, tasks.get(group.id) || null, meetings.get(group.id) || null);
   }
 
   /**

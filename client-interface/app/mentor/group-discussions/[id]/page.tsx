@@ -8,6 +8,7 @@ import { ChevronLeft, Loader2, MessageCircle, Trash2, UserPlus } from 'lucide-re
 import { Dropdown } from '@/components/shared/Dropdown';
 import { DiscussionStateBadge, discussionTimeLabel } from '@/components/shared/discussions/DiscussionStatus';
 import { MemberProgress, memberName } from '@/components/mentor/discussions/MemberProgress';
+import { DiscussionMeetingPanel } from '@/components/mentor/discussions/DiscussionMeetingPanel';
 import { MenteePicker } from '@/components/mentor/discussions/MenteePicker';
 import { useClanMentees } from '@/components/mentor/discussions/useClanMentees';
 import { announceGroupTasks } from '@/components/mentor/discussions/announceGroupTasks';
@@ -138,6 +139,8 @@ export default function MentorGroupDiscussionPage() {
           </button>
         </div>
       </div>
+
+      <DiscussionMeetingPanel groupId={group.id} groupName={group.name} />
 
       <MemberProgress
         members={group.members}
