@@ -66,6 +66,7 @@ export function PersistentCall({
   }, [dockedTo]);
 
   const isDocked = Boolean(dockedTo && rect);
+  const isDiscussion = call.kind === 'discussion';
   const floatSize = minimized ? 'w-[260px] h-[168px]' : 'w-[380px] h-[280px] sm:w-[440px] sm:h-[300px]';
 
   return (
@@ -88,7 +89,7 @@ export function PersistentCall({
           <p className="text-[11px] font-medium text-white truncate flex-1">{call.title}</p>
           <button
             onClick={() => router.push(call.returnHref)}
-            title="Back to the review"
+            title={isDiscussion ? 'Back to the discussion' : 'Back to the review'}
             className="p-1 rounded text-slate-300 hover:text-white hover:bg-white/10"
           >
             <ArrowUpLeft className="w-3.5 h-3.5" />
@@ -102,7 +103,7 @@ export function PersistentCall({
           </button>
           <button
             onClick={onEnd}
-            title={call.role === 'host' ? 'End & score' : 'Leave the call'}
+            title={call.role === 'host' ? (isDiscussion ? 'End meeting' : 'End & score') : 'Leave the call'}
             className="p-1 rounded text-red-300 hover:text-white hover:bg-red-500/30"
           >
             <PhoneOff className="w-3.5 h-3.5" />
@@ -127,14 +128,20 @@ export function PersistentCall({
               {/* Eyebrow & Title */}
               <div className="text-left pr-8">
                 <span className="text-[11px] font-bold tracking-wider text-primary uppercase">
-                  JOIN REVIEW
+                  {isDiscussion ? 'JOIN DISCUSSION' : 'JOIN REVIEW'}
                 </span>
                 <h2 className="text-xl font-bold text-foreground mt-1 tracking-tight">
                   How would you like to join?
                 </h2>
-                <p className="text-xs sm:text-sm text-muted-foreground mt-1.5 leading-relaxed">
-                  Live review in <strong className="font-semibold text-foreground">{(call.title || '').replace(/^(Live\s+)?Review\s*[·-]\s*/i, '').trim() || call.title || 'the clan review'}</strong>. You can turn your camera on or off anytime during the call.
-                </p>
+                {isDiscussion ? (
+                  <p className="text-xs sm:text-sm text-muted-foreground mt-1.5 leading-relaxed">
+                    Group discussion <strong className="font-semibold text-foreground">{call.title}</strong>. Joining hands in your group discussion task. You can turn your camera on or off anytime during the call.
+                  </p>
+                ) : (
+                  <p className="text-xs sm:text-sm text-muted-foreground mt-1.5 leading-relaxed">
+                    Live review in <strong className="font-semibold text-foreground">{(call.title || '').replace(/^(Live\s+)?Review\s*[·-]\s*/i, '').trim() || call.title || 'the clan review'}</strong>. You can turn your camera on or off anytime during the call.
+                  </p>
+                )}
               </div>
 
               {/* Two Choice Cards */}

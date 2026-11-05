@@ -4,9 +4,12 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { toast } from 'sonner';
 import { mentorApi } from '@/lib/services/mentor-api';
 import { menteeApi } from '@/lib/services/mentee-api';
+import { groupDiscussionsApi } from '@/lib/services/group-discussions-api';
 import { usePolling } from '@/lib/hooks/shared/usePolling';
+import { useInvalidate, qk } from '@/lib/query';
 import { PersistentCall } from '@/components/shared/PersistentCall';
 import { ContributionModal, type ScoreRow } from '@/components/mentor/ContributionModal';
+import { MeetingSummaryModal } from '@/components/mentor/discussions/MeetingSummaryModal';
 
 /**
  * The live review call, hoisted OUT of the page that starts it.
@@ -29,9 +32,18 @@ import { ContributionModal, type ScoreRow } from '@/components/mentor/Contributi
  */
 
 export type CallRole = 'host' | 'guest';
+/**
+ * What the call is for. A Clan Review call (the default) and a group
+ * discussion meeting are the same call with different endpoints behind it:
+ * for a discussion, `sessionId` is the group's id.
+ */
+export type CallKind = 'review' | 'discussion';
 
 export interface CallSpec {
+  kind?: CallKind;
   sessionId: string;
+  /** Guest only: talk seconds already on record, so a rejoin keeps counting. */
+  initialTalkSeconds?: number;
   domain: string;
   room: string;
   displayName?: string | null;
@@ -94,7 +106,10 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   const [minimized, setMinimized] = useState(false);
   const [dockedTo, setDockedTo] = useState<HTMLElement | null>(null);
   const [scoring, setScoring] = useState<{ sessionId: string; rows: ScoreRow[] } | null>(null);
+  // A discussion meeting ends in its summary: each mentee's participation and feedback.
+  const [summaryFor, setSummaryFor] = useState<string | null>(null);
   const [endedNonce, setEndedNonce] = useState(0);
+  const invalidate = useInvalidate();
 
   // ── host talk tracking (survives navigation) ──────────────────────────────
   const talkById = useRef<Map<string, number>>(new Map());
@@ -142,7 +157,10 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       if (menteeId) items.push({ menteeId, seconds: Math.round(total) });
     }
     if (items.length) {
-      try { await mentorApi.recordReviewTalkTime(active.sessionId, items); } catch { /* retry next flush */ }
+      try {
+        if (active.kind === 'discussion') await groupDiscussionsApi.recordMeetingTalk(active.sessionId, items);
+        else await mentorApi.recordReviewTalkTime(active.sessionId, items);
+      } catch { /* retry next flush */ }
     }
   }, [menteeIdForName]);
 
@@ -162,10 +180,13 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   // fresh. Also survives navigation now, so browsing tasks mid-review no longer
   // makes a mentee look like they left.
   const guestSessionId = call && call.role === 'guest' ? call.sessionId : null;
-  const guestHeartbeat = useCallback(
-    () => (guestSessionId ? menteeApi.joinReview(guestSessionId, guestTalk()) : Promise.resolve()),
-    [guestSessionId, guestTalk]
-  );
+  const guestKind = call?.kind ?? 'review';
+  const guestHeartbeat = useCallback(() => {
+    if (!guestSessionId) return Promise.resolve();
+    return guestKind === 'discussion'
+      ? groupDiscussionsApi.myMeetingPresent(guestSessionId, guestTalk())
+      : menteeApi.joinReview(guestSessionId, guestTalk());
+  }, [guestSessionId, guestKind, guestTalk]);
   usePolling(guestHeartbeat, { intervalMs: guestSessionId ? 15_000 : null, immediate: false });
 
   const startCall = useCallback((spec: CallSpec) => {
@@ -200,6 +221,22 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     // Marked BEFORE the awaits: the review page must not re-adopt this meeting at
     // any point between "the host pressed End" and the server confirming the end.
     endedHereRef.current.add(active.sessionId);
+    if (active.kind === 'discussion') {
+      try {
+        await flushTalk();
+        await groupDiscussionsApi.endMeeting(active.sessionId);
+        setCall(null);
+        setDockedTo(null);
+        setSummaryFor(active.sessionId);
+        setEndedNonce((n) => n + 1);
+        invalidate(qk.mentor.groupDiscussion(active.sessionId), qk.mentor.discussionMeeting(active.sessionId), qk.mentee.upcomingDiscussionMeetings);
+      } catch {
+        toast.error('Could not end the meeting');
+        endingRef.current = false;
+        endedHereRef.current.delete(active.sessionId);
+      }
+      return;
+    }
     try {
       await flushTalk();
       await mentorApi.endReviewMeeting(active.sessionId); // also finishes the session
@@ -213,7 +250,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       endingRef.current = false;
       endedHereRef.current.delete(active.sessionId);
     }
-  }, [flushTalk]);
+  }, [flushTalk, invalidate]);
 
   const leaveGuestCall = useCallback(async () => {
     const active = callRef.current;
@@ -225,6 +262,11 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     setCall(null);
     setDockedTo(null);
     guestSpeakingSince.current = null;
+    if (active.kind === 'discussion') {
+      try { await groupDiscussionsApi.myMeetingPresent(active.sessionId, talk); } catch { /* best-effort */ }
+      try { await groupDiscussionsApi.myMeetingLeave(active.sessionId, secs); } catch { /* best-effort */ }
+      return;
+    }
     try { await menteeApi.joinReview(active.sessionId, talk); } catch { /* best-effort */ }
     try { await menteeApi.leaveReview(active.sessionId, secs); } catch { /* best-effort */ }
   }, [guestTalk]);
@@ -268,10 +310,23 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     if (!active) return;
     joinedAtRef.current = Date.now();
     leavingRef.current = false;
-    guestTalkRef.current = 0;
+    // A discussion keeps counting from the talk time already on record, so
+    // dropping out and rejoining does not reset what the mentee has said.
+    guestTalkRef.current = active.initialTalkSeconds ?? 0;
     guestSpeakingSince.current = null;
+    if (active.kind === 'discussion') {
+      try {
+        // Joining hands in the mentee's Group Discussion task (server-side, once).
+        const res = await groupDiscussionsApi.myMeetingPresent(active.sessionId, guestTalkRef.current);
+        if (res?.submitted) {
+          toast.success('You joined the meeting, so your group discussion task was submitted');
+          invalidate(['me', 'tasks'], ['me', 'task'], qk.mentee.groupDiscussions, qk.mentee.groupDiscussion(active.sessionId));
+        }
+      } catch { /* best-effort; the heartbeat reports again */ }
+      return;
+    }
     try { await menteeApi.joinReview(active.sessionId); } catch { /* best-effort */ }
-  }, []);
+  }, [invalidate]);
 
   const value = useMemo<CallContextValue>(() => ({
     call, isLive, startCall, updateCall, reloadCall, endHostCall, leaveGuestCall,
@@ -293,6 +348,12 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
           onDominantSpeaker={call.role === 'host' ? onDominant : undefined}
           onSelfDominantChange={call.role === 'guest' ? onSelfDominant : undefined}
           onJoined={call.role === 'guest' ? onGuestJoined : undefined}
+        />
+      )}
+      {summaryFor && (
+        <MeetingSummaryModal
+          groupId={summaryFor}
+          onClose={() => { setSummaryFor(null); setEndedNonce((n) => n + 1); }}
         />
       )}
       {scoring && (
