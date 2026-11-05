@@ -109,6 +109,7 @@ export function LiveMeetingOverlay({ meetingId, onClose }: { meetingId: string; 
           <JitsiRoom
             domain={info.domain}
             room={info.room}
+            jwt={info.jwt}
             displayName={info.displayName}
             avatarUrl={info.avatarUrl}
             role={info.isHost ? 'host' : 'guest'}

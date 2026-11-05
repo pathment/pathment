@@ -139,7 +139,7 @@ export function SelectMenu({ value, onChange, options, placeholder = 'Select…'
         // full name. Browsers only show `title` on a non-disabled element, so
         // this lives on the trigger rather than the inner span.
         title={selected ? [selected.label, selected.description].filter(Boolean).join(' — ') : undefined}
-        className="w-full flex items-center justify-between gap-2 px-3 py-2.5 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-700 dark:text-slate-700 bg-card hover:border-slate-300 dark:hover:border-slate-600 focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:cursor-not-allowed disabled:opacity-60"
+        className="w-full flex items-center justify-between gap-2 px-3 py-2.5 border border-border rounded-xl text-sm text-foreground bg-card hover:border-brand-300 dark:hover:border-brand-500/50 focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:cursor-not-allowed disabled:opacity-60"
       >
         <span className="flex min-w-0 flex-1 items-center gap-2">
           {selected?.icon}
@@ -181,7 +181,7 @@ export function SelectMenu({ value, onChange, options, placeholder = 'Select…'
                   value={query}
                   onChange={(e) => { setQuery(e.target.value); setActiveIdx(0); onSearch?.(e.target.value); }}
                   placeholder="Search…"
-                  className="w-full pl-8 pr-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-card text-sm text-slate-700 dark:text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  className="w-full pl-8 pr-2 py-1.5 rounded-lg border border-border bg-card text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand-500"
                 />
               </div>
             </div>
@@ -213,7 +213,7 @@ export function SelectMenu({ value, onChange, options, placeholder = 'Select…'
                     className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-left text-sm transition-colors ${
                       i === activeIdx
                         ? 'bg-brand-50 dark:bg-brand-500/15 text-brand-800 dark:text-brand-200'
-                        : 'text-slate-700 dark:text-slate-700 hover:bg-slate-50 dark:hover:bg-slate-100'
+                        : 'text-foreground hover:bg-slate-50 dark:hover:bg-white/5'
                     }`}
                   >
                     <span className="flex items-center gap-2 min-w-0 flex-1">

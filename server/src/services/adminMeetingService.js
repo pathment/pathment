@@ -9,6 +9,7 @@ const { NOTIFICATION_EVENTS } = require('../config/notificationMatrix');
 const cfg = require('../config/reviewMeeting');
 const { buildEventIcs } = require('../utils/ics');
 const { renderEmail, plainText } = require('../utils/emailTemplate');
+const { issueJitsiToken } = require('./jitsiTokenService');
 
 /**
  * adminMeetingService — admin-hosted live meetings (org broadcasts).
@@ -195,6 +196,7 @@ class AdminMeetingService {
       displayName: name,
       avatarUrl: user.profilePictureUrl || null,
       isHost: meeting.hostId === user.id,
+      jwt: issueJitsiToken({ room: meeting.meetingRoom, user, moderator: meeting.hostId === user.id }),
       status: meeting.status,
     };
   }

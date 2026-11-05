@@ -46,6 +46,7 @@ export interface CallSpec {
   initialTalkSeconds?: number;
   domain: string;
   room: string;
+  jwt: string;
   displayName?: string | null;
   avatarUrl?: string | null;
   role: CallRole;

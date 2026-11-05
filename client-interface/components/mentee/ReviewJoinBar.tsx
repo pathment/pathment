@@ -10,7 +10,7 @@ import { useCall } from '@/lib/context/CallContext';
 
 interface ActiveReview {
   sessionId: string;
-  domain: string; room: string; url: string;
+  domain: string; room: string; jwt: string; url: string;
   displayName: string | null; clanName: string; externalUrl: string | null; avatarUrl: string | null;
   pollsEnabled?: boolean;
 }
@@ -60,6 +60,7 @@ export function ReviewJoinBar() {
       sessionId: review.sessionId,
       domain: review.domain,
       room: review.room,
+      jwt: review.jwt,
       displayName: review.displayName,
       avatarUrl: review.avatarUrl,
       role: 'guest',
@@ -93,7 +94,7 @@ export function ReviewJoinBar() {
   useEffect(() => {
     if (!inCall || !active?.room || !call || call.sessionId !== active.sessionId) return;
     if (call.room === active.room) return;
-    updateCall({ room: active.room, polls: !!active.pollsEnabled });
+    updateCall({ room: active.room, jwt: active.jwt, polls: !!active.pollsEnabled });
   }, [inCall, active, call, updateCall]);
 
   // While the mentee is on a page that shows this bar, give the call a big home

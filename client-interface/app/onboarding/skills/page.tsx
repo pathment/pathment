@@ -27,7 +27,7 @@ export default function SkillsOnboardingPage() {
       await apiClient.post('/profile/skip-skills', {});
       if (updateUser) updateUser({ ...user, onboardingStep: 2, profileCompleted: true });
       toast.success('Welcome to Pathment!');
-      router.push(`/${user?.role}/dashboard`);
+      router.push(user?.profilePictureUrl ? `/${user.role}/dashboard` : '/onboarding/photo');
     } catch (error: unknown) {
       toast.error(extractApiErrorMessage(error, 'Could not finish setup'));
       setFinishing(false);
@@ -39,11 +39,12 @@ export default function SkillsOnboardingPage() {
       <div className="max-w-2xl mx-auto">
         {/* Header */}
         <div className="text-center mb-8">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-brand-600 dark:text-brand-300">{user?.role === 'mentor' ? 'Mentor' : 'Mentee'} onboarding · Step 2 of 3</p>
           <div className="inline-flex items-center justify-center w-14 h-14 bg-brand-600 rounded-2xl mb-4 shadow-sm shadow-brand-200">
             <Sparkles className="w-7 h-7 text-white" />
           </div>
-          <h1 className="text-slate-900 mb-2">Add your skills</h1>
-          <p className="text-slate-600">
+          <h1 className="text-3xl font-bold text-foreground mb-2">Add your skills</h1>
+          <p className="text-muted-foreground">
             This helps us match you and tailor your experience. You can change these anytime in Settings.
           </p>
           <div className="flex items-center justify-center gap-2 mt-4">
@@ -73,7 +74,7 @@ export default function SkillsOnboardingPage() {
             disabled={finishing}
             className="inline-flex items-center gap-2 px-6 py-3 bg-brand-600 hover:bg-brand-700 text-white rounded-xl transition-colors disabled:opacity-50"
           >
-            {finishing ? <Loader2 className="w-5 h-5 animate-spin" /> : <>Continue to dashboard <ArrowRight className="w-4 h-4" /></>}
+            {finishing ? <Loader2 className="w-5 h-5 animate-spin" /> : <>Continue <ArrowRight className="w-4 h-4" /></>}
           </button>
         </div>
       </div>

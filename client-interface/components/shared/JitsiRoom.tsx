@@ -45,10 +45,12 @@ const GUEST_TOOLBAR = [
 const HOST_TOOLBAR = [...GUEST_TOOLBAR, 'invite', 'security', 'mute-everyone', 'mute-video-everyone'];
 
 export function JitsiRoom({
-  domain, room, displayName, avatarUrl, role = 'guest', privateChat = false, polls = false, startWithVideoMuted = false, onJoined, onLeft, onReadyToClose, onParticipantJoined, onParticipantLeft, onDominantSpeaker, onSelfDominantChange, onError,
+  domain, room, jwt, displayName, avatarUrl, role = 'guest', privateChat = false, polls = false, startWithVideoMuted = false, onJoined, onLeft, onReadyToClose, onParticipantJoined, onParticipantLeft, onDominantSpeaker, onSelfDominantChange, onError,
 }: {
   domain: string;
   room: string;
+  /** Backend-issued, room-scoped credential. Never generated client-side. */
+  jwt: string;
   displayName?: string | null;
   /** Pathment profile picture, so people show their real face in the call. */
   avatarUrl?: string | null;
@@ -190,6 +192,7 @@ export function JitsiRoom({
         if (disposed || !window.JitsiMeetExternalAPI) return;
         const api = new window.JitsiMeetExternalAPI(domain, {
           roomName: room,
+          jwt,
           parentNode: host,
           userInfo: identityRef.current.displayName ? { displayName: identityRef.current.displayName } : undefined,
           configOverwrite: {
@@ -274,8 +277,11 @@ export function JitsiRoom({
             // hands out moderator from the UI. 1:1 private chat is OFF by default —
             // the host turns it on via `privateChat`.
             remoteVideoMenu: {
-              disableKick: role !== 'host',
-              disableGrantModerator: true,
+              // Jitsi enforces these actions using the server-assigned role.
+              // This also gives a participant promoted by the owner the normal
+              // moderator controls without trusting a client-side role flag.
+              disableKick: false,
+              disableGrantModerator: false,
               disablePrivateChat: !privateChat,
             },
             // Screen share should take the stage (like Meet) instead of a small
@@ -384,7 +390,7 @@ export function JitsiRoom({
     };
     // Only room identity + the config knobs Jitsi can't change after construction
     // rebuild the call. Callbacks and identity are read through refs.
-  }, [domain, room, role, privateChat, polls, superseded, joinNonce, tabId]);
+  }, [domain, room, jwt, role, privateChat, polls, superseded, joinNonce, tabId]);
 
   if (superseded) {
     return (

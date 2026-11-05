@@ -180,6 +180,7 @@ export function PersistentCall({
             key={reloadKey}
             domain={call.domain}
             room={call.room}
+            jwt={call.jwt}
             displayName={call.displayName}
             avatarUrl={call.avatarUrl}
             role={call.role}

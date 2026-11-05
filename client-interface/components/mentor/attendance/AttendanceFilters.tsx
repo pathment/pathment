@@ -21,12 +21,14 @@ export function AttendanceFilters({ currentFilter, onFilterChange }: AttendanceF
         const isActive = currentFilter === f.value;
         return (
           <button
+            type="button"
+            aria-pressed={isActive}
             key={f.value}
             onClick={() => onFilterChange(f.value)}
             className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
               isActive
-                ? 'bg-slate-900 text-white'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                ? 'bg-brand-600 text-white dark:bg-brand-500/20 dark:text-brand-200'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10'
             }`}
           >
             {f.label}

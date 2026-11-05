@@ -26,11 +26,12 @@ export default function OnboardingPhotoPage() {
   return (
     <div className="min-h-screen bg-canvas flex flex-col items-center justify-center px-4">
       <div className="text-center mb-6 max-w-md">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-brand-600 dark:text-brand-300">{user?.role === 'mentor' ? 'Mentor' : 'Mentee'} onboarding · Step 3 of 3</p>
         <div className="inline-flex items-center justify-center w-14 h-14 bg-brand-600 rounded-2xl mb-4 shadow-sm shadow-brand-200">
           <UserCircle2 className="w-7 h-7 text-white" />
         </div>
-        <h1 className="text-slate-900 mb-2">One last thing — add your photo</h1>
-        <p className="text-slate-600">A real photo helps your {user?.role === 'mentor' ? 'mentees' : 'mentor and clan'} recognise you across Pathment. It only takes a moment.</p>
+        <h1 className="text-3xl font-bold text-foreground mb-2">One last thing — add your photo</h1>
+        <p className="text-muted-foreground">A real photo helps your {user?.role === 'mentor' ? 'mentees' : 'mentor and clan'} recognise you across Pathment. It only takes a moment.</p>
       </div>
       <ProfileImageUploader
         open

@@ -9,7 +9,7 @@ const { unsubscribeUrl } = require('../utils/emailUnsubscribe');
 const { resetLink, verifyLink, signInLink, pageLink } = require('../utils/links');
 
 const escHtml = (s) => String(s == null ? '' : s)
-  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const clientUrl = () => require('../utils/applicationUrl')();
 
 class NotificationOrchestrator {
@@ -178,7 +178,7 @@ class NotificationOrchestrator {
             // has no base to resolve against, which is why the button in every
             // task, deadline and approval email did nothing. Only the email copy
             // is made absolute; what is stored and what is pushed stay relative.
-            const cta = { label: 'Open Pathment', url: pageLink(payload.actionUrl) };
+            const cta = { label: payload.emailActionLabel || 'Open Pathment', url: pageLink(payload.actionUrl) };
             const html = payload.emailHtml || renderEmail({
               heading,
               bodyHtml: payload.emailBodyHtml || `<p style="margin:0 0 14px;">${escHtml(bodyText)}</p>`,
@@ -329,15 +329,27 @@ class NotificationOrchestrator {
   }
 
   async sendWelcomeEmail(user) {
+    const isMentor = user.role === 'mentor';
+    const isMentee = user.role === 'mentee';
+    const roleName = isMentor ? 'mentor' : isMentee ? 'mentee' : 'admin';
+    const heading = isMentor
+      ? `Welcome to your mentor workspace, ${user.firstName || 'there'}!`
+      : isMentee ? `Welcome to your learning workspace, ${user.firstName || 'there'}!`
+        : `Welcome to your admin workspace, ${user.firstName || 'there'}!`;
+    const message = isMentor
+      ? 'Your mentor account is ready. Complete your profile, meet your clan and start guiding your mentees.'
+      : isMentee ? 'Your mentee account is ready. Complete your profile, meet your mentor and start working through your roadmap.'
+        : 'Your admin account is ready. Open your workspace to manage your team, programs and invitations.';
     // No inline HTML: dispatch renders it through the shared template (with the
     // unsubscribe footer/header) from title + message + actionUrl.
     return this.dispatch({
       eventKey: NOTIFICATION_EVENTS.ACCOUNT_CREATED_WELCOME,
       recipients: [{ userId: user.id }],
       payload: {
-        title: `Welcome to Pathment, ${user.firstName || 'there'}!`,
-        message: `Your account is ready. Jump in to meet your mentor, follow your roadmap and start making progress.`,
-        emailSubject: 'Welcome to Pathment',
+        title: heading,
+        message,
+        emailSubject: `Welcome to Pathment as a ${roleName}`,
+        emailActionLabel: isMentor ? 'Set up my mentor profile' : isMentee ? 'Set up my learner profile' : 'Open my workspace',
         actionUrl: `${clientUrl()}/login`,
       }
     });
@@ -506,15 +518,20 @@ class NotificationOrchestrator {
   }
 
   async sendRegistrationInviteEmail({ email, role, inviteUrl, whatsappLink }) {
-    // Intentionally plain + transactional (no banner image, no emoji, single CTA,
-    // visible URL, strong text part) so Gmail keeps it in Primary, not Promotions.
+    const isMentor = role === 'mentor';
+    const roleName = isMentor ? 'mentor' : 'mentee';
+    const heading = isMentor ? 'You’re invited to mentor on Pathment' : 'You’re invited to learn on Pathment';
+    const purpose = isMentor
+      ? 'Set up your mentor profile, join your workspace and start guiding your mentees.'
+      : 'Set up your learner profile, meet your mentor and open your learning roadmap.';
+    const ctaLabel = isMentor ? 'Set up my mentor account' : 'Set up my mentee account';
     const whatsappText = whatsappLink
       ? `\nAfter you set up your account, join your clan's WhatsApp group:\n${whatsappLink}\n\n`
       : '';
     const text =
-      `Hi,\n\n` +
-      `You've been invited to set up your Pathment account as a ${role}.\n\n` +
-      `Get started here:\n${inviteUrl}\n\n` +
+      `${heading}\n\n` +
+      `This invitation is for a ${roleName} account. ${purpose}\n\n` +
+      `${ctaLabel}:\n${inviteUrl}\n\n` +
       whatsappText +
       `This link is for you only, can be used once, and expires soon. ` +
       `If you weren't expecting this, you can ignore this email.\n\n` +
@@ -527,23 +544,21 @@ class NotificationOrchestrator {
       emailType: 'registration_invite',
       priority: 1,
       idempotencyKey: `invite:${email.toLowerCase()}:${inviteUrl.split('invite=')[1] || inviteUrl}`,
-      subject: `Set up your Pathment account`,
+      subject: isMentor ? 'Your Pathment mentor invitation' : 'Your Pathment mentee invitation',
       text,
-      html: `
-        <div style="font-family: -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1e293b; font-size: 15px; line-height: 1.6; max-width: 520px; margin: 0 auto; padding: 8px 4px;">
-          <p style="margin: 0 0 14px;">Hi,</p>
-          <p style="margin: 0 0 14px;">You've been invited to set up your <strong>Pathment</strong> account as a ${role}. Use the link below to get started:</p>
-          <p style="margin: 0 0 18px;">
-            <a href="${inviteUrl}" style="color: #0052D6; font-weight: 600; text-decoration: underline;">Set up my account</a>
-          </p>
-          <p style="margin: 0 0 14px; color: #475569;">Or paste this link into your browser:<br>
-            <a href="${inviteUrl}" style="color: #0052D6; word-break: break-all;">${inviteUrl}</a>
-          </p>
-          ${whatsappLink ? `<p style="margin: 0 0 14px;">After setup, join your clan's WhatsApp group:<br><a href="${whatsappLink}" style="color:#0052D6; word-break:break-all;">${escHtml(whatsappLink)}</a></p>` : ''}
-          <p style="margin: 0 0 14px; color: #64748b; font-size: 13px;">This link is for you only, can be used once, and expires soon. If you weren't expecting this, you can ignore this email.</p>
-          <p style="margin: 18px 0 0; color: #475569;">- The Pathment team</p>
-        </div>
-      `
+      html: renderEmail({
+        heading,
+        preheader: `Your invitation is for a Pathment ${roleName} account`,
+        bodyHtml: `
+          <p style="margin:0 0 14px;">You’ve been invited to join Pathment as a <strong>${roleName}</strong>.</p>
+          <p style="margin:0 0 14px;">${purpose}</p>
+          <p style="margin:0;color:#64748b;font-size:13px;">This is a private, one-time invitation. Use the button below to create your password and finish your ${roleName} profile.</p>
+          ${whatsappLink ? `<p style="margin:14px 0 0;">After setup, <a href="${escHtml(whatsappLink)}" style="color:#00796b;font-weight:600;">join your clan’s WhatsApp group</a>.</p>` : ''}
+          <p style="margin:18px 0 0;font-size:13px;">Button not working? Copy this link into your browser:<br><a href="${escHtml(inviteUrl)}" style="color:#00796b;word-break:break-all;overflow-wrap:anywhere;">${escHtml(inviteUrl)}</a></p>
+        `,
+        cta: { label: ctaLabel, url: inviteUrl },
+        footerNote: "This link works once and expires soon. Didn’t expect this invitation? Ignore this email and no account will be created.",
+      })
     });
   }
 }

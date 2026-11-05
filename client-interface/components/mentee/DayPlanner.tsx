@@ -608,7 +608,7 @@ function SlotCard({
       onDragOver={(e) => { e.preventDefault(); onDropTarget(slot.id); }}
       onDragLeave={() => onDropTarget(null)}
       onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData('text/plain'); if (id) onDropItem(id); }}
-      className={`rounded-2xl border bg-card transition-colors dark:bg-slate-900/40 ${
+      className={`rounded-2xl border bg-card text-foreground transition-colors dark:bg-card ${
         isDropTarget ? 'border-brand-400 bg-brand-50/60 dark:bg-brand-500/10' : 'border-slate-200 dark:border-slate-800'
       }`}
     >
@@ -1136,7 +1136,7 @@ function ItemRow({
     <li
       draggable
       onDragStart={(e) => { e.dataTransfer.setData('text/plain', item.id); e.dataTransfer.effectAllowed = 'move'; }}
-      className="group flex items-start gap-2.5 rounded-xl border border-slate-200 bg-card px-2.5 py-2 dark:border-slate-800 dark:bg-slate-900/60"
+      className="group flex items-start gap-2.5 rounded-xl border border-border bg-canvas px-2.5 py-2 text-foreground"
     >
       <button
         type="button"
