@@ -17,6 +17,7 @@ export interface JoinInfo {
   title: string;
   domain: string;
   room: string;
+  jwt: string;
   url: string;
   displayName: string | null;
   avatarUrl: string | null;

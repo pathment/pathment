@@ -7,6 +7,7 @@ const mentorshipPauseService = require('./mentorshipPauseService');
 const cfg = require('../config/reviewMeeting');
 const { activeOccurrence } = require('../utils/reviewRecurrence');
 const clanLifecycleService = require('./clanLifecycleService');
+const { issueJitsiToken } = require('./jitsiTokenService');
 
 // A live meeting older than this with no explicit end is treated as abandoned —
 // stops a never-ended meeting from showing the mentee "Join" banner forever.
@@ -27,7 +28,7 @@ const MEETING_STALE_HOURS = 3;
 class ReviewMeetingService {
   _fullName(u) { return u ? `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'Guest' : 'Guest'; }
 
-  _joinConfig(session, displayName, avatarUrl) {
+  _joinConfig(session, user, moderator = false) {
     return {
       sessionId: session.id,
       provider: session.meetingProvider || cfg.provider,
@@ -35,10 +36,13 @@ class ReviewMeetingService {
       room: session.meetingRoom,
       url: session.meetingUrl,
       externalUrl: session.externalMeetingUrl || null,
-      displayName: displayName || null,
+      displayName: user ? this._fullName(user) : null,
       // The person's Pathment profile picture, so the call shows the same faces
       // people already know from the platform (Jitsi otherwise shows initials).
-      avatarUrl: avatarUrl || null,
+      avatarUrl: user?.profilePictureUrl || null,
+      jwt: user && session.meetingRoom
+        ? issueJitsiToken({ room: session.meetingRoom, user, moderator })
+        : null,
       startedAt: session.meetingStartedAt,
       endedAt: session.meetingEndedAt,
       // Mentor-controlled in-call polls (see setPolls). Propagated to mentees so
@@ -142,14 +146,14 @@ class ReviewMeetingService {
     if (externalUrl !== undefined) patch.externalMeetingUrl = externalUrl || null;
     if (Object.keys(patch).length) await session.update(patch);
 
-    const host = await models.User.findByPk(mentorId, { attributes: ['id', 'firstName', 'lastName', 'profilePictureUrl'] });
+    const host = await models.User.findByPk(mentorId, { attributes: ['id', 'firstName', 'lastName', 'email', 'profilePictureUrl'] });
 
     // Push a real-time "review started" to the clan's mentees so their Join
     // banner appears instantly instead of waiting for the next poll. Best-effort.
     if (session.clanId) {
       this._notifyMenteesStarted(session).catch((err) => console.error('review start notify failed (non-fatal):', err.message));
     }
-    return this._joinConfig(session, this._fullName(host), host && host.profilePictureUrl);
+    return this._joinConfig(session, host, session.mentorId === mentorId);
   }
 
   /**
@@ -256,7 +260,7 @@ class ReviewMeetingService {
     // already self-reported — otherwise the mentor can't mark a direct joiner
     // present, or even see who hasn't shown up.
     try { await require('./cohortReviewService')._reconcileEntries(session); } catch { /* roster falls back to existing entries */ }
-    const host = await models.User.findByPk(mentorId, { attributes: ['id', 'firstName', 'lastName', 'profilePictureUrl'] });
+    const host = await models.User.findByPk(mentorId, { attributes: ['id', 'firstName', 'lastName', 'email', 'profilePictureUrl'] });
     const entries = await models.CohortReviewEntry.findAll({
       where: { sessionId },
       include: [{ model: models.User, as: 'mentee', attributes: ['id', 'firstName', 'lastName'] }],
@@ -271,7 +275,7 @@ class ReviewMeetingService {
       talkSeconds: e.talkSeconds,
       contributionPoints: e.contributionPoints,
     }));
-    return { enabled: true, meeting: this._joinConfig(session, this._fullName(host), host && host.profilePictureUrl), roster, live: !!session.meetingStartedAt && !session.meetingEndedAt, attendanceTracking: !!session.attendanceTracking };
+    return { enabled: true, meeting: this._joinConfig(session, host, session.mentorId === mentorId), roster, live: !!session.meetingStartedAt && !session.meetingEndedAt, attendanceTracking: !!session.attendanceTracking };
   }
 
   /** Mentor toggles whether joining this review auto-marks mentees present. */
@@ -319,9 +323,9 @@ class ReviewMeetingService {
     try {
       const live = await this._liveScheduleForClans(clanIds, now);
       if (live && live.session.meetingStartedAt && !live.session.meetingEndedAt) {
-        const u = await models.User.findByPk(userId, { attributes: ['id', 'firstName', 'lastName', 'profilePictureUrl'] });
+        const u = await models.User.findByPk(userId, { attributes: ['id', 'firstName', 'lastName', 'email', 'profilePictureUrl'] });
         const clan = await models.Clan.findByPk(live.session.clanId, { attributes: ['name'] });
-        return { ...this._joinConfig(live.session, this._fullName(u), u && u.profilePictureUrl), clanName: clan?.name || 'your clan' };
+        return { ...this._joinConfig(live.session, u, false), clanName: clan?.name || 'your clan' };
       }
     } catch (e) { console.error('[activeForMentee] schedule-live check failed:', e.message); }
 
@@ -337,9 +341,9 @@ class ReviewMeetingService {
     });
 
     if (session) {
-      const u = await models.User.findByPk(userId, { attributes: ['id', 'firstName', 'lastName', 'profilePictureUrl'] });
+      const u = await models.User.findByPk(userId, { attributes: ['id', 'firstName', 'lastName', 'email', 'profilePictureUrl'] });
       const clan = await models.Clan.findByPk(session.clanId, { attributes: ['name'] });
-      return { ...this._joinConfig(session, this._fullName(u), u && u.profilePictureUrl), clanName: clan?.name || 'your clan' };
+      return { ...this._joinConfig(session, u, false), clanName: clan?.name || 'your clan' };
     }
 
     return null;

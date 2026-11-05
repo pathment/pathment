@@ -11,7 +11,7 @@ import { ComingSoon } from '@/components/shared/ComingSoon';
 import { useCall } from '@/lib/context/CallContext';
 
 interface RosterRow { menteeId: string; name: string; attendance: string | null; autoPresent: boolean; talkSeconds: number; contributionPoints: number }
-interface Meeting { sessionId: string; domain: string; room: string; url: string; displayName: string | null; avatarUrl: string | null; externalUrl: string | null; startedAt: string | null; endedAt: string | null; pollsEnabled?: boolean }
+interface Meeting { sessionId: string; domain: string; room: string; jwt: string; url: string; displayName: string | null; avatarUrl: string | null; externalUrl: string | null; startedAt: string | null; endedAt: string | null; pollsEnabled?: boolean }
 
 // Talk time: seconds under a minute (the contribution bar is 20s), minutes above.
 const fmtTalk = (s: number) => (s < 60 ? `${s}s` : `${Math.round(s / 60)}m`);
@@ -187,6 +187,7 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession, onAttend
         sessionId: id,
         domain: m?.domain || meeting?.domain || '',
         room: m?.room || meeting?.room || '',
+        jwt: m?.jwt || meeting?.jwt || '',
         displayName: m?.displayName ?? meeting?.displayName ?? null,
         avatarUrl: m?.avatarUrl ?? meeting?.avatarUrl ?? null,
         role: 'host',
@@ -241,6 +242,7 @@ export function ReviewMeetingPanel({ sessionId, isDraft, ensureSession, onAttend
       sessionId: liveSessionId,
       domain: meeting.domain,
       room: meeting.room,
+      jwt: meeting.jwt,
       displayName: meeting.displayName,
       avatarUrl: meeting.avatarUrl,
       role: 'host',

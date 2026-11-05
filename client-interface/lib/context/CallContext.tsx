@@ -34,6 +34,7 @@ export interface CallSpec {
   sessionId: string;
   domain: string;
   room: string;
+  jwt: string;
   displayName?: string | null;
   avatarUrl?: string | null;
   role: CallRole;

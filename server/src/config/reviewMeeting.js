@@ -18,6 +18,11 @@ module.exports = {
   provider: process.env.REVIEW_MEETING_PROVIDER || 'jitsi',
   // The public free service by default; override to self-host / JaaS.
   jitsiDomain: process.env.JITSI_DOMAIN || 'meet.jit.si',
+  // Self-hosted Jitsi JWT authentication. The secret exists only in the API
+  // environment and Prosody; browsers receive room-scoped signed tokens.
+  jitsiAppId: process.env.JITSI_APP_ID || 'pathment',
+  jitsiAppSecret: process.env.JITSI_APP_SECRET || '',
+  jitsiTokenTtlSeconds: Math.max(300, Math.min(24 * 60 * 60, Number(process.env.JITSI_TOKEN_TTL_SECONDS) || 14400)),
   // A mentee who was the dominant speaker for at least this long earns the
   // (single) contribution point — a proxy the mentor can override.
   contributionThresholdSeconds: Number(process.env.REVIEW_CONTRIBUTION_SECONDS) || 20,

@@ -66,9 +66,11 @@ Against that:
   realistically **25–35 concurrent participants in total** — and that is the
   optimistic reading.
 
-**So: one 20-person review is comfortable. Two is the practical ceiling. The four
-concurrent sessions already seen in production are over it, and the 49-person
-standing clan cannot work on this box at full video at all.**
+**Planning envelope, pending a real load test:** target 20–25 concurrent
+participants total, treat 30 as a soft ceiling, and do not promise a reliable
+49-person room on this 1-OCPU VM. One room of about 20 or two rooms of about
+8–12 each is the conservative operating shape. This is an engineering estimate,
+not a vendor guarantee; TURN-heavy use and screen sharing lower the ceiling.
 
 Monthly egress is *not* the binding constraint: ~76 Mbps for an hour is ~34 GB,
 and 48 clans meeting weekly is roughly 6–7 TB/month against a 10 TB Always Free
@@ -97,12 +99,12 @@ to roughly 110 Mbps — within reach of the current box rather than well past it
 
 ## 5. What to do next, cheapest first
 
-1. **Resize the VM. It is free.** Oracle's Always Free Ampere allowance is
-   3,000 OCPU-hours and 18,000 GB-hours a month — enough to run **4 OCPU / 24 GB
-   continuously**, and Pathment is using **1 OCPU / 6 GB**, a quarter of what is
-   already paid for. (One recent third-party source claims the allowance is now
-   half that; check the live Always Free docs.) This is the highest-value action
-   available and it costs nothing.
+1. **Check whether the VM can be resized within the free allowance.** Oracle's
+   current Always Free documentation describes **1,500 OCPU-hours and 9,000
+   GB-hours per month**, equivalent to **2 OCPU / 12 GB continuously** across the
+   tenancy. Pathment uses 1 OCPU / 6 GB. If no other A1 VM consumes the allowance,
+   resizing to 2/12 is the first improvement to evaluate. Confirm the live
+   tenancy limits before changing the shape.
 2. **Move coturn to its own box** once resized, so relayed users stop paying
    double on the machine doing the mixing.
 3. **Watch it.** `grep -c "Created new conference" /var/log/jitsi/jicofo.log` and
