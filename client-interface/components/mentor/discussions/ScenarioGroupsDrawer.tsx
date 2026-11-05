@@ -7,6 +7,7 @@ import { Drawer } from '@/components/shared/Drawer';
 import type { EntityCardStat } from '@/components/admin/EntityCard';
 import { DiscussionStateBadge, discussionTimeLabel, sortDiscussions } from '@/components/shared/discussions/DiscussionStatus';
 import type { DiscussionScenario, DiscussionState } from '@/lib/services/group-discussions-api';
+import { MeetingChip } from '@/components/shared/discussions/meeting/MeetingChip';
 
 type Filter = 'all' | DiscussionState;
 const FILTERS: { key: Filter; label: string }[] = [
@@ -117,6 +118,11 @@ export function ScenarioGroupsDrawer({ open, onClose, scenario, stats, dates, on
                     <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium tabular-nums text-slate-600">
                       <MessageCircle className="h-3 w-3" aria-hidden />{plural(group.messageCount, 'message')}
                     </span>
+                    {group.meeting && (group.meeting.state === 'live' || group.meeting.state === 'scheduled') && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                        <MeetingChip meeting={group.meeting} />
+                      </span>
+                    )}
                   </div>
                 </div>
                 <ChevronRight className="mt-2.5 h-4 w-4 shrink-0 text-slate-400 transition-transform group-hover:translate-x-0.5 group-hover:text-brand-600" aria-hidden />

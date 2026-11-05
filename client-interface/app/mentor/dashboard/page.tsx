@@ -24,6 +24,7 @@ import {
 } from '@/lib/mentorAttention';
 import dynamic from 'next/dynamic';
 import { AnnouncementsCard } from '@/components/shared/AnnouncementsCard';
+import { DiscussionMeetingBanner } from '@/components/shared/discussions/meeting/DiscussionMeetingBanner';
 import { MentorFeedbackCard } from '@/components/mentor/MentorFeedbackCard';
 
 const AssignTaskDrawer = dynamic(() =>
@@ -66,6 +67,8 @@ export default function MentorCockpit() {
 
   return (
     <div className="mentor-cockpit space-y-6">
+      {/* A group discussion meeting two minutes out, or live: start it from here. */}
+      <DiscussionMeetingBanner role="mentor" />
       {/* Header */}
       <div className="mentor-cockpit-header flex flex-wrap items-start justify-between gap-4">
         <div>

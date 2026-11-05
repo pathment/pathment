@@ -10,6 +10,7 @@ import { DiscussionStateBadge, discussionTimeLabel, sortDiscussions } from '@/co
 import { ScenarioDrawer } from '@/components/shared/discussions/ScenarioDrawer';
 import { EntityCard, entityCardSecondaryBtn, formatDateRange, type EntityCardStat } from '@/components/admin/EntityCard';
 import { ScenarioGroupsDrawer } from '@/components/mentor/discussions/ScenarioGroupsDrawer';
+import { MeetingChip } from '@/components/shared/discussions/meeting/MeetingChip';
 import RichTextEditor from '@/components/shared/RichTextEditor';
 import { cleanHtml, isBlankHtml } from '@/lib/utils/html';
 import { NewGroupDrawer } from '@/components/mentor/discussions/NewGroupDrawer';
@@ -58,6 +59,7 @@ function GroupList({ groups }: { groups: ScenarioGroup[] }) {
                 <span className="inline-flex items-center gap-1"><CalendarClock className="h-3.5 w-3.5" aria-hidden />{discussionTimeLabel(group)}</span>
                 <span className="inline-flex items-center gap-1 tabular-nums"><Users className="h-3.5 w-3.5" aria-hidden />{plural(group.memberCount, 'mentee')}</span>
                 <span className="inline-flex items-center gap-1 tabular-nums"><MessageCircle className="h-3.5 w-3.5" aria-hidden />{plural(group.messageCount, 'message')}</span>
+                <MeetingChip meeting={group.meeting} />
               </div>
             </div>
             <ChevronRight className="h-4 w-4 shrink-0 text-slate-400 transition-transform group-hover:translate-x-0.5" aria-hidden />
