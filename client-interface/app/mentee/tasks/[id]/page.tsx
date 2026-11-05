@@ -33,6 +33,8 @@ import { FrictionPanel } from "@/components/mentee/FrictionPanel";
 import { TaskProgressTimeline } from "@/components/shared/TaskProgressTimeline";
 import { SubmitTaskDrawer, isVideoPresentation } from "@/components/mentee/SubmitTaskDrawer";
 import { participateHref } from "@/components/mentee/tasks/MenteeTaskRow";
+import { MyDiscussionResult } from "@/components/mentee/discussions/MyDiscussionResult";
+import { discussionReviewText } from "@/components/mentee/discussions/discussionReviewText";
 import { RichContent } from "@/components/shared/RichContent";
 import Link from "next/link";
 import { InterviewReviewDrawer } from "@/components/mentor/InterviewReviewDrawer";
@@ -530,7 +532,7 @@ function ClanTaskDetail({ id }: { id: string }) {
                   </p>
                   <button
                     type="button"
-                    onClick={() => router.push(`/mentee/discussions/${task.discussionGroup.id}`)}
+                    onClick={() => router.push(`/mentee/messages?discussion=${task.discussionGroup.id}`)}
                     className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700"
                   >
                     <MessageSquare className="h-4 w-4" /> Open discussion
@@ -705,6 +707,10 @@ function ClanTaskDetail({ id }: { id: string }) {
             </div>
           )}
 
+          {/* A group discussion task: speaking time, chat activity, the five
+              criteria and the stars, the same section as the discussion page. */}
+          {task?.discussionGroup?.id && <MyDiscussionResult groupId={task.discussionGroup.id} />}
+
           {/* Mentor Feedback */}
           {feedback.length > 0 && (
             <div className="bg-card rounded-2xl border border-slate-200 p-6 space-y-4">
@@ -797,10 +803,18 @@ function ClanTaskDetail({ id }: { id: string }) {
                         <p className="text-xs font-medium text-slate-500 mb-1">
                           {isChanges ? "What the mentor asked for" : "Feedback"}
                         </p>
-                        <div
-                          className="text-sm text-slate-800 whitespace-pre-wrap"
-                          dangerouslySetInnerHTML={{ __html: fb.feedbackText }}
-                        />
+                        {/* A group discussion's skills, speaking time and stars are
+                            in "Your participation" above: only the note belongs here. */}
+                        {task?.discussionGroup?.id ? (
+                          <p className="text-sm text-slate-800 whitespace-pre-wrap">
+                            {discussionReviewText(fb.feedbackText)}
+                          </p>
+                        ) : (
+                          <div
+                            className="text-sm text-slate-800 whitespace-pre-wrap"
+                            dangerouslySetInnerHTML={{ __html: fb.feedbackText }}
+                          />
+                        )}
                       </div>
                     )}
 

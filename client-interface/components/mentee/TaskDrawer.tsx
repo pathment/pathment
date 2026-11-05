@@ -19,6 +19,8 @@ import { ResourceLink } from '@/components/shared/ResourceLink';
 import { TaskProgressTimeline } from '@/components/shared/TaskProgressTimeline';
 import { useMenteeTaskDetail, type MenteeTaskSource } from '@/lib/hooks/mentee';
 import { isMissingDescription } from '@/lib/utils/html';
+import { MyDiscussionResult } from '@/components/mentee/discussions/MyDiscussionResult';
+import { discussionReviewText } from '@/components/mentee/discussions/discussionReviewText';
 
 /**
  * One task, opened where the mentee already is.
@@ -92,6 +94,7 @@ export function TaskDrawer({
     ? `/mentee/interviews/${task?.id}` : `/mentee/quizzes/${task?.id}`;
 
   const discussion = participateHref({ type: taskType, discussionGroupId: task?.discussionGroupId });
+  const isDiscussion = taskType === 'group_discussion';
   const canStart = status === 'assigned' && !assessment && !discussion;
   const canSubmit = (status === 'in_progress' || needsRevision) && !assessment;
 
@@ -206,7 +209,7 @@ export function TaskDrawer({
 
           {isDone && feedback[0] && (
             <Callout tone="emerald" icon={CheckCircle2} title="Approved">
-              {feedback[0].feedbackText || 'Your mentor approved this work.'}
+              {(isDiscussion ? discussionReviewText(feedback[0].feedbackText) : feedback[0].feedbackText) || 'Your mentor approved this work.'}
               {Number.isFinite(Number(feedback[0].rating)) && Number(feedback[0].rating) > 0 && (
                 <span className="mt-1.5 flex items-center gap-1 text-xs">
                   <Star className="h-3.5 w-3.5 fill-current" aria-hidden />
@@ -214,6 +217,14 @@ export function TaskDrawer({
                 </span>
               )}
             </Callout>
+          )}
+
+          {/* A group discussion is reviewed on how they took part: their stars,
+              the five skills, speaking time and their mentor's notes. */}
+          {isDiscussion && task.discussionGroupId && isDone && (
+            <Section title="Your participation">
+              <MyDiscussionResult groupId={task.discussionGroupId} embedded />
+            </Section>
           )}
 
           {status === 'submitted' && (
