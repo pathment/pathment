@@ -17,8 +17,10 @@ interface DrawerProps {
   onClose: () => void;
   title: string;
   subtitle?: string;
-  /** Panel width. sm = max-w-md, md = max-w-lg, lg = max-w-xl. */
-  width?: "sm" | "md" | "lg";
+  /** Panel width. sm = max-w-md, md = max-w-lg, lg = max-w-xl, xl = max-w-3xl.
+   *  `xl` is for dense settings forms with side-by-side fields — anything
+   *  narrower makes a date + time pair wrap onto two lines. */
+  width?: "sm" | "md" | "lg" | "xl";
   /** Override stacking when nested above another sheet (e.g. notification drawer). */
   zClass?: string;
   /**
@@ -32,7 +34,7 @@ interface DrawerProps {
   children: ReactNode;
 }
 
-const WIDTHS = { sm: "max-w-md", md: "max-w-lg", lg: "max-w-xl" } as const;
+const WIDTHS = { sm: "max-w-md", md: "max-w-lg", lg: "max-w-xl", xl: "max-w-3xl" } as const;
 // Shared with every other drawer, so a second implementation cannot drift.
 const DURATION = DRAWER_DURATION;
 

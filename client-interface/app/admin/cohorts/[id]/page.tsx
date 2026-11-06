@@ -1,12 +1,13 @@
 'use client';
 
-import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { forwardRef, use, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import {
   ArrowLeft, Upload, Loader2, X, CheckCircle2, XCircle, FileSpreadsheet,
   Mail, Phone, Check, Link2, Copy, Power, ClipboardCheck, Pencil, Eye, CopyPlus, FormInput, Plus,
   Trash2, CalendarRange, Layers, RefreshCw, CheckSquare, Square, Sparkles, Search, Settings, ChevronDown, Columns3,
+  FileText, type LucideIcon,
 } from 'lucide-react';
 import {
   useCohortApplications,
@@ -79,6 +80,23 @@ function parseCsvToRows(text: string): Record<string, string>[] {
     rows.push(row);
   }
   return rows;
+}
+
+/** The public apply URL for a slug. Same shape the settings form shows. */
+function applyUrlFor(slug: string) {
+  return typeof window !== 'undefined' ? `${window.location.origin}/apply/${slug}` : `/apply/${slug}`;
+}
+
+/** "3 Mar – 21 Mar", "Opens 3 Mar", "Until 21 Mar", or "Always open". */
+function applyWindowLabel(cohort: any) {
+  const fmt = (v?: string | null) =>
+    v ? new Date(v).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : null;
+  const from = fmt(cohort?.applyOpensAt);
+  const to = fmt(cohort?.applyClosesAt);
+  if (from && to) return `${from} – ${to}`;
+  if (from) return `Opens ${from}`;
+  if (to) return `Until ${to}`;
+  return 'Always open';
 }
 
 function fullName(a: Application) {
@@ -238,9 +256,38 @@ function ApplicationDrawer({
   );
 }
 
+/** One titled block of the settings form. Every group of fields gets one, so
+ *  a new field has an obvious home and the form stays scannable as it grows. */
+function SettingsSection({ icon: Icon, title, hint, action, children }: {
+  icon: LucideIcon; title: string; hint?: React.ReactNode; action?: React.ReactNode; children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-xl border border-slate-200 bg-card p-4">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="flex items-center gap-2 text-sm font-medium text-slate-900">
+            <Icon className="h-4 w-4 shrink-0 text-brand-600" />
+            {title}
+          </h3>
+          {hint && <p className="mt-1 text-xs leading-relaxed text-slate-500">{hint}</p>}
+        </div>
+        {action && <div className="shrink-0">{action}</div>}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+export interface IntakePanelHandle { save: () => void }
+
 /** Admissions settings: program schedule + capacity, the public link + apply
- *  window, applicant levels, the form, and the level-aware assessment pool. */
-function IntakePanel({ cohortId, cohort, onChange }: { cohortId: string; cohort: any; onChange: () => void }) {
+ *  window, applicant levels, the form, and the level-aware assessment pool.
+ *
+ *  Rendered inside a drawer, so it draws no card of its own and no title: the
+ *  drawer supplies both, and its sticky footer supplies Save — which used to
+ *  sit at the very bottom of a long page, below everything it saves. */
+const IntakePanel = forwardRef<IntakePanelHandle, { cohortId: string; cohort: any; onChange: () => void; onBusyChange?: (busy: boolean) => void }>(
+function IntakePanel({ cohortId, cohort, onChange, onBusyChange }, ref) {
   const [assessments, setAssessments] = useState<Assessment[]>([]);
   const [otherCohorts, setOtherCohorts] = useState<{ id: string; name: string }[]>([]);
   const [required, setRequired] = useState<boolean>(Boolean(cohort?.assessmentRequired));
@@ -263,6 +310,11 @@ function IntakePanel({ cohortId, cohort, onChange }: { cohortId: string; cohort:
   const [busy, setBusy] = useState(false);
   const [builderOpen, setBuilderOpen] = useState(false);
   const [builderTarget, setBuilderTarget] = useState<string | null>(null);
+
+  // The drawer's footer owns the Save button, so it needs a way in and a way
+  // to know when to disable itself.
+  useImperativeHandle(ref, () => ({ save: () => { void saveSettings(); } }));
+  useEffect(() => { onBusyChange?.(busy); }, [busy, onBusyChange]);
 
   const tz = getBrowserTimeZone();
   // Today (local) as YYYY-MM-DD — the floor for the apply window. You can't open
@@ -390,53 +442,44 @@ function IntakePanel({ cohortId, cohort, onChange }: { cohortId: string; cohort:
   const field = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500';
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-card p-5 space-y-5">
-      <div className="flex items-center gap-2">
-        <ClipboardCheck className="w-4 h-4 text-brand-600" />
-        <h2 className="font-medium text-slate-900">Admissions settings</h2>
-      </div>
-
-      {/* Applicant-facing description — rich text, shown at the top of the apply form */}
-      <div>
-        <label className="block text-xs font-medium text-slate-500 mb-1">
-          Description <span className="text-slate-400 font-normal">— shown to applicants on the apply form</span>
-        </label>
+    <div className="space-y-4">
+      <SettingsSection
+        icon={FileText}
+        title="The intake"
+        hint="What applicants read at the top of the apply form, and how many you are taking."
+      >
         <RichTextEditor
           content={description}
           onChange={setDescription}
-          placeholder="What is this intake about? Who is it for, what will they get, and any expectations. Applicants see this at the top of the form."
-          minHeight="120px"
+          placeholder="What is this intake about? Who is it for, what will they get, and any expectations."
+          minHeight="110px"
         />
-      </div>
-
-      {/* Capacity (the application window itself is set below) */}
-      <div className="grid sm:grid-cols-2 gap-4">
-        <div>
-          <label className="block text-xs font-medium text-slate-500 mb-1">Seats <span className="text-slate-400 font-normal">— how many you&apos;ll enroll</span></label>
-          <input type="number" min={1} value={seats} onChange={(e) => setSeats(e.target.value)} placeholder="Unlimited" className={field} />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-slate-500 mb-1">Application limit <span className="text-slate-400 font-normal">— blank = unlimited</span></label>
-          <input type="number" min={1} value={maxApps} onChange={(e) => setMaxApps(e.target.value)} placeholder="Unlimited" className={field} />
-        </div>
-      </div>
-
-      {/* Public link */}
-      <div className="border-t border-slate-100 pt-4">
-        <div className="flex items-center justify-between gap-3 mb-2">
-          <div className="flex items-center gap-2">
-            <Link2 className="w-4 h-4 text-brand-600" />
-            <h3 className="text-sm font-medium text-slate-900">Public application link</h3>
+        <div className="mt-3 grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500">Seats <span className="font-normal text-slate-400">— how many you&apos;ll enroll</span></label>
+            <input type="number" min={1} value={seats} onChange={(e) => setSeats(e.target.value)} placeholder="Unlimited" className={field} />
           </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500">Application limit <span className="font-normal text-slate-400">— blank = unlimited</span></label>
+            <input type="number" min={1} value={maxApps} onChange={(e) => setMaxApps(e.target.value)} placeholder="Unlimited" className={field} />
+          </div>
+        </div>
+      </SettingsSection>
+
+      <SettingsSection
+        icon={Link2}
+        title="Public application link"
+        hint="A shareable link anyone can apply through, and the window it accepts applications in."
+        action={(
           <button
             onClick={toggleLink}
             disabled={busy}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium ${enabled ? 'border border-slate-200 text-slate-700 hover:bg-slate-100' : 'bg-brand-600 text-white hover:bg-brand-700'}`}
+            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium ${enabled ? 'border border-slate-200 text-slate-700 hover:bg-slate-100' : 'bg-brand-600 text-white hover:bg-brand-700'}`}
           >
             <Power className="w-4 h-4" /> {enabled ? 'Disable' : 'Enable link'}
           </button>
-        </div>
-
+        )}
+      >
         {enabled ? (
           <div className="flex items-center gap-2">
             <code className="flex-1 truncate rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-700">{applyUrl}</code>
@@ -469,7 +512,7 @@ function IntakePanel({ cohortId, cohort, onChange }: { cohortId: string; cohort:
           </div>
         </div>
         <p className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-slate-400"><CalendarRange className="w-3 h-3" /> Times are in <strong className="font-medium">{tz}</strong>. Leave a time blank to default to start-of-day (opens) / end-of-day 11:59&nbsp;PM (closes).</p>
-      </div>
+      </SettingsSection>
 
       {/* Clone from another cohort */}
       {otherCohorts.length > 0 && (
@@ -484,13 +527,11 @@ function IntakePanel({ cohortId, cohort, onChange }: { cohortId: string; cohort:
         </div>
       )}
 
-      {/* Levels */}
-      <div className="border-t border-slate-100 pt-4">
-        <div className="flex items-center gap-2 mb-2">
-          <Layers className="w-4 h-4 text-brand-600" />
-          <h3 className="text-sm font-medium text-slate-900">Applicant levels <span className="text-slate-400 font-normal">(optional)</span></h3>
-        </div>
-        <p className="text-xs text-slate-500 mb-2">Add levels (e.g. Beginner, Level 1) and the apply form asks applicants to pick one — used to give the right assessment. Leave empty for no level question.</p>
+      <SettingsSection
+        icon={Layers}
+        title="Applicant levels"
+        hint="Add levels (e.g. Beginner, Level 1) and the apply form asks applicants to pick one — it decides which assessment they get. Leave empty for no level question."
+      >
         <div className="space-y-2">
           {levelLabels.map((label, i) => (
             <div key={i} className="flex items-center gap-2">
@@ -520,34 +561,31 @@ function IntakePanel({ cohortId, cohort, onChange }: { cohortId: string; cohort:
             )}
           </div>
         )}
-      </div>
+      </SettingsSection>
 
-      {/* Application form builder */}
-      <div className="border-t border-slate-100 pt-4">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2">
-            <FormInput className="w-4 h-4 text-brand-600" />
-            <h3 className="text-sm font-medium text-slate-900">Application form</h3>
-          </div>
+      <SettingsSection
+        icon={FormInput}
+        title="Application form"
+        hint={<>Name and email are always collected. Profile fields carry straight to the mentee&apos;s profile; custom questions are kept for your review.</>}
+        action={(
           <button onClick={() => setShowPreview(true)} className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800">
-            <Eye className="w-3.5 h-3.5" /> Preview
+            <Eye className="h-3.5 w-3.5" /> Preview
           </button>
-        </div>
+        )}
+      >
         <IntakeFormBuilder value={formFields} onChange={setFormFields} />
-      </div>
+      </SettingsSection>
 
-      {/* Assessment pool */}
-      <div className="border-t border-slate-100 pt-4">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2">
-            <ClipboardCheck className="w-4 h-4 text-brand-600" />
-            <h3 className="text-sm font-medium text-slate-900">Assessments</h3>
-          </div>
+      <SettingsSection
+        icon={ClipboardCheck}
+        title="Assessments"
+        hint={<>Attach one or more <em>published</em> assessments. Applicants get <strong>one at random</strong> from the pool matching their level (or the &ldquo;Everyone&rdquo; pool when they have no level).</>}
+        action={(
           <button onClick={openNewBuilder} disabled={busy} className="inline-flex items-center gap-1.5 text-xs font-medium text-brand-700 hover:text-brand-800">
-            <Plus className="w-3.5 h-3.5" /> Create &amp; build
+            <Plus className="h-3.5 w-3.5" /> Create &amp; build
           </button>
-        </div>
-        <p className="text-xs text-slate-500 mb-2">Attach one or more <em>published</em> assessments. Applicants get <strong>one at random</strong> from the pool matching their level (or the “Everyone” pool when they have no level).</p>
+        )}
+      >
         <div className="space-y-2">
           {pool.map((row, i) => (
             <div key={i} className="flex flex-wrap items-center gap-2">
@@ -585,13 +623,9 @@ function IntakePanel({ cohortId, cohort, onChange }: { cohortId: string; cohort:
         </div>
 
         <p className="mt-3 text-xs text-slate-400">Build reusable assessments in the <Link href="/admin/assessments" className="text-brand-600">Assessments library</Link>.</p>
-      </div>
+      </SettingsSection>
 
-      <div className="flex justify-end">
-        <button onClick={saveSettings} disabled={busy} className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50">
-          {busy && <Loader2 className="w-4 h-4 animate-spin" />} Save admissions settings
-        </button>
-      </div>
+      {/* Save lives in the drawer's sticky footer, not down here. */}
 
       <AssessmentDrawer
         open={builderOpen}
@@ -599,12 +633,15 @@ function IntakePanel({ cohortId, cohort, onChange }: { cohortId: string; cohort:
         onClose={() => setBuilderOpen(false)}
         onSaved={onAssessmentSaved}
         onDeleted={onAssessmentDeleted}
+        zClass="z-[60]"
       />
 
       <Drawer
         open={showPreview}
         onClose={() => setShowPreview(false)}
         width="md"
+        /* Above the settings drawer this one is opened from. */
+        zClass="z-[60]"
         title="Application preview"
         subtitle="Exactly what an applicant sees on the apply page."
       >
@@ -618,7 +655,8 @@ function IntakePanel({ cohortId, cohort, onChange }: { cohortId: string; cohort:
       </Drawer>
     </div>
   );
-}
+});
+IntakePanel.displayName = 'IntakePanel';
 
 /** Read-only mock of exactly what an applicant will see on the apply page. */
 function ApplyFormPreview({ description, fields, levels, hasAssessment, required }: { description?: string; fields: IntakeFormField[]; levels: { key: string; label: string }[]; hasAssessment: boolean; required: boolean }) {
@@ -878,13 +916,11 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
 
   const [open, setOpen] = useState<Application | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // Settings open in a drawer now, so the open state is deliberately NOT
+  // remembered: a sheet that reopens itself on every visit is in the way.
   const [settingsOpen, setSettingsOpen] = useState(false);
-  useEffect(() => {
-    if (typeof window !== 'undefined') setSettingsOpen(localStorage.getItem(`pathment-cohort-settings-open:${id}`) === '1');
-  }, [id]);
-  useEffect(() => {
-    if (typeof window !== 'undefined') localStorage.setItem(`pathment-cohort-settings-open:${id}`, settingsOpen ? '1' : '0');
-  }, [id, settingsOpen]);
+  const [settingsBusy, setSettingsBusy] = useState(false);
+  const intakeRef = useRef<IntakePanelHandle>(null);
   // Range selection. `lastIndex` is the anchor for shift-click: click one row,
   // shift-click another, and everything between them toggles as a block — the
   // natural "from this to this" without dragging. Indices are into `filtered`
@@ -1151,30 +1187,94 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
         </div>
       </div>
 
-      {/* Admissions settings — collapsed by default so the applicant list is the
-          focus; open it when you actually need to change the intake. */}
-      {cohort && (
-        <div className="rounded-2xl border border-slate-200 bg-card">
-          <button
-            onClick={() => setSettingsOpen((v) => !v)}
-            aria-expanded={settingsOpen}
-            className="flex w-full items-center gap-2 px-4 py-3 text-left"
-          >
-            <Settings className="w-4 h-4 text-slate-400 shrink-0" />
-            <span className="text-sm font-medium text-slate-800">Admissions settings</span>
-            <span className="text-xs text-slate-400 truncate">
-              {cohort.publicSlug ? 'public link on' : 'public link off'}
-              {cohort.assessmentRequired ? ' · assessment required' : ''}
-              {(cohort.levels?.length ?? 0) > 0 ? ` · ${cohort.levels?.length} levels` : ''}
-            </span>
-            <ChevronDown className={`ml-auto w-4 h-4 text-slate-400 transition-transform ${settingsOpen ? 'rotate-180' : ''}`} />
-          </button>
-          {settingsOpen && (
-            <div className="border-t border-slate-200 p-4">
-              <IntakePanel cohortId={id} cohort={cohort} onChange={refetch} />
+      {/* Admissions settings — a summary you can read at a glance, and a drawer
+          to change it in. It used to be a long form inline on this page, which
+          pushed the applicant list below the fold and grew every time a field
+          was added. The facts most often checked are here, so the usual visit
+          needs no drawer at all. */}
+      {cohort && (() => { const linkLive = Boolean(cohort.publicEnabled && cohort.publicSlug); return (
+        <div className="rounded-2xl border border-slate-200 bg-card p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="flex items-center gap-2 text-sm font-medium text-slate-900">
+                <Settings className="h-4 w-4 text-slate-400" /> Admissions settings
+              </h2>
+              <p className="mt-1 text-xs text-slate-500">How people apply to this intake, and what they are asked.</p>
+            </div>
+            <button
+              onClick={() => setSettingsOpen(true)}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100"
+            >
+              <Pencil className="h-3.5 w-3.5" /> Edit settings
+            </button>
+          </div>
+
+          <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3 lg:grid-cols-5">
+            {([
+              // Same rule the form uses: a slug can exist while the link is off,
+              // and saying "On" for a link nobody can apply through would lie.
+              ['Public link', linkLive ? 'On' : 'Off', linkLive ? 'text-emerald-700' : 'text-slate-400'],
+              ['Apply window', applyWindowLabel(cohort), 'text-slate-700'],
+              ['Seats', cohort.capacity != null ? String(cohort.capacity) : 'Unlimited', 'text-slate-700'],
+              ['Levels', (cohort.levels?.length ?? 0) > 0 ? `${cohort.levels?.length}` : 'None', 'text-slate-700'],
+              [
+                'Assessment',
+                cohort.assessmentRequired ? 'Required' : 'Optional',
+                cohort.assessmentRequired ? 'text-slate-700' : 'text-slate-400',
+              ],
+            ] as const).map(([label, value, tone]) => (
+              <div key={label} className="min-w-0">
+                <dt className="text-[11px] uppercase tracking-wide text-slate-400">{label}</dt>
+                <dd className={`mt-0.5 truncate text-sm font-medium ${tone}`}>{value}</dd>
+              </div>
+            ))}
+          </dl>
+
+          {linkLive && (
+            <div className="mt-4 flex items-center gap-2 border-t border-slate-100 pt-3">
+              <code className="min-w-0 flex-1 truncate rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                {applyUrlFor(String(cohort.publicSlug))}
+              </code>
+              <button
+                onClick={() => { navigator.clipboard?.writeText(applyUrlFor(String(cohort.publicSlug))); toast.success('Link copied'); }}
+                className="shrink-0 rounded-lg border border-slate-200 p-2 hover:bg-slate-100"
+                aria-label="Copy application link"
+              >
+                <Copy className="h-4 w-4" />
+              </button>
             </div>
           )}
         </div>
+      ); })()}
+
+      {cohort && (
+        <Drawer
+          open={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+          width="xl"
+          title="Admissions settings"
+          subtitle={cohort.name}
+          footer={(dismiss) => (
+            <>
+              <button onClick={dismiss} className="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">Cancel</button>
+              <button
+                onClick={() => intakeRef.current?.save()}
+                disabled={settingsBusy}
+                className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+              >
+                {settingsBusy && <Loader2 className="h-4 w-4 animate-spin" />} Save settings
+              </button>
+            </>
+          )}
+        >
+          <IntakePanel
+            ref={intakeRef}
+            cohortId={id}
+            cohort={cohort}
+            onChange={refetch}
+            onBusyChange={setSettingsBusy}
+          />
+        </Drawer>
       )}
 
       {capHeld && (

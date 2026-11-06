@@ -50,13 +50,15 @@ const newId = () =>
  * fresh assessment.
  */
 export function AssessmentDrawer({
-  open, assessmentId, onClose, onSaved, onDeleted,
+  open, assessmentId, onClose, onSaved, onDeleted, zClass,
 }: {
   open: boolean;
   assessmentId?: string | null;
   onClose: () => void;
   onSaved?: (a: Assessment) => void;
   onDeleted?: (id: string) => void;
+  /** Raise it above a drawer it was opened from (e.g. admissions settings). */
+  zClass?: string;
 }) {
   const editing = Boolean(assessmentId);
   const confirm = useConfirm();
@@ -178,6 +180,7 @@ export function AssessmentDrawer({
       open={open}
       onClose={onClose}
       width="lg"
+      {...(zClass ? { zClass } : {})}
       title={editing ? 'Edit assessment' : 'New assessment'}
       subtitle={editing ? 'Changes apply wherever this assessment is used.' : 'Build it here — no need to leave this page.'}
       footer={
