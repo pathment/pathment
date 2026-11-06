@@ -55,12 +55,15 @@ export function PoolEntryCard({
   onViewProfile,
   onClaim,
   onWithdraw,
+  claimLabel = 'Take into my clan',
 }: {
   entry: PoolEntry;
   busy?: boolean;
   onViewProfile?: (entry: PoolEntry) => void;
   /** Omitted when the viewer has nowhere to pull them into. */
   onClaim?: (entry: PoolEntry) => void;
+  /** A mentor takes them into their own clan; an admin places them into any. */
+  claimLabel?: string;
   /** Omitted when the viewer did not push them and is not an admin. */
   onWithdraw?: (entry: PoolEntry) => void;
 }) {
@@ -168,7 +171,7 @@ export function PoolEntryCard({
                 className="inline-flex items-center gap-1.5 rounded-xl bg-brand-600 px-3.5 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
               >
                 {busy && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
-                Take into my clan
+                {claimLabel}
               </button>
             )}
             {onWithdraw && (
