@@ -289,6 +289,8 @@ export interface CatalogApp {
 
 export interface CatalogIntegration {
   key: string;
+  /** What to show for the key (e.g. 'Edorax' for 'buildment'). */
+  label: string;
   credentialFields: Array<{ key: string; label: string; secret: boolean }>;
   /** Name of the app already claiming this key (keys are unique), or null. */
   usedBy: string | null;

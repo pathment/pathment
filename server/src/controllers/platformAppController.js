@@ -33,6 +33,7 @@ const list = catchAsync(async (req, res) => {
     // already claims it (integration_key is unique).
     integrations: Object.keys(INTEGRATIONS).map((key) => ({
       key,
+      label: INTEGRATIONS[key].label || key,
       credentialFields: INTEGRATIONS[key].credentialFields,
       usedBy: apps.find((app) => app.integrationKey === key)?.name || null,
     })),

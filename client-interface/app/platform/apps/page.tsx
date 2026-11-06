@@ -32,7 +32,9 @@ const isHttpUrl = (value: string) => {
   }
 };
 
-function AppRow({ app, canWrite, onEdit }: { app: CatalogApp; canWrite: boolean; onEdit: () => void }) {
+function AppRow({ app, integrationLabel, canWrite, onEdit }: {
+  app: CatalogApp; integrationLabel: string | null; canWrite: boolean; onEdit: () => void;
+}) {
   const queryClient = useQueryClient();
   const refresh = () => queryClient.invalidateQueries({ queryKey: qk.platform.apps });
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -57,7 +59,7 @@ function AppRow({ app, canWrite, onEdit }: { app: CatalogApp; canWrite: boolean;
           <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium capitalize text-muted-foreground">{app.type}</span>
           {app.integrationKey ? (
             <span className="inline-flex items-center gap-1 rounded-full bg-brand-500/10 px-2 py-0.5 text-[11px] font-medium text-brand-700 dark:text-brand-400">
-              <Plug className="h-3 w-3" aria-hidden /> {app.integrationKey}
+              <Plug className="h-3 w-3" aria-hidden /> {integrationLabel || app.integrationKey}
             </span>
           ) : (
             <span className="rounded-full border border-dashed border-border px-2 py-0.5 text-[11px] text-muted-foreground">listing only</span>
@@ -145,7 +147,7 @@ function AppForm({ editing, integrations, onDone }: {
       const taken = Boolean(integration.usedBy && integration.usedBy !== editing?.name);
       return {
         value: integration.key,
-        label: integration.key,
+        label: integration.label || integration.key,
         description: taken
           ? `Already used by ${integration.usedBy} — keys are one app each`
           : `Asks for: ${integration.credentialFields.map((field) => field.label).join(', ')}`,
@@ -163,7 +165,7 @@ function AppForm({ editing, integrations, onDone }: {
       <form onSubmit={(event) => { event.preventDefault(); if (canSave) save.mutate(); }}>
         <label className="block">
           <span className="text-xs font-medium">Name</span>
-          <input value={form.name} onChange={(event) => setForm((c) => ({ ...c, name: event.target.value }))} className={inputClass} placeholder="Buildment" />
+          <input value={form.name} onChange={(event) => setForm((c) => ({ ...c, name: event.target.value }))} className={inputClass} placeholder="Edorax" />
         </label>
         <div className="mt-3">
           <span className="text-xs font-medium">Type</span>
@@ -187,7 +189,7 @@ function AppForm({ editing, integrations, onDone }: {
         </label>
         <label className="mt-3 block">
           <span className="text-xs font-medium">Icon URL <span className="font-normal text-muted-foreground">(optional)</span></span>
-          <input value={form.iconUrl || ''} onChange={(event) => setForm((c) => ({ ...c, iconUrl: event.target.value }))} className={inputClass} placeholder="https://… or /apps/buildment.svg" />
+          <input value={form.iconUrl || ''} onChange={(event) => setForm((c) => ({ ...c, iconUrl: event.target.value }))} className={inputClass} placeholder="https://… or /apps/app-icon.svg" />
         </label>
         <div className="mt-3">
           <span className="text-xs font-medium">Integration</span>
@@ -282,7 +284,13 @@ export default function PlatformAppsPage() {
             {apps.length ? (
               <ul className="divide-y divide-border overflow-hidden rounded-3xl border border-border bg-card">
                 {apps.map((app) => (
-                  <AppRow key={app.id} app={app} canWrite={canWrite} onEdit={() => setEditingId(app.id)} />
+                  <AppRow
+                    key={app.id}
+                    app={app}
+                    integrationLabel={data?.integrations?.find((integration) => integration.key === app.integrationKey)?.label || null}
+                    canWrite={canWrite}
+                    onEdit={() => setEditingId(app.id)}
+                  />
                 ))}
               </ul>
             ) : (
