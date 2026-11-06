@@ -2,8 +2,15 @@
  * poolTaskService — qualifying work for the System Pool.
  *
  * Work is the formats Pathment already has: an ordinary task (reading, video,
- * exercise, project, practical, open source…), a quiz kit, or an interview
- * kit. There is no pool task format.
+ * exercise, project, practical, open source…), a quiz kit, an interview
+ * kit, or an Edorax course. There is no pool task format.
+ *
+ * A course is the one kind whose outcome comes from outside Pathment.
+ * Assigning it enrolls the candidate on Edorax first and only then creates the
+ * task, so a provider refusal (no seats, course withdrawn) costs nothing and
+ * is reported per candidate. Cancelling the work releases the seats it took.
+ * Nobody hands a course in and nobody reviews it: courseService's background
+ * sync reads progress and poolScoringService scores that progress directly.
  *
  * Each piece of work is one entry in the pool's `workItems` list with its own
  * task template (RoadmapTask), and one AssignedTask per member pointing at
@@ -25,6 +32,7 @@ const { models, sequelize } = require('../db');
 const { NotFoundError, ValidationError, ForbiddenError } = require('../utils/errors/errorTypes');
 const { NOTIFICATION_EVENTS } = require('../config/notificationMatrix');
 const { pointsForDifficulty } = require('../config/points');
+const logger = require('../utils/logger');
 const poolService = require('./poolService');
 const poolWorkEvents = require('./poolWorkEvents');
 
@@ -38,6 +46,17 @@ const OPEN_STATUSES = ['assigned', 'not_started', 'in_progress', 'revision_neede
 const TaskModel = () => models.AssignedTask.scope('withPoolWork');
 
 class PoolTaskService {
+  /**
+   * The levels a piece of work is aimed at: a clean list of keys, or [] for
+   * everyone. Stored as a list rather than a single level because one course
+   * often suits two adjacent levels, and because [] reads as "no restriction"
+   * without a second flag to mean it.
+   */
+  _levels(input) {
+    if (!Array.isArray(input)) return [];
+    return [...new Set(input.map((l) => String(l || '').trim()).filter(Boolean))].slice(0, 20);
+  }
+
   /**
    * Change the pool's work list under a row lock, so two operators editing at
    * the same moment queue up instead of overwriting each other's change.
@@ -123,7 +142,7 @@ class PoolTaskService {
    * rather than failing the batch, so a second pass over the same roadmap is
    * safe.
    */
-  async addRoadmapSteps(poolId, { roadmapTaskIds = [], required = true, dueAt = null, points = {}, assignTo = null }, actor) {
+  async addRoadmapSteps(poolId, { roadmapTaskIds = [], required = true, levels = [], dueAt = null, points = {}, assignTo = null }, actor) {
     const ids = [...new Set((Array.isArray(roadmapTaskIds) ? roadmapTaskIds : []).map(String))];
     if (!ids.length) throw new ValidationError('Choose at least one roadmap step');
     const pool = await poolService.getPool(poolId);
@@ -145,6 +164,8 @@ class PoolTaskService {
           kind: 'task',
           roadmapTaskId: id,
           required,
+          // One level choice applies to every step added in the pass.
+          levels,
           dueAt,
           points: points?.[id],
           assignTo,
@@ -252,8 +273,10 @@ class PoolTaskService {
    *                       acceptanceCriteria } for a one-off special assignment
    *   kind 'quiz'       { kitId, evaluationMode?, timeLimitSeconds?, passScore?, allowRetake?, showAnswers? }
    *   kind 'interview'  { kitId, …interview options }
-   *   always            { points?, required?, dueAt?, assignTo?: 'all' | memberId[] }
+   *   kind 'course'     { courseId } — an Edorax course the workspace may assign
+   *   always            { points?, required?, levels?, dueAt?, assignTo?: 'all' | memberId[] }
    *                     `points` omitted → the step's difficulty, through the pool's curve.
+   *                     `levels` omitted or empty → the work is for everyone.
    */
   async createAssignment(poolId, data, actor) {
     const pool = await poolService.getPool(poolId);
@@ -299,6 +322,30 @@ class PoolTaskService {
         isCustomTask: true,
         pointsBase: pointsForDifficulty(difficulty),
       });
+    } else if (kind === 'course') {
+      // The course must be one Edorax currently offers this workspace. Taking
+      // the id from that list (rather than trusting the client) is the same
+      // guard courseService.prepare applies on the clan side.
+      const { course: picked } = await require('./courseService').prepare(data.courseId, { checkSeats: false });
+      if (poolService.workItems(pool).some((w) => w.kind === 'course' && w.config?.courseId === picked.courseId && !w.cancelledAt)) {
+        throw new ValidationError('That course is already part of this pool\'s work');
+      }
+      title = String(data.title || '').trim() || picked.title;
+      config = { courseId: picked.courseId, courseSlug: picked.courseSlug || null, courseTitle: picked.title };
+      const difficulty = DIFFICULTIES.includes(data.difficulty) ? data.difficulty : 'medium';
+      roadmapTask = await models.RoadmapTask.create({
+        title: title.slice(0, 255),
+        description: String(data.description || '').trim() || picked.description || 'Complete this course on Edorax.',
+        type: 'course',
+        difficulty,
+        taskOrder: 0,
+        deliverable: 'Finish the course on Edorax',
+        acceptanceCriteria: [],
+        estimatedHours: EST_HOURS[difficulty],
+        isMandatory: false,
+        isCustomTask: true,
+        pointsBase: pointsForDifficulty(difficulty),
+      });
     } else {
       const kit = await this._kit(kind, data.kitId);
       title = String(data.title || '').trim() || kit.title || (kind === 'quiz' ? 'Quiz' : 'Interview');
@@ -334,6 +381,7 @@ class PoolTaskService {
         // separate table of percentages. Defaults to its difficulty's points.
         points,
         required: data.required !== false,
+        levels: this._levels(data.levels),
         dueAt: dueAt ? dueAt.toISOString() : null,
         config,
         createdById: actor.id,
@@ -387,6 +435,17 @@ class PoolTaskService {
 
   async _assignOne(pool, assignment, member, mentorId) {
     const base = { memberId: member.id, email: member.email };
+    // Level targeting is checked before anything else, so aiming work at a
+    // level never enrolls the wrong candidate on Edorax or takes their seat.
+    if (!poolService.targetsMember(assignment, member)) {
+      return {
+        ...base,
+        result: 'skipped',
+        reason: member.level
+          ? `This work is for ${assignment.levels.join(', ')}; they applied at ${member.level}`
+          : `This work is for ${assignment.levels.join(', ')}; they have no level`,
+      };
+    }
     if (!member.userId) return { ...base, result: 'skipped', reason: 'Has not activated their account yet — they receive it on activation' };
     if (member.decision) return { ...base, result: 'skipped', reason: `Already ${member.decision.replace('_', ' ')}` };
     const existing = await TaskModel().findOne({
@@ -397,6 +456,19 @@ class PoolTaskService {
 
     const roadmapTask = await models.RoadmapTask.findByPk(assignment.roadmapTaskId, { attributes: ['id', 'title', 'pointsBase', 'difficulty'] });
     if (!roadmapTask) return { ...base, result: 'failed', reason: 'The work\'s template no longer exists' };
+
+    // A course is resolved against Edorax BEFORE the task row exists, so a
+    // refusal (no seats, course pulled, keys rejected) leaves nothing behind
+    // and reads as this candidate's failure rather than the whole batch's.
+    let coursePrepared = null;
+    if (assignment.kind === 'course') {
+      try {
+        coursePrepared = await require('./courseService').prepare(assignment.config?.courseId);
+      } catch (error) {
+        return { ...base, result: 'failed', reason: error.isOperational ? error.message : 'Could not reach Edorax' };
+      }
+    }
+
     const dueDate = assignment.dueAt || pool.qualificationDueAt || new Date(Date.now() + 7 * 86400000);
     let task;
     try {
@@ -427,6 +499,21 @@ class PoolTaskService {
     } catch (error) {
       if (error instanceof UniqueConstraintError) return { ...base, result: 'skipped', reason: 'Already has this work' };
       return { ...base, result: 'failed', reason: error.message };
+    }
+
+    // Enroll outside the transaction: it is an HTTP call to Edorax, and the
+    // task's own id is the external assignment id, so it has to exist first.
+    // A failure takes the task away again rather than leaving a course task
+    // nobody is enrolled in.
+    if (coursePrepared) {
+      try {
+        await require('./courseService').enrollForTask(task, coursePrepared);
+      } catch (error) {
+        await task.destroy().catch((cleanupError) => {
+          logger.error('Pool course task cleanup failed', { taskId: task.id, message: cleanupError.message });
+        });
+        return { ...base, result: 'failed', reason: error.isOperational ? error.message : 'Could not enroll on Edorax' };
+      }
     }
 
     await poolWorkEvents.refreshMemberStatus(member.id);
@@ -466,6 +553,11 @@ class PoolTaskService {
   /** Withdraw a piece of work from the pool: cancels it for everyone who has not finished it. */
   async cancelAssignment(poolId, assignmentId, reason, actor) {
     const now = new Date();
+    // Course seats are released before the tasks are cancelled, because once a
+    // task is cancelled the enrollment is no longer reachable from it. Best
+    // effort per candidate: a provider failure is logged and does not keep the
+    // work in the pool, which would be worse — the operator could never remove it.
+    const released = await this._releaseCourseSeats(poolId, assignmentId);
     const { assignment, cancelled } = await this._editWorkItems(poolId, async (items, pool, transaction) => {
       const item = items.find((w) => w.id === assignmentId);
       if (!item) throw new NotFoundError('That work is not part of this pool');
@@ -484,8 +576,40 @@ class PoolTaskService {
       );
       return { assignment: item, cancelled: count };
     });
-    await poolService.audit(poolId, actor.id, 'POOL_WORK_CANCELLED', { assignmentId, cancelled, reason: reason || null });
+    await poolService.audit(poolId, actor.id, 'POOL_WORK_CANCELLED', {
+      assignmentId, cancelled, reason: reason || null, ...(released === null ? {} : { seatsReleased: released }),
+    });
     return assignment;
+  }
+
+  /**
+   * Give back the Edorax seats a piece of course work is holding. Returns the
+   * number released, or null when the work is not a course. Each candidate is
+   * released on its own so one provider failure does not strand the rest.
+   */
+  async _releaseCourseSeats(poolId, assignmentId) {
+    const pool = await poolService.getPool(poolId);
+    const item = poolService.workItems(pool).find((w) => w.id === assignmentId);
+    if (!item || item.kind !== 'course' || item.cancelledAt) return null;
+    const tasks = await TaskModel().findAll({
+      where: {
+        roadmapTaskId: item.roadmapTaskId,
+        status: { [Op.in]: OPEN_STATUSES },
+        poolMemberId: { [Op.in]: sequelize.literal(`(SELECT id FROM candidate_pool_members WHERE pool_id = ${sequelize.escape(poolId)})`) },
+      },
+      attributes: ['id'],
+    });
+    const courseService = require('./courseService');
+    let released = 0;
+    for (const task of tasks) {
+      try {
+        await courseService.cancelForTask(task);
+        released += 1;
+      } catch (error) {
+        logger.warn('Pool course seat not released', { taskId: task.id, message: error.message });
+      }
+    }
+    return released;
   }
 
   /** A candidate opens a task: assigned → in progress (their own pool work only). */

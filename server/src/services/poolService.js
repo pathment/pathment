@@ -385,6 +385,21 @@ class PoolService {
     return (Array.isArray(pool.workItems) ? pool.workItems : []).map((w) => ({ ...w }));
   }
 
+  /**
+   * Does this piece of work reach this candidate?
+   *
+   * Work with no `levels` is for everyone, which is what every piece written
+   * before levels existed means. Targeted work reaches only candidates who
+   * applied at one of those levels; a candidate with no level is never swept
+   * into work aimed at one. Lives here because both the service that hands
+   * work out and the one that scores it must agree, exactly.
+   */
+  targetsMember(assignment, member) {
+    const levels = Array.isArray(assignment?.levels) ? assignment.levels : [];
+    if (!levels.length) return true;
+    return Boolean(member?.level) && levels.includes(member.level);
+  }
+
   /** The work item a pool task belongs to — matched on its task template. */
   workItemForTask(pool, roadmapTaskId) {
     const matching = this.workItems(pool).filter((w) => w.roadmapTaskId === roadmapTaskId);
@@ -470,6 +485,8 @@ class PoolService {
         // Their photo, so a candidate list reads like every other person list.
         avatarUrl: m.user?.profilePictureUrl || null,
         source: m.details?.source || 'import',
+        // The level they applied at, so a list can be read and filtered by it.
+        level: m.level || null,
         status: m.status,
         bucket: this.bucketOf(m, mine, { inactivityDays }),
         decision: m.decision,
@@ -496,7 +513,28 @@ class PoolService {
     });
     const buckets = {};
     for (const r of rows) buckets[r.bucket] = (buckets[r.bucket] || 0) + 1;
-    return { pool, assignments, members: rows, buckets };
+    return { pool, assignments, members: rows, buckets, levels: await this.levelsFor(pool, rows) };
+  }
+
+  /**
+   * The levels this round can aim work at: the cohort's own list, plus any
+   * level the candidates actually carry. The second half matters because a
+   * pool can be filled from a CSV or from a cohort that has since changed its
+   * levels, and work that cannot be aimed at a level a candidate holds would
+   * be a dead option in the picker. Empty list = this round has no levels.
+   */
+  async levelsFor(pool, memberRows = []) {
+    const byKey = new Map();
+    if (pool.cohortId && models.Cohort) {
+      const cohort = await models.Cohort.findByPk(pool.cohortId, { attributes: ['id', 'levels'] });
+      for (const l of (Array.isArray(cohort?.levels) ? cohort.levels : [])) {
+        if (l?.key) byKey.set(String(l.key), { key: String(l.key), label: l.label || String(l.key) });
+      }
+    }
+    for (const r of memberRows) {
+      if (r.level && !byKey.has(r.level)) byKey.set(r.level, { key: r.level, label: r.level });
+    }
+    return [...byKey.values()];
   }
 
   /**

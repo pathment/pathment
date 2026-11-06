@@ -16,6 +16,21 @@
  * platform; it is the only number a person types, and it is always shown
  * separately.
  *
+ * A COURSE is the exception, and deliberately so:
+ *
+ *   points × progress ÷ 100   from Edorax's own progress figure
+ *
+ * Nobody reviews a course. Edorax measures it, so a reviewer would only be
+ * retyping a number the provider already knows. Progress is used rather than
+ * a pass mark because a pass mark gives everyone who passes an identical
+ * score, and a selection round ranks people — flattening the top of the list
+ * into one tie is the opposite of what the pool needs. A finished course is
+ * 100% and therefore worth full points, which is the same answer the review
+ * path would have given, so the two rules agree at the only point they meet.
+ * An unfinished required course is a warning, never a blocker: progress is not
+ * something a reviewer can clear, and the qualification deadline is what
+ * closes the round.
+ *
  * There are no weights and no percentages. The total is the sum of its parts
  * because the parts ARE points. Work handed in but not yet reviewed stops the
  * shortlist being confirmed — nobody is ranked on unreviewed work.
@@ -47,6 +62,18 @@ const OUTCOMES = ['selected', 'waitlisted', 'not_selected'];
 const GENERATED = 'POOL_SHORTLIST_GENERATED';
 const CONFIRMED = 'POOL_SELECTION_CONFIRMED';
 const round2 = (n) => Math.round(n * 100) / 100;
+
+/**
+ * How far through a course the candidate is, 0–100. A finished course counts
+ * as 100 even if the provider's percentage lags behind its own completion
+ * flag, so completing a course can never be worth less than almost finishing it.
+ */
+const courseProgress = (enrollment) => {
+  if (!enrollment) return 0;
+  if (enrollment.progressStatus === 'COMPLETED' || enrollment.lifecycle === 'COMPLETED') return 100;
+  const pct = Number(enrollment.overallProgress);
+  return Number.isFinite(pct) ? Math.max(0, Math.min(100, pct)) : 0;
+};
 
 // Blockers that only a change to the work can clear (add some, review it)
 // versus one a person clears by deciding (a tie at the cutoff).
@@ -85,6 +112,18 @@ class PoolScoringService {
       if (f.isApproved && !latestApproved.has(f.assignedTaskId)) latestApproved.set(f.assignedTaskId, f);
     }
     const taskFor = new Map(tasks.map((t) => [`${t.poolMemberId}:${t.roadmapTaskId}`, t]));
+    // Course work is scored from the provider's progress, so the enrollment
+    // rows are read alongside the tasks. Only fetched when the pool has course
+    // work at all, which most rounds will not.
+    const hasCourseWork = workItems.some((w) => w.kind === 'course');
+    const courseFor = new Map();
+    if (hasCourseWork && tasks.length) {
+      const enrollments = await models.CourseEnrollment.findAll({
+        where: { assignedTaskId: { [Op.in]: tasks.map((t) => t.id) } },
+        attributes: ['assignedTaskId', 'lifecycle', 'progressStatus', 'overallProgress'],
+      });
+      for (const e of enrollments) courseFor.set(e.assignedTaskId, e);
+    }
 
     // What a perfect round is worth. Shown next to every total, so a score is
     // readable without knowing how the pool was set up.
@@ -96,13 +135,28 @@ class PoolScoringService {
     const rows = members.map((member) => {
       let total = 0;
       let complete = true;
+      // What a perfect round is worth FOR THIS CANDIDATE. Work aimed at other
+      // levels is not theirs to earn, so counting it would rank a beginner
+      // against a total they were never allowed to reach.
+      let possibleForMember = 0;
       const parts = workItems.map((w) => {
         const worth = poolService.pointsOf(pool, w, difficultyOf.get(w.roadmapTaskId));
         const t = taskFor.get(`${member.id}:${w.roadmapTaskId}`);
         let earned = 0;
         let status = 'missing';
-        if (!t) status = 'not_assigned';
-        else if (t.status === 'completed') {
+        if (!poolService.targetsMember(w, member)) {
+          // Deliberately not theirs: not missing, not owed, not a warning.
+          status = 'not_targeted';
+        } else if (!t) status = 'not_assigned';
+        else if (w.kind === 'course') {
+          // The provider's figure, not the task's status: a course that was
+          // auto-approved on completion and one still at 60% are both read the
+          // same way, so the score never depends on whether the auto-review ran.
+          const e = courseFor.get(t.id);
+          const pct = e ? courseProgress(e) : 0;
+          earned = (worth * pct) / 100;
+          status = pct >= 100 ? 'scored' : pct > 0 ? 'in_progress' : 'missing';
+        } else if (t.status === 'completed') {
           const f = latestApproved.get(t.id);
           const rating = f ? Number(f.rating) : NaN;
           if (f && !Number.isFinite(rating)) {
@@ -119,7 +173,10 @@ class PoolScoringService {
         else if (t.status === 'revision_needed') status = 'changes_requested';
         else status = 'missing';
         total += earned;
-        if (w.required !== false && status !== 'scored') complete = false;
+        if (status !== 'not_targeted') {
+          possibleForMember += worth;
+          if (w.required !== false && status !== 'scored') complete = false;
+        }
         return {
           key: w.id,
           label: w.title,
@@ -146,7 +203,9 @@ class PoolScoringService {
         components: parts,
         adjustment: round2(adjustment),
         adjustmentNote: adjustmentEntry?.note || null,
-        possible,
+        // Their own perfect round, which equals the pool's when no work is
+        // aimed at a level.
+        possible: possibleForMember,
         total: round2(total),
         complete,
       };
@@ -185,6 +244,17 @@ class PoolScoringService {
         code: 'missing_work',
         message: `${missing.length} candidate${missing.length === 1 ? ' is' : 's are'} missing required work; it earns 0 points`,
         memberIds: missing.map((r) => r.memberId),
+      });
+    }
+    // Unfinished course work is its own case: it has earned part of its points
+    // already, and no reviewer can move it along — only the candidate or the
+    // deadline can. So it warns, and never blocks.
+    const unfinishedCourses = undecided.filter((r) => r.components.some((c) => c.required && c.kind === 'course' && c.status === 'in_progress'));
+    if (unfinishedCourses.length) {
+      warnings.push({
+        code: 'courses_unfinished',
+        message: `${unfinishedCourses.length} candidate${unfinishedCourses.length === 1 ? ' has' : 's have'} a required course still in progress; it is scored on the progress so far`,
+        memberIds: unfinishedCourses.map((r) => r.memberId),
       });
     }
     const unassigned = undecided.filter((r) => r.components.some((c) => c.required && c.status === 'not_assigned'));

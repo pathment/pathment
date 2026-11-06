@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, CheckCircle2, ChevronLeft, ChevronRight, ClipboardCheck, ClipboardList, Clock, FileQuestion, Hourglass, ListTodo, Loader2, Mail, Mic, PenLine, Repeat, RotateCcw, Save, Scale, Search, Send, UserMinus, UserPlus, UserX, Waypoints } from 'lucide-react';
+import { Check, CheckCircle2, ChevronLeft, ChevronRight, ClipboardCheck, ClipboardList, Clock, FileQuestion, GraduationCap, Hourglass, ListTodo, Loader2, Mail, Mic, PenLine, Repeat, RotateCcw, Save, Scale, Search, Send, UserMinus, UserPlus, UserX, Waypoints } from 'lucide-react';
 import { toast } from 'sonner';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { Avatar } from '@/components/shared/Avatar';
@@ -103,7 +103,7 @@ function CandidateChip({ member, active, onClick }: { member: PoolMemberRow; act
   );
 }
 
-const KIND_ICON = { task: ClipboardList, quiz: FileQuestion, interview: Mic } as const;
+const KIND_ICON = { task: ClipboardList, quiz: FileQuestion, interview: Mic, course: GraduationCap } as const;
 const iconBtn = 'rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800';
 
 export function CandidateReview({ data, onChange, canManage, canSelect, canReview, canAssign, onAdd, onResend, onExit, onDecide, initialFilter = 'all', workCount = 0, onOpenWork }: {

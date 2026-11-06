@@ -69,7 +69,39 @@ class PoolCandidateService {
       ],
       order: [['dueDate', 'ASC'], ['createdAt', 'ASC']],
     });
-    return tasks.map((t) => this._shapeTask(t));
+    return this._withCourses(tasks);
+  }
+
+  /**
+   * Course work carries its provider facts inline, so the list can show where
+   * to go and how far along they are without a second call per row. A course
+   * is not handed in, so without this a candidate would see a submit box and
+   * no link to the thing they are supposed to do.
+   */
+  async _withCourses(tasks) {
+    const shaped = tasks.map((t) => this._shapeTask(t));
+    const courseIds = shaped.filter((s) => s.kind === 'course').map((s) => s.id);
+    if (!courseIds.length) return shaped;
+    const courseService = require('./courseService');
+    const [rows, appUrl] = await Promise.all([
+      models.CourseEnrollment.findAll({ where: { assignedTaskId: { [Op.in]: courseIds } } }),
+      courseService.status().then((s) => s.appUrl).catch(() => null),
+    ]);
+    const byTask = new Map(rows.map((r) => [r.assignedTaskId, r]));
+    for (const s of shaped) {
+      if (s.kind !== 'course') continue;
+      const row = byTask.get(s.id);
+      s.course = row ? {
+        courseTitle: row.courseTitle,
+        lifecycle: row.lifecycle,
+        progressStatus: row.progressStatus || 'NOT_STARTED',
+        overallProgress: row.overallProgress || 0,
+        completedLessons: row.completedLessons,
+        totalLessons: row.totalLessons,
+        appUrl,
+      } : null;
+    }
+    return shaped;
   }
 
   _shapeTask(t) {
@@ -127,8 +159,9 @@ class PoolCandidateService {
       ],
       order: [['version', 'DESC']],
     });
+    const [shaped] = await this._withCourses([task]);
     return {
-      ...this._shapeTask(task),
+      ...shaped,
       description: task.descriptionOverride || task.roadmapTask?.description || '',
       deliverable: task.deliverableOverride || task.roadmapTask?.deliverable || '',
       acceptanceCriteria: task.acceptanceCriteriaOverride || task.roadmapTask?.acceptanceCriteria || [],

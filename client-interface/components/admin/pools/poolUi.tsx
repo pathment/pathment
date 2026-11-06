@@ -136,10 +136,14 @@ export const pts = (n: number) => `${Math.round(n * 100) / 100} pt${Math.abs(n) 
 /** How one piece of work scored for one candidate. */
 export const WORK_SCORE: Record<string, { label: string; cls: string }> = {
   scored: { label: 'Earned', cls: 'text-emerald-700' },
+  // Course work only: part-finished on Edorax, already worth part of its points.
+  in_progress: { label: 'In progress', cls: 'text-blue-700' },
   pending_review: { label: 'Waiting on review', cls: 'text-amber-700' },
   changes_requested: { label: 'Changes requested', cls: 'text-rose-700' },
   missing: { label: 'Not handed in', cls: 'text-slate-500' },
   not_assigned: { label: 'Never given', cls: 'text-slate-400' },
+  // Aimed at another level: not owed, and not counted against them.
+  not_targeted: { label: 'Not their level', cls: 'text-slate-400' },
   no_work: { label: 'No work', cls: 'text-slate-400' },
 };
 

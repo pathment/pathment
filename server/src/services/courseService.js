@@ -328,9 +328,17 @@ class CourseService {
 
   // ── read + sync ─────────────────────────────────────────────────────────
   async getForTask(taskId, user, { refresh = false } = {}) {
-    const task = await models.AssignedTask.findByPk(taskId);
+    // Scoped in explicitly: pool work is hidden by default, and a candidate's
+    // own course task must be readable by them — otherwise the course they
+    // were set is work they cannot open. Pool work answers to the pool, so it
+    // is the candidate themselves or a pool reviewer, never a clan mentor.
+    const task = await models.AssignedTask.scope('withPoolWork').findByPk(taskId);
     if (!task) throw new NotFoundError('Task not found');
-    if (!(await authzService.canViewMentee(user, task.menteeId))) {
+    const isOwner = Boolean(task.menteeId) && task.menteeId === user.id;
+    const allowed = task.poolMemberId
+      ? isOwner || await authzService.canActOnTask(user.id, task, PERMISSIONS.POOL_REVIEW)
+      : await authzService.canViewMentee(user, task.menteeId);
+    if (!allowed) {
       throw new ForbiddenError('You do not have access to this task');
     }
     const row = await models.CourseEnrollment.findOne({ where: { assignedTaskId: task.id } });
@@ -389,11 +397,29 @@ class CourseService {
     const finished = row.progressStatus === 'COMPLETED' || row.lifecycle === 'COMPLETED';
     if (finished && ['assigned', 'not_started', 'in_progress', 'revision_needed'].includes(task.status)) {
       await this._completeTask(row, task);
+      await this._reflectOnPool(task);
       return;
     }
     const started = row.overallProgress > 0 || row.progressStatus === 'IN_PROGRESS';
     if (started && ['assigned', 'not_started'].includes(task.status)) {
       await task.update({ status: 'in_progress', startedAt: task.startedAt || new Date() });
+      await this._reflectOnPool(task);
+    }
+  }
+
+  /**
+   * A pool candidate's status is derived from their task statuses, and the
+   * course sync is the one place a task moves with nobody touching it. Without
+   * this a candidate who started or finished a course would still read as
+   * "active" on the pool screen. Never fatal: the score is read from the
+   * enrollment, not from this.
+   */
+  async _reflectOnPool(task) {
+    if (!task.poolMemberId) return;
+    try {
+      await require('./poolWorkEvents').refreshMemberStatus(task.poolMemberId);
+    } catch (error) {
+      logger.warn('Pool member status not refreshed after course sync', { taskId: task.id, message: error.message });
     }
   }
 
@@ -493,7 +519,10 @@ class CourseService {
     const rows = await models.CourseEnrollment.findAll({
       where: { lifecycle: { [Op.in]: OPEN_LIFECYCLES } },
       include: [{
-        model: models.AssignedTask, as: 'assignedTask', required: true,
+        // Scoped in explicitly: AssignedTask's default scope hides pool work,
+        // and a selection pool's course tasks need syncing just as much as a
+        // clan's — their progress IS the candidate's score.
+        model: models.AssignedTask.scope('withPoolWork'), as: 'assignedTask', required: true,
         where: { status: { [Op.notIn]: ['completed', 'cancelled', 'submitted'] } },
       }],
       order: [[sequelize.literal('"CourseEnrollment"."last_synced_at" ASC NULLS FIRST')]],

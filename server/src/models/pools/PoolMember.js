@@ -33,6 +33,12 @@ module.exports = (sequelize, DataTypes) => {
     email: { type: DataTypes.STRING(255), allowNull: false, validate: { isEmail: true } },
     applicationId: { type: DataTypes.UUID, allowNull: true, field: 'application_id' },
     inviteId: { type: DataTypes.UUID, allowNull: true, field: 'invite_id' },
+    // The level the candidate applied at — a key into the cohort's `levels`,
+    // exactly as on applications (migration 149). NULL when the pool has no
+    // cohort, the cohort asks no level question, or the candidate was imported
+    // by email and was never asked. Work with no level targets everyone, so a
+    // round that ignores levels behaves as it always did.
+    level: { type: DataTypes.STRING(40), allowNull: true },
     status: { type: DataTypes.STRING(20), allowNull: false, defaultValue: 'invited', validate: { isIn: [MEMBER_STATUSES] } },
     decision: { type: DataTypes.STRING(20), allowNull: true, validate: { isIn: [DECISIONS] } },
     decisionReason: { type: DataTypes.TEXT, allowNull: true, field: 'decision_reason' },

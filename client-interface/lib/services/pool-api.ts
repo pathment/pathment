@@ -11,7 +11,9 @@ export type PoolDecision = 'selected' | 'waitlisted' | 'not_selected' | 'withdra
 export type ScoreSource = 'quiz' | 'task_review' | 'interview_review' | 'manual';
 export type Difficulty = 'easy' | 'medium' | 'hard' | 'expert';
 /** How one piece of work turned out for one candidate. */
-export type WorkScoreStatus = 'scored' | 'pending_review' | 'changes_requested' | 'missing' | 'not_assigned' | 'no_work';
+// 'in_progress' is course work only: part-finished on Edorax, so it has
+// earned part of its points and nobody is waiting to review it.
+export type WorkScoreStatus = 'scored' | 'in_progress' | 'pending_review' | 'changes_requested' | 'missing' | 'not_assigned' | 'not_targeted' | 'no_work';
 export type PoolBucket =
   | 'invite_pending' | 'not_started' | 'in_progress' | 'needs_review' | 'changes_requested'
   | 'completed' | 'stalled' | 'withdrawn';
@@ -83,13 +85,17 @@ export interface Pool {
 
 export interface PoolAssignment {
   id: string;
-  kind: 'task' | 'quiz' | 'interview';
+  kind: 'task' | 'quiz' | 'interview' | 'course';
   title: string;
   /** What finishing it is worth. Always a number, even on older work. */
   points: number;
   required: boolean;
   dueAt: string | null;
   cancelledAt: string | null;
+  /** Levels this work is aimed at. Empty or absent = everyone. */
+  levels?: string[];
+  /** Course work carries the Edorax course it enrolls candidates in. */
+  config?: { courseId?: string; courseSlug?: string | null; courseTitle?: string } | null;
   roadmapTask?: { id: string; title: string; type: string; difficulty?: Difficulty | null } | null;
   counts?: Record<string, number>;
   /** The template's difficulty, which the default points come from. */
@@ -105,6 +111,8 @@ export interface PoolMemberRow {
   userId: string | null;
   avatarUrl?: string | null;
   source: string;
+  /** The level they applied at, when the round has levels. */
+  level?: string | null;
   status: string;
   bucket: PoolBucket;
   decision: PoolDecision | null;
@@ -126,6 +134,8 @@ export interface PoolDashboard {
   assignments: PoolAssignment[];
   members: PoolMemberRow[];
   buckets: Partial<Record<PoolBucket, number>>;
+  /** Levels this round can aim work at. Empty = it has none. */
+  levels: { key: string; label: string }[];
 }
 
 export interface RowResult { email?: string; memberId?: string; result: string; reason?: string }
@@ -138,7 +148,7 @@ export interface ImportResult {
 export interface ScoredWork {
   key: string;
   label: string;
-  kind: 'task' | 'quiz' | 'interview';
+  kind: 'task' | 'quiz' | 'interview' | 'course';
   required: boolean;
   points: number;
   earned: number;
@@ -167,7 +177,7 @@ export interface ScoreRow {
 }
 
 /** The work a score table has a column for, in the order the columns read. */
-export interface ScoreColumn { key: string; label: string; kind: 'task' | 'quiz' | 'interview'; required: boolean }
+export interface ScoreColumn { key: string; label: string; kind: 'task' | 'quiz' | 'interview' | 'course'; required: boolean }
 
 export interface Shortlist {
   id: string;
@@ -202,7 +212,7 @@ export interface ReviewQueueItem {
   version: number;
   submittedAt: string;
   isLate: boolean;
-  kind: 'task' | 'quiz' | 'interview';
+  kind: 'task' | 'quiz' | 'interview' | 'course';
   title: string;
   /** What approving it can earn the candidate (rating out of 5, pro rata). */
   points?: number;
@@ -250,6 +260,10 @@ export interface PoolOptions {
   clans: { id: string; name: string; maxMentees: number | null }[];
   quizKits: { id: string; title: string }[];
   interviewKits: { id: string; title: string }[];
+  /** Edorax courses this workspace may assign. Empty when it is not connected. */
+  courses: { courseId: string; title: string; availableSeats: number | null; pricingType: string }[];
+  /** False when Edorax is not connected, so the picker can explain itself. */
+  coursesConnected: boolean;
   /** Roadmaps with their steps, in teaching order — what the picker opens. */
   roadmaps: RoadmapOption[];
   /** Flat list of assignable steps. Kept for search; the tree is the picker. */
@@ -348,6 +362,8 @@ export const poolApi = {
   addRoadmapSteps: (id: string, body: {
     roadmapTaskIds: string[];
     required?: boolean;
+    /** Levels the steps are aimed at. Empty = everyone. */
+    levels?: string[];
     dueAt?: string | null;
     points?: Record<string, number>;
     assignTo?: 'all' | string[] | null;
@@ -411,7 +427,7 @@ export interface CandidateTask {
   status: string;
   dueDate: string | null;
   isLate: boolean;
-  kind: 'task' | 'quiz' | 'interview';
+  kind: 'task' | 'quiz' | 'interview' | 'course';
   required: boolean;
   title: string;
   type: string;

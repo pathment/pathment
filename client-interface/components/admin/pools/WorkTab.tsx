@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { CalendarClock, Check, ClipboardList, Coins, FileQuestion, FileText, ListChecks, Loader2, Mic, Plus, Route, Send, Trash2, UserPlus, Users } from 'lucide-react';
+import { CalendarClock, Check, ClipboardList, Coins, FileQuestion, FileText, GraduationCap, ListChecks, Loader2, Mic, Plus, Route, Send, Trash2, UserPlus, Users } from 'lucide-react';
 import { Drawer } from '@/components/shared/Drawer';
 import RichTextEditor from '@/components/shared/RichTextEditor';
 import { TaskTimingRow, type TaskDueDraft } from '@/components/mentor/TaskTimingRow';
@@ -16,16 +16,22 @@ import { AssignWorkDrawer } from './AssignWorkDrawer';
 import { RoadmapStepPicker } from './RoadmapStepPicker';
 import { Chip, DIFFICULTY_POINTS_FALLBACK, EmptyState, PanelHeader, Spinner, WORK_STATUS, fmtDate, panel, primaryBtn, pts, secondaryBtn } from './poolUi';
 
-const KIND_ICON = { task: ClipboardList, quiz: FileQuestion, interview: Mic } as const;
-const KIND_TONE = { task: 'bg-brand-50 text-brand-600', quiz: 'bg-blue-50 text-blue-600', interview: 'bg-amber-50 text-amber-600' } as const;
+const KIND_ICON = { task: ClipboardList, quiz: FileQuestion, interview: Mic, course: GraduationCap } as const;
+const KIND_TONE = {
+  task: 'bg-brand-50 text-brand-600',
+  quiz: 'bg-blue-50 text-blue-600',
+  interview: 'bg-amber-50 text-amber-600',
+  course: 'bg-emerald-50 text-emerald-600',
+} as const;
 
 // The same type chips, labels and styles as the mentor's "Assign a task"
 // drawer (components/mentor/AssignTaskDrawer.tsx), so both read as one product.
-// Quiz and Interview switch to their kit pickers, exactly as they do there.
-const TYPES = ['assignment', 'project', 'quiz', 'reading', 'video', 'discussion', 'interview', 'open_source'] as const;
+// Quiz and Interview switch to their kit pickers, exactly as they do there;
+// Course switches to the Edorax catalog.
+const TYPES = ['assignment', 'project', 'quiz', 'reading', 'video', 'discussion', 'interview', 'course', 'open_source'] as const;
 type WorkType = typeof TYPES[number];
 const TYPE_LABEL: Record<WorkType, string> = {
-  assignment: 'Assignment', project: 'Project', quiz: 'Quiz', reading: 'Reading', video: 'Video', discussion: 'Discussion', interview: 'Interview', open_source: 'Open Source',
+  assignment: 'Assignment', project: 'Project', quiz: 'Quiz', reading: 'Reading', video: 'Video', discussion: 'Discussion', interview: 'Interview', course: 'Course', open_source: 'Open Source',
 };
 const DIFFICULTIES = ['easy', 'medium', 'hard', 'expert'] as const;
 const inputCls = 'w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500';
@@ -62,7 +68,7 @@ function AddWorkDrawer({ data, onClose, onDone }: { data: PoolDashboard; onClose
 
   const [source, setSource] = useState<'roadmap' | 'custom'>('roadmap');
   const [type, setType] = useState<WorkType>('assignment');
-  const kind = type === 'quiz' ? 'quiz' : type === 'interview' ? 'interview' : 'task';
+  const kind = type === 'quiz' ? 'quiz' : type === 'interview' ? 'interview' : type === 'course' ? 'course' : 'task';
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [difficulty, setDifficulty] = useState<typeof DIFFICULTIES[number]>('medium');
@@ -70,6 +76,8 @@ function AddWorkDrawer({ data, onClose, onDone }: { data: PoolDashboard; onClose
   const [criteria, setCriteria] = useState<string[]>([]);
   const [steps, setSteps] = useState<string[]>([]);
   const [kitId, setKitId] = useState('');
+  const [courseId, setCourseId] = useState('');
+  const [levels, setLevels] = useState<string[]>([]);
   const [evaluationMode, setEvaluationMode] = useState<'auto' | 'review'>('auto');
   const [allowRetake, setAllowRetake] = useState(false);
   const [required, setRequired] = useState(true);
@@ -87,10 +95,22 @@ function AddWorkDrawer({ data, onClose, onDone }: { data: PoolDashboard; onClose
   // Steps already in this pool, so the picker can say so instead of hiding them.
   const taken = new Set(data.assignments.filter((a) => !a.cancelledAt).map((a) => a.roadmapTask?.id).filter(Boolean) as string[]);
   const kits = (kind === 'quiz' ? options?.quizKits : options?.interviewKits) || [];
+  const courses = options?.courses || [];
+  // Levels this round can aim work at. No levels = the control is not shown
+  // at all, so a round that never asked for one looks exactly as before.
+  const poolLevels = data.levels || [];
+  const toggleLevel = (key: string) =>
+    setLevels((cur) => (cur.includes(key) ? cur.filter((l) => l !== key) : [...cur, key]));
+  const levelCount = (key: string) => data.members.filter((m) => m.level === key && !m.decision).length;
+  // Courses already in this pool: a seat can only be allocated once per round.
+  const takenCourses = new Set(
+    data.assignments.filter((a) => !a.cancelledAt && a.kind === 'course').map((a) => a.config?.courseId).filter(Boolean) as string[],
+  );
 
   // Switching between a quiz and an interview means a different kit list.
   const pickType = (t: WorkType) => {
     if ((t === 'quiz') !== (type === 'quiz') || (t === 'interview') !== (type === 'interview')) setKitId('');
+    if ((t === 'course') !== (type === 'course')) setCourseId('');
     setType(t);
   };
 
@@ -127,6 +147,7 @@ function AddWorkDrawer({ data, onClose, onDone }: { data: PoolDashboard; onClose
         const out = await poolApi.addRoadmapSteps(pool.id, {
           roadmapTaskIds: steps,
           required,
+          levels,
           dueAt: dueAt(),
           // One typed number applies to every step chosen; left blank, each
           // step keeps its own difficulty's points.
@@ -144,6 +165,7 @@ function AddWorkDrawer({ data, onClose, onDone }: { data: PoolDashboard; onClose
       } else {
         const body: Record<string, unknown> = {
           required,
+          levels,
           dueAt: dueAt(),
           points: typedPoints,
           assignTo: assignTo ?? undefined,
@@ -153,6 +175,13 @@ function AddWorkDrawer({ data, onClose, onDone }: { data: PoolDashboard; onClose
           Object.assign(body, {
             kind, title: title.trim(), description: cleanHtml(description), type, difficulty,
             deliverable, acceptanceCriteria: criteria.map((c) => c.trim()).filter(Boolean),
+          });
+        } else if (kind === 'course') {
+          if (!courseId) { setBusy(false); return toast.error('Choose a course'); }
+          Object.assign(body, {
+            kind, courseId, difficulty,
+            title: title.trim() || undefined,
+            description: cleanHtml(description) || undefined,
           });
         } else {
           if (!kitId) { setBusy(false); return toast.error(kind === 'quiz' ? 'Choose a quiz' : 'Choose an interview kit'); }
@@ -240,7 +269,36 @@ function AddWorkDrawer({ data, onClose, onDone }: { data: PoolDashboard; onClose
             </div>
           </div>
 
-          {kind !== 'task' && (
+          {kind === 'course' && (
+            <div className="space-y-3 rounded-xl border border-emerald-200 bg-emerald-50/50 p-4 dark:bg-emerald-500/5">
+              <div className="flex items-center gap-2 text-sm font-medium text-slate-800">
+                <GraduationCap className="h-4 w-4 text-emerald-600" />
+                Edorax course <span className="text-red-500">*</span>
+              </div>
+              {optionsLoading ? (
+                <div className="flex items-center gap-2 py-1 text-sm text-slate-400"><Loader2 className="h-4 w-4 animate-spin text-emerald-600" />Loading…</div>
+              ) : !options?.coursesConnected ? (
+                <p className="text-sm text-slate-500">Edorax is not connected for this workspace. An admin connects it in <span className="font-medium">Settings → Apps</span>.</p>
+              ) : courses.length === 0 ? (
+                <p className="text-sm text-slate-500">No courses are available to this workspace on Edorax yet.</p>
+              ) : (
+                <select value={courseId} onChange={(e) => setCourseId(e.target.value)} className={inputCls} aria-label="Edorax course">
+                  <option value="">Select a course…</option>
+                  {courses.map((c) => (
+                    <option key={c.courseId} value={c.courseId} disabled={takenCourses.has(c.courseId)}>
+                      {c.title}
+                      {takenCourses.has(c.courseId) ? ' — already in this pool' : c.availableSeats !== null ? ` — ${c.availableSeats} seats left` : ''}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <p className="text-[11px] text-slate-400">
+                Assigning enrolls each candidate on Edorax. Nobody hands a course in: its score follows the progress Edorax reports, so finishing it earns the full points and stopping half way earns half.
+              </p>
+            </div>
+          )}
+
+          {(kind === 'quiz' || kind === 'interview') && (
             <div className="space-y-3 rounded-xl border border-brand-200 bg-brand-50/50 p-4 dark:bg-brand-500/5">
               <div className="flex items-center gap-2 text-sm font-medium text-slate-800">
                 {kind === 'quiz' ? <ListChecks className="h-4 w-4 text-brand-600" /> : <Mic className="h-4 w-4 text-brand-600" />}
@@ -291,7 +349,8 @@ function AddWorkDrawer({ data, onClose, onDone }: { data: PoolDashboard; onClose
             <RichTextEditor content={description} onChange={setDescription} placeholder="Optional: what should they do?" minHeight="120px" />
           </div>
 
-          {kind === 'task' && (<>
+          {/* A course earns points too, and its difficulty is what they default from. */}
+          {(kind === 'task' || kind === 'course') && (
             <div>
               <span className="mb-1.5 block text-sm font-medium text-slate-700">Difficulty</span>
               <div className="flex flex-wrap gap-1.5">
@@ -302,7 +361,9 @@ function AddWorkDrawer({ data, onClose, onDone }: { data: PoolDashboard; onClose
                 ))}
               </div>
             </div>
+          )}
 
+          {kind === 'task' && (<>
             <details className="rounded-xl border border-border p-4">
               <summary className="cursor-pointer text-sm font-medium">Deliverable &amp; checks <span className="font-normal text-muted-foreground">(optional)</span></summary>
               <div className="mt-4 space-y-4">
@@ -362,11 +423,32 @@ function AddWorkDrawer({ data, onClose, onDone }: { data: PoolDashboard; onClose
             <span className="text-sm text-slate-700">Required<span className="block text-[11px] text-slate-400">Missing it is flagged on the shortlist</span></span>
           </label>
 
+          {poolLevels.length > 0 && (
+            <div>
+              <span className="mb-1.5 block text-sm font-medium text-slate-700">
+                Level <span className="font-normal text-slate-400">(optional)</span>
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {poolLevels.map((l) => (
+                  <button key={l.key} type="button" onClick={() => toggleLevel(l.key)}
+                    className={pill(levels.includes(l.key))} aria-pressed={levels.includes(l.key)}>
+                    {l.label} <span className="font-normal opacity-60">· {levelCount(l.key)}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1.5 text-[11px] text-slate-400">
+                {levels.length === 0
+                  ? 'For everyone in the round, whatever level they applied at.'
+                  : 'Only candidates who applied at the chosen levels get this; it is not counted against anyone else.'}
+              </p>
+            </div>
+          )}
+
           <div>
             <span className="mb-1.5 block text-sm font-medium text-slate-700">Who gets it</span>
             <div className="grid gap-2 sm:grid-cols-2">
               {([
-                ['all', 'Every active candidate', Users, 'The usual case: everyone in the round'],
+                ['all', 'Every matching candidate', Users, 'The usual case: everyone the level allows'],
                 ['later', 'Nobody yet', UserPlus, 'Add it now and choose people from the Work tab'],
               ] as const).map(([val, text, Icon, hint]) => (
                 <button key={val} type="button" onClick={() => setWho(val)} aria-pressed={who === val}

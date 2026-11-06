@@ -8,8 +8,15 @@
  * operators give its candidates.
  *
  * `workItems` — the qualifying work, one entry per piece:
- *   { id, kind: 'task'|'quiz'|'interview', roadmapTaskId, title, points,
- *     required, dueAt, config, createdById, createdAt, cancelledAt }
+ *   { id, kind: 'task'|'quiz'|'interview'|'course', roadmapTaskId, title,
+ *     points, required, levels, dueAt, config, createdById, createdAt,
+ *     cancelledAt }
+ *
+ * `levels` aims a piece of work at the levels the candidates applied at (keys
+ * into the cohort's `levels`, as on applications). An empty list means
+ * everyone, which is what every piece of work written before this meant, so
+ * existing rounds are unchanged. A candidate with no level only ever receives
+ * work that targets everyone.
  * Each piece has its own task template (`roadmapTaskId`); every member's
  * AssignedTask points at it, which is how a task is traced back to its piece
  * of work and how scoring knows what it is worth.
@@ -18,9 +25,14 @@
  * difficulty through the pool's own curve — so an operator can see what a
  * round is worth while they build it, instead of discovering it afterwards
  * from a table of percentages.
+ *
+ * `kind: 'course'` is an Edorax course. Its work item carries
+ * `config: { courseId, courseSlug, courseTitle }`, assigning it enrolls the
+ * candidate on Edorax, and it is the one kind nobody reviews: the provider
+ * reports progress and the score follows that progress. See poolScoringService.
  */
 const POOL_STATUSES = ['draft', 'open', 'qualifying', 'reviewing', 'placing', 'closed'];
-const WORK_KINDS = ['task', 'quiz', 'interview'];
+const WORK_KINDS = ['task', 'quiz', 'interview', 'course'];
 
 // What a piece of work is worth by default, by difficulty. The same shape and
 // the same intent as config/points.js — a small, fixed curve rather than a

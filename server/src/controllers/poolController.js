@@ -10,6 +10,7 @@ const { catchAsync } = require('../middlewares/errorHandler');
 const { successResponse } = require('../utils/responses');
 const { parseCsv } = require('../utils/csv');
 const { ValidationError } = require('../utils/errors/errorTypes');
+const logger = require('../utils/logger');
 const { models } = require('../db');
 const authzService = require('../services/authzService');
 const poolService = require('../services/poolService');
@@ -104,8 +105,31 @@ exports.options = catchAsync(async (req, res) => {
   const roadmapSteps = roadmapTree.flatMap((r) =>
     r.steps.filter((s) => s.assignable).map((s) => ({ ...s, roadmapId: r.id, roadmap: { id: r.id, name: r.name } })));
 
+  // Edorax courses the workspace may assign. Not programme-scoped — the
+  // connection is per workspace. An unconnected or unreachable Edorax answers
+  // with an empty list rather than failing the whole options call, so the rest
+  // of the picker still works and the UI can say why courses are unavailable.
+  let courses = [];
+  let coursesConnected = false;
+  try {
+    const courseService = require('../services/courseService');
+    const status = await courseService.status();
+    coursesConnected = Boolean(status.connected);
+    if (coursesConnected) {
+      courses = (await courseService.listCourses()).map((c) => ({
+        courseId: c.courseId,
+        title: c.title,
+        availableSeats: c.availableSeats,
+        pricingType: c.pricingType,
+      }));
+    }
+  } catch (error) {
+    logger.warn('Pool options could not list Edorax courses', { message: error.message });
+  }
+
   ok(res, 'Pool options', {
     programs, cohorts, clans, quizKits, interviewKits,
+    courses, coursesConnected,
     roadmaps: roadmapTree,
     roadmapSteps,
     difficultyPoints: poolService.DIFFICULTY_POINTS_DEFAULT,

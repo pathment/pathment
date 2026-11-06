@@ -44,6 +44,8 @@ function readRow(row) {
     email: pick('email', 'emailaddress', 'mail'),
     firstName: pick('firstname', 'first', 'givenname'),
     lastName: pick('lastname', 'last', 'surname', 'familyname'),
+    // An imported sheet may carry the level too; applications bring their own.
+    level: pick('level', 'tier', 'track') ?? row?.level,
     applicationId: row?.applicationId,
   };
 }
@@ -211,6 +213,9 @@ class PoolMemberService {
           poolId,
           email: row.email,
           applicationId: row.applicationId || null,
+          // Carried from the application so work can be aimed at a level.
+          // An imported row has none: nobody ever asked that person.
+          level: row.level || null,
           userId: linkable ? user.id : null,
           status: linkable ? 'active' : 'invited',
           details: {
@@ -282,7 +287,7 @@ class PoolMemberService {
     if (applications.some((a) => !allowed.has(a.cohort?.programId))) {
       throw new ValidationError('Some of those applications are in a programme whose intake you do not run');
     }
-    const rows = applications.map((a) => ({ email: a.email, firstName: a.firstName, lastName: a.lastName, applicationId: a.id }));
+    const rows = applications.map((a) => ({ email: a.email, firstName: a.firstName, lastName: a.lastName, applicationId: a.id, level: a.level || null }));
     const missing = applicationIds.filter((id) => !applications.some((a) => a.id === id));
     const out = await this.importMembers(poolId, rows, actor, { source: 'application' });
     for (const id of missing) out.results.push({ applicationId: id, result: 'failed', reason: 'Application not found' });
