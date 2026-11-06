@@ -78,12 +78,12 @@ const enrollmentShape = (row, task, extra = {}) => ({
 function enrollError(error) {
   if (!(error instanceof BuildmentError)) return error;
   const { upstreamStatus: status, upstreamCode: code } = error;
-  if (code === 'CAPACITY') return new AppError('No seats are left for this course on Buildment.', 409, 'COURSE_CAPACITY');
-  if (code === 'EXPIRED') return new AppError('Your workspace\'s access to this course has expired on Buildment.', 409, 'COURSE_EXPIRED');
-  if (code === 'NOT_ALLOWED') return new AppError('Enrollment in this course is currently switched off for your workspace on Buildment.', 409, 'COURSE_NOT_ALLOWED');
-  if (code === 'NOT_ALLOCATED' || status === 404) return new AppError('This course is not available to your workspace on Buildment.', 409, 'COURSE_NOT_AVAILABLE');
+  if (code === 'CAPACITY') return new AppError('No seats are left for this course on Edorax.', 409, 'COURSE_CAPACITY');
+  if (code === 'EXPIRED') return new AppError('Your workspace\'s access to this course has expired on Edorax.', 409, 'COURSE_EXPIRED');
+  if (code === 'NOT_ALLOWED') return new AppError('Enrollment in this course is currently switched off for your workspace on Edorax.', 409, 'COURSE_NOT_ALLOWED');
+  if (code === 'NOT_ALLOCATED' || status === 404) return new AppError('This course is not available to your workspace on Edorax.', 409, 'COURSE_NOT_AVAILABLE');
   if (status === 409) return new AppError('This learner is already enrolled in this course through a different organization.', 409, 'COURSE_ENROLLED_ELSEWHERE');
-  if (status === 400) return new ValidationError('Buildment rejected the enrollment — check the mentee\'s email address.');
+  if (status === 400) return new ValidationError('Edorax rejected the enrollment — check the mentee\'s email address.');
   return error;
 }
 
@@ -93,7 +93,7 @@ class CourseService {
     const organizationId = await organizationService.currentId();
     const connection = await externalAppService.getConnection(organizationId, PROVIDER);
     if (!connection && required) {
-      throw new AppError('Buildment is not connected for this workspace.', 409, 'COURSES_NOT_CONNECTED');
+      throw new AppError('Edorax is not connected for this workspace.', 409, 'COURSES_NOT_CONNECTED');
     }
     return connection ? { ...connection, organizationId } : null;
   }
@@ -109,7 +109,7 @@ class CourseService {
       if (error instanceof BuildmentError && error.upstreamStatus === 401) {
         await externalAppService.markRejected(connection.row);
         coursesCache.delete(connection.organizationId);
-        throw new AppError('Buildment rejected this workspace\'s keys. An admin needs to reconnect Buildment in Settings → Apps.', 409, 'COURSES_NOT_CONNECTED');
+        throw new AppError('Edorax rejected this workspace\'s keys. An admin needs to reconnect Edorax in Settings → Apps.', 409, 'COURSES_NOT_CONNECTED');
       }
       throw error;
     }
@@ -145,9 +145,9 @@ class CourseService {
     if (!courseId) throw new ValidationError('A course task needs a course');
     const connection = await this._connection();
     const course = (await this.listCourses({ fresh: true })).find((c) => c.courseId === courseId);
-    if (!course) throw new ValidationError('That course is not available to your workspace on Buildment');
+    if (!course) throw new ValidationError('That course is not available to your workspace on Edorax');
     if (checkSeats && course.availableSeats !== null && course.availableSeats <= 0) {
-      throw new AppError('No seats are left for this course on Buildment.', 409, 'COURSE_CAPACITY');
+      throw new AppError('No seats are left for this course on Edorax.', 409, 'COURSE_CAPACITY');
     }
     return { connection, course };
   }
@@ -192,7 +192,7 @@ class CourseService {
         results.push({ menteeId, ok: true, ...(await this._enrollLearner(prepared, menteeId, user.id)) });
       } catch (error) {
         if (!error.isOperational) logger.error('Course enrollment failed', { menteeId, message: error.message });
-        results.push({ menteeId, ok: false, error: error.isOperational ? error.message : 'Could not enroll on Buildment', code: error.code || null });
+        results.push({ menteeId, ok: false, error: error.isOperational ? error.message : 'Could not enroll on Edorax', code: error.code || null });
       }
     }
     coursesCache.delete(prepared.connection.organizationId); // seats were just taken
@@ -236,7 +236,7 @@ class CourseService {
    */
   async prepareEnrolled(courseId, assignmentId, menteeId) {
     const { connection, course } = await this.prepare(courseId, { checkSeats: false });
-    const notEnrolled = () => new AppError('This mentee is not enrolled in the course on Buildment yet — enroll them first.', 409, 'COURSE_NOT_ENROLLED');
+    const notEnrolled = () => new AppError('This mentee is not enrolled in the course on Edorax yet — enroll them first.', 409, 'COURSE_NOT_ENROLLED');
     if (!UUID.test(assignmentId || '')) throw notEnrolled();
     if (await models.AssignedTask.findByPk(assignmentId, { attributes: ['id'] })) {
       throw new AppError('This mentee already has this course assigned as a task.', 409, 'COURSE_ALREADY_ASSIGNED');
@@ -271,7 +271,7 @@ class CourseService {
         results.push({ menteeId, ok: true });
       } catch (error) {
         if (!error.isOperational) logger.error('Course enrollment release failed', { menteeId, message: error.message });
-        results.push({ menteeId, ok: false, error: error.isOperational ? error.message : 'Could not cancel the Buildment enrollment' });
+        results.push({ menteeId, ok: false, error: error.isOperational ? error.message : 'Could not cancel the Edorax enrollment' });
       }
     }
     coursesCache.delete(connection.organizationId);
@@ -343,7 +343,7 @@ class CourseService {
         await this.sync(row, task);
       } catch (error) {
         // Serve the last snapshot rather than failing the task page.
-        syncError = error.isOperational ? error.message : 'Could not refresh from Buildment';
+        syncError = error.isOperational ? error.message : 'Could not refresh from Edorax';
         if (!error.isOperational) logger.error('Course sync failed', { taskId: task.id, message: error.message });
       }
     }
@@ -405,7 +405,7 @@ class CourseService {
    */
   async _completeTask(row, task) {
     const lessons = row.totalLessons ? ` — ${row.completedLessons ?? row.totalLessons}/${row.totalLessons} lessons` : '';
-    const note = `Course completed on Buildment: ${row.courseTitle}${lessons}.`;
+    const note = `Course completed on Edorax: ${row.courseTitle}${lessons}.`;
     try {
       await require('./clanLifecycleService').assertTaskWritable(task);
       const submission = await sequelize.transaction(async (transaction) => {
@@ -447,7 +447,7 @@ class CourseService {
   // ── unassign = cancel ───────────────────────────────────────────────────
   async _cancelUpstream(connection, { courseId, learnerEmail, assignedTaskId }) {
     const orgSlug = connection.metadata?.organizationSlug;
-    if (!orgSlug) throw new AppError('Buildment connection is missing its organization — reconnect it in Settings → Apps.', 409, 'COURSES_NOT_CONNECTED');
+    if (!orgSlug) throw new AppError('Edorax connection is missing its organization — reconnect it in Settings → Apps.', 409, 'COURSES_NOT_CONNECTED');
     return this._call(connection, (c) => buildmentClient.cancel(c, {
       orgSlug, email: learnerEmail, courseId, externalAssignmentId: assignedTaskId,
     }));
@@ -469,14 +469,14 @@ class CourseService {
     const connection = await this._connection({ required: false });
     if (!connection) {
       // Workspace disconnected Buildment: nothing we can release from here.
-      logger.warn('Course task removed without a Buildment connection; seat not released', { taskId: task.id });
+      logger.warn('Course task removed without an Edorax connection; seat not released', { taskId: task.id });
     } else {
       try {
         await this._cancelUpstream(connection, { courseId: row.courseId, learnerEmail: row.learnerEmail, assignedTaskId: task.id });
       } catch (error) {
         if (!(error instanceof BuildmentError) || error.upstreamStatus !== 404) {
           if (error instanceof BuildmentError) {
-            throw new AppError(`Could not cancel the Buildment enrollment (${error.message}). The task was not changed — try again.`, 502, 'BUILDMENT_ERROR');
+            throw new AppError(`Could not cancel the Edorax enrollment (${error.message}). The task was not changed — try again.`, 502, 'BUILDMENT_ERROR');
           }
           throw error;
         }

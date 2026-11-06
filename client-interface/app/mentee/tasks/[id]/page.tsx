@@ -607,7 +607,7 @@ function ClanTaskDetail({ id }: { id: string }) {
               </h2>
               <p className="text-sm text-muted-foreground mt-2">
                 {isCourse
-                  ? "There is nothing to hand in — this task completes automatically when you finish the course on Buildment."
+                  ? "There is nothing to hand in — this task completes automatically when you finish the course on Edorax."
                   : isQuiz || isInterview
                   ? "Use the assessment button above to open your work or view your results."
                   : videoPresentation

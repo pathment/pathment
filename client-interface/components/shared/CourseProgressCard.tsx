@@ -18,27 +18,27 @@ const LIFECYCLE: Record<CourseLifecycle, {
 }> = {
   PENDING_ACCOUNT: {
     label: 'Waiting for sign-up', cls: 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400',
-    mentee: (e) => `You're enrolled. Register on Buildment with ${e.learnerEmail} to start — it has to be this email.`,
-    mentor: (e) => `Enrolled. They still need to register on Buildment with ${e.learnerEmail}.`,
-    action: 'Register on Buildment',
+    mentee: (e) => `You're enrolled. Register on Edorax with ${e.learnerEmail} to start — it has to be this email.`,
+    mentor: (e) => `Enrolled. They still need to register on Edorax with ${e.learnerEmail}.`,
+    action: 'Register on Edorax',
   },
   PAYMENT_REQUIRED: {
     label: 'Payment required', cls: 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400',
-    mentee: () => 'Complete checkout in Buildment to unlock this course.',
-    mentor: () => 'Enrolled, but they need to complete checkout in Buildment before they can study.',
+    mentee: () => 'Complete checkout in Edorax to unlock this course.',
+    mentor: () => 'Enrolled, but they need to complete checkout in Edorax before they can study.',
     action: 'Complete checkout',
   },
   ACTIVE: {
     label: 'Active', cls: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400',
     mentee: () => 'Your course is ready. This task completes on its own when you finish it.',
     mentor: () => 'They have access. This task completes on its own when they finish the course.',
-    action: 'Continue on Buildment',
+    action: 'Continue on Edorax',
   },
   COMPLETED: {
     label: 'Completed', cls: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400',
     mentee: () => 'You finished this course.',
     mentor: () => 'They finished this course.',
-    action: 'Review on Buildment',
+    action: 'Review on Edorax',
   },
   CANCELLED: {
     label: 'Unassigned', cls: 'bg-slate-100 text-slate-500',
@@ -49,7 +49,7 @@ const LIFECYCLE: Record<CourseLifecycle, {
   EXPIRED: {
     label: 'Expired', cls: 'bg-red-50 text-red-600 dark:bg-red-950/30 dark:text-red-400',
     mentee: () => 'Access to this course has expired. Ask your mentor about it.',
-    mentor: () => 'Access to this course has expired on Buildment.',
+    mentor: () => 'Access to this course has expired on Edorax.',
     action: null,
   },
 };
@@ -115,7 +115,7 @@ export function CourseProgressCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-xs font-medium text-brand-700 dark:text-brand-400">
-            <GraduationCap className="w-4 h-4" /> Buildment course
+            <GraduationCap className="w-4 h-4" /> Edorax course
           </div>
           <p className="text-sm font-medium text-slate-900 mt-1 truncate">{enrollment.courseTitle}</p>
         </div>
@@ -149,7 +149,7 @@ export function CourseProgressCard({
       {enrollment.syncError && (
         <p className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400">
           <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-          Couldn&apos;t refresh from Buildment — showing the last known progress.
+          Couldn&apos;t refresh from Edorax — showing the last known progress.
         </p>
       )}
 

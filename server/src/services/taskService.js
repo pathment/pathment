@@ -259,7 +259,7 @@ class TaskService {
         type: type || 'custom',
         difficulty: difficulty || 'medium',
         taskOrder: 0,
-        deliverable: deliverable || (coursePrepared ? 'Finish the course on Buildment' : 'Complete the assigned task'),
+        deliverable: deliverable || (coursePrepared ? 'Finish the course on Edorax' : 'Complete the assigned task'),
         acceptanceCriteria: acceptanceCriteria || [],
         estimatedHours: type === 'interview'
           ? (interviewEstimateHours || 1)

@@ -25,7 +25,7 @@ export default function MentorCoursesPage() {
         <div className="rounded-2xl border border-dashed border-slate-200 p-12 text-center">
           <GraduationCap className="w-10 h-10 text-slate-300 mx-auto mb-3" />
           <p className="text-slate-900 font-medium">Courses aren&apos;t connected</p>
-          <p className="text-sm text-slate-500 mt-1">A workspace admin can connect Buildment in Settings → Apps.</p>
+          <p className="text-sm text-slate-500 mt-1">A workspace admin can connect Edorax in Settings → Apps.</p>
         </div>
       </div>
     );
@@ -39,7 +39,7 @@ export default function MentorCoursesPage() {
             <GraduationCap className="w-6 h-6 text-brand-600" /> Courses
           </h1>
           <p className="text-sm text-slate-500 mt-1 max-w-2xl">
-            Buildment courses available to {status.organizationName || 'your workspace'}. Assign one to a mentee as a
+            Edorax courses available to {status.organizationName || 'your workspace'}. Assign one to a mentee as a
             task — they&apos;re enrolled right away and their progress shows up on the task.
           </p>
         </div>
@@ -63,7 +63,7 @@ export default function MentorCoursesPage() {
         <div className="rounded-2xl border border-dashed border-slate-200 p-12 text-center">
           <GraduationCap className="w-10 h-10 text-slate-300 mx-auto mb-3" />
           <p className="text-slate-900 font-medium">No courses yet</p>
-          <p className="text-sm text-slate-500 mt-1">Buildment hasn&apos;t allocated any courses to this workspace.</p>
+          <p className="text-sm text-slate-500 mt-1">Edorax hasn&apos;t allocated any courses to this workspace.</p>
         </div>
       ) : (
         <>

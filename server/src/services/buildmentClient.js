@@ -34,7 +34,7 @@ const trimUrl = (value) => String(value || '').trim().replace(/\/+$/, '');
  */
 function baseUrl(credentials) {
   const url = trimUrl(credentials?.baseUrl || process.env.BUILDMENT_BASE_URL);
-  if (!url) throw new AppError('Buildment has no API URL. A platform owner needs to set it in Platform → Apps.', 503, 'BUILDMENT_NOT_CONFIGURED');
+  if (!url) throw new AppError('Edorax has no API URL. A platform owner needs to set it in Platform → Apps.', 503, 'BUILDMENT_NOT_CONFIGURED');
   return url;
 }
 
@@ -66,12 +66,12 @@ async function request(credentials, method, path, { query, body } = {}) {
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch {
-    throw new BuildmentError('Could not reach Buildment. Try again in a moment.', 0);
+    throw new BuildmentError('Could not reach Edorax. Try again in a moment.', 0);
   }
   let data = null;
   try { data = await res.json(); } catch { data = null; }
   if (!res.ok) {
-    throw new BuildmentError(data?.error || `Buildment request failed (${res.status})`, res.status, data?.code || null);
+    throw new BuildmentError(data?.error || `Edorax request failed (${res.status})`, res.status, data?.code || null);
   }
   return { status: res.status, data: data || {} };
 }
@@ -89,7 +89,7 @@ const buildmentClient = {
         connected: data.connected === true,
         organizationSlug: data.organization_slug || null,
         organizationName: data.organization_name || null,
-        error: data.connected === true ? null : (data.error || 'Buildment did not confirm the connection'),
+        error: data.connected === true ? null : (data.error || 'Edorax did not confirm the connection'),
       };
     } catch (error) {
       if (error instanceof BuildmentError && error.upstreamStatus === 401) {
