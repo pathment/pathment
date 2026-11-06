@@ -70,7 +70,7 @@ const enrollmentShape = (row, task, extra = {}) => ({
   totalLessons: row.totalLessons,
   currentChapter: row.currentChapter || null,
   lastSyncedAt: row.lastSyncedAt,
-  appUrl: buildmentClient.appUrl(),
+  appUrl: null,
   ...extra,
 });
 
@@ -122,7 +122,7 @@ class CourseService {
       connected: Boolean(connection),
       provider: PROVIDER,
       organizationName: connection?.metadata?.organizationName || null,
-      appUrl: buildmentClient.appUrl(),
+      appUrl: buildmentClient.appUrl(connection?.endpoint),
     };
   }
 
@@ -347,7 +347,8 @@ class CourseService {
         if (!error.isOperational) logger.error('Course sync failed', { taskId: task.id, message: error.message });
       }
     }
-    return enrollmentShape(row, task, { syncError });
+    const connection = await this._connection({ required: false });
+    return enrollmentShape(row, task, { syncError, appUrl: buildmentClient.appUrl(connection?.endpoint) });
   }
 
   /** Read lifecycle + progress from Buildment and reflect it on the task. */

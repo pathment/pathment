@@ -20,6 +20,10 @@ module.exports = (sequelize, DataTypes) => {
       field: 'integration_key',
       validate: { isIn: [INTEGRATION_KEYS] }
     },
+    // Where the integration lives, set by a platform owner. apiBaseUrl is the
+    // provider's API host; appUrl is where users go (defaults to apiBaseUrl).
+    apiBaseUrl: { type: DataTypes.STRING(500), allowNull: true, field: 'api_base_url' },
+    appUrl: { type: DataTypes.STRING(500), allowNull: true, field: 'app_url' },
     // Inactive apps stay in the catalog but are hidden from workspaces.
     isActive: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true, field: 'is_active' },
     createdBy: { type: DataTypes.UUID, allowNull: true, field: 'created_by' }

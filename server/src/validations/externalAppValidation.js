@@ -8,6 +8,9 @@ const iconUrl = Joi.string().uri({ allowRelative: true }).max(500).allow('', nul
 
 const integrationKey = Joi.string().valid(...INTEGRATION_KEYS).allow(null, '');
 
+// Provider hosts: absolute http(s) only — the server calls these.
+const serviceUrl = Joi.string().trim().uri({ scheme: ['http', 'https'] }).max(500).allow('', null);
+
 const externalAppSchemas = {
   idParam: Joi.object({
     id: Joi.string().uuid().required(),
@@ -29,6 +32,8 @@ const externalAppSchemas = {
     description: Joi.string().trim().max(2000).allow('', null).optional(),
     iconUrl: iconUrl.optional(),
     integrationKey: integrationKey.optional(),
+    apiBaseUrl: serviceUrl.optional(),
+    appUrl: serviceUrl.optional(),
     isActive: Joi.boolean().default(true),
   }),
 
@@ -38,6 +43,8 @@ const externalAppSchemas = {
     description: Joi.string().trim().max(2000).allow('', null),
     iconUrl,
     integrationKey,
+    apiBaseUrl: serviceUrl,
+    appUrl: serviceUrl,
     isActive: Joi.boolean(),
   }).min(1),
 };
