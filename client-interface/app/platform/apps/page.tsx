@@ -20,7 +20,7 @@ import { cn } from '@/components/ui/utils';
 const TYPE_OPTIONS = CATALOG_APP_TYPES.map((value) => ({ value, label: value.charAt(0).toUpperCase() + value.slice(1) }));
 
 const EMPTY_FORM: CatalogAppInput = {
-  name: '', type: 'other', description: '', iconUrl: '', integrationKey: null, apiBaseUrl: '', appUrl: '', isActive: true,
+  name: '', type: 'other', description: '', iconUrl: '', integrationKey: null, backendUrl: '', frontendUrl: '', isActive: true,
 };
 
 const isHttpUrl = (value: string) => {
@@ -108,15 +108,15 @@ function AppForm({ editing, integrations, onDone }: {
   const [form, setForm] = useState<CatalogAppInput>(editing ? {
     name: editing.name, type: editing.type, description: editing.description || '',
     iconUrl: editing.iconUrl || '', integrationKey: editing.integrationKey,
-    apiBaseUrl: editing.apiBaseUrl || '', appUrl: editing.appUrl || '', isActive: editing.isActive,
+    backendUrl: editing.backendUrl || '', frontendUrl: editing.frontendUrl || '', isActive: editing.isActive,
   } : EMPTY_FORM);
 
-  const apiBaseUrl = form.apiBaseUrl?.trim() || '';
-  const appUrl = form.appUrl?.trim() || '';
-  // Any app may carry URLs; an integration needs the API URL to call.
-  const urlError = form.integrationKey && !apiBaseUrl ? 'API URL is required for an integration'
-    : apiBaseUrl && !isHttpUrl(apiBaseUrl) ? 'API URL must start with http:// or https://'
-      : appUrl && !isHttpUrl(appUrl) ? 'App URL must start with http:// or https://'
+  const backendUrl = form.backendUrl?.trim() || '';
+  const frontendUrl = form.frontendUrl?.trim() || '';
+  // Any app may carry URLs; an integration needs the Backend URL to call.
+  const urlError = form.integrationKey && !backendUrl ? 'Backend URL is required for an integration'
+    : backendUrl && !isHttpUrl(backendUrl) ? 'Backend URL must start with http:// or https://'
+      : frontendUrl && !isHttpUrl(frontendUrl) ? 'Frontend URL must start with http:// or https://'
         : null;
   const canSave = form.name.trim().length >= 2 && !urlError;
 
@@ -128,8 +128,8 @@ function AppForm({ editing, integrations, onDone }: {
         description: form.description?.trim() || null,
         iconUrl: form.iconUrl?.trim() || null,
         integrationKey: form.integrationKey || null,
-        apiBaseUrl: apiBaseUrl || null,
-        appUrl: appUrl || null,
+        backendUrl: backendUrl || null,
+        frontendUrl: frontendUrl || null,
       };
       return editing ? platformApi.apps.update(editing.id, payload) : platformApi.apps.create(payload);
     },
@@ -206,30 +206,30 @@ function AppForm({ editing, integrations, onDone }: {
         </div>
         <label className="mt-3 block">
           <span className="text-xs font-medium">
-            API URL{' '}
+            Backend URL{' '}
             <span className="font-normal text-muted-foreground">{form.integrationKey ? '(required for an integration)' : '(optional)'}</span>
           </span>
           <input
             type="url"
-            value={form.apiBaseUrl || ''}
-            onChange={(event) => setForm((c) => ({ ...c, apiBaseUrl: event.target.value }))}
+            value={form.backendUrl || ''}
+            onChange={(event) => setForm((c) => ({ ...c, backendUrl: event.target.value }))}
             className={inputClass}
             placeholder="https://api.example.com"
           />
           <span className="mt-1 block text-[11px] text-muted-foreground">The app&apos;s server Pathment calls. Changing it applies to every connected workspace.</span>
         </label>
         <label className="mt-3 block">
-          <span className="text-xs font-medium">App URL <span className="font-normal text-muted-foreground">(optional)</span></span>
+          <span className="text-xs font-medium">Frontend URL <span className="font-normal text-muted-foreground">(optional)</span></span>
           <input
             type="url"
-            value={form.appUrl || ''}
-            onChange={(event) => setForm((c) => ({ ...c, appUrl: event.target.value }))}
+            value={form.frontendUrl || ''}
+            onChange={(event) => setForm((c) => ({ ...c, frontendUrl: event.target.value }))}
             className={inputClass}
             placeholder="https://app.example.com"
           />
-          <span className="mt-1 block text-[11px] text-muted-foreground">Where users open the app. Leave empty to use the API URL.</span>
+          <span className="mt-1 block text-[11px] text-muted-foreground">Where users open the app. Leave empty to use the Backend URL.</span>
         </label>
-        {urlError && (apiBaseUrl || appUrl) ? (
+        {urlError && (backendUrl || frontendUrl) ? (
           <p className="mt-1.5 text-[11px] text-red-600 dark:text-red-400">{urlError}</p>
         ) : null}
         <label className="mt-3 flex cursor-pointer items-center gap-2">

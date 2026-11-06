@@ -277,9 +277,9 @@ export interface CatalogApp {
   /** null = listed but not connectable; a key = backed by a server integration. */
   integrationKey: string | null;
   /** Provider API host the server calls (integration apps only). */
-  apiBaseUrl: string | null;
-  /** Where users go to use the app; defaults to apiBaseUrl. */
-  appUrl: string | null;
+  backendUrl: string | null;
+  /** Where users open the app; defaults to backendUrl. */
+  frontendUrl: string | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -302,8 +302,8 @@ export interface CatalogAppInput {
   description?: string | null;
   iconUrl?: string | null;
   integrationKey?: string | null;
-  apiBaseUrl?: string | null;
-  appUrl?: string | null;
+  backendUrl?: string | null;
+  frontendUrl?: string | null;
   isActive?: boolean;
 }
 

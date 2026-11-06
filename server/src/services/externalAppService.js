@@ -21,7 +21,7 @@ const buildmentClient = require('./buildmentClient');
  */
 
 // integrationKey → verify(credentials) → { connected, error, metadata }.
-// `credentials` here already carries the app's API host (see withEndpoint).
+// `credentials` here already carries the app's backend URL (see withEndpoint).
 const VERIFIERS = {
   buildment: async (credentials) => {
     const result = await buildmentClient.verifyConnection(credentials);
@@ -40,8 +40,8 @@ const catalogShape = (app) => ({
   description: app.description || null,
   iconUrl: app.iconUrl || null,
   integrationKey: app.integrationKey || null,
-  apiBaseUrl: app.apiBaseUrl || null,
-  appUrl: app.appUrl || null,
+  backendUrl: app.backendUrl || null,
+  frontendUrl: app.frontendUrl || null,
   isActive: app.isActive,
   createdAt: app.createdAt,
   updatedAt: app.updatedAt
@@ -63,7 +63,7 @@ const cleanUrl = (value) => String(value || '').trim().replace(/\/+$/, '') || nu
  * not in the encrypted blob, so a platform owner changing it applies to every
  * workspace at once without anyone reconnecting.
  */
-const withEndpoint = (app, credentials) => ({ ...credentials, baseUrl: app?.apiBaseUrl || undefined });
+const withEndpoint = (app, credentials) => ({ ...credentials, backendUrl: app?.backendUrl || undefined });
 
 const isDuplicateName = (error) => error?.name === 'SequelizeUniqueConstraintError';
 
@@ -184,7 +184,7 @@ class ExternalAppService {
       row,
       credentials: withEndpoint(row.app, JSON.parse(decrypt(row.credentialsEncrypted))),
       metadata: row.metadata || {},
-      endpoint: { baseUrl: row.app.apiBaseUrl || null, appUrl: row.app.appUrl || null },
+      endpoint: { backendUrl: row.app.backendUrl || null, frontendUrl: row.app.frontendUrl || null },
     };
   }
 
@@ -207,8 +207,8 @@ class ExternalAppService {
         description: data.description || null,
         iconUrl: data.iconUrl || null,
         integrationKey: data.integrationKey || null,
-        apiBaseUrl: cleanUrl(data.apiBaseUrl),
-        appUrl: cleanUrl(data.appUrl),
+        backendUrl: cleanUrl(data.backendUrl),
+        frontendUrl: cleanUrl(data.frontendUrl),
         isActive: data.isActive !== false,
         createdBy: user?.id || null
       });
@@ -228,8 +228,8 @@ class ExternalAppService {
     if (data.description !== undefined) patch.description = data.description || null;
     if (data.iconUrl !== undefined) patch.iconUrl = data.iconUrl || null;
     if (data.integrationKey !== undefined) patch.integrationKey = data.integrationKey || null;
-    if (data.apiBaseUrl !== undefined) patch.apiBaseUrl = cleanUrl(data.apiBaseUrl);
-    if (data.appUrl !== undefined) patch.appUrl = cleanUrl(data.appUrl);
+    if (data.backendUrl !== undefined) patch.backendUrl = cleanUrl(data.backendUrl);
+    if (data.frontendUrl !== undefined) patch.frontendUrl = cleanUrl(data.frontendUrl);
     if (data.isActive !== undefined) patch.isActive = data.isActive;
     try {
       await app.update(patch);

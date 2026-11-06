@@ -44,7 +44,7 @@ const create = catchAsync(async (req, res) => {
   const app = await externalAppService.create(req.body, req.user);
   await platformAudit.record({
     action: 'PLATFORM_APP_CREATED', targetType: 'ExternalApp', targetId: app.name,
-    newValues: { id: app.id, type: app.type, integrationKey: app.integrationKey, apiBaseUrl: app.apiBaseUrl, isActive: app.isActive },
+    newValues: { id: app.id, type: app.type, integrationKey: app.integrationKey, backendUrl: app.backendUrl, frontendUrl: app.frontendUrl, isActive: app.isActive },
     actor: req.user,
   });
   res.status(201).json(successResponse('App created', { app: { ...app, connections: 0 } }, 201));
@@ -57,7 +57,7 @@ const update = catchAsync(async (req, res) => {
     action: 'PLATFORM_APP_UPDATED', targetType: 'ExternalApp', targetId: app.name,
     oldValues: before ? {
       name: before.name, type: before.type, integrationKey: before.integrationKey,
-      apiBaseUrl: before.apiBaseUrl, appUrl: before.appUrl, isActive: before.isActive,
+      backendUrl: before.backendUrl, frontendUrl: before.frontendUrl, isActive: before.isActive,
     } : null,
     newValues: req.body,
     actor: req.user,

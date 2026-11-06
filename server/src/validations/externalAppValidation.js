@@ -32,8 +32,8 @@ const externalAppSchemas = {
     description: Joi.string().trim().max(2000).allow('', null).optional(),
     iconUrl: iconUrl.optional(),
     integrationKey: integrationKey.optional(),
-    apiBaseUrl: serviceUrl.optional(),
-    appUrl: serviceUrl.optional(),
+    backendUrl: serviceUrl.optional(),
+    frontendUrl: serviceUrl.optional(),
     isActive: Joi.boolean().default(true),
   }),
 
@@ -43,8 +43,8 @@ const externalAppSchemas = {
     description: Joi.string().trim().max(2000).allow('', null),
     iconUrl,
     integrationKey,
-    apiBaseUrl: serviceUrl,
-    appUrl: serviceUrl,
+    backendUrl: serviceUrl,
+    frontendUrl: serviceUrl,
     isActive: Joi.boolean(),
   }).min(1),
 };
