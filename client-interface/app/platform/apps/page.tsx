@@ -19,9 +19,22 @@ import { cn } from '@/components/ui/utils';
 
 const TYPE_OPTIONS = CATALOG_APP_TYPES.map((value) => ({ value, label: value.charAt(0).toUpperCase() + value.slice(1) }));
 
-const EMPTY_FORM: CatalogAppInput = { name: '', type: 'other', description: '', iconUrl: '', integrationKey: null, isActive: true };
+const EMPTY_FORM: CatalogAppInput = {
+  name: '', type: 'other', description: '', iconUrl: '', integrationKey: null, backendUrl: '', frontendUrl: '', isActive: true,
+};
 
-function AppRow({ app, canWrite, onEdit }: { app: CatalogApp; canWrite: boolean; onEdit: () => void }) {
+const isHttpUrl = (value: string) => {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+};
+
+function AppRow({ app, integrationLabel, canWrite, onEdit }: {
+  app: CatalogApp; integrationLabel: string | null; canWrite: boolean; onEdit: () => void;
+}) {
   const queryClient = useQueryClient();
   const refresh = () => queryClient.invalidateQueries({ queryKey: qk.platform.apps });
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -46,7 +59,7 @@ function AppRow({ app, canWrite, onEdit }: { app: CatalogApp; canWrite: boolean;
           <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium capitalize text-muted-foreground">{app.type}</span>
           {app.integrationKey ? (
             <span className="inline-flex items-center gap-1 rounded-full bg-brand-500/10 px-2 py-0.5 text-[11px] font-medium text-brand-700 dark:text-brand-400">
-              <Plug className="h-3 w-3" aria-hidden /> {app.integrationKey}
+              <Plug className="h-3 w-3" aria-hidden /> {integrationLabel || app.integrationKey}
             </span>
           ) : (
             <span className="rounded-full border border-dashed border-border px-2 py-0.5 text-[11px] text-muted-foreground">listing only</span>
@@ -94,8 +107,18 @@ function AppForm({ editing, integrations, onDone }: {
   const queryClient = useQueryClient();
   const [form, setForm] = useState<CatalogAppInput>(editing ? {
     name: editing.name, type: editing.type, description: editing.description || '',
-    iconUrl: editing.iconUrl || '', integrationKey: editing.integrationKey, isActive: editing.isActive,
+    iconUrl: editing.iconUrl || '', integrationKey: editing.integrationKey,
+    backendUrl: editing.backendUrl || '', frontendUrl: editing.frontendUrl || '', isActive: editing.isActive,
   } : EMPTY_FORM);
+
+  const backendUrl = form.backendUrl?.trim() || '';
+  const frontendUrl = form.frontendUrl?.trim() || '';
+  // Any app may carry URLs; an integration needs the Backend URL to call.
+  const urlError = form.integrationKey && !backendUrl ? 'Backend URL is required for an integration'
+    : backendUrl && !isHttpUrl(backendUrl) ? 'Backend URL must start with http:// or https://'
+      : frontendUrl && !isHttpUrl(frontendUrl) ? 'Frontend URL must start with http:// or https://'
+        : null;
+  const canSave = form.name.trim().length >= 2 && !urlError;
 
   const save = useMutation({
     mutationFn: () => {
@@ -105,6 +128,8 @@ function AppForm({ editing, integrations, onDone }: {
         description: form.description?.trim() || null,
         iconUrl: form.iconUrl?.trim() || null,
         integrationKey: form.integrationKey || null,
+        backendUrl: backendUrl || null,
+        frontendUrl: frontendUrl || null,
       };
       return editing ? platformApi.apps.update(editing.id, payload) : platformApi.apps.create(payload);
     },
@@ -122,7 +147,7 @@ function AppForm({ editing, integrations, onDone }: {
       const taken = Boolean(integration.usedBy && integration.usedBy !== editing?.name);
       return {
         value: integration.key,
-        label: integration.key,
+        label: integration.label || integration.key,
         description: taken
           ? `Already used by ${integration.usedBy} — keys are one app each`
           : `Asks for: ${integration.credentialFields.map((field) => field.label).join(', ')}`,
@@ -137,10 +162,10 @@ function AppForm({ editing, integrations, onDone }: {
       title={editing ? `Edit ${editing.name}` : 'Add an app'}
       description={editing ? undefined : 'It appears on every workspace’s Apps page once active.'}
     >
-      <form onSubmit={(event) => { event.preventDefault(); if (form.name.trim().length >= 2) save.mutate(); }}>
+      <form onSubmit={(event) => { event.preventDefault(); if (canSave) save.mutate(); }}>
         <label className="block">
           <span className="text-xs font-medium">Name</span>
-          <input value={form.name} onChange={(event) => setForm((c) => ({ ...c, name: event.target.value }))} className={inputClass} placeholder="Buildment" />
+          <input value={form.name} onChange={(event) => setForm((c) => ({ ...c, name: event.target.value }))} className={inputClass} placeholder="Edorax" />
         </label>
         <div className="mt-3">
           <span className="text-xs font-medium">Type</span>
@@ -164,7 +189,7 @@ function AppForm({ editing, integrations, onDone }: {
         </label>
         <label className="mt-3 block">
           <span className="text-xs font-medium">Icon URL <span className="font-normal text-muted-foreground">(optional)</span></span>
-          <input value={form.iconUrl || ''} onChange={(event) => setForm((c) => ({ ...c, iconUrl: event.target.value }))} className={inputClass} placeholder="https://… or /apps/buildment.svg" />
+          <input value={form.iconUrl || ''} onChange={(event) => setForm((c) => ({ ...c, iconUrl: event.target.value }))} className={inputClass} placeholder="https://… or /apps/app-icon.svg" />
         </label>
         <div className="mt-3">
           <span className="text-xs font-medium">Integration</span>
@@ -179,6 +204,34 @@ function AppForm({ editing, integrations, onDone }: {
             An integration makes the app connectable: admins enter the provider&apos;s keys, which are verified and stored encrypted. New keys ship with a server release.
           </p>
         </div>
+        <label className="mt-3 block">
+          <span className="text-xs font-medium">
+            Backend URL{' '}
+            <span className="font-normal text-muted-foreground">{form.integrationKey ? '(required for an integration)' : '(optional)'}</span>
+          </span>
+          <input
+            type="url"
+            value={form.backendUrl || ''}
+            onChange={(event) => setForm((c) => ({ ...c, backendUrl: event.target.value }))}
+            className={inputClass}
+            placeholder="https://api.example.com"
+          />
+          <span className="mt-1 block text-[11px] text-muted-foreground">The app&apos;s server Pathment calls. Changing it applies to every connected workspace.</span>
+        </label>
+        <label className="mt-3 block">
+          <span className="text-xs font-medium">Frontend URL <span className="font-normal text-muted-foreground">(optional)</span></span>
+          <input
+            type="url"
+            value={form.frontendUrl || ''}
+            onChange={(event) => setForm((c) => ({ ...c, frontendUrl: event.target.value }))}
+            className={inputClass}
+            placeholder="https://app.example.com"
+          />
+          <span className="mt-1 block text-[11px] text-muted-foreground">Where users open the app. Leave empty to use the Backend URL.</span>
+        </label>
+        {urlError && (backendUrl || frontendUrl) ? (
+          <p className="mt-1.5 text-[11px] text-red-600 dark:text-red-400">{urlError}</p>
+        ) : null}
         <label className="mt-3 flex cursor-pointer items-center gap-2">
           <input
             type="checkbox"
@@ -188,7 +241,7 @@ function AppForm({ editing, integrations, onDone }: {
           <span className="text-xs">Active — visible to workspaces</span>
         </label>
         <div className="mt-4 flex gap-2">
-          <button type="submit" disabled={form.name.trim().length < 2 || save.isPending} className={cn(btn.primary, 'flex-1')}>
+          <button type="submit" disabled={!canSave || save.isPending} className={cn(btn.primary, 'flex-1')}>
             <PlusCircle className="h-4 w-4" aria-hidden />
             {save.isPending ? 'Saving…' : editing ? 'Save changes' : 'Add to catalog'}
           </button>
@@ -231,7 +284,13 @@ export default function PlatformAppsPage() {
             {apps.length ? (
               <ul className="divide-y divide-border overflow-hidden rounded-3xl border border-border bg-card">
                 {apps.map((app) => (
-                  <AppRow key={app.id} app={app} canWrite={canWrite} onEdit={() => setEditingId(app.id)} />
+                  <AppRow
+                    key={app.id}
+                    app={app}
+                    integrationLabel={data?.integrations?.find((integration) => integration.key === app.integrationKey)?.label || null}
+                    canWrite={canWrite}
+                    onEdit={() => setEditingId(app.id)}
+                  />
                 ))}
               </ul>
             ) : (

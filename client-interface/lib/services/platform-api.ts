@@ -276,6 +276,10 @@ export interface CatalogApp {
   iconUrl: string | null;
   /** null = listed but not connectable; a key = backed by a server integration. */
   integrationKey: string | null;
+  /** Provider API host the server calls (integration apps only). */
+  backendUrl: string | null;
+  /** Where users open the app; defaults to backendUrl. */
+  frontendUrl: string | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -285,6 +289,8 @@ export interface CatalogApp {
 
 export interface CatalogIntegration {
   key: string;
+  /** What to show for the key (e.g. 'Edorax' for 'buildment'). */
+  label: string;
   credentialFields: Array<{ key: string; label: string; secret: boolean }>;
   /** Name of the app already claiming this key (keys are unique), or null. */
   usedBy: string | null;
@@ -296,6 +302,8 @@ export interface CatalogAppInput {
   description?: string | null;
   iconUrl?: string | null;
   integrationKey?: string | null;
+  backendUrl?: string | null;
+  frontendUrl?: string | null;
   isActive?: boolean;
 }
 

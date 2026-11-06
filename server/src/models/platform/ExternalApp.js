@@ -20,6 +20,10 @@ module.exports = (sequelize, DataTypes) => {
       field: 'integration_key',
       validate: { isIn: [INTEGRATION_KEYS] }
     },
+    // Where the app lives, set by a platform owner. backendUrl is the app's
+    // server Pathment calls; frontendUrl is where users open it (defaults to backendUrl).
+    backendUrl: { type: DataTypes.STRING(500), allowNull: true, field: 'backend_url' },
+    frontendUrl: { type: DataTypes.STRING(500), allowNull: true, field: 'frontend_url' },
     // Inactive apps stay in the catalog but are hidden from workspaces.
     isActive: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true, field: 'is_active' },
     createdBy: { type: DataTypes.UUID, allowNull: true, field: 'created_by' }

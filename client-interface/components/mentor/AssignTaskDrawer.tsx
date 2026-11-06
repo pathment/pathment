@@ -295,7 +295,7 @@ export function AssignTaskDrawer({
     setEnrolled((prev) => { const next = { ...prev }; ids.forEach((id) => delete next[id]); return next; });
     coursesApi.release(courseIdRef.current, items)
       .then(() => refetchCoursesRef.current())
-      .catch((error: unknown) => toast.error(extractApiErrorMessage(error, 'Could not cancel the Buildment enrollment')));
+      .catch((error: unknown) => toast.error(extractApiErrorMessage(error, 'Could not cancel the Edorax enrollment')));
   }, []);
   const typeOptions: readonly string[] = coursesConnected ? [...TYPES, 'course'] : TYPES;
   // A restored draft may name the Course type after the connection went away.
@@ -518,10 +518,10 @@ export function AssignTaskDrawer({
       }));
       setEnrollErrors(Object.fromEntries(failed.map((r) => [r.menteeId, r.error || 'Could not enroll'])));
       if (failed.length) toast.error(mode === 'single' ? (failed[0].error || 'Could not enroll') : `${failed.length} mentee${failed.length > 1 ? 's' : ''} couldn't be enrolled`);
-      else toast.success(mode === 'single' ? `${firstName} is enrolled on Buildment` : `${ok.length} mentee${ok.length === 1 ? '' : 's'} enrolled on Buildment`);
+      else toast.success(mode === 'single' ? `${firstName} is enrolled on Edorax` : `${ok.length} mentee${ok.length === 1 ? '' : 's'} enrolled on Edorax`);
       refetchCourses();
     } catch (error: unknown) {
-      toast.error(extractApiErrorMessage(error, 'Could not enroll on Buildment'));
+      toast.error(extractApiErrorMessage(error, 'Could not enroll on Edorax'));
     } finally {
       setEnrolling(false);
     }
@@ -913,12 +913,12 @@ export function AssignTaskDrawer({
                 {isCourse && (
                   <div className="rounded-xl border border-brand-200 bg-brand-50/50 dark:bg-brand-500/5 p-4 space-y-3">
                     <div className="flex items-center gap-2 text-sm font-medium text-slate-800">
-                      <GraduationCap className="w-4 h-4 text-brand-600" /> Buildment course <span className="text-red-500">*</span>
+                      <GraduationCap className="w-4 h-4 text-brand-600" /> Edorax course <span className="text-red-500">*</span>
                     </div>
                     {coursesLoading ? (
                       <div className="flex items-center gap-2 text-sm text-slate-400 py-1"><Loader2 className="w-4 h-4 animate-spin text-brand-600" />Loading courses…</div>
                     ) : courses.length === 0 ? (
-                      <p className="text-sm text-slate-500">No courses are available to your workspace on Buildment yet.</p>
+                      <p className="text-sm text-slate-500">No courses are available to your workspace on Edorax yet.</p>
                     ) : (
                       <>
                         <select
@@ -958,14 +958,14 @@ export function AssignTaskDrawer({
                                 <Check className="w-4 h-4 mt-0.5 shrink-0" />
                                 <span className="flex-1">
                                   {mode === 'single'
-                                    ? `${firstName} is enrolled on Buildment.`
-                                    : `${enrolledTargets} of ${targetCount} mentee${targetCount === 1 ? '' : 's'} enrolled on Buildment.`}
+                                    ? `${firstName} is enrolled on Edorax.`
+                                    : `${enrolledTargets} of ${targetCount} mentee${targetCount === 1 ? '' : 's'} enrolled on Edorax.`}
                                   {courseReady && <span className="block text-xs text-slate-500">You can assign the task now.</span>}
                                   {mode === 'single' && enrolled[mentee?.id || '']?.lifecycle === 'PENDING_ACCOUNT' && (
-                                    <span className="block text-xs text-slate-500">They have no Buildment account yet — they&apos;ll be asked to register with their Pathment email.</span>
+                                    <span className="block text-xs text-slate-500">They have no Edorax account yet — they&apos;ll be asked to register with their Pathment email.</span>
                                   )}
                                   {mode === 'single' && enrolled[mentee?.id || '']?.lifecycle === 'PAYMENT_REQUIRED' && (
-                                    <span className="block text-xs text-slate-500">Buildment is waiting for payment before they can start.</span>
+                                    <span className="block text-xs text-slate-500">Edorax is waiting for payment before they can start.</span>
                                   )}
                                 </span>
                                 <button type="button" onClick={() => releaseSeats()} disabled={saving || enrolling}
@@ -982,16 +982,16 @@ export function AssignTaskDrawer({
                                 className="px-3.5 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm font-medium inline-flex items-center gap-2 disabled:opacity-50">
                                 {enrolling ? <Loader2 className="w-4 h-4 animate-spin text-brand-600" /> : <GraduationCap className="w-4 h-4" />}
                                 {mode === 'single'
-                                  ? `Enroll ${firstName} on Buildment`
-                                  : `Enroll ${toEnroll.length} mentee${toEnroll.length === 1 ? '' : 's'} on Buildment`}
+                                  ? `Enroll ${firstName} on Edorax`
+                                  : `Enroll ${toEnroll.length} mentee${toEnroll.length === 1 ? '' : 's'} on Edorax`}
                               </button>
                             )}
                             {mode === 'bulk' && targetCount === 0 && <p className="text-xs text-slate-500">Select mentees below to enroll them.</p>}
                           </div>
                         )}
                         <p className="text-xs text-slate-500">
-                          Enroll first: it takes a seat on Buildment using {mode === 'single' ? `${firstName}'s` : 'each mentee\'s'}{' '}Pathment
-                          email, and Assign unlocks once Buildment confirms. A seat you don&apos;t assign is released when you
+                          Enroll first: it takes a seat on Edorax using {mode === 'single' ? `${firstName}'s` : 'each mentee\'s'}{' '}Pathment
+                          email, and Assign unlocks once Edorax confirms. A seat you don&apos;t assign is released when you
                           cancel the enrollment or close this drawer. The task completes on its own when the course is finished.
                         </p>
                       </>
@@ -1396,7 +1396,7 @@ export function AssignTaskDrawer({
 
               <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-2">
                 <button onClick={closeKeepingDraft} className="px-4 py-2 border border-slate-200 text-slate-700 rounded-xl text-sm hover:bg-slate-50">Cancel</button>
-                <button onClick={submit} disabled={!canSubmit || saving} title={source === 'custom' && isCourse && !courseReady ? 'Enroll on Buildment first' : 'Ctrl+Enter'} className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-sm inline-flex items-center gap-2 disabled:opacity-50">
+                <button onClick={submit} disabled={!canSubmit || saving} title={source === 'custom' && isCourse && !courseReady ? 'Enroll on Edorax first' : 'Ctrl+Enter'} className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-sm inline-flex items-center gap-2 disabled:opacity-50">
                   {saving ? <Loader2 className="w-4 h-4 animate-spin text-brand-600" /> : <Check className="w-4 h-4" />}
                   {source === 'roadmap'
                     ? (mode === 'bulk' ? `Assign roadmap to ${targetCount}` : 'Assign roadmap')

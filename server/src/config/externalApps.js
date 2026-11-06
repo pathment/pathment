@@ -12,7 +12,10 @@ const APP_TYPES = ['course', 'communication', 'productivity', 'developer', 'anal
  * organization_apps — they are never returned to a client.
  */
 const INTEGRATIONS = {
+  // Key stays 'buildment' (stored on external_apps and course_enrollments);
+  // the product is now called Edorax, which is what users see.
   buildment: {
+    label: 'Edorax',
     credentialFields: [
       { key: 'accessKey', label: 'Access key', secret: false },
       { key: 'secretKey', label: 'Secret key', secret: true },

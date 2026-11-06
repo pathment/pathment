@@ -2,7 +2,7 @@ const AppError = require('../utils/errors/AppError');
 
 /**
  * buildmentClient - the one HTTP helper for the Buildment Organization API
- * (`{BUILDMENT_BASE_URL}/integrations/v1`). Server-only: the two key headers are
+ * (`{backendUrl}/integrations/v1`). Server-only: the two key headers are
  * set here and nowhere else, and never reach a browser.
  *
  * Field names are Buildment's contract, snake_case, exactly as documented —
@@ -25,20 +25,29 @@ class BuildmentError extends AppError {
   }
 }
 
-function baseUrl() {
-  const url = String(process.env.BUILDMENT_BASE_URL || '').trim().replace(/\/+$/, '');
-  if (!url) throw new AppError('Buildment is not configured on this server (BUILDMENT_BASE_URL is missing)', 503, 'BUILDMENT_NOT_CONFIGURED');
+const trimUrl = (value) => String(value || '').trim().replace(/\/+$/, '');
+
+/**
+ * The backend URL. It comes from the Edorax app in the platform catalog
+ * (Platform → Apps), carried on the credentials as `backendUrl`; the
+ * BUILDMENT_BASE_URL env var is only a fallback for servers not migrated yet.
+ */
+function backendUrl(credentials) {
+  const url = trimUrl(credentials?.backendUrl || process.env.BUILDMENT_BASE_URL);
+  if (!url) throw new AppError('Edorax has no Backend URL. A platform owner needs to set it in Platform → Apps.', 503, 'BUILDMENT_NOT_CONFIGURED');
   return url;
 }
 
-/** Where a learner signs up / studies. Defaults to the API host. */
-function appUrl() {
-  const url = String(process.env.BUILDMENT_APP_URL || process.env.BUILDMENT_BASE_URL || '').trim().replace(/\/+$/, '');
+/** Where a learner signs up / studies: the Frontend URL, else the Backend URL. */
+function appUrl(target) {
+  const url = trimUrl(
+    target?.frontendUrl || target?.backendUrl || process.env.BUILDMENT_APP_URL || process.env.BUILDMENT_BASE_URL,
+  );
   return url || null;
 }
 
 async function request(credentials, method, path, { query, body } = {}) {
-  const url = new URL(`${baseUrl()}/integrations/v1${path}`);
+  const url = new URL(`${backendUrl(credentials)}/integrations/v1${path}`);
   for (const [key, value] of Object.entries(query || {})) {
     if (value !== undefined && value !== null && value !== '') url.searchParams.set(key, String(value));
   }
@@ -57,12 +66,12 @@ async function request(credentials, method, path, { query, body } = {}) {
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch {
-    throw new BuildmentError('Could not reach Buildment. Try again in a moment.', 0);
+    throw new BuildmentError('Could not reach Edorax. Try again in a moment.', 0);
   }
   let data = null;
   try { data = await res.json(); } catch { data = null; }
   if (!res.ok) {
-    throw new BuildmentError(data?.error || `Buildment request failed (${res.status})`, res.status, data?.code || null);
+    throw new BuildmentError(data?.error || `Edorax request failed (${res.status})`, res.status, data?.code || null);
   }
   return { status: res.status, data: data || {} };
 }
@@ -80,7 +89,7 @@ const buildmentClient = {
         connected: data.connected === true,
         organizationSlug: data.organization_slug || null,
         organizationName: data.organization_name || null,
-        error: data.connected === true ? null : (data.error || 'Buildment did not confirm the connection'),
+        error: data.connected === true ? null : (data.error || 'Edorax did not confirm the connection'),
       };
     } catch (error) {
       if (error instanceof BuildmentError && error.upstreamStatus === 401) {

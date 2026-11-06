@@ -33,6 +33,7 @@ const list = catchAsync(async (req, res) => {
     // already claims it (integration_key is unique).
     integrations: Object.keys(INTEGRATIONS).map((key) => ({
       key,
+      label: INTEGRATIONS[key].label || key,
       credentialFields: INTEGRATIONS[key].credentialFields,
       usedBy: apps.find((app) => app.integrationKey === key)?.name || null,
     })),
@@ -43,7 +44,7 @@ const create = catchAsync(async (req, res) => {
   const app = await externalAppService.create(req.body, req.user);
   await platformAudit.record({
     action: 'PLATFORM_APP_CREATED', targetType: 'ExternalApp', targetId: app.name,
-    newValues: { id: app.id, type: app.type, integrationKey: app.integrationKey, isActive: app.isActive },
+    newValues: { id: app.id, type: app.type, integrationKey: app.integrationKey, backendUrl: app.backendUrl, frontendUrl: app.frontendUrl, isActive: app.isActive },
     actor: req.user,
   });
   res.status(201).json(successResponse('App created', { app: { ...app, connections: 0 } }, 201));
@@ -54,7 +55,10 @@ const update = catchAsync(async (req, res) => {
   const app = await externalAppService.update(req.params.id, req.body);
   await platformAudit.record({
     action: 'PLATFORM_APP_UPDATED', targetType: 'ExternalApp', targetId: app.name,
-    oldValues: before ? { name: before.name, type: before.type, integrationKey: before.integrationKey, isActive: before.isActive } : null,
+    oldValues: before ? {
+      name: before.name, type: before.type, integrationKey: before.integrationKey,
+      backendUrl: before.backendUrl, frontendUrl: before.frontendUrl, isActive: before.isActive,
+    } : null,
     newValues: req.body,
     actor: req.user,
   });

@@ -20,7 +20,8 @@ const buildmentClient = require('./buildmentClient');
  * A connection is therefore always one the provider has confirmed at least once.
  */
 
-// integrationKey → verify(credentials) → { connected, error, metadata }
+// integrationKey → verify(credentials) → { connected, error, metadata }.
+// `credentials` here already carries the app's backend URL (see withEndpoint).
 const VERIFIERS = {
   buildment: async (credentials) => {
     const result = await buildmentClient.verifyConnection(credentials);
@@ -39,6 +40,8 @@ const catalogShape = (app) => ({
   description: app.description || null,
   iconUrl: app.iconUrl || null,
   integrationKey: app.integrationKey || null,
+  backendUrl: app.backendUrl || null,
+  frontendUrl: app.frontendUrl || null,
   isActive: app.isActive,
   createdAt: app.createdAt,
   updatedAt: app.updatedAt
@@ -51,6 +54,16 @@ const filterWhere = ({ search, type } = {}) => {
   if (term) where.name = { [Op.iLike]: `%${term}%` };
   return where;
 };
+
+/** Stored without a trailing slash; '' / null clear it. */
+const cleanUrl = (value) => String(value || '').trim().replace(/\/+$/, '') || null;
+
+/**
+ * The stored keys plus where to send them. The URL lives on the catalog app,
+ * not in the encrypted blob, so a platform owner changing it applies to every
+ * workspace at once without anyone reconnecting.
+ */
+const withEndpoint = (app, credentials) => ({ ...credentials, backendUrl: app?.backendUrl || undefined });
 
 const isDuplicateName = (error) => error?.name === 'SequelizeUniqueConstraintError';
 
@@ -107,7 +120,7 @@ class ExternalAppService {
     if (!INTEGRATIONS[app.integrationKey]) throw new ValidationError(`${app.name} cannot be connected yet`);
 
     const credentials = cleanCredentials(app.integrationKey, credentialsInput);
-    const result = await VERIFIERS[app.integrationKey](credentials);
+    const result = await VERIFIERS[app.integrationKey](withEndpoint(app, credentials));
     if (!result.connected) {
       throw new ValidationError(`${app.name} did not accept these keys${result.error ? `: ${result.error}` : ''}`);
     }
@@ -139,7 +152,7 @@ class ExternalAppService {
     if (!INTEGRATIONS[integrationKey] || !row.credentialsEncrypted) {
       throw new ValidationError('This connection has no keys to test — connect it again');
     }
-    const result = await VERIFIERS[integrationKey](JSON.parse(decrypt(row.credentialsEncrypted)));
+    const result = await VERIFIERS[integrationKey](withEndpoint(row.app, JSON.parse(decrypt(row.credentialsEncrypted))));
     await row.update({
       status: result.connected ? 'connected' : 'error',
       ...(result.connected ? { metadata: result.metadata || {}, lastVerifiedAt: new Date() } : {})
@@ -167,7 +180,12 @@ class ExternalAppService {
       include: [{ model: models.ExternalApp, as: 'app', where: { integrationKey, isActive: true }, required: true }]
     });
     if (!row || !row.credentialsEncrypted) return null;
-    return { row, credentials: JSON.parse(decrypt(row.credentialsEncrypted)), metadata: row.metadata || {} };
+    return {
+      row,
+      credentials: withEndpoint(row.app, JSON.parse(decrypt(row.credentialsEncrypted))),
+      metadata: row.metadata || {},
+      endpoint: { backendUrl: row.app.backendUrl || null, frontendUrl: row.app.frontendUrl || null },
+    };
   }
 
   /** The provider rejected the stored keys mid-flight: stop offering the integration. */
@@ -189,6 +207,8 @@ class ExternalAppService {
         description: data.description || null,
         iconUrl: data.iconUrl || null,
         integrationKey: data.integrationKey || null,
+        backendUrl: cleanUrl(data.backendUrl),
+        frontendUrl: cleanUrl(data.frontendUrl),
         isActive: data.isActive !== false,
         createdBy: user?.id || null
       });
@@ -208,6 +228,8 @@ class ExternalAppService {
     if (data.description !== undefined) patch.description = data.description || null;
     if (data.iconUrl !== undefined) patch.iconUrl = data.iconUrl || null;
     if (data.integrationKey !== undefined) patch.integrationKey = data.integrationKey || null;
+    if (data.backendUrl !== undefined) patch.backendUrl = cleanUrl(data.backendUrl);
+    if (data.frontendUrl !== undefined) patch.frontendUrl = cleanUrl(data.frontendUrl);
     if (data.isActive !== undefined) patch.isActive = data.isActive;
     try {
       await app.update(patch);
