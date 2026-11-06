@@ -174,6 +174,7 @@ export default function AdminPoolPage() {
               busy={busyId === entry.id}
               onViewProfile={setViewingProfile}
               onClaim={clans?.some((clan) => clan.available && !clan.full) ? setClaiming : undefined}
+              claimLabel="Place in a clan"
               onWithdraw={entry.canWithdraw ? withdraw : undefined}
             />
           ))}
