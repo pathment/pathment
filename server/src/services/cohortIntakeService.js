@@ -6,6 +6,7 @@ const { endOfDayInZone, zonedWallClockToUtc } = require('../utils/timezone');
 const notificationOrchestrator = require('./notificationOrchestrator');
 const { NOTIFICATION_EVENTS } = require('../config/notificationMatrix');
 const { normalizeFormSchema } = require('../config/intakeProfileFields');
+const { defaultIntakeForm } = require('../config/defaultIntakeForm');
 
 const slug = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 
@@ -113,6 +114,12 @@ class CohortIntakeService {
       capacity: (data.capacity ?? '') === '' ? null : Number(data.capacity),
       startDate: data.startDate || null,
       endDate: data.endDate || null,
+      // A new intake opens with the standard application form rather than a
+      // blank one, so the admin edits a draft instead of rebuilding the same
+      // twenty questions. An explicit schema (a clone, an import) wins.
+      intakeFormSchema: normalizeFormSchema(
+        Array.isArray(data.intakeFormSchema) ? data.intakeFormSchema : defaultIntakeForm(),
+      ),
       createdBy
     });
   }

@@ -1,12 +1,13 @@
 'use client';
 
-import { ChevronDown, ChevronUp, Plus, Trash2, UserCheck } from 'lucide-react';
+import { ChevronDown, ChevronUp, Plus, Sparkles, Trash2, UserCheck } from 'lucide-react';
 import { Dropdown } from '@/components/shared/Dropdown';
 
 import {
   CUSTOM_FIELD_TYPES,
   PROFILE_FIELD_CATALOG,
   customKeyFromLabel,
+  defaultIntakeForm,
   isProfileField,
   type IntakeFieldType,
   type IntakeFormField,
@@ -61,9 +62,19 @@ export function IntakeFormBuilder({
       </p>
 
       {fields.length === 0 && (
-        <p className="text-sm text-slate-400 rounded-lg border border-dashed border-slate-200 px-3 py-4 text-center">
-          No extra fields yet. Add profile fields or custom questions below.
-        </p>
+        <div className="rounded-lg border border-dashed border-slate-200 px-4 py-5 text-center">
+          <p className="text-sm text-slate-500">No extra fields yet.</p>
+          <p className="mt-1 text-xs text-slate-400">
+            New intakes start with the standard questions. Add them here, or build your own below.
+          </p>
+          <button
+            type="button"
+            onClick={() => onChange(defaultIntakeForm())}
+            className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100"
+          >
+            <Sparkles className="h-3.5 w-3.5 text-brand-600" /> Use the standard questions
+          </button>
+        </div>
       )}
 
       {fields.map((f, idx) => {

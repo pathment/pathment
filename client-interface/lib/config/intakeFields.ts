@@ -52,6 +52,50 @@ export const CUSTOM_FIELD_TYPES: { type: IntakeFieldType; label: string }[] = [
   { type: 'phone', label: 'Phone' },
 ];
 
+/**
+ * The application form a new intake starts with — the mirror of
+ * server/src/config/defaultIntakeForm.js. Keep the two in sync, exactly as the
+ * profile-field catalog already is.
+ *
+ * New cohorts get this from the server at creation. This copy exists so an
+ * EXISTING cohort with an empty form can adopt it in one click, rather than
+ * rebuilding twenty questions by hand.
+ *
+ * Name and email are always collected and so are deliberately absent.
+ */
+export const DEFAULT_INTAKE_FORM: IntakeFormField[] = [
+  { key: 'phone', profileKey: 'phone', label: 'Phone', type: 'phone', required: true },
+  { key: 'currentEducation', profileKey: 'currentEducation', label: 'University or college', type: 'text', required: true },
+  { key: 'q_current_semester', label: 'Current semester', type: 'select', required: true,
+    options: ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', 'Graduate'] },
+  { key: 'githubUrl', profileKey: 'githubUrl', label: 'GitHub or portfolio link', type: 'url', required: true },
+  { key: 'q_experience_level', label: 'Which statement describes you best?', type: 'select', required: true,
+    options: [
+      'I am completely new to programming',
+      "I know the basics but haven't built projects",
+      'I can build projects with guidance',
+      'I can build projects independently',
+      'I have internship or freelance experience',
+    ] },
+  { key: 'q_skills', label: 'Which of these have you used?', type: 'checkboxes', required: false,
+    options: ['HTML', 'CSS', 'JavaScript', 'React', 'Node.js', 'Express', 'MongoDB', 'SQL', 'Python', 'Java', 'C++'] },
+  { key: 'q_returning_fellow', label: 'Were you a fellow last year?', type: 'yes_no', required: true },
+  { key: 'q_previous_clan', label: 'If yes, which clan and mentor were you with?', type: 'text', required: false },
+  { key: 'q_weekly_hours', label: 'How many hours per week can you commit?', type: 'select', required: true,
+    options: ['0\u201310 hours', '10\u201320 hours', '20\u201330 hours', '30+ hours'] },
+  { key: 'q_motivation', label: 'Why are you applying to this fellowship?', type: 'textarea', required: true },
+  { key: 'learningGoals', profileKey: 'learningGoals', label: 'What do you want to achieve from this fellowship?', type: 'textarea', required: true },
+  { key: 'q_anything_else', label: 'Anything else you would like us to know?', type: 'textarea', required: false },
+  { key: 'q_resume_text', label: 'Paste your CV or r\u00e9sum\u00e9 as text', type: 'textarea', required: false },
+  { key: 'q_referral_source', label: 'Where did you hear about us?', type: 'checkboxes', required: true,
+    options: ['Instagram', 'LinkedIn', 'Facebook', 'University', 'Friend or referral', 'WhatsApp', 'Other'] },
+  { key: 'q_referrer', label: 'Who referred you? (if anyone)', type: 'text', required: false },
+];
+
+/** A fresh copy, so editing the form never mutates the template. */
+export const defaultIntakeForm = (): IntakeFormField[] =>
+  DEFAULT_INTAKE_FORM.map((f) => ({ ...f, ...(f.options ? { options: [...f.options] } : {}) }));
+
 const PROFILE_KEYS = new Set(PROFILE_FIELD_CATALOG.map((f) => f.key));
 export const isProfileField = (key: string) => PROFILE_KEYS.has(key);
 
