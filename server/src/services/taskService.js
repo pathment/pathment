@@ -750,6 +750,15 @@ class TaskService {
         };
       }
     }
+    if (models.InterviewAssignment) {
+      const ia = await models.InterviewAssignment.findOne({
+        where: { assignedTaskId: task.id },
+        attributes: ['id', 'kitId', 'timingMode', 'totalSeconds', 'allowRetake', 'cameraRequired', 'aiGradingEnabled'],
+      });
+      if (ia) {
+        res.interviewAssignment = ia.toJSON ? ia.toJSON() : ia;
+      }
+    }
     res.schedule = await require('./taskEditScheduleService').read(task);
     return res;
   }
@@ -1343,6 +1352,26 @@ class TaskService {
     }
     await sequelize.transaction(async transaction => {
       if ('schedule' in data) await require('./taskEditScheduleService').save(task, data.schedule, userId, transaction);
+      if ('interview' in data && models.InterviewAssignment) {
+        if (!['assigned', 'not_started', 'in_progress'].includes(task.status)) {
+          throw new ValidationError('Interview configuration can only change before submission');
+        }
+        const ia = await models.InterviewAssignment.findOne({ where: { assignedTaskId: task.id }, transaction });
+        if (ia) {
+          const patch = {};
+          if ('totalSeconds' in data.interview) {
+            const sec = data.interview.totalSeconds == null ? null : Math.max(60, Math.round(Number(data.interview.totalSeconds)));
+            patch.totalSeconds = sec;
+            if (sec) patch.timingMode = 'total';
+          }
+          if ('timingMode' in data.interview && ['per_question', 'total'].includes(data.interview.timingMode)) {
+            patch.timingMode = data.interview.timingMode;
+          }
+          if (Object.keys(patch).length > 0) {
+            await ia.update(patch, { transaction });
+          }
+        }
+      }
       await task.save({ transaction });
     });
     return this.getAssignedTaskById(taskId);
@@ -1416,6 +1445,13 @@ class TaskService {
     task.cancelledAt = new Date();
     task.cancellationReason = reason;
     await task.save();
+
+    // Clean up any unsubmitted in-progress interview attempt
+    if (models.InterviewSession) {
+      await models.InterviewSession.destroy({
+        where: { assignedTaskId: taskId, status: 'in_progress' }
+      });
+    }
 
     // Update enrollment stats
     await this.updateEnrollmentTaskStats(task.enrollmentId);

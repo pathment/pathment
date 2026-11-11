@@ -3,8 +3,9 @@
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Mic, ArrowRight } from 'lucide-react';
-import { getActiveInterview, ACTIVE_INTERVIEW_EVENT, type ActiveInterview } from '@/lib/utils/activeInterview';
+import { getActiveInterview, clearActiveInterview, ACTIVE_INTERVIEW_EVENT, type ActiveInterview } from '@/lib/utils/activeInterview';
 import { fmtClock } from '@/lib/utils/interviewMedia';
+import { interviewApi } from '@/lib/services/interview-api';
 import { logicalPathname, workspacePath } from '@/lib/services/workspace-scope';
 
 /**
@@ -17,12 +18,11 @@ export function InterviewResumeBar() {
   const pathname = usePathname();
   const router = useRouter();
   const [ai, setAi] = useState<ActiveInterview | null>(null);
-  const [now, setNow] = useState<number>(0);
+  const [now, setNow] = useState<number>(() => Date.now());
 
   useEffect(() => {
     const read = () => setAi(getActiveInterview());
     read();
-    setNow(Date.now());
     window.addEventListener(ACTIVE_INTERVIEW_EVENT, read);
     window.addEventListener('storage', read);
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -33,11 +33,36 @@ export function InterviewResumeBar() {
     };
   }, []);
 
+  // Confirm with the server that the interview still exists and is live. A
+  // deleted/unassigned/cancelled task (404/403) or one with no open session
+  // clears the stale marker; network/5xx errors leave it alone.
+  const aiTaskId = ai?.taskId;
+  useEffect(() => {
+    if (!aiTaskId) return;
+    let active = true;
+    interviewApi.getCandidateInterview(aiTaskId)
+      .then((res: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
+        if (active && !res?.data?.state?.activeSessionId) clearActiveInterview(aiTaskId);
+      })
+      .catch((e: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
+        const status = e?.response?.status;
+        if (active && (status === 404 || status === 403 || status === 410)) clearActiveInterview(aiTaskId);
+      });
+    return () => { active = false; };
+  }, [aiTaskId]);
+
+  useEffect(() => {
+    if (ai && ai.deadlineTs != null && now && Math.round((ai.deadlineTs - now) / 1000) < -7200) {
+      clearActiveInterview(ai.taskId);
+    }
+  }, [ai, now]);
+
   if (!ai) return null;
   // Don't show while actually on the runner for this interview.
   if (logicalPathname(pathname).startsWith(`/mentee/interviews/${ai.taskId}`)) return null;
 
   const remaining = ai.deadlineTs != null && now ? Math.round((ai.deadlineTs - now) / 1000) : null;
+  if (remaining != null && remaining < -7200) return null;
   const urgent = remaining != null && remaining <= 60;
 
   return (
