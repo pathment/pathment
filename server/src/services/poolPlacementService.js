@@ -20,6 +20,8 @@ const { models, sequelize } = require('../db');
 const { ValidationError } = require('../utils/errors/errorTypes');
 const { NOTIFICATION_EVENTS } = require('../config/notificationMatrix');
 const poolService = require('./poolService');
+const { OPERATIONAL_CLAN_STATUSES, isClanOperational, isClanSuggestable } = require('../config/clanStatus');
+const { menteeLoad, pickLeastLoaded, loadReason } = require('./clanDistribution');
 
 class PlacementProblem extends Error {
   constructor(code, message) {
@@ -33,12 +35,16 @@ const SEATED = ['active', 'paused'];
 const TO_PLACE = (poolId) => ({ poolId, decision: 'selected', placedAt: null });
 
 class PoolPlacementService {
-  /** The clans a pool places into: its target list, else the programme's live cohort clans. */
+  /**
+   * The clans a pool places into: its target list, else the programme's live
+   * cohort clans. Inactive clans are included so an admin can still choose one
+   * by hand; the preview never proposes them.
+   */
   async _clans(pool, clanIds = null) {
     const ids = clanIds?.length ? clanIds : (pool.settings?.targetClanIds || []);
     const where = { programId: pool.programId };
     if (ids.length) where.id = { [Op.in]: ids };
-    else Object.assign(where, { status: 'active', kind: 'cohort', frozenAt: null });
+    else Object.assign(where, { status: { [Op.in]: OPERATIONAL_CLAN_STATUSES }, kind: 'cohort', frozenAt: null });
     return models.Clan.findAll({ where, attributes: ['id', 'name', 'maxMentees', 'status', 'kind', 'frozenAt', 'programId'], order: [['name', 'ASC']] });
   }
 
@@ -50,6 +56,7 @@ class PoolPlacementService {
       attributes: ['clanId', 'role', 'userId', 'status'],
       include: [{ model: models.User, as: 'user', attributes: ['id', 'firstName', 'lastName'] }],
     });
+    const load = await menteeLoad(ids);
     const state = new Map();
     for (const c of clans) {
       const mine = memberships.filter((m) => m.clanId === c.id);
@@ -59,9 +66,13 @@ class PoolPlacementService {
         name: c.name,
         cap: c.maxMentees || null,
         fill: mine.filter((m) => m.role === 'mentee').length,
+        active: load.get(c.id).active,
+        paused: load.get(c.id).paused,
+        status: c.status || 'active',
+        inactive: !isClanSuggestable(c.status),
         lead: lead?.user ? { id: lead.user.id, name: `${lead.user.firstName || ''} ${lead.user.lastName || ''}`.trim() } : null,
         coMentorCount: mine.filter((m) => m.role === 'co_mentor' && m.status === 'active').length,
-        placeable: c.status === 'active' && c.kind !== 'standing' && !c.frozenAt,
+        placeable: isClanOperational(c.status) && c.kind !== 'standing' && !c.frozenAt,
       });
     }
     return state;
@@ -76,7 +87,9 @@ class PoolPlacementService {
   /**
    * A capacity-aware plan for every selected, not-yet-placed candidate.
    * Nothing is written. Keeps each member's chosen clan when it still has
-   * room; otherwise spreads people to the clan with the most room.
+   * room; otherwise proposes the active clan with the fewest ACTIVE (non-paused)
+   * mentees, counting the people already proposed in this run, so one click on
+   * "Place" spreads the round evenly. Inactive clans are never proposed.
    */
   async preview(poolId, { clanIds = null } = {}) {
     const pool = await poolService.getPool(poolId);
@@ -96,8 +109,12 @@ class PoolPlacementService {
       let reason = clan ? 'Chosen clan' : null;
       if (clan && !usable(clan)) { reason = `${clan.name}: ${this._why(clan) || 'full'} — moved`; clan = null; }
       if (!clan) {
-        const best = [...state.values()].filter(usable).sort((a, b) => room(b) - room(a) || a.name.localeCompare(b.name))[0];
-        if (best) { clan = best; reason = reason || 'Most room'; }
+        // planned is passed separately; seated = fill so capacity counts paused seats.
+        const best = pickLeastLoaded(
+          [...state.values()].filter(usable).map((c) => ({ ...c, seated: c.fill })),
+          { planned },
+        );
+        if (best) { clan = state.get(best.id); reason = reason || loadReason(clan, planned.get(clan.id)); }
       }
       if (clan) planned.set(clan.id, planned.get(clan.id) + 1);
       return {
@@ -110,6 +127,8 @@ class PoolPlacementService {
     const totalRoom = [...state.values()].filter((c) => !this._why(c)).reduce((s, c) => s + (c.cap ? Math.max(0, c.cap - c.fill) : Infinity), 0);
     return {
       clans: [...state.values()].map((c) => ({ ...c, planned: planned.get(c.id), room: c.cap ? Math.max(0, c.cap - c.fill) : null, problem: this._why(c) })),
+      // Proposals not yet saved as the plan — the UI applies them in one click.
+      suggested: rows.filter((r) => r.proposedClanId && r.proposedClanId !== r.currentClanId).length,
       rows,
       unplaceable: rows.filter((r) => !r.proposedClanId).length,
       insufficientCapacity: Number.isFinite(totalRoom) && totalRoom < rows.length,
@@ -182,7 +201,9 @@ class PoolPlacementService {
         const clan = await models.Clan.findByPk(targetClanId, { transaction, lock: transaction.LOCK.UPDATE });
         if (!clan) throw new PlacementProblem('clan_missing', 'The chosen clan no longer exists');
         if (clan.programId !== pool.programId) throw new PlacementProblem('wrong_program', `${clan.name} is in a different programme`);
-        if (clan.status !== 'active' || clan.kind === 'standing' || clan.frozenAt) {
+        // An inactive clan still takes someone the admin chose for it: inactive
+        // only keeps the SYSTEM from proposing it.
+        if (!isClanOperational(clan.status) || clan.kind === 'standing' || clan.frozenAt) {
           throw new PlacementProblem('clan_closed', `${clan.name} is not open for placement`);
         }
         const lead = await models.ClanMembership.findOne({

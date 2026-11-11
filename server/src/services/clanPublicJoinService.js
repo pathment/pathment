@@ -12,6 +12,7 @@ const { createAuditLog } = require('../utils/auditContext');
 const notificationOrchestrator = require('./notificationOrchestrator');
 const { NOTIFICATION_EVENTS } = require('../config/notificationMatrix');
 const { zonedWallClockToUtc, endOfDayInZone } = require('../utils/timezone');
+const { isClanOperational } = require('../config/clanStatus');
 
 /** Active mentee memberships count toward capacity / "already placed" checks. */
 const ACTIVE_MENTEE_STATUSES = ['active', 'paused'];
@@ -48,7 +49,9 @@ class ClanPublicJoinService {
     const reasons = [];
     if (!clan.publicJoinAllowed) reasons.push('not_allowed');
     if (!clan.publicJoinEnabled) reasons.push('disabled');
-    if (clan.status !== 'active') reasons.push('clan_inactive');
+    // Inactive clans keep working (inactive only stops system suggestions);
+    // an archived clan takes nobody.
+    if (!isClanOperational(clan.status)) reasons.push('clan_inactive');
     if (!clan.publicJoinSlug) reasons.push('no_slug');
 
     const windowStatus = this._windowStatus(clan);
@@ -619,7 +622,7 @@ class ClanPublicJoinService {
       clan.publicJoinAllowed
       && clan.publicJoinEnabled
       && clan.publicJoinSlug
-      && clan.status === 'active'
+      && isClanOperational(clan.status)
       && windowStatus === 'active'
     );
     return {
@@ -819,7 +822,7 @@ class ClanPublicJoinService {
     if (!clan.publicJoinAllowed) {
       throw new ForbiddenError('Public joining has not been enabled for this clan by an administrator');
     }
-    if (requireActive && clan.status !== 'active') {
+    if (requireActive && !isClanOperational(clan.status)) {
       throw new ValidationError('Public joining is only available while the clan is active');
     }
   }

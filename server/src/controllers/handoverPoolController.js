@@ -84,11 +84,28 @@ const claim = catchAsync(async (req, res) => {
   res.status(200).json(successResponse('Mentee moved into your clan', result));
 });
 
+/**
+ * GET /api/handover-pool/suggestions?programId= — a proposed clan for every
+ * open offer: the active clan with the fewest active mentees. Read-only.
+ */
+const suggestions = catchAsync(async (req, res) => {
+  const result = await pool.suggest(req.user, { programId: req.query.programId || null });
+  res.status(200).json(successResponse('Placement suggestions', result));
+});
+
+/** POST /api/handover-pool/claim-many  { placements: [{ entryId, toClanId }] } — apply them. */
+const claimMany = catchAsync(async (req, res) => {
+  const result = await pool.claimMany(req.user, { placements: req.body?.placements });
+  const parts = [`${result.placed} of ${result.total} placed`];
+  if (result.failed) parts.push(`${result.failed} could not be placed`);
+  res.status(200).json(successResponse(parts.join(', '), result));
+});
+
 /** POST /api/pool/:entryId/withdraw — take the offer back. */
 const withdraw = catchAsync(async (req, res) => {
   const entry = await pool.withdraw(req.user, req.params.entryId);
   res.status(200).json(successResponse('Offer withdrawn', { entry }));
 });
 
-module.exports = { list, overview, claimableClans, push, pushClan,
-  pushMany, profile, claim, withdraw };
+module.exports = { list, overview, claimableClans, suggestions, push, pushClan,
+  pushMany, profile, claim, claimMany, withdraw };

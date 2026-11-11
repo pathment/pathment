@@ -21,12 +21,16 @@ const mentorOrAdmin = [authenticate, authorize(['mentor', 'admin'])];
 router.get('/', mentorOrAdmin, handoverPoolController.list);
 router.get('/overview', mentorOrAdmin, handoverPoolController.overview);
 router.get('/claimable-clans', mentorOrAdmin, handoverPoolController.claimableClans);
+// Proposed clan per open offer (fewest active mentees, never an inactive clan).
+router.get('/suggestions', mentorOrAdmin, handoverPoolController.suggestions);
 router.get('/:entryId/profile', mentorOrAdmin, handoverPoolController.profile);
 
 router.post('/push', mentorOrAdmin, handoverPoolController.push);
 router.post('/push-clan', mentorOrAdmin, handoverPoolController.pushClan);
 // A chosen set rather than a whole clan; items may span clans.
 router.post('/push-many', mentorOrAdmin, handoverPoolController.pushMany);
+// Apply a set of placements (the suggestions, accepted in one click).
+router.post('/claim-many', mentorOrAdmin, handoverPoolController.claimMany);
 router.post('/:entryId/claim', mentorOrAdmin, handoverPoolController.claim);
 router.post('/:entryId/withdraw', mentorOrAdmin, handoverPoolController.withdraw);
 

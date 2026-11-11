@@ -2,6 +2,7 @@ const { Op } = require('sequelize');
 const { models, sequelize } = require('../db');
 const { NotFoundError, ValidationError } = require('../utils/errors/errorTypes');
 const applicationService = require('./applicationService');
+const { OPERATIONAL_CLAN_STATUSES, isClanSuggestable } = require('../config/clanStatus');
 
 /**
  * clanAssignmentService — place accepted intake candidates into clans.
@@ -19,8 +20,11 @@ const applicationService = require('./applicationService');
  *                   serve several; a clan with no levels serves any).
  *   matchGender     candidate's gender must match the clan lead's gender.
  *   excludeClanIds  clans kept out of the auto-fill entirely.
- *   balanceMode     'even' spreads across clans (most room first); 'fill' tops
- *                   one clan up before moving on.
+ *   balanceMode     'even' spreads across clans (fewest active mentees first);
+ *                   'fill' tops one clan up before moving on.
+ *
+ * Inactive clans are listed (so a row can be pointed at one by hand) but never
+ * auto-filled — see config/clanStatus.
  *   allowLevelOverflow  when a candidate's level clans are all full, may place
  *                   them in another level's clan (off by default — level is
  *                   respected hard unless you opt in). Gender is always relaxed
@@ -46,14 +50,16 @@ class ClanAssignmentService {
   }
 
   /**
-   * Active clans in the program, with lead gender and current live mentee fill.
-   * Returns Map<clanId, { id, name, levels, leadGender, cap, fill }>. `cap` is
-   * the per-clan max here; the run applies any override on top.
+   * Operational clans in the program, with lead gender and current live
+   * (active, non-paused) mentee fill. Returns Map<clanId, { id, name, levels,
+   * leadGender, cap, fill, inactive }>. `cap` is the per-clan max here; the
+   * run applies any override on top. Inactive clans ride along for the manual
+   * pickers and are filtered out of every automatic pick.
    */
   async _clanPool(programId, capacityOverride) {
     const clans = await models.Clan.findAll({
-      where: { programId, status: 'active' },
-      attributes: ['id', 'name', 'levels', 'countries', 'maxMentees', 'leadMentorId'],
+      where: { programId, status: { [Op.in]: OPERATIONAL_CLAN_STATUSES } },
+      attributes: ['id', 'name', 'levels', 'countries', 'maxMentees', 'leadMentorId', 'status'],
       include: [{ model: models.User, as: 'leadMentor', attributes: ['id', 'gender'] }],
     });
     if (!clans.length) return new Map();
@@ -75,6 +81,7 @@ class ClanAssignmentService {
         leadGender: this._norm(c.leadMentor && c.leadMentor.gender),
         cap: capacityOverride != null ? capacityOverride : (c.maxMentees || 25),
         fill: fillById.get(c.id) || 0,
+        inactive: !isClanSuggestable(c.status),
       });
     }
     return pool;
@@ -85,6 +92,7 @@ class ClanAssignmentService {
     const out = [];
     for (const c of pool.values()) {
       if (excludeSet.has(c.id)) continue;
+      if (c.inactive) continue;                                        // never auto-filled
       if (c.fill >= c.cap) continue;                                   // full
       if (useLevel && level && c.levels.length && !c.levels.includes(level)) continue;
       if (useCountry && country && c.countries.length && !c.countries.includes(country)) continue;
@@ -97,8 +105,9 @@ class ClanAssignmentService {
   /**
    * Pick one clan. A clan that SPECIFICALLY serves the candidate's country/level
    * always beats a catch-all clan — "these countries go to this clan" should win
-   * over a generic clan. Among equally-specific clans, balance decides: most room
-   * first ('even') or least-room-but-nonzero ('fill', to top a clan up).
+   * over a generic clan. Among equally-specific clans, balance decides: fewest
+   * active mentees first ('even', ties to most room) or least-room-but-nonzero
+   * ('fill', to top a clan up).
    */
   _pick(list, balanceMode, ctx = {}) {
     const room = (c) => c.cap - c.fill;
@@ -109,7 +118,7 @@ class ClanAssignmentService {
       (ctx.level && c.levels.includes(ctx.level) ? 1 : 0);
     return [...withRoom].sort((a, b) =>
       (spec(b) - spec(a)) ||                                             // specific clans first
-      (balanceMode === 'fill' ? room(a) - room(b) : room(b) - room(a)) || // then balance
+      (balanceMode === 'fill' ? room(a) - room(b) : (a.fill - b.fill) || (room(b) - room(a))) || // then balance
       a.name.localeCompare(b.name)
     )[0] || null;
   }
@@ -162,8 +171,8 @@ class ClanAssignmentService {
     }
   }
   _noFitReason(pool, s) {
-    if (!pool.size) return 'No active clans in this program — create a clan first';
-    const anyRoom = [...pool.values()].some((c) => !s.excludeClanIds.includes(c.id) && c.fill < c.cap);
+    if (![...pool.values()].some((c) => !c.inactive)) return 'No active clans in this program — create one or mark a clan active';
+    const anyRoom = [...pool.values()].some((c) => !c.inactive && !s.excludeClanIds.includes(c.id) && c.fill < c.cap);
     if (!anyRoom) return 'Every eligible clan is at capacity — raise capacity or free a clan';
     return s.allowLevelOverflow
       ? 'No clan matches after relaxing gender & level — assign manually'
@@ -204,7 +213,7 @@ class ClanAssignmentService {
         status: clan ? 'assigned' : 'unassigned', reason });
     }
 
-    const clansOut = [...pool.values()].map((c) => ({ id: c.id, name: c.name, levels: c.levels, countries: c.countries, leadGender: c.leadGender, cap: c.cap, projectedFill: c.fill }));
+    const clansOut = [...pool.values()].map((c) => ({ id: c.id, name: c.name, levels: c.levels, countries: c.countries, leadGender: c.leadGender, cap: c.cap, projectedFill: c.fill, inactive: c.inactive }));
     const summary = {
       total: rows.length,
       assigned: rows.filter((r) => r.status === 'assigned').length,

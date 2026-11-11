@@ -13,6 +13,8 @@ const { mirrorPriorWork } = require('./standingWorkMirror');
 const cohortService = require('./cohortService');
 const { PERMISSIONS: P } = require('../config/permissions');
 const { VISIBLE_MEMBERSHIP_STATUSES } = require('../config/membership');
+const { isClanOperational, isClanSuggestable } = require('../config/clanStatus');
+const { menteeLoad, pickLeastLoaded, loadReason } = require('./clanDistribution');
 
 // 'active' and 'paused'. A paused mentee is still in their clan, so they can
 // still be handed over - being paused is often exactly why.
@@ -324,7 +326,9 @@ class HandoverPoolService {
     if (!toClan) throw new NotFoundError('Target clan not found');
     if (toClan.id === entry.fromClanId) throw new ValidationError('That mentee is already in this clan');
     const programClosed = ['completed', 'archived'].includes(toClan.program?.status);
-    if (toClan.status !== 'active') throw new ValidationError('That clan is not active');
+    // Inactive clans still take a mentee somebody chose for them on purpose;
+    // inactive only keeps the system from SUGGESTING them.
+    if (!isClanOperational(toClan.status)) throw new ValidationError('That clan is archived');
     if (programClosed && toClan.kind !== 'standing') {
       throw new ValidationError('That programme is closed. Place the mentee into one of its standing clans.');
     }
@@ -635,20 +639,14 @@ class HandoverPoolService {
       where.id = { [Op.in]: clanIds };
     }
     const clans = await models.Clan.findAll({
-      where, attributes: ['id', 'name', 'programId', 'maxMentees', 'kind', 'status', 'frozenAt'],
+      where, attributes: ['id', 'name', 'programId', 'maxMentees', 'kind', 'status', 'frozenAt', 'leadMentorId'],
       include: [{ model: models.Program, as: 'program', attributes: ['id', 'name', 'status'] }],
     });
-    const counts = clans.length
-      ? await models.ClanMembership.findAll({
-          where: { clanId: { [Op.in]: clans.map((c) => c.id) }, role: 'mentee', status: { [Op.in]: VISIBLE } },
-          attributes: ['clanId', [sequelize.fn('COUNT', sequelize.col('id')), 'n']],
-          group: ['clanId'], raw: true,
-        })
-      : [];
-    const seated = new Map(counts.map((c) => [c.clanId, Number(c.n)]));
+    const load = await menteeLoad(clans.map((c) => c.id));
+    const seated = new Map([...load].map(([id, l]) => [id, l.seated]));
     return clans.map((c) => {
       const programClosed = ['completed', 'archived'].includes(c.program?.status);
-      const available = c.status === 'active'
+      const available = isClanOperational(c.status)
         && (programClosed ? c.kind === 'standing' : c.kind === 'cohort' && !c.frozenAt);
       return {
       id: c.id,
@@ -663,10 +661,133 @@ class HandoverPoolService {
           : !programClosed && c.kind === 'standing' ? 'Available after the programme closes'
             : c.status !== 'active' ? `Clan ${c.status}` : 'Clan is read-only',
       seated: seated.get(c.id) || 0,
+      activeMentees: load.get(c.id)?.active || 0,
+      pausedMentees: load.get(c.id)?.paused || 0,
+      status: c.status || 'active',
+      // Shown to admins; the system never suggests an inactive clan.
+      inactive: !isClanSuggestable(c.status),
+      hasLead: !!c.leadMentorId,
       maxMentees: c.maxMentees || null,
       full: !!c.maxMentees && (seated.get(c.id) || 0) >= c.maxMentees,
       };
     });
+  }
+
+  // ── suggestions ───────────────────────────────────────────────────────────
+
+  /**
+   * A proposed home for every open offer this caller can see, so an admin
+   * clears the pool with one click instead of placing people one by one.
+   *
+   * Each mentee goes to the clan, in their programme, with the FEWEST ACTIVE
+   * (non-paused) mentees — counting the people already proposed earlier in the
+   * same run, so twenty handovers spread over the clans rather than all landing
+   * on whichever was emptiest at the start. Oldest offers are placed first:
+   * they have waited longest.
+   *
+   * Never proposed: inactive clans, full clans, clans with no lead mentor, the
+   * clan they are leaving, a clan they are already in, and anything the caller
+   * may not place into (claimableClans is already scope-aware). Nothing is
+   * written; `claimMany` applies whatever the admin accepts.
+   */
+  async suggest(user, { programId = null } = {}) {
+    const visible = await this._visibleProgramIds(user);
+    if (visible && !visible.length) return { suggestions: [], unplaced: [] };
+    const where = { status: 'open' };
+    if (visible) where.programId = { [Op.in]: visible };
+    if (programId) {
+      if (visible && !visible.includes(programId)) return { suggestions: [], unplaced: [] };
+      where.programId = programId;
+    }
+    const entries = await models.HandoverPoolEntry.findAll({
+      where,
+      attributes: ['id', 'menteeId', 'fromClanId', 'programId', 'createdAt'],
+      include: [
+        { model: models.User, as: 'mentee', attributes: ['id', 'firstName', 'lastName', 'email'] },
+        { model: models.Clan, as: 'fromClan', attributes: ['id', 'name'] },
+      ],
+      order: [['created_at', 'ASC']],
+      limit: 300,
+    });
+    if (!entries.length) return { suggestions: [], unplaced: [] };
+
+    const clans = (await this.claimableClans(user)).filter((c) => c.available && c.hasLead);
+    const byProgram = new Map();
+    for (const c of clans) {
+      const list = byProgram.get(c.programId) || [];
+      list.push({ ...c, active: c.activeMentees, paused: c.pausedMentees, cap: c.maxMentees });
+      byProgram.set(c.programId, list);
+    }
+
+    // Clans each mentee already sits in, so nobody is proposed into their own clan.
+    const seats = clans.length ? await models.ClanMembership.findAll({
+      where: {
+        userId: { [Op.in]: [...new Set(entries.map((e) => e.menteeId))] },
+        clanId: { [Op.in]: clans.map((c) => c.id) },
+        role: 'mentee', status: { [Op.in]: VISIBLE },
+      },
+      attributes: ['userId', 'clanId'], raw: true,
+    }) : [];
+    const seatedIn = new Set(seats.map((s) => `${s.userId}:${s.clanId}`));
+
+    const planned = new Map();
+    const suggestions = [];
+    const unplaced = [];
+    for (const e of entries) {
+      const name = e.mentee ? `${e.mentee.firstName || ''} ${e.mentee.lastName || ''}`.trim() || e.mentee.email : 'Mentee';
+      const options = (byProgram.get(e.programId) || [])
+        .filter((c) => c.id !== e.fromClanId && !seatedIn.has(`${e.menteeId}:${c.id}`));
+      const pick = pickLeastLoaded(options, { planned });
+      if (!pick) {
+        unplaced.push({
+          entryId: e.id,
+          menteeName: name,
+          reason: options.some((c) => !c.inactive)
+            ? 'Every active clan in this programme is full'
+            : 'No active clan with a lead mentor in this programme',
+        });
+        continue;
+      }
+      suggestions.push({
+        entryId: e.id,
+        menteeId: e.menteeId,
+        menteeName: name,
+        fromClan: e.fromClan ? { id: e.fromClan.id, name: e.fromClan.name } : null,
+        toClanId: pick.id,
+        toClanName: pick.name,
+        reason: loadReason(pick, planned.get(pick.id) || 0),
+      });
+      planned.set(pick.id, (planned.get(pick.id) || 0) + 1);
+    }
+    return { suggestions, unplaced };
+  }
+
+  /**
+   * Apply a set of placements — the admin's one click on the suggestions.
+   *
+   * Each item is an ordinary `claim`, so every rule (scope, capacity under a
+   * row lock, one winner per offer, work carried across) holds per mentee.
+   * Failures are collected, never thrown: one mentee a mentor grabbed a second
+   * earlier must not stop the other nineteen.
+   */
+  async claimMany(user, { placements = [] } = {}) {
+    const items = (Array.isArray(placements) ? placements : [])
+      .filter((p) => p?.entryId && p?.toClanId);
+    if (!items.length) throw new ValidationError('Nothing to place');
+    if (items.length > 300) throw new ValidationError('Three hundred placements at a time is the limit');
+
+    const placed = [];
+    const failed = [];
+    for (const { entryId, toClanId } of items) {
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        const result = await this.claim(user, { entryId, toClanId });
+        placed.push({ entryId, toClanId, carried: result.carried, freshStart: result.freshStart });
+      } catch (error) {
+        failed.push({ entryId, toClanId, error: error.message });
+      }
+    }
+    return { placed: placed.length, failed: failed.length, total: items.length, failures: failed.slice(0, 20) };
   }
 
   // ── notifications ─────────────────────────────────────────────────────────
