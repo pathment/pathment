@@ -56,8 +56,31 @@ export interface ClaimableClan {
   available: boolean;
   unavailableReason: string | null;
   seated: number;
+  /** Attending mentees — what the system balances on. Paused still hold a seat. */
+  activeMentees: number;
+  pausedMentees: number;
+  status: 'active' | 'inactive' | 'archived';
+  /** Works normally, but the system never suggests it for new mentees. */
+  inactive: boolean;
+  hasLead: boolean;
   maxMentees: number | null;
   full: boolean;
+}
+
+/** The system's proposed home for one open offer. */
+export interface PoolSuggestion {
+  entryId: string;
+  menteeId: string;
+  menteeName: string;
+  fromClan: { id: string; name: string } | null;
+  toClanId: string;
+  toClanName: string;
+  reason: string;
+}
+
+export interface PoolSuggestions {
+  suggestions: PoolSuggestion[];
+  unplaced: { entryId: string; menteeName: string; reason: string }[];
 }
 
 export interface PoolOverview {
@@ -134,6 +157,23 @@ export const handoverPoolApi = {
     apiClient
       .post<{ data: { carried: Record<string, number>; freshStart: boolean } }>(
         `/handover-pool/${entryId}/claim`, { toClanId },
+      )
+      .then((r) => r.data),
+
+  /**
+   * A proposed clan for every open offer: the active clan with the fewest
+   * active (non-paused) mentees. Inactive clans are never proposed.
+   */
+  suggestions: (programId?: string | null) =>
+    apiClient
+      .get<{ data: PoolSuggestions }>(`/handover-pool/suggestions${programId ? `?programId=${programId}` : ''}`)
+      .then((r) => r.data),
+
+  /** Apply several placements at once — the one-click "place all". */
+  claimMany: (placements: { entryId: string; toClanId: string }[]) =>
+    apiClient
+      .post<{ data: { placed: number; failed: number; total: number; failures: { entryId: string; error: string }[] } }>(
+        '/handover-pool/claim-many', { placements },
       )
       .then((r) => r.data),
 

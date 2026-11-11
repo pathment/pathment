@@ -17,7 +17,8 @@ interface Row {
   note?: string | null;
 }
 type Mode = 'candidates' | 'unplaced';
-interface ClanInfo { id: string; name: string; levels: string[]; leadGender: string; cap: number; projectedFill: number }
+/** `inactive` clans are never auto-filled but can still be picked by hand. */
+interface ClanInfo { id: string; name: string; levels: string[]; leadGender: string; cap: number; projectedFill: number; inactive?: boolean }
 
 /**
  * Assign selected intake candidates to clans. Configure the run (capacity,
@@ -169,6 +170,16 @@ export function AssignToClansDrawer({
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="text-xs text-slate-500 mr-1">Exclude:</span>
               {clans.map((c) => {
+                // Inactive clans are already left out of the auto-fill; say so
+                // instead of offering a toggle that would do nothing.
+                if (c.inactive) {
+                  return (
+                    <span key={c.id} title="Inactive: works normally, never auto-filled. Pick it on a row to place someone here."
+                      className="px-2 py-1 rounded-full text-xs border border-amber-200 bg-amber-50 text-amber-700">
+                      {c.name} <span className="opacity-70">inactive</span>
+                    </span>
+                  );
+                }
                 const excluded = (settings.excludeClanIds ?? []).includes(c.id);
                 return (
                   <button key={c.id} onClick={() => toggleExclude(c.id)}
@@ -231,7 +242,7 @@ export function AssignToClansDrawer({
                       ) : (
                         <select value={r.clanId ?? ''} onChange={(e) => setClan(r.applicationId, e.target.value)} className={`${inp} ${!r.clanId ? 'border-amber-300' : ''}`}>
                           <option value="">— pick a clan —</option>
-                          {clans.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                          {clans.map((c) => <option key={c.id} value={c.id}>{c.name}{c.inactive ? ' · inactive' : ''}</option>)}
                         </select>
                       )}
                     </td>

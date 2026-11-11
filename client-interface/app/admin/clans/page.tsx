@@ -3,12 +3,13 @@
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
-import { Users2, Plus, X, Loader2, Trash2, UserPlus, Crown, GraduationCap, Search, ArrowRightLeft, SlidersHorizontal, PauseCircle, PlayCircle, Link2 } from 'lucide-react';
+import { Users2, Plus, X, Loader2, Trash2, UserPlus, Crown, GraduationCap, Search, ArrowRightLeft, SlidersHorizontal, PauseCircle, PlayCircle, Link2, MoonStar, Sun } from 'lucide-react';
 import { SelectMenu, type SelectOption } from '@/components/shared/SelectMenu';
 import { TablePagination } from '@/components/shared/TablePagination';
 import { Drawer } from '@/components/shared/Drawer';
 import { ClanAvatarEditor } from '@/components/shared/ClanAvatarEditor';
 import { ClanAvatar } from '@/components/shared/ClanAvatar';
+import { ClanStatusBadge, CLAN_STATUS_HINT } from '@/components/shared/ClanStatusBadge';
 import { Avatar } from '@/components/shared/Avatar';
 import { CoMentorPermissionsDrawer } from '@/components/shared/CoMentorPermissionsDrawer';
 import { ReassignClanModal } from '@/components/admin/ReassignClanModal';
@@ -322,6 +323,7 @@ function ClanDrawer({ clanId, mentors, mentees, onClose, onChanged }: {
                       <option value="inactive">Inactive</option>
                       <option value="archived">Archived</option>
                     </select>
+                    <p className="text-[11px] text-slate-400 mt-1">{CLAN_STATUS_HINT[details.status]}</p>
                   </div>
                 </div>
                 <div>
@@ -572,6 +574,22 @@ function AdminClansInner() {
   const [mentees, setMentees] = useState<Person[]>([]);
   const [creating, setCreating] = useState(false);
   const [openClan, setOpenClan] = useState<string | null>(null);
+  const [statusBusy, setStatusBusy] = useState<string | null>(null);
+
+  // One click from the directory. Inactive clans keep working; the system just
+  // stops suggesting them when it distributes mentees.
+  const toggleActive = async (c: Clan) => {
+    const next = c.status === 'inactive' ? 'active' : 'inactive';
+    setStatusBusy(c.id);
+    try {
+      await clanApi.update(c.id, { status: next });
+      toast.success(next === 'inactive'
+        ? `${c.name} marked inactive — it keeps working but won't be suggested for new mentees`
+        : `${c.name} is active again and will be suggested for new mentees`);
+      refetch();
+    } catch { toast.error('Could not change the clan status'); }
+    finally { setStatusBusy(null); }
+  };
 
   // Deep-link support: /admin/clans?clan=<id> opens that clan's drawer.
   useEffect(() => {
@@ -722,11 +740,25 @@ function AdminClansInner() {
                   const n = counts(c);
                   return <tr key={c.id} className={selected.has(c.id) ? 'bg-brand-50 dark:bg-brand-950/30' : ''}>
                     <td><input type="checkbox" checked={selected.has(c.id)} onChange={() => toggleOne(c.id)} aria-label={`Select ${c.name}`} className="h-4 w-4 rounded border-border" /></td>
-                    <td><div className="flex items-center gap-3"><ClanAvatar name={c.name} src={c.avatarUrl} size="sm"/><button type="button" onClick={() => setOpenClan(c.id)} className="font-semibold text-brand-700 dark:text-brand-300 text-left hover:underline">{c.name}</button></div><p className="text-xs text-muted-foreground mt-1">{c.program?.name || 'No program'}{c.levelLabel ? ` · ${c.levelLabel}` : ''}</p>{c.tags?.length > 0 && <p className="mt-1 text-xs text-muted-foreground">{c.tags.slice(0,3).join(' · ')}{c.tags.length>3 ? ` +${c.tags.length-3}` : ''}</p>}</td>
+                    <td><div className="flex items-center gap-3"><ClanAvatar name={c.name} src={c.avatarUrl} size="sm"/><button type="button" onClick={() => setOpenClan(c.id)} className="font-semibold text-brand-700 dark:text-brand-300 text-left hover:underline">{c.name}</button><ClanStatusBadge status={c.status} /></div><p className="text-xs text-muted-foreground mt-1">{c.program?.name || 'No program'}{c.levelLabel ? ` · ${c.levelLabel}` : ''}</p>{c.tags?.length > 0 && <p className="mt-1 text-xs text-muted-foreground">{c.tags.slice(0,3).join(' · ')}{c.tags.length>3 ? ` +${c.tags.length-3}` : ''}</p>}</td>
                     <td>{c.leadMentor ? `${c.leadMentor.firstName} ${c.leadMentor.lastName}` : <span className="text-amber-700 dark:text-amber-300">Needs a lead mentor</span>}</td>
                     <td className="tabular-nums">{n.mentees}</td><td className="tabular-nums">{n.mentors}</td>
                     <td><span className={`rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap ${c.publicJoinAllowed ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-muted text-muted-foreground'}`}>{c.publicJoinAllowed ? c.publicJoinEnabled ? 'Link active' : 'Allowed' : 'Closed'}</span></td>
-                    <td><button type="button" onClick={()=>setOpenClan(c.id)} className="rounded-xl border border-border px-3 py-2 text-xs font-medium hover:bg-muted" aria-label={`Manage ${c.name}`}>Manage</button></td>
+                    <td><div className="flex items-center justify-end gap-1.5">
+                      {c.status !== 'archived' && (
+                        <button
+                          type="button"
+                          onClick={() => toggleActive(c)}
+                          disabled={statusBusy === c.id}
+                          title={c.status === 'inactive' ? 'Mark active: suggested again for new mentees' : 'Mark inactive: keeps working, never suggested for new mentees'}
+                          aria-label={c.status === 'inactive' ? `Mark ${c.name} active` : `Mark ${c.name} inactive`}
+                          className="rounded-xl border border-border p-2 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+                        >
+                          {statusBusy === c.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : c.status === 'inactive' ? <Sun className="w-3.5 h-3.5" /> : <MoonStar className="w-3.5 h-3.5" />}
+                        </button>
+                      )}
+                      <button type="button" onClick={()=>setOpenClan(c.id)} className="rounded-xl border border-border px-3 py-2 text-xs font-medium hover:bg-muted" aria-label={`Manage ${c.name}`}>Manage</button>
+                    </div></td>
                   </tr>;
                 })}</tbody>
               </table>

@@ -9,6 +9,7 @@ import { qk, useApiQuery, STALE, useInvalidate } from '@/lib/query';
 import { handoverPoolApi, type PoolEntry } from '@/lib/services/handover-pool-api';
 import { PoolEntryCard } from '@/components/shared/pool/PoolEntryCard';
 import { ClaimDrawer } from '@/components/shared/pool/ClaimDrawer';
+import { PoolSuggestionsPanel } from '@/components/shared/pool/PoolSuggestionsPanel';
 import { PoolMenteeProfileDrawer } from '@/components/shared/pool/PoolMenteeProfileDrawer';
 import { useConfirm } from '@/lib/context/ConfirmContext';
 
@@ -46,6 +47,20 @@ export default function AdminPoolPage() {
     staleTime: STALE.medium,
   });
 
+  // The system's plan for the whole pool: fewest-active clan per mentee,
+  // inactive clans skipped. Loaded with the page so the admin starts from an
+  // answer rather than a blank list.
+  const { data: suggestions } = useApiQuery({
+    queryKey: qk.handoverPool.suggestions(scope.programId),
+    queryFn: () => handoverPoolApi.suggestions(scope.programId || null),
+    staleTime: STALE.short,
+  });
+  const suggestedFor = useMemo(
+    () => new Map((suggestions?.suggestions ?? []).map((s) => [s.entryId, s.toClanId])),
+    [suggestions],
+  );
+  const [applying, setApplying] = useState(false);
+
   const refresh = useCallback(() => {
     invalidate(qk.handoverPool.all);
     return refetch();
@@ -67,6 +82,29 @@ export default function AdminPoolPage() {
       await refresh();
     } finally {
       setBusyId(null);
+    }
+  };
+
+  const applySuggestions = async (placements: { entryId: string; toClanId: string }[]) => {
+    const ok = await confirm({
+      title: `Place ${placements.length} mentee${placements.length === 1 ? '' : 's'}?`,
+      description: 'Each moves into the clan shown, with their work, and is told. Anyone a mentor picked up in the meantime is skipped.',
+      confirmLabel: 'Place all',
+    });
+    if (!ok) return;
+    setApplying(true);
+    try {
+      const result = await handoverPoolApi.claimMany(placements);
+      if (result.failed) {
+        toast.warning(`${result.placed} placed, ${result.failed} could not be: ${result.failures[0]?.error || 'see the pool'}`);
+      } else {
+        toast.success(`${result.placed} mentee${result.placed === 1 ? '' : 's'} placed`);
+      }
+    } catch (error) {
+      toast.error((error as { message?: string })?.message || 'Could not place these mentees');
+    } finally {
+      setApplying(false);
+      await refresh();
     }
   };
 
@@ -150,6 +188,13 @@ export default function AdminPoolPage() {
         </div>
       )}
 
+      <PoolSuggestionsPanel
+        data={suggestions}
+        clans={clans ?? []}
+        busy={applying}
+        onApply={applySuggestions}
+      />
+
       {loading ? (
         <div className="space-y-3">
           {[0, 1, 2].map((i) => (
@@ -197,6 +242,7 @@ export default function AdminPoolPage() {
       <ClaimDrawer
         entry={claiming}
         clans={clans ?? []}
+        suggestedClanId={claiming ? suggestedFor.get(claiming.id) : undefined}
         busy={!!busyId}
         onClose={() => setClaiming(null)}
         onConfirm={place}

@@ -224,10 +224,20 @@ export interface ReviewQueueItem {
 }
 
 export interface PlacementPreview {
-  clans: { id: string; name: string; cap: number | null; fill: number; planned: number; room: number | null; lead: { id: string; name: string } | null; coMentorCount: number; problem: string | null }[];
+  clans: {
+    id: string; name: string; cap: number | null; fill: number; planned: number; room: number | null;
+    /** Attending vs paused mentees. The system proposes the clan with the fewest active. */
+    active: number; paused: number;
+    status: 'active' | 'inactive' | 'archived';
+    /** Never proposed automatically; still choosable by hand. */
+    inactive: boolean;
+    lead: { id: string; name: string } | null; coMentorCount: number; problem: string | null;
+  }[];
   rows: { memberId: string; name: string; email: string; proposedClanId: string | null; proposedClanName: string | null; currentClanId: string | null; placementStatus: string | null; placementError: string | null; reason: string }[];
   unplaceable: number;
   insufficientCapacity: boolean;
+  /** Proposals not yet saved as the plan. */
+  suggested?: number;
 }
 
 /** A roadmap step as the work picker shows it. */

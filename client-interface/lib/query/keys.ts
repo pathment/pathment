@@ -136,6 +136,7 @@ export const qk = {
     list: (status: string) => ['handover-pool', 'list', status] as const,
     overview: (programId?: string | null) => ['handover-pool', 'overview', programId ?? ''] as const,
     claimableClans: ['handover-pool', 'claimable-clans'] as const,
+    suggestions: (programId?: string | null) => ['handover-pool', 'suggestions', programId ?? ''] as const,
   },
 
   me: {

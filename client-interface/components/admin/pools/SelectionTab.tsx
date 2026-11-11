@@ -11,6 +11,7 @@ import { useConfirm } from '@/lib/context/ConfirmContext';
 import { AvatarWithInitials } from '@/components/admin/ui';
 import { poolApi, type Blocker, type PoolDashboard, type ScoredWork } from '@/lib/services/pool-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
+import { ClanStatusBadge } from '@/components/shared/ClanStatusBadge';
 import {
   Chip, DECISION, EmptyState, Spinner, WORK_SCORE, card, field, nameParts, panel, primaryBtn, pts, secondaryBtn,
 } from './poolUi';
@@ -424,7 +425,7 @@ export function SelectionTab({ data, onChange, canSelect, canPlace }: {
                 return (
                   <div key={c.id} className={`${card} p-4`}>
                     <div className="flex items-start justify-between gap-2">
-                      <p className="min-w-0 truncate font-medium text-slate-900">{c.name}</p>
+                      <p className="flex min-w-0 items-center gap-1.5 font-medium text-slate-900"><span className="truncate">{c.name}</span><ClanStatusBadge status={c.status} /></p>
                       <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-slate-600 tabular-nums">
                         {c.cap ? `${total}/${c.cap}` : `${total}, no limit`}
                       </span>
@@ -439,6 +440,10 @@ export function SelectionTab({ data, onChange, canSelect, canPlace }: {
                     )}
                     <p className="mt-2 flex items-center gap-1.5 text-xs text-slate-500">
                       <ShieldCheck className="h-3.5 w-3.5" /> {c.lead ? `Lead: ${c.lead.name}` : 'No lead mentor'}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500 tabular-nums">
+                      {c.active} active{c.paused ? ` · ${c.paused} paused` : ''}
+                      {c.inactive && <span className="text-amber-700"> · not suggested</span>}
                     </p>
                     {c.problem && <p className="mt-1 text-xs font-medium text-rose-700">{c.problem}</p>}
                   </div>
@@ -536,7 +541,7 @@ export function SelectionTab({ data, onChange, canSelect, canPlace }: {
                           >
                             <option value="">Choose a clan</option>
                             {(placement.data?.clans || []).map((c) => (
-                              <option key={c.id} value={c.id} disabled={Boolean(c.problem)}>{c.name}{c.problem ? ` (${c.problem})` : ''}</option>
+                              <option key={c.id} value={c.id} disabled={Boolean(c.problem)}>{c.name}{c.inactive ? ' · inactive' : ''}{c.problem ? ` (${c.problem})` : ''}</option>
                             ))}
                           </select>
                         ) : (

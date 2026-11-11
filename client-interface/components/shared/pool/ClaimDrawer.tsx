@@ -1,8 +1,9 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Loader2, Users, AlertTriangle, Map as MapIcon, CheckCircle2, CircleDot } from 'lucide-react';
+import { Loader2, Users, AlertTriangle, Map as MapIcon, CheckCircle2, CircleDot, Sparkles } from 'lucide-react';
 import { Drawer } from '@/components/shared/Drawer';
+import { ClanStatusBadge } from '@/components/shared/ClanStatusBadge';
 import { Avatar } from '@/components/shared/Avatar';
 import type { PoolEntry, ClaimableClan } from '@/lib/services/handover-pool-api';
 
@@ -28,12 +29,15 @@ export function ClaimDrawer({
   busy,
   onClose,
   onConfirm,
+  suggestedClanId,
 }: {
   entry: PoolEntry | null;
   clans: ClaimableClan[];
   busy: boolean;
   onClose: () => void;
   onConfirm: (toClanId: string) => void;
+  /** The system's pick (fewest active mentees). Pre-selected so one click confirms. */
+  suggestedClanId?: string;
 }) {
   const [clanId, setClanId] = useState('');
   const [programId, setProgramId] = useState('');
@@ -46,11 +50,19 @@ export function ClaimDrawer({
     return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
   }, [clans]);
   const effectiveProgramId = programId || entry?.program?.id || programs[0]?.id || '';
+  // Least-loaded first, the way the system would suggest; inactive and
+  // unavailable clans sink to the bottom but stay choosable by hand.
   const options = useMemo(
-    () => clans.filter((c) => c.id !== entry?.fromClan?.id && c.programId === effectiveProgramId),
+    () => clans
+      .filter((c) => c.id !== entry?.fromClan?.id && c.programId === effectiveProgramId)
+      .sort((a, b) => Number(!a.available || a.full) - Number(!b.available || b.full)
+        || Number(a.inactive) - Number(b.inactive)
+        || a.activeMentees - b.activeMentees
+        || a.name.localeCompare(b.name)),
     [clans, entry?.fromClan?.id, effectiveProgramId],
   );
-  const chosen = options.find((c) => c.id === clanId) || null;
+  const suggested = options.find((c) => c.id === suggestedClanId && c.available && !c.full) || null;
+  const chosen = options.find((c) => c.id === clanId) || (!clanId ? suggested : null);
   const sameProgram = !!chosen && !!entry?.program && chosen.programId === entry.program.id;
 
   const close = () => {
@@ -183,24 +195,33 @@ export function ClaimDrawer({
                   <li key={clan.id}>
                     <label
                       className={`flex cursor-pointer items-center gap-3 rounded-xl border p-3 transition-colors ${
-                        clanId === clan.id ? 'border-brand-400 bg-brand-50/60 dark:bg-brand-950/20' : 'border-border hover:bg-muted/50'
+                        chosen?.id === clan.id ? 'border-brand-400 bg-brand-50/60 dark:bg-brand-950/20' : 'border-border hover:bg-muted/50'
                       } ${clan.full || !clan.available ? 'cursor-not-allowed opacity-60' : ''}`}
                     >
                       <input
                         type="radio" name="claim-clan" value={clan.id}
-                        checked={clanId === clan.id}
+                        checked={chosen?.id === clan.id}
                         disabled={clan.full || !clan.available}
                         onChange={() => setClanId(clan.id)}
                         className="h-4 w-4 accent-brand-600"
                       />
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-medium text-foreground">{clan.name}</span>
+                        <span className="flex items-center gap-2">
+                          <span className="truncate text-sm font-medium text-foreground">{clan.name}</span>
+                          {suggested?.id === clan.id && (
+                            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-brand-100 px-2 py-0.5 text-[11px] font-medium text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">
+                              <Sparkles className="h-3 w-3" aria-hidden />Suggested
+                            </span>
+                          )}
+                          <ClanStatusBadge status={clan.status} />
+                        </span>
                         <span className="block text-xs text-muted-foreground">
                           {clan.programName || 'No programme'}
                           {' '}· {clan.kind === 'standing' ? 'Standing clan' : 'Cohort clan'}
                           {' '}&middot;{' '}
                           <Users className="inline h-3 w-3" aria-hidden />{' '}
-                          {clan.maxMentees ? `${clan.seated} of ${clan.maxMentees} seats` : `${clan.seated} mentees`}
+                          {clan.activeMentees} active{clan.pausedMentees ? `, ${clan.pausedMentees} paused` : ''}
+                          {clan.maxMentees ? ` · ${clan.seated} of ${clan.maxMentees} seats` : ''}
                           {clan.full && ' — full'}
                         </span>
                         {!clan.available && <span className="mt-0.5 block text-xs text-amber-700 dark:text-amber-300">{clan.unavailableReason}</span>}
