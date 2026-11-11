@@ -32,9 +32,15 @@
  * task, so a copied attempt is either an attempt nobody sat or a constraint
  * violation.
  *
- * Idempotent on `continued_from_task_id`: a task already mirrored into a clan
- * is never mirrored into it twice, so this is safe to call on every join and
- * safe to re-run after a partial failure.
+ * Idempotent per TASK CHAIN, not per row. Every copy points back at its source
+ * through `continued_from_task_id`, so one piece of work is a chain:
+ * cohort original → standing copy → copy of that copy. Checking only the direct
+ * source row was not enough: the second time somebody's work was mirrored, the
+ * original AND its earlier copy both looked new, and the mentee got the same
+ * task twice in one clan (and a mentee coming back to a clan got their own task
+ * back as a copy). Now each chain contributes at most one row — its newest live
+ * link — and a chain with any link already in the target clan is skipped. Safe
+ * to call on every join and to re-run after a partial failure.
  *
  * Takes `sequelize` rather than importing it so the backfill migration and the
  * live service run exactly the same code against their own connections.
@@ -63,23 +69,49 @@ const ATTEMPT_BACKED = `('quiz', 'interview', 'course')`;
  * work surface in the other's continuation.
  */
 const pendingSql = `
-  SELECT t.id
-    FROM assigned_tasks t
-    JOIN clans src ON src.id = t.clan_id
-    JOIN clans sc  ON sc.id = :clanId
-    LEFT JOIN roadmap_tasks rt ON rt.id = t.roadmap_task_id
-   WHERE t.mentee_id = :menteeId
-     AND t.clan_id IS NOT NULL
-     AND t.pool_member_id IS NULL
-     AND t.clan_id <> sc.id
-     AND src.organization_id = sc.organization_id
-     AND src.program_id IS NOT DISTINCT FROM sc.program_id
-     AND COALESCE(t.type_override, rt.type, '') NOT IN ${ATTEMPT_BACKED}
-     AND NOT EXISTS (
-       SELECT 1 FROM assigned_tasks copy
-        WHERE copy.clan_id = sc.id AND copy.continued_from_task_id = t.id
-     )
-   ORDER BY t.assigned_at`;
+  WITH RECURSIVE mine AS (
+    SELECT id, continued_from_task_id, clan_id FROM assigned_tasks WHERE mentee_id = :menteeId
+  ), chain AS (
+    -- Roots: never copied from anything (or the source row is gone).
+    SELECT m.id, m.id AS root FROM mine m
+     WHERE m.continued_from_task_id IS NULL
+        OR NOT EXISTS (SELECT 1 FROM mine p WHERE p.id = m.continued_from_task_id)
+    UNION ALL
+    SELECT m.id, c.root FROM mine m JOIN chain c ON m.continued_from_task_id = c.id
+  )
+  SELECT id FROM (
+    SELECT DISTINCT ON (ch.root) t.id, t.assigned_at
+      FROM assigned_tasks t
+      JOIN chain ch ON ch.id = t.id
+      JOIN clans src ON src.id = t.clan_id
+      JOIN clans sc  ON sc.id = :clanId
+      LEFT JOIN roadmap_tasks rt ON rt.id = t.roadmap_task_id
+     WHERE t.clan_id IS NOT NULL
+       AND t.pool_member_id IS NULL
+       AND t.clan_id <> sc.id
+       AND src.organization_id = sc.organization_id
+       AND src.program_id IS NOT DISTINCT FROM sc.program_id
+       AND COALESCE(t.type_override, rt.type, '') NOT IN ${ATTEMPT_BACKED}
+       -- Nothing from this chain is in the target clan yet.
+       AND NOT EXISTS (
+         SELECT 1 FROM chain other JOIN mine om ON om.id = other.id
+          WHERE other.root = ch.root AND om.clan_id = sc.id
+       )
+       -- Nor is the same step, assigned there separately (a mentor gave it
+       -- again before the work came across). Recurring work repeats per
+       -- occurrence, so the occurrence is part of "the same step".
+       AND NOT EXISTS (
+         SELECT 1 FROM assigned_tasks here
+          WHERE here.clan_id = sc.id AND here.mentee_id = t.mentee_id
+            AND here.roadmap_task_id = t.roadmap_task_id
+            AND here.occurrence_date IS NOT DISTINCT FROM t.occurrence_date
+            AND here.status <> 'cancelled'
+       )
+     -- One source per chain: a live link over a cancelled one, then the
+     -- most recently worked on, so the copy carries the latest state.
+     ORDER BY ch.root, (t.status = 'cancelled'), t.updated_at DESC, t.id
+  ) pick
+   ORDER BY assigned_at`;
 
 /**
  * Who owns the copy.
