@@ -7,6 +7,7 @@ import {
   Check,
   Clock,
   Loader2,
+  MessageCircle,
   MessageSquareQuote,
   Repeat,
   ShieldCheck,
@@ -15,6 +16,8 @@ import {
 } from 'lucide-react';
 import { ClanAvatar } from '@/components/shared/ClanAvatar';
 import { Drawer } from '@/components/shared/Drawer';
+import { useClan } from '@/lib/context/ClanContext';
+import { visibleClansFor } from '@/lib/utils/clan-selection';
 import { useConfirm } from '@/lib/context/ConfirmContext';
 import { useInvalidate, qk } from '@/lib/query';
 import { myClanChangeApi } from '@/lib/services/clan-requests-api';
@@ -51,6 +54,8 @@ const dateOf = (iso: string | null) =>
 
 export default function MenteeClanPage() {
   const { clans, reasons, requests, loading, error, refetch } = useMyClanChange();
+  // The clan the learner picked in the sidebar; '' while a selection pool is the scope.
+  const { menteeActiveClanId } = useClan();
   const invalidate = useInvalidate();
   const confirm = useConfirm();
 
@@ -69,6 +74,24 @@ export default function MenteeClanPage() {
     }
     return map;
   }, [requests]);
+
+  /**
+   * One clan, the one chosen in the sidebar.
+   *
+   * This listed every clan the mentee has ever been a mentee of, so somebody
+   * whose cohort ended and carried on in a standing clan saw both, stacked,
+   * each with its own "Ask to be placed" — and no way to tell which one the
+   * rest of the workspace was about. The sidebar already answers that, and
+   * every other learner screen follows it.
+   *
+   * Falling back to the full list is deliberate: before the choice is read, or
+   * while a selection pool is the scope, showing everything is better than
+   * showing nothing on the page called "My clan".
+   */
+  const visibleClans = useMemo(
+    () => visibleClansFor(clans, menteeActiveClanId),
+    [clans, menteeActiveClanId],
+  );
 
   const history = requests.filter((r) => r.status !== 'pending');
 
@@ -152,7 +175,7 @@ export default function MenteeClanPage() {
         </p>
       </div>
 
-      {clans.length === 0 ? (
+      {visibleClans.length === 0 ? (
         <div className="bg-card rounded-2xl border border-slate-200 py-12 px-6 text-center">
           <Users2 className="w-10 h-10 text-slate-300 mx-auto mb-3" />
           <p className="text-slate-600 font-medium">You are not in a clan yet</p>
@@ -162,7 +185,7 @@ export default function MenteeClanPage() {
           </p>
         </div>
       ) : (
-        clans.map((clan) => {
+        visibleClans.map((clan) => {
           const open = openFor[clan.id];
           return (
             <section key={clan.id} className="bg-card rounded-2xl border border-slate-200 overflow-hidden">
@@ -199,6 +222,31 @@ export default function MenteeClanPage() {
                   </button>
                 )}
               </div>
+
+              {/* The group everyone actually talks in. Set by a mentor or an
+                  admin on the clan; shown here so a mentee can join it without
+                  being told the link by somebody. */}
+              {clan.whatsappGroupLink && (
+                <div className="border-t border-slate-200 px-5 py-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-slate-900">Clan group chat</p>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        Where this clan talks day to day. Introduce yourself when you join.
+                      </p>
+                    </div>
+                    <a
+                      href={clan.whatsappGroupLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[#25D366] px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-[#1DA851]"
+                    >
+                      <MessageCircle className="h-4 w-4" />
+                      Join the WhatsApp group
+                    </a>
+                  </div>
+                </div>
+              )}
 
               {/* The open ask, stated where they cannot miss it: this is the
                   thing they came back to the page to check. */}

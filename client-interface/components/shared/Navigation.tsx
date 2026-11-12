@@ -306,13 +306,25 @@ export default function Navigation({ role }: NavigationProps) {
   const renderClanScope = () => {
     if (role === 'mentor' && clans.length >= 2) {
       return (
+        /*
+         * One clan at a time, deliberately.
+         *
+         * "All clans" merged every clan a mentor runs into a single view. That
+         * is a reporting lens, not a place to work: the screens under it are
+         * about one clan's roster, one clan's queue and one clan's team, so
+         * half of them had to special-case the merged scope and the other half
+         * quietly picked the first clan anyway. It was also where a mentor
+         * landed by default, which meant the app opened on the one scope that
+         * answers no question in particular.
+         *
+         * The picker now holds clans only. What a mentor last chose is
+         * remembered per account (clan-choice), and a first visit lands on a
+         * live clan (defaultClanOf).
+         */
         <SelectMenu
           value={activeClanId}
           onChange={setActiveClanId}
-          options={[
-            { value: ALL_CLANS, label: 'All clans', description: 'Everything you mentor' },
-            ...clanOptions(clans),
-          ]}
+          options={clanOptions(clans)}
           ariaLabel="Filter by clan"
           className="w-full"
         />

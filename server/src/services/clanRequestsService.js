@@ -208,7 +208,7 @@ class ClanRequestsService {
       attributes: ['clanId', 'status'],
       include: [{
         model: models.Clan, as: 'clan', required: true,
-        attributes: ['id', 'name', 'kind', 'programId', 'frozenAt', 'avatarUrl'],
+        attributes: ['id', 'name', 'kind', 'programId', 'frozenAt', 'avatarUrl', 'whatsappGroupLink'],
         include: [{ model: models.Program, as: 'program', attributes: ['id', 'name'] }],
       }],
     });
@@ -283,6 +283,16 @@ class ClanRequestsService {
           paused: m.status === 'paused',
           closed: Boolean(m.clan.frozenAt),
           standing: m.clan.kind === 'standing',
+          /**
+           * The clan's group chat, for the mentee to actually join.
+           *
+           * It was already set by admins and mentors and already emailed on
+           * placement, but in-app it only appeared on the dashboard, read off
+           * the programme ENROLMENT. A standing clan has no enrolment, so its
+           * link was set and then visible nowhere — and the one screen called
+           * "My clan" did not show it at all.
+           */
+          whatsappGroupLink: m.clan.whatsappGroupLink || null,
           programId: m.clan.programId,
           programName: m.clan.program?.name || null,
           /** 'move' = they leave this clan. 'placement' = this record stays. */

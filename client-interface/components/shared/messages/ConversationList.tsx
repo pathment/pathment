@@ -40,7 +40,6 @@ interface ConversationListProps {
    */
   hiddenByClan?: number;
   activeClanName?: string | null;
-  onShowAllClans?: () => void;
 }
 
 /** Format last message time */
@@ -79,7 +78,6 @@ export default function ConversationList({
   archivedCount,
   hiddenByClan = 0,
   activeClanName,
-  onShowAllClans,
   isBootstrapping = false,
 }: ConversationListProps) {
   const [searchQuery, setSearchQuery] = useState('');
@@ -217,18 +215,12 @@ export default function ConversationList({
                 <p className="text-sm font-medium text-foreground">
                   No conversations in {activeClanName || 'this clan'}
                 </p>
+                {/* There is no "all clans" scope to jump to any more — a mentor
+                    works in one clan, so this says where the rest are instead. */}
                 <p className="text-xs text-muted-foreground mt-1">
-                  {hiddenByClan} conversation{hiddenByClan === 1 ? ' is' : 's are'} in your other clans.
+                  {hiddenByClan} conversation{hiddenByClan === 1 ? ' is' : 's are'} in your other clans
+                  — switch clan in the sidebar to see {hiddenByClan === 1 ? 'it' : 'them'}.
                 </p>
-                {onShowAllClans && (
-                  <button
-                    type="button"
-                    onClick={onShowAllClans}
-                    className="mt-3 inline-flex items-center gap-1.5 rounded-xl border border-brand-500/40 bg-brand-500/10 px-3 py-1.5 text-xs font-bold text-brand-700 dark:text-brand-400 hover:bg-brand-500/20 transition-colors"
-                  >
-                    Show all clans
-                  </button>
-                )}
               </>
             ) : (
               <>

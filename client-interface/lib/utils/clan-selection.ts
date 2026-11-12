@@ -60,13 +60,18 @@ export function defaultClanOf(clans: SelectableClan[]): string | null {
  * The mentor's effective clan.
  *
  * `choice` is what they last picked: `null` before storage has been read, `''`
- * when they have never picked anything, `'all'` when they chose the merged
- * view, otherwise a clan id.
+ * when they have never picked anything, otherwise a clan id. `'all'` may still
+ * arrive from storage written before the merged view was retired.
  *
- * Choosing "All clans" and never having chosen are deliberately NOT the same
- * answer. The old code collapsed them, so a first-time mentor — and anyone
- * whose saved clan had been archived — was parked on a view that merges every
- * clan they mentor. That is a reporting lens, and a strange place to start.
+ * A mentor is always looking at ONE clan. "All clans" used to be both an
+ * option and the default, so the app opened on a merged view that answers no
+ * question in particular, and every screen underneath had to decide what it
+ * meant. It is no longer offered, and a stored `'all'` is treated as "never
+ * chose" — so an existing mentor is moved on to a real clan the next time they
+ * load, instead of being stuck on a scope the picker can no longer show.
+ *
+ * ALL_CLANS survives as the answer to "this mentor has no clans at all", which
+ * is the only case left where there is nothing better to return.
  */
 export function resolveMentorClan(
   choice: string | null,
@@ -74,8 +79,12 @@ export function resolveMentorClan(
   unsettled: boolean,
 ): string {
   if (choice === null) return ALL_CLANS;                 // storage not read yet
-  if (choice === ALL_CLANS) return ALL_CLANS;            // their choice, kept
-  if (choice && clans.some((c) => c.id === choice)) return choice;
+  if (choice && choice !== ALL_CLANS && clans.some((c) => c.id === choice)) return choice;
+  // A stored 'all' is a choice we no longer honour, but it is not a reason to
+  // overwrite it while the clan list is still unknown — that is how the saved
+  // choice used to get clobbered on every sign-in.
+  if (choice === ALL_CLANS && !unsettled) return defaultClanOf(clans) ?? ALL_CLANS;
+  if (choice === ALL_CLANS) return ALL_CLANS;
   // An empty list is not evidence that their clan is gone — it is also what
   // "we have not been told yet" looks like, both while the request is in
   // flight and before it is even allowed to start. Falling back on either is
@@ -83,6 +92,25 @@ export function resolveMentorClan(
   // choice with "all" on the next sign-in.
   if (unsettled) return choice || ALL_CLANS;
   return defaultClanOf(clans) ?? ALL_CLANS;
+}
+
+/**
+ * Which of the learner's clans a clan-scoped screen should show.
+ *
+ * "My clan" listed every clan they had ever been a mentee of, so somebody
+ * whose cohort ended and carried on in a standing clan saw both stacked, each
+ * with its own ask-to-move, and nothing said which one the rest of the
+ * workspace was about. The sidebar already answers that.
+ *
+ * Falls back to the whole list on purpose: before the stored choice is read,
+ * while a selection pool is the scope (`selected` is ''), or if the chosen
+ * clan is not in the list, showing everything beats showing nothing on a page
+ * called "My clan".
+ */
+export function visibleClansFor<T extends { id: string }>(clans: T[], selected: string): T[] {
+  if (!selected) return clans;
+  const picked = clans.filter((c) => c.id === selected);
+  return picked.length ? picked : clans;
 }
 
 /**

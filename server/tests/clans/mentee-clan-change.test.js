@@ -83,6 +83,41 @@ describe('mentee clan change requests', () => {
       expect(res.body.data.reasons.every((r) => !/ them\b|for them/.test(r.label))).toBe(true);
     });
 
+    /*
+     * The clan's group chat.
+     *
+     * It was already set by mentors and admins and already emailed on
+     * placement, but in-app it was read off the programme ENROLMENT, so a
+     * standing clan — which has none — could have a link set and show it
+     * nowhere. "My clan" is where a mentee goes to find their clan, so it is
+     * where the way into the group has to be.
+     */
+    it('carries the clan’s WhatsApp group link so the mentee can join it', async () => {
+      await clanA.update({ whatsappGroupLink: 'https://chat.whatsapp.com/abc123' });
+
+      const res = await api(mentee).options();
+      expect(res.body.data.clans[0].whatsappGroupLink).toBe('https://chat.whatsapp.com/abc123');
+    });
+
+    it('says null when no group has been set, rather than omitting it', async () => {
+      const res = await api(mentee).options();
+      expect(res.body.data.clans[0]).toHaveProperty('whatsappGroupLink', null);
+    });
+
+    // The case that was broken: a standing clan has no programme enrolment, and
+    // the enrolment was the only place the link was read from.
+    it('carries it for a standing clan too, which has no enrolment to read', async () => {
+      const standing = await createClan({
+        programId: program.id, leadMentor: mentorA, mentees: [other], name: 'Alumni Guild',
+      });
+      await standing.update({ kind: 'standing', whatsappGroupLink: 'https://chat.whatsapp.com/standing' });
+
+      const res = await api(other).options();
+      const row = res.body.data.clans.find((c) => c.name === 'Alumni Guild');
+      expect(row.standing).toBe(true);
+      expect(row.whatsappGroupLink).toBe('https://chat.whatsapp.com/standing');
+    });
+
     it('never offers another program’s clan', async () => {
       const otherProgram = await createProgram({ createdBy: admin.id, name: 'Other Program' });
       const outside = await createClan({

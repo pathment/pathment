@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useClan, ALL_CLANS, isMentorWriteLockedForClan } from '@/lib/context/ClanContext';
+import { useClan, isMentorWriteLockedForClan } from '@/lib/context/ClanContext';
 import { toast } from 'sonner';
 import {
   ClipboardCheck, CheckCircle2, Clock, Loader2, ChevronRight, CalendarClock, Check, X,
@@ -47,7 +47,7 @@ type Tab = 'review' | 'changes' | 'extensions' | 'reviewed';
 
 export default function MentorApprovals() {
   const { queue, changesRequested, reviewed, hiddenByClan, loading, error, refetch, bulkReview, handleExtension } = useMentorApprovals();
-  const { clans, activeClanId, setActiveClanId } = useClan();
+  const { clans, activeClanId } = useClan();
   const activeClan = clans.find((c) => c.id === activeClanId) ?? null;
   const activeClanName = activeClan?.name ?? null;
   // All clans: lock per task clan (Standee writable, frozen cohort not).
@@ -512,16 +512,12 @@ export default function MentorApprovals() {
               {hiddenByClan > 0 ? (
                 <>
                   <p className="text-slate-600">Nothing waiting in {activeClanName || 'this clan'}.</p>
+                  {/* A mentor works in one clan now, so there is no merged
+                      scope to jump to — say where the rest are instead. */}
                   <p className="text-slate-400 text-sm mt-1">
-                    {hiddenByClan} item{hiddenByClan === 1 ? '' : 's'} in your other clans.
+                    {hiddenByClan} item{hiddenByClan === 1 ? '' : 's'} in your other clans
+                    — switch clan in the sidebar to see {hiddenByClan === 1 ? 'it' : 'them'}.
                   </p>
-                  <button
-                    type="button"
-                    onClick={() => setActiveClanId(ALL_CLANS)}
-                    className="mt-3 inline-flex items-center gap-1.5 rounded-xl border border-brand-500/40 bg-brand-500/10 px-3 py-1.5 text-xs font-bold text-brand-700 hover:bg-brand-500/20 transition-colors"
-                  >
-                    Show all clans
-                  </button>
                 </>
               ) : (
                 <p className="text-slate-600">All caught up. Nothing is waiting on you.</p>

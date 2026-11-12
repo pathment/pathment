@@ -35,7 +35,7 @@ export default function MessageCenter({ role }: MessageCenterProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useAuth();
-  const { activeClanId, setActiveClanId, clans, menteeActiveClanId } = useClan();
+  const { activeClanId, clans, menteeActiveClanId } = useClan();
 
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [archivedConversations, setArchivedConversations] = useState<ConversationSummary[]>([]);
@@ -818,7 +818,6 @@ export default function MessageCenter({ role }: MessageCenterProps) {
             isBootstrapping={isBootstrapping}
             hiddenByClan={hiddenByClan}
             activeClanName={clans.find((c) => c.id === activeClanId)?.name ?? null}
-            onShowAllClans={() => setActiveClanId(ALL_CLANS)}
           />
         </div>
 

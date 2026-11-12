@@ -42,6 +42,8 @@ export interface MyClanPlacement {
    * program entirely.
    */
   moveKind: 'move' | 'placement';
+  /** The clan's WhatsApp group, when one has been set. Null when it has not. */
+  whatsappGroupLink: string | null;
   programId: string;
   programName: string | null;
   options: ClanOption[];

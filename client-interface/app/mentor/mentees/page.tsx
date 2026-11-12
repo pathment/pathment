@@ -2,7 +2,7 @@
 import { Avatar } from '@/components/shared/Avatar';
 
 import { useMemo, useState } from 'react';
-import { useClan, ALL_CLANS, isHistoricalMentorScope } from '@/lib/context/ClanContext';
+import { useClan, isHistoricalMentorScope } from '@/lib/context/ClanContext';
 import { usePathname, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Suspense } from 'react';
@@ -39,7 +39,7 @@ function MentorMentees() {
   const pathname = usePathname();
   const { cohort, totals, hiddenByClan, loading, error, refetch } =
     useMentorCohort();
-  const { clans: mentoredClans, activeClanId, setActiveClanId } = useClan();
+  const { clans: mentoredClans, activeClanId } = useClan();
   const activeClan = mentoredClans.find((c) => c.id === activeClanId) ?? null;
   const activeClanName = activeClan?.name ?? null;
   const historical = isHistoricalMentorScope(mentoredClans, activeClanId);
@@ -211,17 +211,11 @@ function MentorMentees() {
               <p className="text-slate-600 font-medium">
                 No mentees in {activeClanName || 'this clan'}
               </p>
+              {/* No merged scope to jump to: point at the sidebar picker. */}
               <p className="text-slate-400 text-sm mt-1">
                 {hiddenByClan} mentee{hiddenByClan === 1 ? ' is' : 's are'} in
-                your other clans.
+                your other clans — switch clan in the sidebar to see {hiddenByClan === 1 ? 'them' : 'them'}.
               </p>
-              <button
-                type="button"
-                onClick={() => setActiveClanId(ALL_CLANS)}
-                className="mt-3 inline-flex items-center gap-1.5 rounded-xl border border-brand-500/40 bg-brand-500/10 px-3 py-1.5 text-xs font-bold text-brand-700 hover:bg-brand-500/20 transition-colors"
-              >
-                Show all clans
-              </button>
             </>
           ) : (
             <>
