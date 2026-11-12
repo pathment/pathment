@@ -35,6 +35,7 @@ export const EMAIL_PREFERENCE_CATEGORIES: EmailCategory[] = [
   { group: 'Program', key: 'meeting_cancelled', label: 'A 1:1 meeting is cancelled', roles: ['mentee', 'mentor'] },
   { group: 'Program', key: 'cross_clan_assigned', label: "You're asked to cover or help another clan", roles: ['mentor', 'admin'] },
   { group: 'Program', key: 'new_mentee_in_clan', label: 'A new mentee joins your clan', roles: ['mentor'] },
+  { group: 'Program', key: 'clan_group_chat', label: "Your clan's group chat invite", roles: ['mentee'] },
   { group: 'Program', key: 'mentee_transfer_requested', label: 'Another mentor asks your clan to take a mentee', roles: ['mentor'] },
   { group: 'Program', key: 'mentee_transfer_decided', label: 'A mentee move is accepted or declined', roles: ['mentor', 'mentee'] },
   { group: 'Program', key: 'mentee_returned', label: 'A paused mentee returns to your clan', roles: ['mentor'] },

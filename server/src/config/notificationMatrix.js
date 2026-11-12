@@ -28,6 +28,7 @@ EXTENSION_HANDLED: 'extension_handled',
   MEETING_REMINDER: 'meeting_reminder',
   CROSS_CLAN_ASSIGNED: 'cross_clan_assigned',
   NEW_MENTEE_IN_CLAN: 'new_mentee_in_clan',
+  CLAN_GROUP_CHAT: 'clan_group_chat',
   CLAN_JOIN_REQUEST_RECEIVED: 'clan_join_request_received',
   CLAN_JOIN_REQUEST_DECIDED: 'clan_join_request_decided',
   STANDING_CLAN_REQUEST_CREATED: 'standing_clan_request_created',
@@ -374,6 +375,22 @@ const NOTIFICATION_MATRIX = {
     type: 'system',
     audience: 'mentor',
     preferenceKey: 'new_mentee_in_clan',
+    channels: { inApp: true, email: true, chat: false }
+  },
+  /**
+   * The mentee's way into their clan's group chat.
+   *
+   * Sent to the person who was just added, and only when the clan actually has
+   * a link — there is nothing to say otherwise. The link was already collected
+   * from mentors and admins and already emailed to people invited from
+   * scratch, but somebody added to a clan with an existing account was told
+   * nothing at all, so the group they were expected to be in was a thing
+   * somebody had to remember to paste to them.
+   */
+  [NOTIFICATION_EVENTS.CLAN_GROUP_CHAT]: {
+    type: 'system',
+    audience: 'mentee',
+    preferenceKey: 'clan_group_chat',
     channels: { inApp: true, email: true, chat: false }
   },
   [NOTIFICATION_EVENTS.CLAN_JOIN_REQUEST_RECEIVED]: {

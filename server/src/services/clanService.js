@@ -9,6 +9,7 @@ const { ensureMenteeProfile } = require('./menteeProfile');
 const standingClanService = require('./standingClanService');
 const clanLifecycleService = require('./clanLifecycleService');
 const { mirrorPriorWork } = require('./standingWorkMirror');
+const clanGroupChat = require('./clanGroupChat');
 const avatarService = require('./clanAvatarService');
 const gamificationService = require('./gamificationService');
 
@@ -531,6 +532,21 @@ class ClanService {
         userId: actor.id, action: 'CLAN_MEMBER_ADDED', entityType: 'Clan', entityId: clanId,
         newValues: { clanId, userId, role }
       }).catch(() => {});
+    }
+
+    /*
+     * Hand the new mentee the clan's group chat.
+     *
+     * After the transaction, deliberately: it sends mail, and mail must not
+     * hold a write open or be rolled back with it. It no-ops when the clan has
+     * no link, and never throws — the placement is the thing that must stand.
+     *
+     * Only for an outer caller: when `outerTransaction` is set the membership
+     * is not committed yet, and the standing-clan branch above has already
+     * returned through its own path.
+     */
+    if (role === 'mentee' && !outerTransaction) {
+      await clanGroupChat.notifyMenteeJoinedClan({ clanId, userId, membershipId: membership?.id || null });
     }
 
     return membership;

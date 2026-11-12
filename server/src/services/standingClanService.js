@@ -11,6 +11,7 @@ const { NOTIFICATION_EVENTS } = require('../config/notificationMatrix');
 const { getRequestContext } = require('../utils/auditContext');
 const logger = require('../utils/logger');
 const { mirrorPriorWork } = require('./standingWorkMirror');
+const clanGroupChat = require('./clanGroupChat');
 const { NotFoundError, ForbiddenError, ValidationError, ConflictError } = require('../utils/errors/errorTypes');
 
 // clanService requires this module at load time — keep lazy to avoid the cycle.
@@ -1130,6 +1131,18 @@ class StandingClanService {
       } catch (error) {
         logger.warn(`[standingClan] could not carry prior work for ${menteeId} into ${clanId}: ${error.message}`);
       }
+      /*
+       * And the way into the clan's group chat. A standing clan reaches this
+       * path instead of the tail of `clanService.addMember`, so without this
+       * the one kind of clan most likely to outlive a programme — and to be
+       * the only place its people still talk — would be the one that never
+       * sent the link.
+       */
+      await clanGroupChat.notifyMenteeJoinedClan({
+        clanId,
+        userId: menteeId,
+        membershipId: rows.find((r) => r.userId === menteeId && r.role === 'mentee')?.id || null,
+      });
     }
     return rows;
   }

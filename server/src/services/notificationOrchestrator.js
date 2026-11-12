@@ -178,7 +178,17 @@ class NotificationOrchestrator {
             // has no base to resolve against, which is why the button in every
             // task, deadline and approval email did nothing. Only the email copy
             // is made absolute; what is stored and what is pushed stay relative.
-            const cta = { label: payload.emailActionLabel || 'Open Pathment', url: pageLink(payload.actionUrl) };
+            /**
+             * `emailActionUrl` sends the button somewhere that is not a
+             * Pathment page. Used by the clan group-chat invite, whose whole
+             * point is one tap into WhatsApp — routing that through a login
+             * screen first would defeat it. Everything else keeps the relative
+             * actionUrl made absolute.
+             */
+            const cta = {
+              label: payload.emailActionLabel || 'Open Pathment',
+              url: payload.emailActionUrl || pageLink(payload.actionUrl),
+            };
             const html = payload.emailHtml || renderEmail({
               heading,
               bodyHtml: payload.emailBodyHtml || `<p style="margin:0 0 14px;">${escHtml(bodyText)}</p>`,
