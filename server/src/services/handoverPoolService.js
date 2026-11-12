@@ -417,7 +417,8 @@ class HandoverPoolService {
       newValues: { menteeId: entry.menteeId, fromClanId: entry.fromClanId, toClanId, carried, sameProgram },
     }).catch(() => {});
 
-    await this._notifyClaimed(entry, toClan, user).catch(() => {});
+    await this._notifyClaimed(entry, toClan, user, { carried, freshStart: !sameProgram })
+      .catch((error) => console.error('[handover] claim notifications failed:', error.message));
 
     const fresh = await models.HandoverPoolEntry.findByPk(entryId);
     return { entry: this._shape(fresh), carried, freshStart: !sameProgram };
@@ -833,35 +834,99 @@ class HandoverPoolService {
     });
   }
 
-  /** On a claim, tell the mentee (it has happened now) and the old mentor. */
-  async _notifyClaimed(entry, toClan, claimer) {
-    const [mentee, who] = await Promise.all([
-      models.User.findByPk(entry.menteeId, { attributes: ['firstName'] }),
+  /**
+   * On a claim, everyone it changes things for hears — once each:
+   *
+   *   the mentee       where they are now, who their new mentor is, and whether
+   *                    their work came with them (it does not across programmes);
+   *   the new clan     its lead and co-mentors: who joined, from where, what came
+   *                    with them, and the handover note. This was missing, so
+   *                    when an admin placed someone the clan learned nothing;
+   *   the old clan     whoever offered them, plus the old clan's mentors, so a
+   *                    co-mentor is not left wondering where their mentee went.
+   *
+   * The person who did the claim is never told about their own action. Every
+   * notice is keyed on the pool entry, not the mentee: a mentee handed over a
+   * second time is a new event, and keying on the mentee would dedupe it away
+   * (which is what the generic "new mentee in your clan" notice does).
+   */
+  async _notifyClaimed(entry, toClan, claimer, { carried = {}, freshStart = false } = {}) {
+    const ids = (rows) => [...new Set(rows.map((r) => r.userId))];
+    const [mentee, who, fromClan, newMentors, oldMentors] = await Promise.all([
+      models.User.findByPk(entry.menteeId, { attributes: ['firstName', 'lastName', 'email'] }),
       models.User.findByPk(claimer.id, { attributes: ['firstName', 'lastName'] }),
+      entry.fromClanId ? models.Clan.findByPk(entry.fromClanId, { attributes: ['id', 'name'] }) : null,
+      models.ClanMembership.findAll({
+        where: { clanId: toClan.id, role: { [Op.in]: ['lead_mentor', 'co_mentor'] }, status: 'active' },
+        attributes: ['userId', 'role'],
+        include: [{ model: models.User, as: 'user', attributes: ['firstName', 'lastName'] }],
+      }),
+      entry.fromClanId ? models.ClanMembership.findAll({
+        where: { clanId: entry.fromClanId, role: { [Op.in]: ['lead_mentor', 'co_mentor'] }, status: 'active' },
+        attributes: ['userId'], raw: true,
+      }) : [],
     ]);
-    const claimerName = who ? `${who.firstName || ''} ${who.lastName || ''}`.trim() : 'A mentor';
+    const fullName = (u) => (u ? `${u.firstName || ''} ${u.lastName || ''}`.trim() : '');
+    const claimerName = fullName(who) || 'An admin';
+    const menteeName = fullName(mentee) || mentee?.email || 'A mentee';
+    const toName = toClan.name || 'a new clan';
+    const fromName = fromClan?.name || 'another clan';
+    const lead = newMentors.find((m) => m.role === 'lead_mentor');
+    const leadName = fullName(lead?.user);
+    const tasks = Number(carried.tasks) || 0;
+    const workLine = freshStart
+      ? 'It is a different programme, so you start fresh there — your old programme keeps its record.'
+      : tasks
+        ? `Your ${tasks} task${tasks === 1 ? '' : 's'} and everything you finished came with you — pick up exactly where you left off.`
+        : 'Your work came with you — pick up exactly where you left off.';
+    const entity = (kind) => ({ relatedEntityType: kind, relatedEntityId: entry.id });
 
+    // The mentee.
     await notificationOrchestrator.dispatch({
       eventKey: NOTIFICATION_EVENTS.HANDOVER_POOL_CLAIMED,
       recipients: [{ userId: entry.menteeId }],
       payload: {
-        title: `You have moved to ${toClan.name || 'a new clan'}`,
-        message: `Hi ${mentee?.firstName || 'there'}, ${claimerName} has taken you into ${toClan.name || 'their clan'}. Your tasks and everything you have finished came with you — pick up exactly where you left off.`,
+        title: `You have moved to ${toName}`,
+        message: `Hi ${mentee?.firstName || 'there'}, you are now in ${toName}${leadName ? ` with ${leadName} as your mentor` : ''}. ${workLine}`,
         actionUrl: '/mentee/dashboard',
         actionLabel: 'Open my dashboard',
-        emailSubject: `You are now in ${toClan.name || 'a new clan'}`,
+        emailSubject: `You are now in ${toName}`,
+        ...entity('handover_claim_mentee'),
       },
     });
 
-    if (entry.pushedBy && entry.pushedBy !== claimer.id) {
+    // The clan they joined — never the person who placed them there.
+    const newIds = ids(newMentors).filter((id) => id !== claimer.id && id !== entry.menteeId);
+    if (newIds.length) {
+      const note = entry.handoverNote ? ` Note from their last mentor: "${String(entry.handoverNote).slice(0, 400)}"` : '';
+      const brought = freshStart ? 'They start fresh on this programme.' : `${tasks} task${tasks === 1 ? '' : 's'} came with them.`;
+      await notificationOrchestrator.dispatch({
+        eventKey: NOTIFICATION_EVENTS.NEW_MENTEE_IN_CLAN,
+        recipients: newIds.map((userId) => ({ userId })),
+        payload: {
+          title: `${menteeName} joined ${toName}`,
+          message: `${claimerName} placed ${menteeName} in ${toName} from the handover pool (from ${fromName}). ${brought}${note}`,
+          actionUrl: '/mentor/mentees',
+          actionLabel: 'View mentees',
+          emailSubject: `${menteeName} joined ${toName} from the handover pool`,
+          ...entity('handover_claim_new_clan'),
+        },
+      });
+    }
+
+    // Whoever offered them, and the clan they left.
+    const oldIds = [...new Set([entry.pushedBy, ...ids(oldMentors)].filter(Boolean))]
+      .filter((id) => id !== claimer.id && id !== entry.menteeId && !newIds.includes(id));
+    if (oldIds.length) {
       await notificationOrchestrator.dispatch({
         eventKey: NOTIFICATION_EVENTS.HANDOVER_POOL_CLAIMED,
-        recipients: [{ userId: entry.pushedBy }],
+        recipients: oldIds.map((userId) => ({ userId })),
         payload: {
           title: 'Your handover was picked up',
-          message: `${claimerName} has taken ${mentee?.firstName || 'your mentee'} into ${toClan.name || 'their clan'}.`,
+          message: `${claimerName} placed ${menteeName} in ${toName}. They have left ${fromName}; its record of their work is unchanged.`,
           actionUrl: '/mentor/pool',
           actionLabel: 'View the pool',
+          ...entity('handover_claim_old_clan'),
         },
       });
     }
