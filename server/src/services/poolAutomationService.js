@@ -235,6 +235,57 @@ class PoolAutomationService {
     return { progress, selected: true };
   }
 
+  // ── 5. selected → the clan's mentors hear ────────────────────────────────
+
+  /**
+   * Tell the mentors of the clan each newly selected candidate is suggested
+   * for, so they can get ready before the placement lands. One message per
+   * clan per batch, naming who is coming. Uses the same suggestion the admin
+   * sees on the Selection tab; a candidate with no suggestible clan is skipped
+   * (the admins already hear about that through the placement flow).
+   */
+  async notifyIncomingMentors(pool, memberIds = []) {
+    if (!memberIds.length) return { notified: 0 };
+    const preview = await require('./poolPlacementService').preview(pool.id);
+    const byClan = new Map();
+    for (const row of preview.rows) {
+      if (!memberIds.includes(row.memberId) || !row.proposedClanId) continue;
+      const list = byClan.get(row.proposedClanId) || { name: row.proposedClanName, people: [] };
+      list.people.push(row.name);
+      byClan.set(row.proposedClanId, list);
+    }
+    if (!byClan.size) return { notified: 0 };
+
+    const mentors = await models.ClanMembership.findAll({
+      where: { clanId: { [Op.in]: [...byClan.keys()] }, role: { [Op.in]: ['lead_mentor', 'co_mentor'] }, status: 'active' },
+      attributes: ['clanId', 'userId'], raw: true,
+    });
+    const { NOTIFICATION_EVENTS } = require('../config/notificationMatrix');
+    const orchestrator = require('./notificationOrchestrator');
+    let notified = 0;
+    for (const [clanId, { name, people }] of byClan) {
+      const recipients = [...new Set(mentors.filter((m) => m.clanId === clanId).map((m) => m.userId))];
+      if (!recipients.length) continue;
+      const who = people.length <= 3 ? people.join(', ') : `${people.slice(0, 3).join(', ')} and ${people.length - 3} more`;
+      // eslint-disable-next-line no-await-in-loop
+      await orchestrator.dispatch({
+        eventKey: NOTIFICATION_EVENTS.POOL_INCOMING_MENTEES,
+        recipients: recipients.map((userId) => ({ userId })),
+        payload: {
+          title: people.length === 1 ? `${people[0]} is headed to ${name}` : `${people.length} new mentees headed to ${name}`,
+          message: `${who} ${people.length === 1 ? 'was' : 'were'} selected in ${pool.name} and ${people.length === 1 ? 'is' : 'are'} suggested for your clan. You'll be notified again once they're placed.`,
+          actionUrl: '/mentor/dashboard',
+          actionLabel: 'Open my dashboard',
+          emailSubject: people.length === 1 ? `${people[0]} is joining ${name} soon` : `${people.length} new mentees are joining ${name} soon`,
+          relatedEntityType: 'pool_incoming_mentees',
+          relatedEntityId: crypto.randomUUID(),
+        },
+      }).catch((e) => logger.warn('[pool-automation] mentor notice failed', { message: e.message }));
+      notified += recipients.length;
+    }
+    return { notified };
+  }
+
   /** Re-check every undecided candidate in a pool (when the threshold is switched on or changed). */
   async checkPool(poolId) {
     const members = await models.PoolMember.findAll({ where: { poolId, decision: null, placedAt: null, userId: { [Op.ne]: null } }, attributes: ['id'] });

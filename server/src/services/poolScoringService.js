@@ -556,6 +556,12 @@ class PoolScoringService {
 
   async _notifyOutcomes(pool, outcomes, { changed = false } = {}) {
     const orchestrator = require('./notificationOrchestrator');
+    // Every route to "selected" (shortlist confirm, a changed decision, the
+    // progress threshold) comes through here, so the clan's mentors hear once.
+    if (outcomes.selected?.length) {
+      const automation = require('./poolAutomationService');
+      await automation.safely('notify incoming mentors', () => automation.notifyIncomingMentors(pool, outcomes.selected));
+    }
     const words = {
       selected: { title: `You have been selected: ${pool.name}`, message: 'Congratulations — you were selected. You will be placed in a clan shortly.' },
       waitlisted: { title: `You are on the waitlist: ${pool.name}`, message: 'You were placed on the waitlist. We will let you know if a place opens up.' },

@@ -178,4 +178,25 @@ describe('selected → a clan for their level, one click away', () => {
     expect(row.proposedClanName).toBe('Seniors');
     expect(row.reason).toMatch(/Serves senior/);
   });
+
+  it('tells the suggested clan\'s mentors who is coming, and nobody else', async () => {
+    const lead = await seed.createMentor({ email: 'lead@test.com' });
+    const co = await seed.createMentor({ email: 'co@test.com' });
+    const other = await seed.createMentor({ email: 'other@test.com' });
+    const seniors = await seed.createClan({ programId: ctx.program.id, leadMentor: lead, coMentors: [co], name: 'Seniors' });
+    const beginners = await seed.createClan({ programId: ctx.program.id, leadMentor: other, name: 'Beginners' });
+    await seniors.update({ levels: ['senior'] });
+    await beginners.update({ levels: ['beginner'] });
+
+    await automation.onApplication(await apply('ada@test.com', 'senior'));
+    const member = await activate('ada@test.com');
+    await member.update({ decision: 'selected', placement: { status: 'pending' } });
+    orchestrator.dispatch.mockClear();
+
+    await require('../../src/services/poolScoringService')._notifyOutcomes(ctx.pool, { selected: [member.id] });
+    const notice = orchestrator.dispatch.mock.calls.map(([c]) => c).find((c) => c.eventKey === 'pool_incoming_mentees');
+    expect(notice).toBeTruthy();
+    expect(notice.recipients.map((r) => r.userId).sort()).toEqual([lead.id, co.id].sort());
+    expect(notice.payload.title).toMatch(/headed to Seniors/);
+  });
 });

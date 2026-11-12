@@ -83,7 +83,9 @@ EXTENSION_HANDLED: 'extension_handled',
   POOL_WORK_SUBMITTED: 'pool_work_submitted',
   POOL_WORK_REVIEWED: 'pool_work_reviewed',
   POOL_ATTENTION: 'pool_attention',
-  POOL_OUTCOME: 'pool_outcome'
+  POOL_OUTCOME: 'pool_outcome',
+  // Mentor: candidates were selected and are headed for your clan.
+  POOL_INCOMING_MENTEES: 'pool_incoming_mentees'
 };
 
 // Which role's "hat" a notification concerns, so the bell + list can scope to the
@@ -332,6 +334,14 @@ const NOTIFICATION_MATRIX = {
     type: 'milestone',
     audience: 'any',
     preferenceKey: 'pool_outcome',
+    channels: { inApp: true, email: true, chat: false }
+  },
+  // Mentor: selected candidates are suggested for their clan, so they can get
+  // ready before the placement lands (which sends its own new-mentee notice).
+  [NOTIFICATION_EVENTS.POOL_INCOMING_MENTEES]: {
+    type: 'system',
+    audience: 'mentor',
+    preferenceKey: 'pool_incoming_mentees',
     channels: { inApp: true, email: true, chat: false }
   },
   // "That clan has signed off." Tells the admin a clan is clear to issue.
