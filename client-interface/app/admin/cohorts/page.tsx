@@ -9,6 +9,7 @@ import { SelectMenu } from '@/components/shared/SelectMenu';
 import { useCohorts, type Cohort, type CohortStatus } from '@/lib/hooks/admin';
 import { cohortApi } from '@/lib/services/intake-api';
 import { programsApi } from '@/lib/services/program-api';
+import { poolApi, type Pool } from '@/lib/services/pool-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 
 const STATUS_META: Record<CohortStatus, { label: string; cls: string }> = {
@@ -19,10 +20,27 @@ const STATUS_META: Record<CohortStatus, { label: string; cls: string }> = {
   completed: { label: 'Completed', cls: 'bg-slate-100 text-slate-500 border-slate-200' },
 };
 
+const NEW_POOL = '__new__';
+const NO_POOL = '';
+
 function CreateCohortDrawer({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const [programs, setPrograms] = useState<{ id: string; name: string }[]>([]);
   const [form, setForm] = useState({ programId: '', name: '', status: 'planning' });
   const [saving, setSaving] = useState(false);
+  // Where applicants go: straight into a selection pool unless the admin says not to.
+  const [pools, setPools] = useState<Pool[]>([]);
+  const [poolChoice, setPoolChoice] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!form.programId) { setPools([]); return; }
+    let alive = true;
+    poolApi.list({ programId: form.programId })
+      .then((list) => { if (alive) setPools(list.filter((p) => p.status !== 'closed' && !p.archivedAt)); })
+      .catch(() => { if (alive) setPools([]); });
+    return () => { alive = false; };
+  }, [form.programId]);
+  // Default: the programme's one live pool, else a new pool for this intake.
+  const poolTarget = poolChoice ?? (pools.length === 1 ? pools[0].id : NEW_POOL);
 
   useEffect(() => {
     programsApi.getAll()
@@ -39,12 +57,33 @@ function CreateCohortDrawer({ onClose, onCreated }: { onClose: () => void; onCre
     if (!form.programId || !form.name.trim()) { toast.error('Pick a program and name the cohort'); return; }
     try {
       setSaving(true);
-      await cohortApi.create({
+      const res = await cohortApi.create({
         programId: form.programId,
         name: form.name.trim(),
         status: form.status,
       });
-      toast.success('Cohort created');
+      const cohortId = (res as { data?: { cohort?: { id?: string } } } | undefined)?.data?.cohort?.id;
+      let poolNote = '';
+      if (cohortId && poolTarget !== NO_POOL) {
+        try {
+          if (poolTarget === NEW_POOL) {
+            await poolApi.create({
+              programId: form.programId, name: `${form.name.trim()} selection`, cohortId, selectionQuota: 25,
+              settings: { autoAddFromCohortIds: [cohortId], autoSelectAtProgress: 80 },
+            });
+            poolNote = ' with its own selection pool';
+          } else {
+            const pool = pools.find((p) => p.id === poolTarget);
+            await poolApi.update(poolTarget, {
+              settings: { autoAddFromCohortIds: [...(pool?.settings?.autoAddFromCohortIds || []), cohortId] },
+            });
+            poolNote = ` — applicants go to ${pool?.name || 'the selection pool'}`;
+          }
+        } catch (err) {
+          toast.error(extractApiErrorMessage(err, 'Cohort created, but it could not be linked to a selection pool'));
+        }
+      }
+      toast.success(`Cohort created${poolNote}`);
       onCreated();
       onClose();
     } catch (err) {
@@ -96,6 +135,20 @@ function CreateCohortDrawer({ onClose, onCreated }: { onClose: () => void; onCre
             <option value="completed">Completed</option>
           </select>
         </div>
+        {form.programId && (
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Add applicants automatically to</label>
+            <select value={poolTarget} onChange={(e) => setPoolChoice(e.target.value)} className={field}>
+              <option value={NEW_POOL}>A new selection pool for this intake</option>
+              {pools.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              <option value={NO_POOL}>Don&apos;t add them — I&apos;ll pick applicants myself</option>
+            </select>
+            <p className="text-xs text-slate-400 mt-1">
+              Everyone who applies joins the pool and gets their level&apos;s Edorax guided labs.
+              {poolTarget === NEW_POOL && ' The new pool selects candidates at 80% progress — change it in the pool’s settings.'}
+            </p>
+          </div>
+        )}
         <p className="text-xs text-slate-400">
           Dates, capacity, the application window and assessments are set in the cohort&apos;s <span className="font-medium text-slate-500">Admissions settings</span> after you create it.
         </p>

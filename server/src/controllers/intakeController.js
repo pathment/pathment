@@ -197,6 +197,8 @@ const recommendLevels = catchAsync(async (req, res) => {
 
 const applyLevelRecommendation = catchAsync(async (req, res) => {
   const application = await levelRecommendationService.applyRecommendation(req.params.id);
+  // The pool member follows, with their level-specific work swapped to match.
+  await require('../services/poolAutomationService').syncLevelFromApplication(application.id).catch(() => {});
   res.status(200).json(successResponse('Level applied', { application }));
 });
 

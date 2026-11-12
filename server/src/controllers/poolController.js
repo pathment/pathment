@@ -9,7 +9,7 @@ const { Op } = require('sequelize');
 const { catchAsync } = require('../middlewares/errorHandler');
 const { successResponse } = require('../utils/responses');
 const { parseCsv } = require('../utils/csv');
-const { ValidationError } = require('../utils/errors/errorTypes');
+const { ValidationError, NotFoundError } = require('../utils/errors/errorTypes');
 const logger = require('../utils/logger');
 const { models } = require('../db');
 const authzService = require('../services/authzService');
@@ -211,6 +211,18 @@ exports.listApplications = catchAsync(async (req, res) => {
 
 exports.addFromApplications = catchAsync(async (req, res) => {
   ok(res, 'Applications processed', await poolMemberService.addFromApplications(req.params.id, req.body.applicationIds, req.user));
+});
+
+/** PUT /pools/:id/members/:memberId/level { level } — work for the old level is swapped for the new. */
+exports.setMemberLevel = catchAsync(async (req, res) => {
+  const member = await models.PoolMember.findOne({ where: { id: req.params.memberId, poolId: req.params.id } });
+  if (!member) throw new NotFoundError('Candidate not found in this pool');
+  const { cancelled, assigned } = await require('../services/poolAutomationService')
+    .setMemberLevel(member, req.body?.level ?? null, req.user);
+  const parts = ['Level updated'];
+  if (cancelled) parts.push(`${cancelled} piece${cancelled === 1 ? '' : 's'} of work for the old level withdrawn`);
+  if (assigned) parts.push(`${assigned} for the new level handed out`);
+  ok(res, parts.join(' · '), { level: member.level, cancelled, assigned });
 });
 
 exports.resendInvite = catchAsync(async (req, res) => {

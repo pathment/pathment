@@ -56,6 +56,10 @@ export interface PoolSettings {
   autoAssignOnActivation: boolean;
   waitlistSize: number | null;
   targetClanIds: string[];
+  /** Applicants to these intakes join the pool by themselves. */
+  autoAddFromCohortIds?: string[];
+  /** Edorax progress (%) that selects a candidate automatically; null = off. */
+  autoSelectAtProgress?: number | null;
 }
 
 export interface Pool {
@@ -346,6 +350,11 @@ export const poolApi = {
     apiClient.get<Envelope<PoolOptions>>('/pools/options', { params: programId ? { programId } : undefined }).then((r) => r.data),
   create: (data: Record<string, unknown>) => apiClient.post<Envelope<{ pool: Pool }>>('/pools', data).then((r) => r.data.pool),
   get: (id: string) => apiClient.get<Envelope<PoolDashboard>>(`/pools/${id}`).then((r) => r.data),
+  /** Change a candidate's level; work aimed at the old level is swapped for the new. */
+  setMemberLevel: (id: string, memberId: string, level: string | null) =>
+    apiClient.put<Envelope<{ level: string | null; cancelled: number; assigned: number }> & { message?: string }>(
+      `/pools/${id}/members/${memberId}/level`, { level },
+    ),
   update: (id: string, data: Record<string, unknown>) => apiClient.patch<Envelope<{ pool: Pool }>>(`/pools/${id}`, data).then((r) => r.data.pool),
   setStatus: (id: string, status: string) => apiClient.post<Envelope<{ pool: Pool }>>(`/pools/${id}/status`, { status }).then((r) => r.data.pool),
   history: (id: string) => apiClient.get<Envelope<{ events: PoolHistoryEvent[] }>>(`/pools/${id}/history`).then((r) => r.data.events ?? []),

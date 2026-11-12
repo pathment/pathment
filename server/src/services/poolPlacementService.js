@@ -45,7 +45,7 @@ class PoolPlacementService {
     const where = { programId: pool.programId };
     if (ids.length) where.id = { [Op.in]: ids };
     else Object.assign(where, { status: { [Op.in]: OPERATIONAL_CLAN_STATUSES }, kind: 'cohort', frozenAt: null });
-    return models.Clan.findAll({ where, attributes: ['id', 'name', 'maxMentees', 'status', 'kind', 'frozenAt', 'programId'], order: [['name', 'ASC']] });
+    return models.Clan.findAll({ where, attributes: ['id', 'name', 'maxMentees', 'status', 'kind', 'frozenAt', 'programId', 'levels'], order: [['name', 'ASC']] });
   }
 
   async _clanState(clans) {
@@ -70,6 +70,7 @@ class PoolPlacementService {
         paused: load.get(c.id).paused,
         status: c.status || 'active',
         inactive: !isClanSuggestable(c.status),
+        levels: Array.isArray(c.levels) ? c.levels : [],
         lead: lead?.user ? { id: lead.user.id, name: `${lead.user.firstName || ''} ${lead.user.lastName || ''}`.trim() } : null,
         coMentorCount: mine.filter((m) => m.role === 'co_mentor' && m.status === 'active').length,
         placeable: isClanOperational(c.status) && c.kind !== 'standing' && !c.frozenAt,
@@ -90,6 +91,10 @@ class PoolPlacementService {
    * room; otherwise proposes the active clan with the fewest ACTIVE (non-paused)
    * mentees, counting the people already proposed in this run, so one click on
    * "Place" spreads the round evenly. Inactive clans are never proposed.
+   *
+   * Level first: a clan that serves the candidate's level beats a clan open to
+   * any level, which beats a clan for another level (used only when nothing
+   * else has room, and said so). Load decides within a tier.
    */
   async preview(poolId, { clanIds = null } = {}) {
     const pool = await poolService.getPool(poolId);
@@ -110,11 +115,22 @@ class PoolPlacementService {
       if (clan && !usable(clan)) { reason = `${clan.name}: ${this._why(clan) || 'full'} — moved`; clan = null; }
       if (!clan) {
         // planned is passed separately; seated = fill so capacity counts paused seats.
-        const best = pickLeastLoaded(
-          [...state.values()].filter(usable).map((c) => ({ ...c, seated: c.fill })),
-          { planned },
-        );
-        if (best) { clan = state.get(best.id); reason = reason || loadReason(clan, planned.get(clan.id)); }
+        const open = [...state.values()].filter(usable).map((c) => ({ ...c, seated: c.fill }));
+        const tiers = m.level
+          ? [
+            { list: open.filter((c) => c.levels.includes(m.level)), why: `Serves ${m.level}` },
+            { list: open.filter((c) => !c.levels.length), why: 'Open to any level' },
+            { list: open, why: `No clan for ${m.level} has room` },
+          ]
+          : [{ list: open, why: null }];
+        for (const tier of tiers) {
+          const best = pickLeastLoaded(tier.list, { planned });
+          if (!best) continue;
+          clan = state.get(best.id);
+          const load = loadReason(clan, planned.get(clan.id));
+          reason = reason || (tier.why ? `${tier.why} · ${load.charAt(0).toLowerCase()}${load.slice(1)}` : load);
+          break;
+        }
       }
       if (clan) planned.set(clan.id, planned.get(clan.id) + 1);
       return {

@@ -54,6 +54,11 @@ const SETTINGS_DEFAULTS = {
   autoAssignOnActivation: true,
   waitlistSize: null, // null → as many as the quota
   targetClanIds: [],
+  // Automation (see poolAutomationService):
+  // applicants to these intake cohorts join the pool by themselves;
+  autoAddFromCohortIds: [],
+  // and a candidate whose Edorax progress reaches this % is selected (null = off).
+  autoSelectAtProgress: null,
 };
 
 const int = (value, { min = 0, max = 100000 } = {}) => {
@@ -138,6 +143,15 @@ function validateSettings(settings = {}, current = {}) {
   if (settings.targetClanIds !== undefined) {
     if (!Array.isArray(settings.targetClanIds)) throw new ValidationError('targetClanIds must be a list');
     out.targetClanIds = [...new Set(settings.targetClanIds.map(String))];
+  }
+  if (settings.autoAddFromCohortIds !== undefined) {
+    if (!Array.isArray(settings.autoAddFromCohortIds)) throw new ValidationError('autoAddFromCohortIds must be a list');
+    out.autoAddFromCohortIds = [...new Set(settings.autoAddFromCohortIds.map(String))];
+  }
+  if (settings.autoSelectAtProgress !== undefined) {
+    const n = int(settings.autoSelectAtProgress, { min: 1, max: 100 });
+    if (Number.isNaN(n)) throw new ValidationError('The auto-select threshold must be a whole percentage from 1 to 100');
+    out.autoSelectAtProgress = n;
   }
   return out;
 }
@@ -258,6 +272,7 @@ class PoolService {
     await this._assertCohortInProgram(data.cohortId, program.id);
     const settings = validateSettings(data.settings || {});
     await this._assertClansInProgram(settings.targetClanIds, program.id);
+    await this._assertCohortsExist(settings.autoAddFromCohortIds);
     const pool = await models.CandidatePool.create({
       ...this._fields(data, { creating: true }),
       programId: program.id,
@@ -269,6 +284,7 @@ class PoolService {
       createdById: actor.id,
     });
     await this.audit(pool.id, actor.id, 'POOL_CREATED', { name: pool.name, programId: pool.programId, selectionQuota: pool.selectionQuota });
+    await this._applyAutomation(pool, {}, settings);
     return this.getPool(pool.id);
   }
 
@@ -301,12 +317,37 @@ class PoolService {
     if (data.settings !== undefined) {
       patch.settings = validateSettings(data.settings, pool.settings || {});
       await this._assertClansInProgram(patch.settings.targetClanIds, pool.programId);
+      await this._assertCohortsExist(patch.settings.autoAddFromCohortIds);
     }
     const before = {};
     for (const key of Object.keys(patch)) before[key] = pool.get(key);
     await pool.update(patch);
     await this.audit(pool.id, actor.id, 'POOL_UPDATED', { changed: Object.keys(patch) }, before);
+    if (patch.settings) await this._applyAutomation(pool, before.settings || {}, patch.settings);
     return this.getPool(pool.id);
+  }
+
+  async _assertCohortsExist(cohortIds = []) {
+    if (!cohortIds.length) return;
+    const found = await models.Cohort.count({ where: { id: { [Op.in]: cohortIds } } });
+    if (found !== cohortIds.length) throw new ValidationError('One of those intakes no longer exists');
+  }
+
+  /**
+   * Switching automation on takes effect now, not only for what happens next:
+   * a newly linked intake brings in everyone who already applied, and a new or
+   * lowered threshold re-checks everyone already making progress. Both run
+   * after the response, best-effort.
+   */
+  async _applyAutomation(pool, before, after) {
+    const automation = require('./poolAutomationService');
+    const added = (after.autoAddFromCohortIds || []).filter((id) => !(before.autoAddFromCohortIds || []).includes(id));
+    for (const cohortId of added) {
+      automation.safely(`backfill intake ${cohortId}`, () => automation.backfillCohort(pool, cohortId));
+    }
+    if (after.autoSelectAtProgress && after.autoSelectAtProgress !== before.autoSelectAtProgress) {
+      automation.safely('auto-select check', () => automation.checkPool(pool.id));
+    }
   }
 
   async setStatus(poolId, status, actor) {

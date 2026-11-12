@@ -58,6 +58,8 @@ pools.post('/:id/members/import', can(P.POOL_MEMBERS), pool.importMembers);
 pools.get('/:id/applications', can(P.POOL_MEMBERS), pool.listApplications);
 pools.post('/:id/members/from-applications', can(P.POOL_MEMBERS), pool.addFromApplications);
 pools.post('/:id/members/:memberId/resend-invite', can(P.POOL_MEMBERS), pool.resendInvite);
+// Change a candidate's level; their level-specific work is swapped to match.
+pools.put('/:id/members/:memberId/level', can(P.POOL_MEMBERS), pool.setMemberLevel);
 pools.post('/:id/members/:memberId/withdraw', can(P.POOL_MEMBERS), pool.withdrawMember);
 pools.post('/:id/members/:memberId/disqualify', can(P.POOL_MEMBERS), pool.disqualifyMember);
 pools.put('/:id/members/:memberId/manual-score', can(P.POOL_REVIEW), pool.setManualScore);

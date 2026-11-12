@@ -389,6 +389,11 @@ class CourseService {
     }
     await row.update({ ...patch, lastSyncedAt: new Date() });
     if (assignedTask) await this._reflectOnTask(row, assignedTask);
+    // Pool candidates: progress past the pool's threshold selects them.
+    if (assignedTask?.poolMemberId) {
+      const automation = require('./poolAutomationService');
+      await automation.safely('auto-select after course sync', () => automation.checkAutoSelect(assignedTask.poolMemberId));
+    }
     return row;
   }
 

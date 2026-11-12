@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { BellRing, Info, Loader2, Save, Scale, SlidersHorizontal, UsersRound } from 'lucide-react';
+import { BellRing, Info, Loader2, Save, Scale, SlidersHorizontal, UsersRound, Workflow } from 'lucide-react';
 import { useApiQuery, qk } from '@/lib/query';
 import { EntityAvatarEditor } from '@/components/shared/EntityAvatarEditor';
 import { poolApi, type DifficultyPoints, type PoolDashboard } from '@/lib/services/pool-api';
@@ -152,6 +152,44 @@ export function SettingsTab({ data, onChange, canManage }: { data: PoolDashboard
         </div>
         </div>
         {!locked && <div className={footer}><SaveBtn section="reminders" onClick={() => save('reminders', { reminderPolicy: reminders })} /></div>}
+      </section>
+
+      <section className={panel}>
+        <PanelHeader icon={Workflow} title="Automation" subtitle="Run the round by itself: applicants come in, Edorax progress selects them, and you place them with one click." />
+        <div className={body}>
+          <div>
+            <label className={label}>Add applicants automatically from these intakes <span className="font-normal text-slate-400">(everyone who has applied joins now, and everyone who applies later)</span></label>
+            <div className="flex flex-wrap gap-2">
+              {(options?.cohorts || []).map((c) => {
+                const ids = settings.autoAddFromCohortIds || [];
+                const on = ids.includes(c.id);
+                return (
+                  <button key={c.id} disabled={locked} onClick={() => setSettings({ ...settings, autoAddFromCohortIds: on ? ids.filter((x) => x !== c.id) : [...ids, c.id] })}
+                    className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${on ? 'border-brand-300 bg-brand-50 text-brand-700' : 'border-border text-slate-600 hover:bg-muted'}`}>
+                    {c.name}
+                  </button>
+                );
+              })}
+              {!(options?.cohorts || []).length && <span className="text-sm text-slate-500">This programme has no intakes yet.</span>}
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <label className={`${check} w-fit`}>
+              <input disabled={locked} type="checkbox" className="mt-0.5" checked={settings.autoSelectAtProgress != null}
+                onChange={(e) => setSettings({ ...settings, autoSelectAtProgress: e.target.checked ? 80 : null })} />
+              Select candidates automatically when their Edorax progress reaches
+            </label>
+            <div className="flex items-center gap-1.5">
+              <input disabled={locked || settings.autoSelectAtProgress == null} type="number" min={1} max={100}
+                value={settings.autoSelectAtProgress ?? 80} aria-label="Auto-select threshold (%)"
+                onChange={(e) => setSettings({ ...settings, autoSelectAtProgress: e.target.value === '' ? null : Number(e.target.value) })}
+                className={`${field} w-20`} />
+              <span className="text-sm text-slate-500">%</span>
+            </div>
+          </div>
+          <p className="text-xs text-slate-500">Progress is read from Edorax every 15 minutes. Selected candidates and the pool&apos;s admins are notified, and each one gets a clan suggestion on the Selection tab. You can still change any decision.</p>
+        </div>
+        {!locked && <div className={footer}><SaveBtn section="automation" onClick={() => save('automation', { settings })} /></div>}
       </section>
 
       <section className={panel}>

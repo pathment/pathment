@@ -151,6 +151,20 @@ export function CandidateReview({ data, onChange, canManage, canSelect, canRevie
   const [clanChoice, setClanChoice] = useState('');
   const [placingNow, setPlacingNow] = useState(false);
 
+  // Level drives which guided labs they get; the server swaps the work.
+  const changeLevel = async (m: PoolMemberRow, level: string | null) => {
+    setSaving('level');
+    try {
+      const res = await poolApi.setMemberLevel(pool.id, m.id, level);
+      toast.success(res?.message || 'Level updated');
+      onChange();
+    } catch (e) {
+      toast.error(extractApiErrorMessage(e, 'Could not change the level'));
+    } finally {
+      setSaving(null);
+    }
+  };
+
   const counts = useMemo(() => Object.fromEntries(FILTER_LABEL.map(([k]) => [k, members.filter(MATCH[k]).length])) as Record<Filter, number>, [members]);
   // A filter with nobody in it has no pill to show it is on, so fall back to everyone.
   const filter: Filter = chosenFilter !== 'all' && !counts[chosenFilter] ? 'all' : chosenFilter;
@@ -313,6 +327,23 @@ export function CandidateReview({ data, onChange, canManage, canSelect, canRevie
                       ); })()}
                       {member.decision && DECISION[member.decision] && <Chip cls={DECISION[member.decision].cls}>{DECISION[member.decision].label}</Chip>}
                       {member.invite?.expired && !member.userId && <Chip cls="bg-rose-50 text-rose-700 border-rose-200">Invitation expired</Chip>}
+                      {data.levels.length > 0 && (
+                        canManage && !member.decision ? (
+                          <select
+                            value={member.level || ''}
+                            disabled={saving === 'level'}
+                            onChange={(e) => changeLevel(member, e.target.value || null)}
+                            aria-label={`Level for ${member.name || member.email}`}
+                            title="Changing the level swaps their level-specific work (guided labs)"
+                            className="rounded-full border border-slate-200 bg-card px-2 py-0.5 text-xs font-medium text-slate-700 hover:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                          >
+                            <option value="">No level</option>
+                            {data.levels.map((l) => <option key={l.key} value={l.key}>{l.label}</option>)}
+                          </select>
+                        ) : member.level ? (
+                          <Chip cls="bg-muted text-slate-700 border-slate-200">{data.levels.find((l) => l.key === member.level)?.label || member.level}</Chip>
+                        ) : null
+                      )}
                     </div>
                     <div className="mt-0.5 truncate text-xs text-slate-500">
                       {member.email} · {member.source === 'application' ? 'From Intake' : 'Added by email'} · {member.userId ? 'Account active' : 'No account yet'}
