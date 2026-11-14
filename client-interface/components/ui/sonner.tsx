@@ -10,6 +10,8 @@ const Toaster = ({ ...props }: ToasterProps) => {
     <Sonner
       theme={theme as ToasterProps["theme"]}
       className="toaster group"
+      // Every toast can be dismissed at once; nobody should have to wait one out.
+      closeButton
       style={
         {
           "--normal-bg": "var(--popover)",
@@ -28,6 +30,11 @@ const Toaster = ({ ...props }: ToasterProps) => {
           "--info-text": "#1e3a5f",
           "--info-border": "#93c5fd",
           "--description-color": "#374151",
+          // Sonner puts the close button on the top-left corner; ours sits
+          // top-right, where people look for it.
+          "--toast-close-button-start": "unset",
+          "--toast-close-button-end": "0",
+          "--toast-close-button-transform": "translate(35%, -35%)",
         } as React.CSSProperties
       }
       toastOptions={{
@@ -36,6 +43,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
           description: "toast-description text-sm font-medium !opacity-100 !text-inherit",
           error: "!text-[#881337]",
           success: "!text-[#14532d]",
+          closeButton: "!bg-card !text-slate-500 hover:!text-slate-900 !border-slate-200 dark:!border-slate-700",
         },
       }}
       {...props}

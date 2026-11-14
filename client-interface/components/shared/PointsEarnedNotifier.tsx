@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { X, ArrowRight, Flame, Trophy } from "lucide-react";
+import { X, ArrowRight } from "lucide-react";
+import { Kiko } from "@/components/shared/Kiko";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/context/AuthContext";
@@ -280,21 +281,12 @@ export function PointsEarnedNotifier() {
         <div className="relative flex items-center gap-4 p-4 pr-10">
           {/*
               One mark carrying both facts: what happened, and what it was
-              worth. The XP rides on the flame instead of competing with the
+              worth. The XP rides on Kiko instead of competing with the
               streak for the headline.
           */}
-          <div className="relative shrink-0">
-            <div
-              className={`flex h-14 w-14 items-center justify-center rounded-2xl shadow-lg ${
-                dailyLogin
-                  ? "bg-linear-to-br from-amber-300 to-orange-600 shadow-orange-900/40"
-                  : "bg-linear-to-br from-emerald-300 to-teal-600 shadow-emerald-900/40"
-              }`}
-            >
-              {dailyLogin
-                ? <Flame className="h-7 w-7 text-white drop-shadow" aria-hidden="true" />
-                : <Trophy className="h-7 w-7 text-white drop-shadow" aria-hidden="true" />}
-            </div>
+          <div className="relative -my-1 shrink-0">
+            {/* Kiko shows up for it: a cheer for showing up today, a wink for progress. */}
+            <Kiko mood={dailyLogin ? "celebrate" : "wink"} size={60} animated className="drop-shadow-[0_6px_10px_rgba(0,0,0,0.35)]" />
             <span className="absolute -bottom-1.5 -right-1.5 rounded-full bg-white px-1.5 py-0.5 text-[11px] font-extrabold tabular-nums text-slate-900 shadow-md">
               +{totalPoints}
             </span>
