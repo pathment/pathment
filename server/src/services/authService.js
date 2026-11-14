@@ -274,7 +274,8 @@ class AuthService {
         emailVerified: true,
         emailVerifiedAt: new Date(),
         status: 'active'
-      }, { transaction });
+        // The invite decides the workspace, not whichever one the request came through.
+      }, { transaction, workspaceMembership: false });
 
       await models.OrganizationMembership.findOrCreate({
         where: { organizationId, userId: user.id },
@@ -440,7 +441,9 @@ class AuthService {
         role: 'admin',
         emailVerified: false,
         status: 'active',
-      }, { transaction });
+        // Their only workspace is the one created next, as owner. Never the
+        // default tenant this unscoped request happens to resolve to.
+      }, { transaction, workspaceMembership: false });
 
       await models.UserSettings.create({ userId: user.id }, { transaction });
       const createdOrganization = await organizationService.create(user.id, organization, {
