@@ -11,6 +11,7 @@ import { cohortApi } from '@/lib/services/intake-api';
 import { programsApi } from '@/lib/services/program-api';
 import { poolApi, type Pool } from '@/lib/services/pool-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
+import { shareableUrl } from '@/lib/services/workspace-scope';
 
 const STATUS_META: Record<CohortStatus, { label: string; cls: string }> = {
   planning:  { label: 'Planning',  cls: 'bg-slate-100 text-slate-600 border-slate-200' },
@@ -169,7 +170,7 @@ function CohortCard({ cohort }: { cohort: Cohort }) {
   const pending = waitingOn(cohort);
   const [copied, setCopied] = useState(false);
   const applyUrl = cohort.publicEnabled && cohort.publicSlug && typeof window !== 'undefined'
-    ? `${window.location.origin}/apply/${cohort.publicSlug}`
+    ? shareableUrl(`/apply/${cohort.publicSlug}`)
     : null;
   return (
     <EntityCard

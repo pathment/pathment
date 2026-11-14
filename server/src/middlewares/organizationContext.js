@@ -28,6 +28,25 @@ const ACCOUNT_PATHS = new Set([
   '/api/organizations/me',
 ]);
 
+// A public apply link names its cohort, and the cohort belongs to exactly one
+// workspace. Links shared before they carried /w/<workspace> reach the API with
+// no workspace at all, so the link itself decides rather than the default
+// tenant, where the cohort does not exist. Only the public, unauthenticated
+// cohort routes do this; everything else still needs an explicit workspace.
+const PUBLIC_COHORT = /^\/api\/public\/cohorts\/([^/]+)/;
+async function workspaceOfPublicLink(path) {
+  const match = path.match(PUBLIC_COHORT);
+  if (!match) return null;
+  let slug;
+  try { slug = decodeURIComponent(match[1]); } catch { return null; }
+  const { models } = require('../db');
+  const cohort = await models.Cohort.findOne({
+    where: { publicSlug: slug }, attributes: ['organizationId'], skipOrganizationScope: true,
+  });
+  if (!cohort?.organizationId) return null;
+  return models.Organization.findByPk(cohort.organizationId, { skipOrganizationScope: true });
+}
+
 /** Resolve workspace before authentication; authentication validates membership. */
 module.exports = catchAsync(async (req, _res, next) => {
   // The platform console spans every workspace, so resolving one here would
@@ -42,6 +61,7 @@ module.exports = catchAsync(async (req, _res, next) => {
   if (!requested && ACCOUNT_PATHS.has(req.path)) return next();
   let organization = requested ? await organizationService.bySlug(requested) : null;
   if (requested && !organization) throw new AppError('The selected workspace was not found', 404, 'WORKSPACE_NOT_FOUND');
+  if (!organization && header === undefined) organization = await workspaceOfPublicLink(req.path);
   if (!organization) organization = await organizationService.byHostname(originHostname(req) || req.hostname);
   if (!organization) organization = await organizationService.bySlug(organizationService.defaultSlug());
   if (!organization) throw new AppError('The default workspace has not been initialized. Contact your administrator.', 503, 'WORKSPACE_NOT_INITIALIZED');

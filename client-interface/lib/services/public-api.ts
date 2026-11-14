@@ -41,6 +41,8 @@ export interface ApplyInfo {
   levels: { key: string; label: string }[];
   /** Which exact assessment depends on level + a random draw, so only `required` is exposed. */
   assessment: { required: boolean } | null;
+  /** The cohort's workspace, so an unscoped link can move onto /w/<workspace>/…. */
+  workspace?: string;
 }
 
 export interface PublicAssessmentQuestion {

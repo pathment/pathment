@@ -257,7 +257,8 @@ class CohortIntakeService {
 
   buildApplyUrl(slug) {
     const base = require('../utils/applicationUrl')();
-    return `${base}/apply/${slug}`;
+    const workspace = require('../utils/links').tenantSlug();
+    return `${base}/w/${workspace}/apply/${slug}`;
   }
 
   /**

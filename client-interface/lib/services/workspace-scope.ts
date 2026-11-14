@@ -61,6 +61,19 @@ export function workspacePath(path: string, slug = activeWorkspaceSlug()): strin
   return `/w/${slug}${path.startsWith('/') ? path : `/${path}`}`;
 }
 
+/**
+ * An absolute link to hand to someone outside the app (an apply form, a join
+ * link). It must carry the workspace in its path: the person opening it has no
+ * workspace cookie, and an unscoped link sends them to the account chooser and
+ * then to log in, which is a dead end for a public form. Legacy tenant hosts
+ * already imply the workspace, so the path stays as it is there.
+ */
+export function shareableUrl(path: string): string {
+  if (typeof window === 'undefined') return workspacePath(path);
+  const legacy = legacyWorkspaceFromHostname(window.location.hostname.toLowerCase());
+  return `${window.location.origin}${legacy ? path : workspacePath(path)}`;
+}
+
 type PortalRole = 'admin' | 'mentor' | 'mentee';
 type WorkspaceUser = {
   role: PortalRole;

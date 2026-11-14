@@ -7,6 +7,7 @@ import { ArrowLeft, ArrowRight, CalendarDays, CheckCircle2, Clock, Loader2 } fro
 import { publicApi, type PublicProgram } from '@/lib/services/public-api';
 import { qk, useApiQuery, STALE } from '@/lib/query';
 import { ResourceError } from '@/components/shared/ResourceError';
+import { workspacePath } from '@/lib/services/workspace-scope';
 
 export default function PublicProgramDetailPage() {
   const params = useParams();
@@ -104,7 +105,7 @@ export default function PublicProgramDetailPage() {
             {openCohorts.map((c) => (
               <Link
                 key={c.id}
-                href={`/apply/${c.slug}`}
+                href={workspacePath(`/apply/${c.slug}`)}
                 className="flex items-center justify-between rounded-xl border border-slate-200 p-4 hover:border-brand-300 hover:bg-brand-50/40 transition-colors"
               >
                 <div>

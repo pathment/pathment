@@ -79,6 +79,11 @@ export function proxy(request: NextRequest) {
     // would scope an operator surface to whatever tenant a cookie remembers.
     if (pathname === '/platform' || pathname.startsWith('/platform/') || pathname === '/activate') return NextResponse.next();
     const remembered = request.cookies.get(WORKSPACE_COOKIE)?.value;
+    // Apply links are opened by strangers with no workspace cookie. Sending them
+    // to the chooser ends at a login screen, a dead end for a public form. Let
+    // the page render: the API finds the cohort's workspace from the link and
+    // the page then moves itself onto /w/<workspace>/apply/….
+    if (pathname.startsWith('/apply/') && !validWorkspaceSlug(remembered)) return NextResponse.next();
     const target = request.nextUrl.clone();
     // Old short links may reuse a workspace the browser actually visited. With
     // no valid remembered workspace, return to the chooser—never a hardcoded

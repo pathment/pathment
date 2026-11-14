@@ -27,6 +27,7 @@ import { RichContent } from '@/components/shared/RichContent';
 import { getBrowserTimeZone, splitLocal } from '@/lib/utils/datetime';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import type { IntakeFormField } from '@/lib/config/intakeFields';
+import { shareableUrl } from '@/lib/services/workspace-scope';
 
 /** Same level-key normalization the server uses, so locally-derived keys match
  *  what the server stores (and the assessment pool's level tags line up). */
@@ -84,7 +85,7 @@ function parseCsvToRows(text: string): Record<string, string>[] {
 
 /** The public apply URL for a slug. Same shape the settings form shows. */
 function applyUrlFor(slug: string) {
-  return typeof window !== 'undefined' ? `${window.location.origin}/apply/${slug}` : `/apply/${slug}`;
+  return shareableUrl(`/apply/${slug}`);
 }
 
 /** "3 Mar – 21 Mar", "Opens 3 Mar", "Until 21 Mar", or "Always open". */
@@ -350,7 +351,7 @@ function IntakePanel({ cohortId, cohort, onChange, onBusyChange }, ref) {
   }, [cohort?.assessmentRequired, cohort?.description, cohort?.capacity, cohort?.maxApplications, cohort?.applyOpensAt, cohort?.applyClosesAt, cohort?.assessmentDeadline, cohort?.levels, cohort?.intakeFormSchema]);
 
   const enabled = Boolean(cohort?.publicEnabled && cohort?.publicSlug);
-  const applyUrl = cohort?.publicSlug && typeof window !== 'undefined' ? `${window.location.origin}/apply/${cohort.publicSlug}` : '';
+  const applyUrl = cohort?.publicSlug && typeof window !== 'undefined' ? shareableUrl(`/apply/${cohort.publicSlug}`) : '';
   const isOpen = cohort?.status === 'open';
 
   const toggleLink = async () => {

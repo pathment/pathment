@@ -12,6 +12,7 @@ import { IntakeFormFields } from '@/components/shared/IntakeFormFields';
 import { RichContent } from '@/components/shared/RichContent';
 import { isValidPhoneNumber } from 'react-phone-number-input';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
+import { validWorkspaceSlug, workspacePath, workspaceSlugFromPathname } from '@/lib/services/workspace-scope';
 
 // Each "can't apply" reason gets its own icon, badge label, copy and accent so the
 // state reads as intentional and designed — not a bare error line.
@@ -61,7 +62,14 @@ export default function ApplyPage() {
     if (!slug) return;
     publicApi
       .getCohort(slug)
-      .then(setInfo)
+      .then((data) => {
+        setInfo(data);
+        // A link shared without its workspace still opens. Put the workspace in
+        // the address so the status page and assessment that follow stay in it.
+        if (validWorkspaceSlug(data?.workspace) && !workspaceSlugFromPathname(window.location.pathname)) {
+          window.history.replaceState(window.history.state, '', `/w/${data.workspace}${window.location.pathname}${window.location.search}`);
+        }
+      })
       .catch(() => setError('This application link is not valid.'))
       .finally(() => setLoading(false));
     try { const t = localStorage.getItem(`pathment-application:${slug}`); if (t) setPriorToken(t); } catch { /* no storage */ }
@@ -148,7 +156,7 @@ export default function ApplyPage() {
           {done.requiresAssessment ? ' and complete a short assessment' : ''}.
         </p>
         <button
-          onClick={() => router.push(`/apply/status/${encodeURIComponent(done.statusToken)}`)}
+          onClick={() => router.push(workspacePath(`/apply/status/${encodeURIComponent(done.statusToken)}`))}
           className="mt-6 inline-flex items-center gap-2 px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg font-medium"
         >
           {done.requiresAssessment ? 'Start assessment' : 'View status'}
@@ -178,7 +186,7 @@ export default function ApplyPage() {
 
           {/* Already applied? Let them reach their application even when closed/full. */}
           {priorToken ? (
-            <button onClick={() => router.push(`/apply/status/${encodeURIComponent(priorToken)}`)} className="mt-8 inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-brand-700">
+            <button onClick={() => router.push(workspacePath(`/apply/status/${encodeURIComponent(priorToken)}`))} className="mt-8 inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-brand-700">
               View your application <ArrowRight className="h-4 w-4" />
             </button>
           ) : !resumeOpen ? (
@@ -228,7 +236,7 @@ export default function ApplyPage() {
       {priorToken && (
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-brand-200 bg-brand-50 dark:bg-brand-500/10 px-4 py-3">
           <span className="text-sm font-medium text-brand-900 dark:text-brand-200">You&apos;ve already applied to this cohort.</span>
-          <button onClick={() => router.push(`/apply/status/${encodeURIComponent(priorToken)}`)} className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700">
+          <button onClick={() => router.push(workspacePath(`/apply/status/${encodeURIComponent(priorToken)}`))} className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700">
             View your application <ArrowRight className="w-4 h-4" />
           </button>
         </div>

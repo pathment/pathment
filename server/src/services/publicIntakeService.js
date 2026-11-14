@@ -93,7 +93,10 @@ class PublicIntakeService {
       formSchema: cohort.intakeFormSchema || [],
       // Applicant-selectable levels (empty = no level question).
       levels: Array.isArray(cohort.levels) ? cohort.levels : [],
-      assessment
+      assessment,
+      // The page puts this in its URL, so the rest of the visit (status page,
+      // assessment) stays in the cohort's workspace without a login.
+      workspace: require('../utils/links').tenantSlug()
     };
   }
 
@@ -469,7 +472,8 @@ class PublicIntakeService {
   // ── helpers ──────────────────────────────────────────────────────────────────
   buildStatusUrl(rawToken) {
     const base = require('../utils/applicationUrl')();
-    return `${base}/apply/status/${encodeURIComponent(rawToken)}`;
+    const workspace = require('../utils/links').tenantSlug();
+    return `${base}/w/${workspace}/apply/status/${encodeURIComponent(rawToken)}`;
   }
 
   async _sendApplicationEmail(email, cohort, statusUrl, requiresAssessment, hasAssessment = false) {
