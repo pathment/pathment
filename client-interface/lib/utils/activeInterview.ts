@@ -24,8 +24,12 @@ export function setActiveInterview(v: ActiveInterview): void {
   } catch { /* private mode / no storage */ }
 }
 
-export function clearActiveInterview(): void {
+export function clearActiveInterview(taskId?: string): void {
   try {
+    if (taskId) {
+      const cur = getActiveInterview();
+      if (cur && cur.taskId !== taskId) return;
+    }
     localStorage.removeItem(KEY);
     window.dispatchEvent(new Event(EVENT));
   } catch { /* noop */ }

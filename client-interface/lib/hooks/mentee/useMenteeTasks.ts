@@ -1,13 +1,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { taskApi } from '@/lib/services/task-api';
 import { enrollmentApi } from '@/lib/services/enrollment-api';
 import { toast } from 'sonner';
 import { qk, useApiQuery } from '@/lib/query';
 import { useAuth } from '@/lib/context/AuthContext';
 import { useClan } from '@/lib/context/ClanContext';
+import { getActiveInterview, clearActiveInterview } from '@/lib/utils/activeInterview';
 
 export type TaskView = 'active' | 'completed';
 
@@ -86,6 +87,18 @@ export function useMenteeTasks(): UseMenteeTasksReturn {
     enabled: !!menteeId && enrollmentsReady,
     errorMessage: 'Failed to load tasks',
   });
+
+  useEffect(() => {
+    if (!tasksQuery.data) return;
+    const ai = getActiveInterview();
+    if (!ai) return;
+    const match = tasksQuery.data.find((t: any) => t.id === ai.taskId);
+    // A task missing from this list isn't proof it's gone (the list is scoped to
+    // one enrollment/filter) — InterviewResumeBar asks the server for that case.
+    if (match && ['submitted', 'completed', 'cancelled'].includes(match.status)) {
+      clearActiveInterview(ai.taskId);
+    }
+  }, [tasksQuery.data]);
 
   const tasks = tasksQuery.data ?? NO_TASKS;
   const stats = statsQuery.data ?? null;

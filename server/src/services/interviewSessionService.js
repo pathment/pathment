@@ -22,6 +22,7 @@ class InterviewSessionService {
     if (!task) throw new NotFoundError('Task not found');
     if (task.menteeId !== menteeId) throw new ForbiddenError('This interview is not assigned to you');
     if (clanId && task.clanId && task.clanId !== clanId) throw new NotFoundError('Task not found');
+    if (task.status === 'cancelled') throw new NotFoundError('This interview task has been cancelled');
 
     const assignment = await models.InterviewAssignment.findOne({ where: { assignedTaskId: taskId } });
     if (!assignment) throw new NotFoundError('This task is not an interview');
