@@ -10,8 +10,14 @@ function hostname(request: NextRequest) {
     .toLowerCase();
 }
 
+// Files in /public (logo, mascot, badges, manifest). They have no workspace,
+// and redirecting them to the account chooser broke the logo on the login page
+// and every image linked from outside the app. Pages never end in these.
+const PUBLIC_FILE = /\.(?:svg|png|jpe?g|webp|gif|ico|webmanifest|txt|xml|json|woff2?|pdf)$/i;
+
 function isAsset(pathname: string) {
-  return pathname.startsWith('/_next/') || pathname === '/favicon.ico' || pathname === '/robots.txt' || pathname === '/sitemap.xml';
+  return pathname.startsWith('/_next/') || pathname === '/favicon.ico' || pathname === '/robots.txt' || pathname === '/sitemap.xml'
+    || PUBLIC_FILE.test(pathname);
 }
 
 /**
