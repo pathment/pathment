@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Lock, SearchX, AlertCircle } from 'lucide-react';
+import { Kiko } from '@/components/shared/Kiko';
 
 interface ResourceErrorProps {
   /** HTTP status of the failure. 403 and 404 are very different stories. */
@@ -32,7 +32,6 @@ export function ResourceError({
   const denied = status === 403;
   const missing = status === 404;
 
-  const Icon = denied ? Lock : missing ? SearchX : AlertCircle;
 
   const title = denied
     ? `You do not have access to this ${resource}`
@@ -48,7 +47,8 @@ export function ResourceError({
 
   return (
     <div className="text-center py-12">
-      <Icon className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+      {/* Kiko reads the situation: puzzled at a missing record, sorry about a locked one. */}
+      <Kiko mood={denied ? 'sad' : missing ? 'thinking' : 'surprised'} size={96} animated className="mx-auto mb-2" />
       <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
       <p className="mt-1 text-sm text-slate-500 max-w-sm mx-auto">{detail}</p>
       <div className="mt-4 flex items-center justify-center gap-4">

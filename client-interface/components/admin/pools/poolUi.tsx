@@ -2,6 +2,7 @@
 
 import { Loader2, type LucideIcon } from 'lucide-react';
 import type { PoolBucket, PoolStatus } from '@/lib/services/pool-api';
+import { Kiko, type KikoMood } from '@/components/shared/Kiko';
 
 /** Shared look for the Selection pools screens (same tokens as the rest of admin). */
 export const field = 'w-full px-3 py-2 border border-border rounded-xl bg-card text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:bg-muted disabled:text-muted-foreground';
@@ -39,13 +40,12 @@ export function PanelHeader({ icon: Icon, title, subtitle, actions, count }: {
 }
 
 /** The admin empty state: an icon, a line saying what is missing, and what to do. */
-export function EmptyState({ icon: Icon, title, text, action }: { icon: LucideIcon; title: string; text?: string; action?: React.ReactNode }) {
+/** `icon` is kept for callers; Kiko is the face of an empty list now. */
+export function EmptyState({ title, text, action, mood = 'thinking' }: { icon?: LucideIcon; title: string; text?: string; action?: React.ReactNode; mood?: KikoMood }) {
   return (
     <div className="px-6 py-12 text-center">
-      <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-muted text-slate-400">
-        <Icon className="h-6 w-6" aria-hidden="true" />
-      </span>
-      <p className="mt-3 font-medium text-slate-800">{title}</p>
+      <Kiko mood={mood} size={80} animated className="mx-auto" />
+      <p className="mt-2 font-medium text-slate-800">{title}</p>
       {text && <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">{text}</p>}
       {action && <div className="mt-4 flex justify-center">{action}</div>}
     </div>

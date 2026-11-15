@@ -4,7 +4,7 @@ import { forwardRef, use, useCallback, useEffect, useImperativeHandle, useMemo, 
 import Link from 'next/link';
 import { toast } from 'sonner';
 import {
-  ArrowLeft, Upload, Loader2, X, CheckCircle2, XCircle, FileSpreadsheet,
+  ArrowLeft, Upload, Loader2, X, CheckCircle2, XCircle,
   Mail, Phone, Check, Link2, Copy, Power, ClipboardCheck, Pencil, Eye, CopyPlus, FormInput, Plus,
   Trash2, CalendarRange, Layers, RefreshCw, CheckSquare, Square, Sparkles, Search, Settings, ChevronDown, Columns3,
   FileText, type LucideIcon,
@@ -27,6 +27,7 @@ import { RichContent } from '@/components/shared/RichContent';
 import { getBrowserTimeZone, splitLocal } from '@/lib/utils/datetime';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import type { IntakeFormField } from '@/lib/config/intakeFields';
+import { Kiko } from '@/components/shared/Kiko';
 import { shareableUrl } from '@/lib/services/workspace-scope';
 
 /** Same level-key normalization the server uses, so locally-derived keys match
@@ -1478,7 +1479,7 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
         <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-brand-600" /></div>
       ) : filtered.length === 0 ? (
         <div className="bg-card rounded-2xl border border-slate-200 py-16 text-center">
-          <FileSpreadsheet className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+          <Kiko mood={applications.length === 0 ? 'wink' : 'thinking'} size={88} animated className="mx-auto mb-2" />
           <p className="text-slate-600">
             {applications.length === 0
               ? 'No applications here yet - import a CSV to bring applicants in.'

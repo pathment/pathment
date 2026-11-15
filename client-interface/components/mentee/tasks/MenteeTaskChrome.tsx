@@ -1,8 +1,9 @@
 'use client';
 
 import type { LucideIcon } from 'lucide-react';
-import { CheckCircle2, ClipboardList, Clock } from 'lucide-react';
+import { CheckCircle2, Clock } from 'lucide-react';
 import { LearningStat } from '@/components/mentee/LearningStat';
+import { Kiko, type KikoMood } from '@/components/shared/Kiko';
 
 /**
  * The furniture above a learner's work list: the four counts, and the
@@ -90,16 +91,17 @@ export function MenteeTaskViewToggle({
 }
 
 export function MenteeTaskEmpty({
-  view, title, hint,
+  view, title, hint, mood,
 }: {
   view: 'active' | 'completed';
   title: string;
   hint: string;
+  /** Defaults: a cheer when nothing is left open, a ponder when nothing is approved yet. */
+  mood?: KikoMood;
 }) {
-  const Icon = view === 'completed' ? CheckCircle2 : ClipboardList;
   return (
     <div className="text-center py-12">
-      <Icon className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+      <Kiko mood={mood ?? (view === 'completed' ? 'thinking' : 'celebrate')} size={88} animated className="mx-auto mb-2" />
       <p className="text-slate-600 mb-2">{title}</p>
       <p className="text-slate-500 text-sm">{hint}</p>
     </div>

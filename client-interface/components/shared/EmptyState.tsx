@@ -4,6 +4,7 @@ import { ReactNode } from 'react';
 import { FileX2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/components/ui/utils';
+import { Kiko, type KikoMood } from '@/components/shared/Kiko';
 
 export interface EmptyStateAction {
   label: string;
@@ -14,8 +15,12 @@ export interface EmptyStateAction {
 export interface EmptyStateProps {
   title?: string;
   description?: string;
-  /** Custom icon element - defaults to FileX2 */
+  /** Shown only with `mascot={false}`; Kiko stands in for it otherwise. */
   icon?: ReactNode;
+  /** Kiko's face for this moment. Defaults to thinking: nothing is here yet. */
+  mood?: KikoMood;
+  /** Kiko by default. Turn him off for a cramped spot that needs the icon. */
+  mascot?: boolean;
   /** Primary CTA */
   action?: EmptyStateAction;
   /** Secondary CTA */
@@ -27,6 +32,8 @@ export function EmptyState({
   title = 'No results found',
   description,
   icon,
+  mood = 'thinking',
+  mascot = true,
   action,
   secondaryAction,
   className,
@@ -38,9 +45,13 @@ export function EmptyState({
         className
       )}
     >
-      <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted">
-        {icon ?? <FileX2 className="h-6 w-6 text-muted-foreground" />}
-      </div>
+      {mascot ? (
+        <Kiko mood={mood} size={84} animated className="mb-1" />
+      ) : (
+        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted">
+          {icon ?? <FileX2 className="h-6 w-6 text-muted-foreground" />}
+        </div>
+      )}
 
       <div className="space-y-1">
         <p className="text-sm font-semibold text-foreground">{title}</p>
