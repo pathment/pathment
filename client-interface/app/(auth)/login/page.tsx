@@ -8,6 +8,7 @@ import { TwoFactorCodeInput } from '@/components/shared/TwoFactorCodeInput';
 import { extractApiErrorMessage, getRateLimit, formatRetryAfter, getErrorCode } from '@/lib/utils/api-error';
 import { Mail, Lock, ArrowRight, ArrowLeft, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { LoadingSpinner } from '@/components/shared/LoadingSpinner';
+import { Kiko } from '@/components/shared/Kiko';
 import { toast } from 'sonner';
 import { workspaceLandingPath, workspacePath, workspaceSlugFromPathname } from '@/lib/services/workspace-scope';
 import { tokenStore } from '@/lib/services/token-store';
@@ -206,6 +207,13 @@ export default function LoginPage() {
     <div className="space-y-6">
       {/* Logo & Header */}
       <div className="text-center">
+        {/* Kiko greets, waits while you sign in, and is sorry when it fails. */}
+        <Kiko
+          mood={error ? 'sad' : loading ? 'thinking' : step === 'email' ? 'wink' : 'happy'}
+          size={104}
+          animated
+          className="mx-auto mb-2"
+        />
         <h1 className="text-brand-900 mb-3">{step === 'email' ? 'Sign in to Pathment' : 'Enter your password'}</h1>
         <p className="text-slate-600">
           {step === 'email' ? 'Use the email address connected to your organization.' : 'Continue with your Pathment account.'}
