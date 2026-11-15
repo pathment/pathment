@@ -2,6 +2,20 @@
 
 import { useTheme } from "next-themes";
 import { Toaster as Sonner, ToasterProps } from "sonner";
+import { Kiko } from "@/components/shared/Kiko";
+
+/**
+ * Kiko reacts to what just happened: a cheer for a success, a sorry face for
+ * an error, surprise at a warning, a wink for news, a ponder while waiting.
+ * Plain `toast("…")` calls stay icon-free.
+ */
+const KIKO_ICONS: ToasterProps["icons"] = {
+  success: <Kiko mood="celebrate" size={34} />,
+  error: <Kiko mood="sad" size={34} />,
+  warning: <Kiko mood="surprised" size={34} />,
+  info: <Kiko mood="wink" size={34} />,
+  loading: <Kiko mood="thinking" size={34} animated />,
+};
 
 const Toaster = ({ ...props }: ToasterProps) => {
   const { theme = "system" } = useTheme();
@@ -17,6 +31,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
       mobileOffset={12}
       // Every toast can be dismissed at once; nobody should have to wait one out.
       closeButton
+      icons={KIKO_ICONS}
       style={
         {
           "--normal-bg": "var(--popover)",
@@ -49,7 +64,9 @@ const Toaster = ({ ...props }: ToasterProps) => {
           error: "!text-[#881337]",
           success: "!text-[#14532d]",
           // Room on the right for the close button, so text never runs under it.
-          toast: "!pr-11",
+          toast: "!pr-11 !items-center",
+          // Sonner's icon slot is a 16px box; Kiko needs room to be read.
+          icon: "!h-9 !w-9 !justify-center !-my-1 !mr-1",
           // A real target (28px), in the toast's own colour so it belongs to
           // a success or an error alike, with a hover and a visible focus ring.
           closeButton:
