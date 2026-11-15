@@ -132,13 +132,41 @@ export function onAccessTokenRefreshed(fn: (token: string) => void): () => void 
 export function refreshAccessToken(): Promise<string> {
   if (refreshPromise) return refreshPromise;
 
-  const refreshToken = tokenStore.getRefreshToken();
-  if (!refreshToken) return Promise.reject(new SessionExpiredError());
+  if (!tokenStore.getRefreshToken()) return Promise.reject(new SessionExpiredError());
   // Still inside a backoff window from a previous transient failure — fail fast
   // instead of piling more requests onto a network that just proved unreliable.
   if (Date.now() < blockedUntil) return Promise.reject(new RefreshUnavailableError());
 
-  refreshPromise = axios
+  // The token this tab is holding when it decides to renew. If another tab
+  // replaces it while we wait for the lock, that tab already did the work.
+  const accessAtStart = tokenStore.getToken();
+  refreshPromise = withRefreshLock(() => {
+    const current = tokenStore.getToken();
+    if (current && current !== accessAtStart && !needsRefresh()) return Promise.resolve(current);
+    return exchange(tokenStore.getRefreshToken(), true);
+  }).finally(() => { refreshPromise = null; });
+
+  return refreshPromise;
+}
+
+/**
+ * One tab at a time, across the whole browser.
+ *
+ * Every tab shares one refresh token (localStorage), and each exchange spends
+ * it. Without a lock, two tabs waking together both send it; with one, the
+ * second tab finds the first one's fresh token waiting and never spends a
+ * stale one. Browsers without the Web Locks API fall back to the server's
+ * own tolerance for races.
+ */
+function withRefreshLock<T>(work: () => Promise<T>): Promise<T> {
+  const locks = typeof navigator !== 'undefined' ? (navigator as Navigator & { locks?: LockManager }).locks : undefined;
+  if (!locks?.request) return work();
+  return locks.request('pathment-auth-refresh', () => work()) as Promise<T>;
+}
+
+function exchange(refreshToken: string | null, mayRetry: boolean): Promise<string> {
+  if (!refreshToken) return Promise.reject(new SessionExpiredError());
+  return axios
     .post(
       `${apiConfig.baseUrl}${apiConfig.endpoints.refreshToken}`,
       { refreshToken },
@@ -153,7 +181,7 @@ export function refreshAccessToken(): Promise<string> {
       blockedByRateLimit = false;
       // The server ROTATES refresh tokens: the one we just sent is spent, and
       // the response carries its successor. Persist it before the access token,
-      // because replaying a spent token is read as theft and ends every session.
+      // because replaying a spent token can be read as a stolen session.
       // Older servers omit the field — then the token we hold is still valid.
       const rotated = response.data?.data?.refreshToken || response.data?.refreshToken;
       if (rotated) tokenStore.setRefreshToken(rotated);
@@ -164,7 +192,15 @@ export function refreshAccessToken(): Promise<string> {
     })
     .catch((error) => {
       if (error instanceof SessionExpiredError) throw error;
-      if (!isTransient(error)) throw new SessionExpiredError();
+      if (!isTransient(error)) {
+        // Rejected — but if the stored token changed while this request was out
+        // (another tab, or an older client without the lock, rotated it), the
+        // one we sent was simply stale. Try the current one before deciding
+        // the session is over.
+        const latest = tokenStore.getRefreshToken();
+        if (mayRetry && latest && latest !== refreshToken) return exchange(latest, false);
+        throw new SessionExpiredError();
+      }
       // Transient: hold the session, back off, and self-heal in the background.
       const { limited, retryAfterSec } = getRateLimit(error);
       blockedByRateLimit = limited;
@@ -176,10 +212,7 @@ export function refreshAccessToken(): Promise<string> {
       blockedUntil = Date.now() + wait;
       scheduleRetry(wait);
       throw new RefreshUnavailableError();
-    })
-    .finally(() => { refreshPromise = null; });
-
-  return refreshPromise;
+    });
 }
 
 /** After a transient failure, quietly try again — the user shouldn't have to act. */

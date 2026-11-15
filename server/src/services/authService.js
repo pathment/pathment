@@ -33,6 +33,25 @@ const { orgLogoThumb } = require('../utils/imageUrl');
  */
 const REUSE_GRACE_MS = 60 * 1000;
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+/** A remembered session lasts this long after it was last USED (it slides). */
+const LONG_SESSION_MS = 30 * DAY_MS;
+/** A "don't remember me" web session: one day from sign-in, never extended. */
+const SHORT_SESSION_MS = DAY_MS;
+/** However actively a session is used, it ends this long after the sign-in. */
+const SESSION_CEILING_MS = 90 * DAY_MS;
+
+/**
+ * A refresh token carries its session's facts, so rotation needs no extra
+ * columns: `ss` (session start, epoch seconds), `sl` (sliding length in
+ * seconds, 0 for a fixed one-day session) and a short random `n` so two tokens
+ * minted in the same second are never the same string.
+ */
+const mintRefresh = (userId, { ss, sl }, expiresAt) => generateRefreshToken(
+  { id: userId, ss, sl, n: require('crypto').randomBytes(3).toString('hex') },
+  `${Math.max(1, Math.floor((expiresAt.getTime() - Date.now()) / 1000))}s`,
+);
+
 class AuthService {
   async getActiveInviteByToken(inviteToken, transaction) {
     const tokenHash = hashToken(inviteToken);
@@ -690,14 +709,16 @@ class AuthService {
    * device will inevitably present the same token afterwards — makes the theft
    * detectable rather than silent.
    *
-   * The successor inherits the ORIGINAL expiry, so rotating does not extend a
-   * session indefinitely: a 1-day session still ends after a day.
+   * A remembered session slides with use (30 days from the last refresh, never
+   * past SESSION_CEILING_MS from sign-in); a one-day session keeps its fixed end.
    *
-   * Three cases, in order:
-   *   1. active token      → rotate and return a new pair
-   *   2. rotated recently  → benign retry, hand back the same successor
-   *   3. rotated long ago  → replay of a spent token; revoke the whole family
-   *      (see REUSE_GRACE_MS for where the line sits)
+   * Cases, in order:
+   *   1. active token                        → rotate and return a new pair
+   *   2. spent, successor never used         → the reply was lost; hand the same
+   *                                            successor back (any age)
+   *   3. spent, chain moved on < 60s ago     → two tabs racing; hand back the live end
+   *   4. spent, successor already used       → two parties hold one session; revoke
+   *                                            that session only, not other devices
    */
   async refreshAccessToken(refreshToken) {
     let decoded;
@@ -729,18 +750,25 @@ class AuthService {
       if (row.revokedAt) return { kind: 'spent', row };
       if (new Date(row.expiresAt) <= new Date()) return { kind: 'expired' };
 
-      // The successor inherits the ORIGINAL expiry, so rotating does not extend
-      // a session for ever: a 1-day session still ends after a day.
-      const remainingMs = new Date(row.expiresAt).getTime() - Date.now();
-      const successor = generateRefreshToken(
-        { id: user.id },
-        `${Math.max(1, Math.floor(remainingMs / 1000))}s`
-      );
+      // How long the successor lives. A remembered session SLIDES: using the
+      // app keeps it alive, so an active person is never cut off at day 30 —
+      // only 30 days of not coming back ends it, and nothing outlives the
+      // ceiling. A one-day session keeps its fixed end. Tokens minted before
+      // these claims existed were all long sessions bar one in ~300, so they
+      // are treated as long, starting now.
+      const nowMs = Date.now();
+      const ss = Number(decoded.ss) || Math.floor(nowMs / 1000);
+      const sl = decoded.sl === undefined ? LONG_SESSION_MS / 1000 : Number(decoded.sl) || 0;
+      const expiresAt = sl > 0
+        ? new Date(Math.min(nowMs + sl * 1000, ss * 1000 + SESSION_CEILING_MS))
+        : new Date(row.expiresAt);
+      if (expiresAt.getTime() <= nowMs) return { kind: 'expired' };
+      const successor = mintRefresh(user.id, { ss, sl }, expiresAt);
 
       await models.RefreshToken.create({
         userId: user.id,
         token: successor,
-        expiresAt: row.expiresAt,
+        expiresAt,
         client: row.client,
         lastUsedAt: new Date()
       }, { transaction });
@@ -752,7 +780,7 @@ class AuthService {
         lastUsedAt: new Date()
       }, { transaction });
 
-      return { kind: 'rotated', token: successor, expiresAt: row.expiresAt };
+      return { kind: 'rotated', token: successor, expiresAt };
     });
 
     if (outcome.kind === 'rotated') {
@@ -766,43 +794,88 @@ class AuthService {
     if (outcome.kind === 'spent') {
       const { row } = outcome;
       const rotatedAgo = Date.now() - new Date(row.revokedAt).getTime();
-      const isBenignRetry =
-        row.revokedReason === 'rotated' &&
-        row.replacedByToken &&
-        rotatedAgo <= REUSE_GRACE_MS;
+      const successor = row.revokedReason === 'rotated' && row.replacedByToken
+        ? await models.RefreshToken.findOne({ where: { token: row.replacedByToken } })
+        : null;
 
-      if (isBenignRetry) {
-        // Two in-flight refreshes from the same device, or a request retried
-        // after a dropped response. Answer the loser with the winner's token
-        // rather than signing a real person out over a race.
-        const successor = await models.RefreshToken.findOne({
-          where: { token: row.replacedByToken, revokedAt: null }
-        });
-        if (successor) {
-          return {
-            accessToken: generateAccessToken({ id: user.id, email: user.email, role: user.role }),
-            refreshToken: successor.token,
-            expiresAt: successor.expiresAt
-          };
+      /*
+       * The token this one was rotated into has NEVER been presented (it is
+       * still live): whoever holds it never got to use it. On a real device
+       * that is the reply to a refresh that never arrived — the page reloaded,
+       * the tab closed, the laptop slept, the network dropped after the server
+       * had already rotated. Production showed this, minutes or hours later,
+       * signing ~2-5 people out of every device a day as a "theft". Hand the
+       * same successor back: nobody else has used the chain, so there is
+       * nothing to protect against yet. If a thief and the owner BOTH use it,
+       * the next presentation of a spent link is caught below.
+       */
+      if (successor && !successor.revokedAt && new Date(successor.expiresAt) > new Date()) {
+        if (rotatedAgo > REUSE_GRACE_MS) {
+          logger.info('Refresh reply was lost; handed back the unused successor', { userId: user.id, rotatedAgoMs: rotatedAgo });
         }
+        return {
+          accessToken: generateAccessToken({ id: user.id, email: user.email, role: user.role }),
+          refreshToken: successor.token,
+          expiresAt: successor.expiresAt
+        };
       }
 
-      // A spent token presented outside the retry window. We cannot tell the
-      // thief from the victim, so we end every session and make them sign in
-      // again — the only response that reliably locks an attacker out.
-      await models.RefreshToken.update(
-        { revokedAt: new Date(), revokedReason: 'reuse_detected' },
-        { where: { userId: user.id, revokedAt: null } }
-      );
-      logger.warn('Refresh token reuse detected; revoked all sessions', {
+      // Its successor was rotated within the retry window (two tabs racing):
+      // answer with the chain's live end rather than signing anyone out.
+      const tip = await this._liveTipOf(row);
+      if (tip && rotatedAgo <= REUSE_GRACE_MS) {
+        return {
+          accessToken: generateAccessToken({ id: user.id, email: user.email, role: user.role }),
+          refreshToken: tip.token,
+          expiresAt: tip.expiresAt
+        };
+      }
+
+      /*
+       * A spent link presented after its successor was already used: two
+       * parties hold the same session, and we cannot tell the thief from the
+       * owner. End THIS session (every token descended from the replayed one)
+       * so both must sign in again — but leave the person's other devices
+       * alone. Revoking every session they had is what logged people out of
+       * their phone because of something that happened in a browser tab.
+       */
+      const family = await this._descendantsOf(row);
+      if (family.length) {
+        await models.RefreshToken.update(
+          { revokedAt: new Date(), revokedReason: 'reuse_detected' },
+          { where: { id: family.map((t) => t.id), revokedAt: null } }
+        );
+      }
+      logger.warn('Refresh token reuse detected; revoked that session', {
         userId: user.id,
         rotatedAgoMs: rotatedAgo,
-        previousReason: row.revokedReason
+        previousReason: row.revokedReason,
+        revoked: family.filter((t) => !t.revokedAt).length,
       });
       throw new AuthenticationError(AUTH_MESSAGES.INVALID_TOKEN);
     }
 
     throw new AuthenticationError(AUTH_MESSAGES.INVALID_TOKEN);
+  }
+
+  /** Every token rotated out of `row`, following the chain forward (bounded). */
+  async _descendantsOf(row) {
+    const chain = [];
+    let token = row.replacedByToken;
+    for (let i = 0; token && i < 10000; i++) {
+      const next = await models.RefreshToken.findOne({ where: { token } });
+      if (!next) break;
+      chain.push(next);
+      token = next.replacedByToken;
+    }
+    return chain;
+  }
+
+  /** The live token at the end of `row`'s chain, if the session is still alive. */
+  async _liveTipOf(row) {
+    const chain = await this._descendantsOf(row);
+    const tip = chain[chain.length - 1];
+    return tip && !tip.revokedAt && new Date(tip.expiresAt) > new Date() ? tip : null;
   }
 
   /**
@@ -818,12 +891,11 @@ class AuthService {
    */
   async _issueRefreshToken(user, { rememberMe = false, client = 'web', transaction } = {}) {
     const longSession = rememberMe || client !== 'web';
-    const ttl = longSession
-      ? { str: '30d', ms: 30 * 24 * 60 * 60 * 1000 }
-      : { str: '1d', ms: 24 * 60 * 60 * 1000 };
-
-    const refreshToken = generateRefreshToken({ id: user.id }, ttl.str);
-    const expiresAt = new Date(Date.now() + ttl.ms);
+    const expiresAt = new Date(Date.now() + (longSession ? LONG_SESSION_MS : SHORT_SESSION_MS));
+    const refreshToken = mintRefresh(user.id, {
+      ss: Math.floor(Date.now() / 1000),
+      sl: longSession ? LONG_SESSION_MS / 1000 : 0,
+    }, expiresAt);
 
     await models.RefreshToken.create({
       userId: user.id,
