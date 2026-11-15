@@ -118,9 +118,15 @@ exports.options = catchAsync(async (req, res) => {
     if (coursesConnected) {
       courses = (await courseService.listCourses()).map((c) => ({
         courseId: c.courseId,
+        courseSlug: c.courseSlug,
         title: c.title,
+        description: c.description,
+        coverUrl: c.coverUrl,
         availableSeats: c.availableSeats,
         pricingType: c.pricingType,
+        price: c.price,
+        currency: c.currency,
+        freeForOrganization: c.freeForOrganization,
       }));
     }
   } catch (error) {

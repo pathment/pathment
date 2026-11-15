@@ -54,7 +54,18 @@ const toCourse = (c) => ({
   pricingType: c.pricing_type || 'FREE',
   expiresAt: c.expires_at || null,
   availableSeats: Number.isFinite(Number(c.available_enrollment_count)) ? Number(c.available_enrollment_count) : null,
+  // What this workspace actually pays: a paid course can be free for it.
+  freeForOrganization: c.free_for_organization === true,
+  // Edorax's list carries no cover today. Any of these, once it does, is shown;
+  // until then the picker draws one from the title.
+  coverUrl: c.cover_image_url || c.cover_url || c.thumbnail_url || c.image_url || null,
 });
+
+/** Edorax down, slow or erroring (not a refusal): say so, and that nothing happened. */
+const isUnreachable = (error) => error instanceof BuildmentError && (error.upstreamStatus === 0 || error.upstreamStatus >= 500);
+const unreachable = () => new AppError(
+  "Edorax can't be reached right now, so nothing was assigned. Try again in a few minutes.", 503, 'COURSES_UNAVAILABLE',
+);
 
 const enrollmentShape = (row, task, extra = {}) => ({
   taskId: row.assignedTaskId,
@@ -176,7 +187,13 @@ class CourseService {
   async prepare(courseId, { checkSeats = true } = {}) {
     if (!courseId) throw new ValidationError('A course task needs a course');
     const connection = await this._connection();
-    const course = (await this.listCourses({ fresh: true })).find((c) => c.courseId === courseId);
+    let courses;
+    try {
+      courses = await this.listCourses({ fresh: true });
+    } catch (error) {
+      throw isUnreachable(error) ? unreachable() : error;
+    }
+    const course = courses.find((c) => c.courseId === courseId);
     if (!course) throw new ValidationError('That course is not available to your workspace on Edorax');
     if (checkSeats && course.availableSeats !== null && course.availableSeats <= 0) {
       throw new AppError('No seats are left for this course on Edorax.', 409, 'COURSE_CAPACITY');
@@ -261,6 +278,41 @@ class CourseService {
     };
   }
 
+  // ── one action: enroll first, then the task ───────────────────────────────
+  /**
+   * Take the seat for one mentee BEFORE any task exists. Nothing in Pathment
+   * changes if Edorax refuses or cannot be reached. Reuses a seat an earlier,
+   * failed attempt left behind (Edorax's enroll is idempotent on the id).
+   */
+  async enrollAhead(courseId, menteeId, mentorId) {
+    const prepared = await this.prepare(courseId);
+    let seat;
+    try {
+      seat = await this._enrollLearner(prepared, menteeId, mentorId);
+    } catch (error) {
+      throw isUnreachable(error) ? unreachable() : error;
+    }
+    coursesCache.delete(prepared.connection.organizationId);
+    return { courseId: prepared.course.courseId, assignmentId: seat.assignmentId, learnerEmail: seat.learnerEmail };
+  }
+
+  /** Give back a seat taken by enrollAhead whose task could not be created. */
+  async releaseAhead({ courseId, assignmentId, learnerEmail }) {
+    const connection = await this._connection();
+    await this._orNull(() => this._cancelUpstream(connection, { courseId, learnerEmail, assignedTaskId: assignmentId }));
+    coursesCache.delete(connection.organizationId);
+  }
+
+  /** The task failed after the seat was taken: one message that says what state things are in. */
+  assignFailed(error, released) {
+    const reason = error && error.isOperational ? String(error.message || '').replace(/[.\s]+$/, '') : 'The task could not be created';
+    const outcome = released
+      ? 'Nothing was assigned, and the Edorax seat was given back.'
+      : 'Nothing was assigned. The Edorax seat may still be held; assigning again will reuse it.';
+    const status = error && error.statusCode && error.statusCode < 500 ? error.statusCode : 502;
+    return new AppError(`${reason}. ${outcome}`, status, (error && error.code) || 'COURSE_ASSIGN_FAILED');
+  }
+
   /**
    * Assigning a course the mentee was already enrolled in: confirm that
    * enrollment with Buildment (right course, right learner, seat still held)
@@ -274,7 +326,8 @@ class CourseService {
       throw new AppError('This mentee already has this course assigned as a task.', 409, 'COURSE_ALREADY_ASSIGNED');
     }
     const learnerEmail = await this._learnerEmail(menteeId);
-    const enrollment = await this._orNull(() => this._call(connection, (c) => buildmentClient.getEnrollment(c, assignmentId)));
+    const enrollment = await this._orNull(() => this._call(connection, (c) => buildmentClient.getEnrollment(c, assignmentId)))
+      .catch((error) => { throw isUnreachable(error) ? unreachable() : error; });
     if (!enrollment
       || enrollment.course_id !== course.courseId
       || String(enrollment.learner_email || '').toLowerCase() !== learnerEmail
@@ -342,6 +395,13 @@ class CourseService {
         mentorId: assignedTask.mentorId,
       }));
     } catch (error) {
+      if (isUnreachable(error)) {
+        // A timeout or 5xx may still have taken the seat. The task is about to
+        // be removed, so give back anything Edorax kept under its id.
+        await this._orNull(() => this._cancelUpstream(connection, { courseId: course.courseId, learnerEmail, assignedTaskId: assignedTask.id }))
+          .catch((cancelError) => logger.warn('Course enrollment cleanup after an unreachable Edorax failed', { taskId: assignedTask.id, message: cancelError.message }));
+        throw unreachable();
+      }
       throw enrollError(error);
     }
     coursesCache.delete(connection.organizationId); // a seat was just taken

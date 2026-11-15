@@ -27,6 +27,10 @@ export interface Course {
   pricingType: 'FREE' | 'PAID';
   expiresAt: string | null;
   availableSeats: number | null;
+  /** A paid course this workspace has for free. */
+  freeForOrganization?: boolean;
+  /** Edorax's cover, once its course list sends one; the picker draws one meanwhile. */
+  coverUrl?: string | null;
 }
 
 export interface CourseEnrollment {

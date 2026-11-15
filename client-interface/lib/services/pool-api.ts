@@ -1,3 +1,4 @@
+import type { Course } from './courses-api';
 import { apiClient } from './api-client';
 
 /**
@@ -275,7 +276,7 @@ export interface PoolOptions {
   quizKits: { id: string; title: string }[];
   interviewKits: { id: string; title: string }[];
   /** Edorax courses this workspace may assign. Empty when it is not connected. */
-  courses: { courseId: string; title: string; availableSeats: number | null; pricingType: string }[];
+  courses: (Pick<Course, 'courseId' | 'title' | 'availableSeats' | 'pricingType'> & Partial<Pick<Course, 'courseSlug' | 'description' | 'price' | 'currency' | 'coverUrl' | 'freeForOrganization'>>)[];
   /** False when Edorax is not connected, so the picker can explain itself. */
   coursesConnected: boolean;
   /** Roadmaps with their steps, in teaching order — what the picker opens. */

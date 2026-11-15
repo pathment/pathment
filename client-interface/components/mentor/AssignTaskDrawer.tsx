@@ -28,7 +28,7 @@ import { quizApi, type QuizKitSummary } from '@/lib/services/quiz-api';
 import Link from 'next/link';
 import { Mic, ListChecks, Code2, CalendarRange, ChevronDown, Video, GraduationCap, MessageSquareQuote } from 'lucide-react';
 import { useCoursesStatus, useCourses } from '@/lib/hooks/shared';
-import { coursesApi, formatCoursePrice, type CourseEnrollResult, type CourseLifecycle } from '@/lib/services/courses-api';
+import { CoursePicker } from '@/components/shared/CoursePicker';
 import { OpenSourceOrgPicker } from '@/components/shared/OpenSourceOrgPicker';
 import type { OpenSourceOrg } from '@/lib/services/open-source-orgs-api';
 import { TalkPicker } from '@/components/shared/TalkPicker';
@@ -228,9 +228,10 @@ export function AssignTaskDrawer({
   const [quizAllowRetake, setQuizAllowRetake] = useState(false);
   const selectedQuizKit = quizKits.find((k) => k.id === quizKitId) || null;
 
-  // Course type (Buildment): offered only while the workspace's connection is
-  // live. A course is always "assign now", in two steps: Enroll takes the seat
-  // on Buildment, and only a confirmed enrollment unlocks Assign.
+  // Course type (Edorax): offered only while the workspace's connection is
+  // live. A course is always "assign now", and it is one action: the server
+  // takes the seat on Edorax first and creates the task on it, so a refusal or
+  // an outage assigns nothing and says why.
   const { connected: coursesConnected, loading: coursesStatusLoading } = useCoursesStatus();
   const isCourse = type === 'course';
   const { courses, loading: coursesLoading, refetch: refetchCourses } = useCourses(coursesConnected && isCourse);
@@ -276,37 +277,14 @@ export function AssignTaskDrawer({
   const invalidate = useInvalidate();
   const [courseId, setCourseId] = useState('');
   const selectedCourse = courses.find((c) => c.courseId === courseId) || null;
-  // Seats held for the picked course, by mentee id. One that never becomes a
-  // task is released (enrollment cancelled, type changed, drawer closed).
-  const [enrolled, setEnrolled] = useState<Record<string, { assignmentId: string; lifecycle: CourseLifecycle }>>({});
-  const [enrollErrors, setEnrollErrors] = useState<Record<string, string>>({});
-  const [enrolling, setEnrolling] = useState(false);
-  const enrolledRef = useRef(enrolled);
-  enrolledRef.current = enrolled;
-  const courseIdRef = useRef(courseId);
-  courseIdRef.current = courseId;
-  const refetchCoursesRef = useRef(refetchCourses);
-  refetchCoursesRef.current = refetchCourses;
-  const releaseSeats = useCallback((only?: string[]) => {
-    const held = enrolledRef.current;
-    const ids = (only ?? Object.keys(held)).filter((id) => held[id]);
-    if (!ids.length) return;
-    const items = ids.map((id) => ({ menteeId: id, assignmentId: held[id].assignmentId }));
-    setEnrolled((prev) => { const next = { ...prev }; ids.forEach((id) => delete next[id]); return next; });
-    coursesApi.release(courseIdRef.current, items)
-      .then(() => refetchCoursesRef.current())
-      .catch((error: unknown) => toast.error(extractApiErrorMessage(error, 'Could not cancel the Edorax enrollment')));
-  }, []);
+  // Per-mentee reasons from the last attempt, so a bulk assign says who and why.
+  const [courseErrors, setCourseErrors] = useState<Record<string, string>>({});
   const typeOptions: readonly string[] = coursesConnected ? [...TYPES, 'course'] : TYPES;
   // A restored draft may name the Course type after the connection went away.
   useEffect(() => {
     if (isCourse && !coursesStatusLoading && !coursesConnected) setType('assignment');
   }, [isCourse, coursesStatusLoading, coursesConnected]);
 
-  // Leaving the course flow gives back any seat that was not assigned.
-  useEffect(() => {
-    if (!isCourse || source !== 'custom') { releaseSeats(); setEnrollErrors((prev) => (Object.keys(prev).length ? {} : prev)); }
-  }, [isCourse, source, releaseSeats]);
 
   useEffect(() => {
     if (type !== 'quiz' || quizKitsFetchedRef.current) return;
@@ -433,7 +411,7 @@ export function AssignTaskDrawer({
     return () => { active = false; };
   }, [source, roadmapId, mode, mentee?.id]);
 
-  const closeKeepingDraft = useCallback(() => { releaseSeats(); flushDraft(); beginExit(); }, [releaseSeats, flushDraft, beginExit]);
+  const closeKeepingDraft = useCallback(() => { flushDraft(); beginExit(); }, [flushDraft, beginExit]);
 
   // Focus first field on open.
   useEffect(() => { titleRef.current?.focus(); }, []);
@@ -493,39 +471,9 @@ export function AssignTaskDrawer({
   const targetIds = rawTargetIds.filter((id) => !blockSet.has(id));
   const targetCount = targetIds.length;
   const blockedCount = rawTargetIds.length - targetCount;
-  // Course: who still needs enrolling, and whether everyone targeted is enrolled.
-  const toEnroll = targetIds.filter((id) => !enrolled[id]);
-  const enrolledTargets = targetCount - toEnroll.length;
-  const courseReady = !!courseId && targetCount > 0 && toEnroll.length === 0;
+  const courseReady = !!courseId && targetCount > 0;
   const menteeName = (id: string) => (mentee?.id === id ? mentee.name : cohort.find((m) => m.id === id)?.name) || 'A mentee';
   const firstName = mentee?.name?.split(' ')[0] || 'the mentee';
-
-  const enroll = async () => {
-    if (activeClanId === ALL_CLANS && clans.length > 1) {
-      toast.error('Select a clan in the sidebar before assigning work.');
-      return;
-    }
-    if (historical || !courseId || enrolling || !toEnroll.length) return;
-    try {
-      setEnrolling(true);
-      const res: any = await coursesApi.enroll(courseId, toEnroll); // eslint-disable-line @typescript-eslint/no-explicit-any
-      const results: CourseEnrollResult[] = res?.data?.results ?? [];
-      const ok = results.filter((r) => r.ok && r.assignmentId);
-      const failed = results.filter((r) => !r.ok);
-      setEnrolled((prev) => ({
-        ...prev,
-        ...Object.fromEntries(ok.map((r) => [r.menteeId, { assignmentId: r.assignmentId as string, lifecycle: r.lifecycle || 'PENDING_ACCOUNT' }])),
-      }));
-      setEnrollErrors(Object.fromEntries(failed.map((r) => [r.menteeId, r.error || 'Could not enroll'])));
-      if (failed.length) toast.error(mode === 'single' ? (failed[0].error || 'Could not enroll') : `${failed.length} mentee${failed.length > 1 ? 's' : ''} couldn't be enrolled`);
-      else toast.success(mode === 'single' ? `${firstName} is enrolled on Edorax` : `${ok.length} mentee${ok.length === 1 ? '' : 's'} enrolled on Edorax`);
-      refetchCourses();
-    } catch (error: unknown) {
-      toast.error(extractApiErrorMessage(error, 'Could not enroll on Edorax'));
-    } finally {
-      setEnrolling(false);
-    }
-  };
 
   // Single-mode roadmap where the one mentee already has this roadmap.
   const canSubmit = !historical && targetCount > 0 && (source === 'custom'
@@ -600,13 +548,8 @@ export function AssignTaskDrawer({
         ...(type === 'talk' && talks.length > 0
           ? { talkIds: talks.map((t) => t.id) }
           : {}),
-        // Course tasks carry the provider's course id plus the enrollment made by
-        // "Enroll" — the server confirms it with Buildment instead of enrolling again.
-        ...(type === 'course' && courseId
-          ? { course: mode === 'bulk'
-            ? { courseId, assignmentIds: Object.fromEntries(targetIds.map((id) => [id, enrolled[id]?.assignmentId])) }
-            : { courseId, assignmentId: enrolled[mentee!.id]?.assignmentId } }
-          : {}),
+        // The server enrolls on Edorax first, then creates the task on it.
+        ...(type === 'course' && courseId ? { course: { courseId } } : {}),
         ...(isGroupDiscussion && linkedDiscussion ? { discussionGroupId: linkedDiscussion.id } : {}),
         ...(schedule.mode !== 'now' && !assignedNow ? { schedule: { ...schedule, mode: schedule.mode } } : {}),
         ...(scheduleSlotId ? { scheduleSlotId } : {}),
@@ -614,17 +557,27 @@ export function AssignTaskDrawer({
       if (mode === 'bulk') {
         const res: any = await taskApi.bulkCreateCustomTasks({ ...base, menteeIds: [...selected] });
         const assigned = res?.data?.assigned ?? 0;
-        const failed = (res?.data?.results || []).filter((r: any) => !r.ok);
+        const failed: { menteeId: string; ok: boolean; error?: string }[] = (res?.data?.results || []).filter((r: { ok: boolean }) => !r.ok);
+        // Who failed, and why — kept on screen beside the course so the mentor
+        // can fix it and assign the rest again; the toast is the headline.
+        const reasons = Object.fromEntries(failed.map((r) => [r.menteeId, r.error || 'Could not assign']));
+        setCourseErrors(isCourse ? reasons : {});
+        const who = failed.slice(0, 3).map((r) => `${menteeName(r.menteeId)}: ${r.error || 'Could not assign'}`).join('\n');
         if (assigned === 0) {
-          toast.error(failed[0]?.error || 'No tasks were assigned');
+          toast.error(failed.length > 1 ? 'Nothing was assigned' : (failed[0]?.error || 'No tasks were assigned'), failed.length > 1 ? { description: who } : undefined);
           setSaving(false);
           return;
         }
-        if (failed.length) toast.error(`${failed.length} mentee${failed.length > 1 ? 's' : ''} couldn't be assigned`);
+        if (failed.length) toast.error(`${failed.length} mentee${failed.length > 1 ? 's' : ''} couldn't be assigned`, { description: who });
         toast.success(`Task ${schedule.mode === 'now' || assignedNow ? 'assigned' : 'scheduled'} for ${assigned} mentee${assigned > 1 ? 's' : ''}`);
-        // Enrolled but not assigned (deselected, or their task failed): give the seat back.
-        const assignedIds = new Set<string>(((res?.data?.results || []) as { menteeId: string; ok: boolean }[]).filter((r) => r.ok).map((r) => r.menteeId));
-        releaseSeats(Object.keys(enrolled).filter((id) => !assignedIds.has(id)));
+        if (failed.length) {
+          // Leave the drawer open on the ones that failed, so they can be retried.
+          setSelected(new Set(failed.map((r) => r.menteeId)));
+          if (isCourse) refetchCourses(); // seats changed
+          onAssigned?.();
+          setSaving(false);
+          return;
+        }
       } else {
         await taskApi.createCustomTask({ ...base, menteeId: mentee!.id, trackId: trackId || undefined });
         toast.success(slotLabel
@@ -912,87 +865,45 @@ export function AssignTaskDrawer({
 
                 {isCourse && (
                   <div className="rounded-xl border border-brand-200 bg-brand-50/50 dark:bg-brand-500/5 p-4 space-y-3">
-                    <div className="flex items-center gap-2 text-sm font-medium text-slate-800">
-                      <GraduationCap className="w-4 h-4 text-brand-600" /> Edorax course <span className="text-red-500">*</span>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="flex items-center gap-2 text-sm font-medium text-slate-800">
+                        <GraduationCap className="w-4 h-4 text-brand-600" /> Edorax course <span className="text-red-500">*</span>
+                      </span>
+                      {selectedCourse && <span className="truncate text-xs text-slate-500">Selected: <span className="font-medium text-slate-700">{selectedCourse.title}</span></span>}
                     </div>
                     {coursesLoading ? (
-                      <div className="flex items-center gap-2 text-sm text-slate-400 py-1"><Loader2 className="w-4 h-4 animate-spin text-brand-600" />Loading courses…</div>
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2" aria-label="Loading courses">
+                        {[0, 1, 2, 3].map((i) => <div key={i} className="h-44 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800" />)}
+                      </div>
                     ) : courses.length === 0 ? (
                       <p className="text-sm text-slate-500">No courses are available to your workspace on Edorax yet.</p>
                     ) : (
                       <>
-                        <select
+                        <CoursePicker
+                          courses={courses}
                           value={courseId}
-                          onChange={(e) => {
-                            setCourseId(e.target.value);
-                            setEnrollErrors({});
-                            const picked = courses.find((c) => c.courseId === e.target.value);
-                            if (picked && !title.trim()) setTitle(picked.title);
+                          disabled={saving}
+                          onChange={(picked) => {
+                            setCourseId(picked.courseId);
+                            setCourseErrors({});
+                            // Title follows the course unless the mentor wrote their own.
+                            if (!title.trim() || courses.some((c) => c.title === title.trim())) setTitle(picked.title);
                           }}
-                          // The seats held belong to this course — cancel the enrollment to change it.
-                          disabled={enrolling || Object.keys(enrolled).length > 0}
-                          className={`${field} disabled:opacity-60 disabled:cursor-not-allowed`}
-                          aria-label="Course"
-                        >
-                          <option value="">Select a course…</option>
-                          {courses.map((c) => {
-                            const full = c.availableSeats !== null && c.availableSeats <= 0;
-                            return <option key={c.courseId} value={c.courseId} disabled={full}>{c.title}{full ? ' (no seats left)' : ''}</option>;
-                          })}
-                        </select>
-                        {selectedCourse && (
-                          <p className="text-xs text-slate-500">
-                            {formatCoursePrice(selectedCourse)}
-                            {selectedCourse.availableSeats !== null ? ` · ${selectedCourse.availableSeats} seat${selectedCourse.availableSeats === 1 ? '' : 's'} left` : ''}
-                          </p>
-                        )}
+                        />
                         {mode === 'bulk' && selectedCourse && selectedCourse.availableSeats !== null && selected.size > selectedCourse.availableSeats && (
                           <p className="text-xs text-amber-700 dark:text-amber-400">
-                            Only {selectedCourse.availableSeats} seat{selectedCourse.availableSeats === 1 ? '' : 's'} left for {selected.size} mentees — the rest won&apos;t be enrolled.
+                            Only {selectedCourse.availableSeats} seat{selectedCourse.availableSeats === 1 ? '' : 's'} left for {selected.size} mentees — the rest won&apos;t be assigned.
                           </p>
                         )}
-                        {courseId && (
-                          <div className="space-y-2 border-t border-brand-200/70 dark:border-brand-500/20 pt-3">
-                            {enrolledTargets > 0 && (
-                              <div className="flex items-start gap-2 text-sm text-emerald-700 dark:text-emerald-400">
-                                <Check className="w-4 h-4 mt-0.5 shrink-0" />
-                                <span className="flex-1">
-                                  {mode === 'single'
-                                    ? `${firstName} is enrolled on Edorax.`
-                                    : `${enrolledTargets} of ${targetCount} mentee${targetCount === 1 ? '' : 's'} enrolled on Edorax.`}
-                                  {courseReady && <span className="block text-xs text-slate-500">You can assign the task now.</span>}
-                                  {mode === 'single' && enrolled[mentee?.id || '']?.lifecycle === 'PENDING_ACCOUNT' && (
-                                    <span className="block text-xs text-slate-500">They have no Edorax account yet — they&apos;ll be asked to register with their Pathment email.</span>
-                                  )}
-                                  {mode === 'single' && enrolled[mentee?.id || '']?.lifecycle === 'PAYMENT_REQUIRED' && (
-                                    <span className="block text-xs text-slate-500">Edorax is waiting for payment before they can start.</span>
-                                  )}
-                                </span>
-                                <button type="button" onClick={() => releaseSeats()} disabled={saving || enrolling}
-                                  className="text-xs font-medium text-slate-500 hover:text-red-600 shrink-0 disabled:opacity-50">Cancel enrollment</button>
-                              </div>
-                            )}
-                            {targetIds.filter((id) => enrollErrors[id] && !enrolled[id]).map((id) => (
-                              <p key={id} role="alert" className="text-xs text-red-600 dark:text-red-400">
-                                {mode === 'bulk' ? `${menteeName(id)}: ` : ''}{enrollErrors[id]}
-                              </p>
-                            ))}
-                            {toEnroll.length > 0 && (
-                              <button type="button" onClick={enroll} disabled={enrolling || historical}
-                                className="px-3.5 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm font-medium inline-flex items-center gap-2 disabled:opacity-50">
-                                {enrolling ? <Loader2 className="w-4 h-4 animate-spin text-brand-600" /> : <GraduationCap className="w-4 h-4" />}
-                                {mode === 'single'
-                                  ? `Enroll ${firstName} on Edorax`
-                                  : `Enroll ${toEnroll.length} mentee${toEnroll.length === 1 ? '' : 's'} on Edorax`}
-                              </button>
-                            )}
-                            {mode === 'bulk' && targetCount === 0 && <p className="text-xs text-slate-500">Select mentees below to enroll them.</p>}
-                          </div>
-                        )}
+                        {targetIds.filter((id) => courseErrors[id]).map((id) => (
+                          <p key={id} role="alert" className="text-xs text-red-600 dark:text-red-400">
+                            {mode === 'bulk' ? `${menteeName(id)}: ` : ''}{courseErrors[id]}
+                          </p>
+                        ))}
                         <p className="text-xs text-slate-500">
-                          Enroll first: it takes a seat on Edorax using {mode === 'single' ? `${firstName}'s` : 'each mentee\'s'}{' '}Pathment
-                          email, and Assign unlocks once Edorax confirms. A seat you don&apos;t assign is released when you
-                          cancel the enrollment or close this drawer. The task completes on its own when the course is finished.
+                          Assigning enrolls {mode === 'single' ? firstName : 'each mentee'} on Edorax with their Pathment email, then
+                          creates the task. If Edorax refuses or can&apos;t be reached, nothing is assigned and you&apos;ll see why.
+                          The task completes on its own when the course is finished.
                         </p>
                       </>
                     )}
@@ -1396,7 +1307,7 @@ export function AssignTaskDrawer({
 
               <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-2">
                 <button onClick={closeKeepingDraft} className="px-4 py-2 border border-slate-200 text-slate-700 rounded-xl text-sm hover:bg-slate-50">Cancel</button>
-                <button onClick={submit} disabled={!canSubmit || saving} title={source === 'custom' && isCourse && !courseReady ? 'Enroll on Edorax first' : 'Ctrl+Enter'} className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-sm inline-flex items-center gap-2 disabled:opacity-50">
+                <button onClick={submit} disabled={!canSubmit || saving} title={source === 'custom' && isCourse && !courseId ? 'Choose a course first' : 'Ctrl+Enter'} className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-sm inline-flex items-center gap-2 disabled:opacity-50">
                   {saving ? <Loader2 className="w-4 h-4 animate-spin text-brand-600" /> : <Check className="w-4 h-4" />}
                   {source === 'roadmap'
                     ? (mode === 'bulk' ? `Assign roadmap to ${targetCount}` : 'Assign roadmap')

@@ -14,6 +14,7 @@ import { poolApi, type PoolAssignment, type PoolDashboard } from '@/lib/services
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { AssignWorkDrawer } from './AssignWorkDrawer';
 import { RoadmapStepPicker } from './RoadmapStepPicker';
+import { CoursePicker } from '@/components/shared/CoursePicker';
 import { Chip, DIFFICULTY_POINTS_FALLBACK, EmptyState, PanelHeader, Spinner, WORK_STATUS, fmtDate, panel, primaryBtn, pts, secondaryBtn } from './poolUi';
 
 const KIND_ICON = { task: ClipboardList, quiz: FileQuestion, interview: Mic, course: GraduationCap } as const;
@@ -282,15 +283,12 @@ function AddWorkDrawer({ data, onClose, onDone }: { data: PoolDashboard; onClose
               ) : courses.length === 0 ? (
                 <p className="text-sm text-slate-500">No courses are available to this workspace on Edorax yet.</p>
               ) : (
-                <select value={courseId} onChange={(e) => setCourseId(e.target.value)} className={inputCls} aria-label="Edorax course">
-                  <option value="">Select a course…</option>
-                  {courses.map((c) => (
-                    <option key={c.courseId} value={c.courseId} disabled={takenCourses.has(c.courseId)}>
-                      {c.title}
-                      {takenCourses.has(c.courseId) ? ' — already in this pool' : c.availableSeats !== null ? ` — ${c.availableSeats} seats left` : ''}
-                    </option>
-                  ))}
-                </select>
+                <CoursePicker
+                  courses={courses}
+                  value={courseId}
+                  onChange={(picked) => setCourseId(picked.courseId)}
+                  unavailable={new Map([...takenCourses].map((id) => [id, 'Already in this round']))}
+                />
               )}
               <p className="text-[11px] text-slate-400">
                 Assigning enrolls each candidate on Edorax. Nobody hands a course in: its score follows the progress Edorax reports, so finishing it earns the full points and stopping half way earns half.

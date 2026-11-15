@@ -12,6 +12,7 @@ const { difficultyWeight } = require('../config/scoring');
 const interviewKitService = require('./interviewKitService');
 const quizKitService = require('./quizKitService');
 const courseService = require('./courseService');
+const logger = require('../utils/logger');
 const { resolveMenteeClanId, listMenteeClans, clanScopedWhere } = require('./menteeClanScope');
 const { toStringList } = require('../utils/multipartFields');
 
@@ -231,11 +232,26 @@ class TaskService {
     if (type === 'course') {
       if (roadmapTaskId) throw new ValidationError('A course is assigned as its own task, not as a roadmap step');
       if (data.schedule) throw new ValidationError('Courses are assigned right away — they cannot be scheduled');
-      // The assign drawer enrolls first and sends the enrollment's id; without
-      // one the enrollment happens here, as part of assigning.
-      coursePrepared = data.course?.assignmentId
-        ? await courseService.prepareEnrolled(data.course.courseId, data.course.assignmentId, menteeId)
-        : await courseService.prepare(data.course?.courseId);
+      if (!data.course?.assignmentId) {
+        /*
+         * One action, in a safe order: take the seat on Edorax FIRST, then
+         * create the task on that enrollment. Edorax refusing or being down
+         * leaves nothing in Pathment; the task failing gives the seat back.
+         * Either way the error says exactly what state things were left in.
+         */
+        const seat = await courseService.enrollAhead(data.course?.courseId, menteeId, mentorId);
+        try {
+          return await this.createCustomTask({ ...data, course: { courseId: seat.courseId, assignmentId: seat.assignmentId } }, mentorId);
+        } catch (error) {
+          const released = await courseService.releaseAhead(seat).then(() => true).catch((releaseError) => {
+            logger.error('Could not release an Edorax seat after a failed course assignment', { menteeId, message: releaseError.message });
+            return false;
+          });
+          throw courseService.assignFailed(error, released);
+        }
+      }
+      // Enrolled ahead (the seat above, or an older client's "Enroll"): confirm it.
+      coursePrepared = await courseService.prepareEnrolled(data.course.courseId, data.course.assignmentId, menteeId);
     }
     if (data.schedule) {
       return require('./customTaskScheduleService').create({ ...data, enrollmentId }, mentorId, clanId);
