@@ -43,6 +43,8 @@ import { TalkReviewSection } from "@/components/mentee/TalkReviewSection";
 import { CourseProgressCard } from "@/components/shared/CourseProgressCard";
 import { useClan, isHistoricalCohortClan } from "@/lib/context/ClanContext";
 import { PoolTaskDetail } from "@/components/mentee/pool/PoolTaskDetail";
+import { qk, useApiQuery } from "@/lib/query";
+import { candidateApi } from "@/lib/services/pool-api";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -69,6 +71,22 @@ function TaskDetailsRoute({ id }: { id: string }) {
    */
   const isPoolWork = useSearchParams().get('pool') === '1';
   return isPoolWork ? <PoolTaskDetail id={id} /> : <ClanTaskDetail id={id} />;
+}
+
+/** The clan endpoint said "not found": try the person's own qualifying work before saying so. */
+function PoolFallback({ id, otherwise }: { id: string; otherwise: React.ReactNode }) {
+  const { data, loading } = useApiQuery({
+    queryKey: qk.candidate.task(id),
+    queryFn: () => candidateApi.task(id),
+  });
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="w-10 h-10 animate-spin text-brand-600" />
+      </div>
+    );
+  }
+  return data ? <PoolTaskDetail id={id} /> : <>{otherwise}</>;
 }
 
 function ClanTaskDetail({ id }: { id: string }) {
@@ -109,7 +127,7 @@ function ClanTaskDetail({ id }: { id: string }) {
   }
 
   if (error || !task) {
-    return (
+    const notFound = (
       <ResourceError
         status={errorStatus ?? (task ? null : 404)}
         resource="task"
@@ -119,6 +137,9 @@ function ClanTaskDetail({ id }: { id: string }) {
         onRetry={refetch}
       />
     );
+    // A link without ?pool=1 (a notification, a bookmark, an old drawer link)
+    // still names real work when it is the person's own qualifying work.
+    return errorStatus === 404 ? <PoolFallback id={id} otherwise={notFound} /> : notFound;
   }
 
   const activeSection =

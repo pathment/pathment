@@ -71,6 +71,7 @@ const enrollmentShape = (row, task, extra = {}) => ({
   currentChapter: row.currentChapter || null,
   lastSyncedAt: row.lastSyncedAt,
   appUrl: null,
+  courseUrl: null,
   ...extra,
 });
 
@@ -113,6 +114,37 @@ class CourseService {
       }
       throw error;
     }
+  }
+
+  /**
+   * Where a learner opens Edorax. The workspace's connection carries it, but a
+   * learner needs the way in even while an admin sorts out rejected keys, so
+   * fall back to the platform's Edorax app rather than showing no link at all.
+   */
+  async appUrl() {
+    const connection = await this._connection({ required: false }).catch(() => null);
+    if (connection) return buildmentClient.appUrl(connection.endpoint);
+    const app = await models.ExternalApp.findOne({
+      where: { integrationKey: PROVIDER, isActive: true }, attributes: ['backendUrl', 'frontendUrl'],
+    }).catch(() => null);
+    return buildmentClient.appUrl(app);
+  }
+
+  /**
+   * The course itself on Edorax (`/courses/<slug>`), not Edorax's home page.
+   * A pool's work item stores the slug; a clan task finds it in the workspace's
+   * (cached) course list. With no slug, the home page is still better than no
+   * link.
+   */
+  async courseUrl(courseId, { slug = null, appUrl } = {}) {
+    const base = appUrl === undefined ? await this.appUrl() : appUrl;
+    if (!base) return null;
+    let courseSlug = slug;
+    if (!courseSlug && courseId) {
+      const courses = await this.listCourses().catch(() => []);
+      courseSlug = courses.find((c) => c.courseId === courseId)?.courseSlug || null;
+    }
+    return courseSlug ? `${base}/courses/${encodeURIComponent(courseSlug)}` : base;
   }
 
   /** Drives whether the client shows any course UI at all. */
@@ -355,8 +387,8 @@ class CourseService {
         if (!error.isOperational) logger.error('Course sync failed', { taskId: task.id, message: error.message });
       }
     }
-    const connection = await this._connection({ required: false });
-    return enrollmentShape(row, task, { syncError, appUrl: buildmentClient.appUrl(connection?.endpoint) });
+    const appUrl = await this.appUrl();
+    return enrollmentShape(row, task, { syncError, appUrl, courseUrl: await this.courseUrl(row.courseId, { appUrl }) });
   }
 
   /** Read lifecycle + progress from Buildment and reflect it on the task. */

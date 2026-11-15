@@ -336,6 +336,8 @@ describe('the candidate can actually get to the course', () => {
       overallProgress: 35,
       progressStatus: 'IN_PROGRESS',
       appUrl: 'http://edorax.test',
+      // The course itself, not Edorax's front page.
+      courseUrl: 'http://edorax.test/courses/think-clearly',
     });
   });
 
@@ -346,7 +348,10 @@ describe('the candidate can actually get to the course', () => {
     const task = await taskOf(member);
 
     const mine = await courseService.getForTask(task.id, user);
-    expect(mine).toMatchObject({ taskId: task.id, courseId: COURSE.course_id, learnerEmail: 'c1@test.com' });
+    expect(mine).toMatchObject({
+      taskId: task.id, courseId: COURSE.course_id, learnerEmail: 'c1@test.com',
+      courseUrl: 'http://edorax.test/courses/think-clearly',
+    });
 
     // Another candidate in the same pool is still a stranger to this task.
     await expect(courseService.getForTask(task.id, other)).rejects.toThrow(/access/i);

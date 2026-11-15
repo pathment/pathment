@@ -155,9 +155,9 @@ export function CourseProgressCard({
 
       <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
         <div className="flex items-center gap-2">
-          {viewer === 'mentee' && meta.action && enrollment.appUrl && (
+          {viewer === 'mentee' && meta.action && (enrollment.courseUrl || enrollment.appUrl) && (
             <a
-              href={enrollment.appUrl}
+              href={(enrollment.courseUrl || enrollment.appUrl)!}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm font-medium"

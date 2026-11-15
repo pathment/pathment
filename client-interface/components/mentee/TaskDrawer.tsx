@@ -18,6 +18,7 @@ import { SubmissionFileList } from '@/components/shared/SubmissionFileList';
 import { ResourceLink } from '@/components/shared/ResourceLink';
 import { TaskProgressTimeline } from '@/components/shared/TaskProgressTimeline';
 import { useMenteeTaskDetail, type MenteeTaskSource } from '@/lib/hooks/mentee';
+import { CourseProgressCard } from '@/components/shared/CourseProgressCard';
 import { isMissingDescription } from '@/lib/utils/html';
 import { MyDiscussionResult } from '@/components/mentee/discussions/MyDiscussionResult';
 import { discussionReviewText } from '@/components/mentee/discussions/discussionReviewText';
@@ -95,8 +96,11 @@ export function TaskDrawer({
 
   const discussion = participateHref({ type: taskType, discussionGroupId: task?.discussionGroupId });
   const isDiscussion = taskType === 'group_discussion';
-  const canStart = status === 'assigned' && !assessment && !discussion;
-  const canSubmit = (status === 'in_progress' || needsRevision) && !assessment;
+  // A course is studied on Edorax and completes itself from the progress read
+  // back from there. Nothing is handed in, so it offers the course, not a form.
+  const isCourse = taskType === 'course';
+  const canStart = status === 'assigned' && !assessment && !discussion && !isCourse;
+  const canSubmit = (status === 'in_progress' || needsRevision) && !assessment && !isCourse;
 
   const start = async () => {
     if (!taskId || !onStart) return;
@@ -116,7 +120,9 @@ export function TaskDrawer({
           {/* The durable address for this task — for sharing, or for a reload
               that should land somewhere real rather than back on the list. */}
           <Link
-            href={`/mentee/tasks/${task.id}`}
+            // Pool work is fenced out of the clan task endpoint, so its page
+            // needs the flag that says where to read it from.
+            href={source === 'pool' ? `/mentee/tasks/${task.id}?pool=1` : `/mentee/tasks/${task.id}`}
             className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-brand-600"
           >
             Open full page <ExternalLink className="h-3.5 w-3.5" aria-hidden />
@@ -227,7 +233,11 @@ export function TaskDrawer({
             </Section>
           )}
 
-          {status === 'submitted' && (
+          {isCourse && status !== 'cancelled' && (
+            <CourseProgressCard taskId={task.id} viewer="mentee" />
+          )}
+
+          {status === 'submitted' && !isCourse && (
             <Callout tone="sky" icon={Clock} title="With your mentor">
               You have submitted this. There is nothing more to do until they reply.
             </Callout>

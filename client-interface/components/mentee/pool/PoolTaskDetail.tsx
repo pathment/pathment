@@ -10,6 +10,7 @@ import { RichContent } from '@/components/shared/RichContent';
 import { candidateApi } from '@/lib/services/pool-api';
 import { workspacePath } from '@/lib/services/workspace-scope';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
+import { CourseProgressCard } from '@/components/shared/CourseProgressCard';
 import { POOL_WORK_STATUS, poolField as field } from './poolUi';
 
 /**
@@ -121,7 +122,12 @@ export function PoolTaskDetail({ id }: { id: string }) {
           </div>
         )}
 
-        {task.kind !== 'task' && !task.readOnly && !['submitted', 'completed'].includes(task.status) && (
+        {/* Studied on Edorax: where it is, how far along, and the way in. */}
+        {task.kind === 'course' && task.status !== 'cancelled' && (
+          <div className="mt-6"><CourseProgressCard taskId={task.id} viewer="mentee" onTaskStatusChange={refetch} /></div>
+        )}
+
+        {(task.kind === 'quiz' || task.kind === 'interview') && !task.readOnly && !['submitted', 'completed'].includes(task.status) && (
           <Link
             href={workspacePath(`/mentee/${task.kind === 'quiz' ? 'quizzes' : 'interviews'}/${task.id}`)}
             className="mt-6 inline-flex items-center gap-2 rounded-xl bg-brand-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-brand-700"

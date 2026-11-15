@@ -85,12 +85,14 @@ class PoolCandidateService {
     const courseService = require('./courseService');
     const [rows, appUrl] = await Promise.all([
       models.CourseEnrollment.findAll({ where: { assignedTaskId: { [Op.in]: courseIds } } }),
-      courseService.status().then((s) => s.appUrl).catch(() => null),
+      courseService.appUrl().catch(() => null),
     ]);
     const byTask = new Map(rows.map((r) => [r.assignedTaskId, r]));
     for (const s of shaped) {
       if (s.kind !== 'course') continue;
       const row = byTask.get(s.id);
+      // Straight to the course, not Edorax's front page.
+      const courseUrl = await courseService.courseUrl(row?.courseId || s.courseId, { slug: s.courseSlug, appUrl }).catch(() => appUrl);
       s.course = row ? {
         courseTitle: row.courseTitle,
         lifecycle: row.lifecycle,
@@ -99,7 +101,8 @@ class PoolCandidateService {
         completedLessons: row.completedLessons,
         totalLessons: row.totalLessons,
         appUrl,
-      } : null;
+        courseUrl,
+      } : (courseUrl ? { courseTitle: s.title, lifecycle: null, overallProgress: 0, appUrl, courseUrl } : null);
     }
     return shaped;
   }
@@ -136,6 +139,8 @@ class PoolCandidateService {
       points: pool && item ? poolService.pointsOf(pool, item, difficulty) : null,
       pool: t.poolMember?.pool ? { id: t.poolMember.pool.id, name: t.poolMember.pool.name, status: t.poolMember.pool.status } : null,
       readOnly: Boolean(t.poolMember?.decision) || ['closed'].includes(t.poolMember?.pool?.status),
+      // Course work: which Edorax course, so the link can go straight to it.
+      ...(item?.kind === 'course' ? { courseId: item.config?.courseId || null, courseSlug: item.config?.courseSlug || null } : {}),
     };
   }
 

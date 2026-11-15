@@ -332,6 +332,7 @@ export function PoolWorkList({ poolId }: { poolId?: string | null }) {
                 onSubmit={task.readOnly ? undefined : askToSubmit}
                 quizHref={(id) => `/mentee/quizzes/${id}`}
                 interviewHref={(id) => `/mentee/interviews/${id}`}
+                courseHref={poolTaskHref}
               />
             );
           })}

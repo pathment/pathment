@@ -44,6 +44,8 @@ export interface CourseEnrollment {
   currentChapter: { id?: string; title?: string; progress?: number } | null;
   lastSyncedAt: string | null;
   appUrl: string | null;
+  /** The course itself on Edorax; falls back to appUrl when its slug is unknown. */
+  courseUrl?: string | null;
   /** Set when the latest refresh failed and this is the previous snapshot. */
   syncError: string | null;
 }
