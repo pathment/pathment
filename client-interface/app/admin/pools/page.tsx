@@ -14,6 +14,7 @@ import { usePermissions } from '@/lib/hooks/usePermissions';
 import { poolApi, type Pool } from '@/lib/services/pool-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { EmptyState, ErrorNote, POOL_STATUS, Spinner, field, fmtDate, fromLocalInput, label, panel, primaryBtn } from '@/components/admin/pools/poolUi';
+import { byLifecycle } from '@/lib/utils/lifecycleOrder';
 
 function CreatePoolDrawer({ onClose }: { onClose: () => void }) {
   const router = useRouter();
@@ -198,7 +199,8 @@ export default function PoolsPage() {
         </div>
       )}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {(pools || []).map((pool) => <PoolCard key={pool.id} pool={pool} />)}
+        {/* Live rounds first, closed ones last. */}
+        {[...(pools || [])].sort(byLifecycle((p) => p.status)).map((pool) => <PoolCard key={pool.id} pool={pool} />)}
       </div>
 
       {creating && <CreatePoolDrawer onClose={() => setCreating(false)} />}

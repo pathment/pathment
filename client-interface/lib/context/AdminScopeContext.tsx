@@ -5,6 +5,7 @@ import { qk, useApiQuery, STALE } from '@/lib/query';
 import { programsApi } from '@/lib/services/program-api';
 import { clanApi } from '@/lib/services/clan-api';
 import { useAuth } from '@/lib/context/AuthContext';
+import { byLifecycle } from '@/lib/utils/lifecycleOrder';
 
 /**
  * Which programme — and clan — the admin portal is looking at.
@@ -86,10 +87,11 @@ export function AdminScopeProvider({ children }: { children: ReactNode }) {
         clanApi.list().catch(() => null),
       ]) as [{ data?: unknown } | null, { data?: { clans?: unknown[] } } | null];
       const raw = (pRes as { data?: unknown } | null)?.data;
-      const pList = (Array.isArray(raw) ? raw : (raw as { programs?: unknown[] })?.programs ?? []) as Array<{ id: string; name: string }>;
+      const pList = (Array.isArray(raw) ? raw : (raw as { programs?: unknown[] })?.programs ?? []) as Array<{ id: string; name: string; status?: string }>;
       const cList = (cRes?.data?.clans ?? []) as Array<{ id: string; name: string; kind?: string; programId: string; program?: { name?: string } }>;
       return {
-        programs: pList.map((p) => ({ id: p.id, name: p.name })),
+        // Running programs first in the picker, then completed, then archived.
+        programs: [...pList].sort(byLifecycle((p) => p.status)).map((p) => ({ id: p.id, name: p.name })),
         clans: cList.map((c) => ({
           id: c.id, name: c.name, kind: c.kind || 'cohort', programId: c.programId, programName: c.program?.name || '',
         })),

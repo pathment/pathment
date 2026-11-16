@@ -70,9 +70,17 @@ export function RoleGuard({ children, allowedRoles, redirectTo = '/login', permi
   }, [user, isLoading, permitted, awaitingPerms, recheckedCaps, sectionRole, activeRole, availableRoles, redirectTo, router, setActiveRole, refreshUser, roleMatch]);
 
   if (isLoading || verifying || awaitingPerms) {
+    /*
+     * The portal's colours come from `:root:has([data-<portal>-appearance])`,
+     * and that element lives INSIDE this guard. Without the marker here, this
+     * spinner drew in the default blue and then the page's own spinner in the
+     * portal green: two loaders in two colours on every load. Carrying the
+     * same marker makes this the same loader, in the same colour.
+     */
+    const appearance = { [`data-${sectionRole || 'mentee'}-appearance`]: '' };
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-brand-600" />
+      <div {...appearance} className="flex min-h-screen items-center justify-center bg-canvas">
+        <Loader2 className="h-8 w-8 animate-spin text-brand-600" aria-label="Loading" />
       </div>
     );
   }

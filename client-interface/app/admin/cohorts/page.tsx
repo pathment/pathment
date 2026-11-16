@@ -12,6 +12,7 @@ import { programsApi } from '@/lib/services/program-api';
 import { poolApi, type Pool } from '@/lib/services/pool-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { shareableUrl } from '@/lib/services/workspace-scope';
+import { lifecycleRank } from '@/lib/utils/lifecycleOrder';
 
 const STATUS_META: Record<CohortStatus, { label: string; cls: string }> = {
   planning:  { label: 'Planning',  cls: 'bg-slate-100 text-slate-600 border-slate-200' },
@@ -223,7 +224,8 @@ export default function AdminCohortsPage() {
      * the intake with forty people waiting could sit below three finished
      * ones — and an admissions admin opens this page to find exactly that.
      */
-    .sort((a, b) => waitingOn(b) - waitingOn(a) || a.name.localeCompare(b.name));
+    // Open intakes first, then completed, then closed; worst first within each.
+    .sort((a, b) => lifecycleRank(a.status) - lifecycleRank(b.status) || waitingOn(b) - waitingOn(a) || a.name.localeCompare(b.name));
 
   // What is waiting across everything, which is the question the page is
   // opened to answer and which it previously made you open each card to work out.

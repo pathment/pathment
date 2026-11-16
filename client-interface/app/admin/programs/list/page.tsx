@@ -13,6 +13,7 @@ import { ErrorState } from '@/components/shared/ErrorState';
 import { PageHeader, StatusBadge, SearchAndFilterBar, ConfirmDialog } from '@/components/admin/ui';
 import { useProgramList, ProgramStatus, ProgramSortBy, SortOrder } from '@/lib/hooks/admin/useProgramList';
 import { CreateProgramDrawer } from '@/components/admin/CreateProgramDrawer';
+import { byLifecycle } from '@/lib/utils/lifecycleOrder';
 
 // ─── Skeleton ────────────────────────────────────────────────────────────────
 
@@ -207,7 +208,8 @@ export default function ProgramListPage() {
       ) : (
         <>
           <div className="space-y-4">
-            {programs.map((program) => (
+            {/* Running programs first, then completed, then archived. */}
+            {[...programs].sort(byLifecycle((p) => p.status)).map((program) => (
               <div
                 key={program.id}
                 className="bg-card rounded-3xl border border-slate-200 border-l-4 border-l-brand-500 p-6 hover:border-brand-300 transition-colors"
