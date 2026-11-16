@@ -448,10 +448,21 @@ function SpaceSwitcher({ hub }: { hub: ReturnType<typeof useCommunityHub> }) {
     // programme filter should not pretend to have an opinion about them.
     return false;
   };
-  const scoped = hub.spaces.filter(inProgram);
+  /*
+   * Finding one space among sixty. The list scrolls inside a fixed height
+   * (the page no longer grows by a screen per twenty clans) and a search box
+   * narrows it by name or programme; a search also opens the finished ones,
+   * so a match is never hidden behind a collapsed section.
+   */
+  const [query, setQuery] = useState('');
+  const q = query.trim().toLowerCase();
+  const matches = (s: CommunitySpace) => !q || `${s.name} ${s.subtitle || ''}`.toLowerCase().includes(q);
+  const scoped = hub.spaces.filter(inProgram).filter(matches);
   const live = scoped.filter((s) => !s.workClosed);
   const finished = scoped.filter((s) => s.workClosed);
   const showFilter = programs.length > 1 && hub.spaces.length > 6;
+  const showSearch = hub.spaces.length > 6;
+  const finishedOpen = showFinished || Boolean(q);
 
   const row = (s: CommunitySpace) => {
     const Icon = SPACE_ICON[s.type] || Users;
@@ -470,7 +481,7 @@ function SpaceSwitcher({ hub }: { hub: ReturnType<typeof useCommunityHub> }) {
   };
 
   return (
-    <div className="bg-card rounded-2xl border border-slate-200 p-3">
+    <div className="bg-card rounded-2xl border border-slate-200 p-3 xl:sticky xl:top-4">
       <p className="px-2 pt-1 pb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
         Spaces
         {showFilter && <span className="ml-1.5 font-normal normal-case tracking-normal text-slate-300">{scoped.length} of {hub.spaces.length}</span>}
@@ -485,23 +496,36 @@ function SpaceSwitcher({ hub }: { hub: ReturnType<typeof useCommunityHub> }) {
           />
         </div>
       )}
+      {showSearch && (
+        <div className="relative mb-2 px-0.5">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Find a space…"
+            aria-label="Find a space"
+            className="w-full rounded-xl border border-border bg-card py-2 pl-8 pr-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+          />
+        </div>
+      )}
+      <div className="max-h-80 overflow-y-auto overscroll-contain pr-1 xl:max-h-[calc(100vh-15rem)]">
       <div className="space-y-1">{live.map(row)}</div>
       {scoped.length === 0 && (
-        <p className="px-2.5 py-3 text-xs text-slate-400">No spaces in this program.</p>
+        <p className="px-2.5 py-3 text-xs text-slate-400">{q ? `No space matches “${query.trim()}”.` : 'No spaces in this program.'}</p>
       )}
 
       {finished.length > 0 && (
         <div className="mt-2 border-t border-border pt-2">
           <button
             onClick={() => setShowFinished((v) => !v)}
-            aria-expanded={showFinished}
+            aria-expanded={finishedOpen}
             className="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-left text-slate-500 hover:bg-slate-50"
           >
-            {showFinished ? <ChevronDown className="w-4 h-4 shrink-0" /> : <ChevronRight className="w-4 h-4 shrink-0" />}
+            {finishedOpen ? <ChevronDown className="w-4 h-4 shrink-0" /> : <ChevronRight className="w-4 h-4 shrink-0" />}
             <span className="text-xs font-semibold uppercase tracking-wide">Finished</span>
             <span className="ml-auto text-[11px] tabular-nums text-slate-400">{finished.length}</span>
           </button>
-          {showFinished && (
+          {finishedOpen && (
             <div className="mt-1 space-y-1">
               {finished.map(row)}
               <p className="px-2.5 pt-1 pb-0.5 text-[11px] leading-relaxed text-slate-400">
@@ -511,6 +535,7 @@ function SpaceSwitcher({ hub }: { hub: ReturnType<typeof useCommunityHub> }) {
           )}
         </div>
       )}
+      </div>
     </div>
   );
 }

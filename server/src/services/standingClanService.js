@@ -16,6 +16,7 @@ const { NotFoundError, ForbiddenError, ValidationError, ConflictError } = requir
 
 // clanService requires this module at load time — keep lazy to avoid the cycle.
 const clans = () => require('./clanService');
+const APPROVAL_KEY = 'standing_clan_requires_approval';
 
 class StandingClanService {
   async assertStandingClanPlan(organizationId) {
@@ -74,6 +75,31 @@ class StandingClanService {
         clanName: c.name,
         program: byId.get(c.programId),
       }));
+  }
+
+  /**
+   * Whether a mentor's standing clan request waits for an admin. On unless an
+   * admin turns it off (the same kind of workspace switch as the review lock):
+   * a workspace that trusts its mentors to continue their own clans should not
+   * have to approve every one of them by hand.
+   */
+  async requiresApproval() {
+    const row = await models.SystemSettings.findOne({ where: { settingKey: APPROVAL_KEY }, attributes: ['settingValue'] });
+    return row?.settingValue !== 'false';
+  }
+
+  async setRequiresApproval(required, actor) {
+    if (!await authz.hasAdminAccess(actor)) throw new ForbiddenError('Only an admin can change this');
+    const value = required ? 'true' : 'false';
+    const [row] = await models.SystemSettings.findOrCreate({
+      where: { settingKey: APPROVAL_KEY },
+      defaults: {
+        settingKey: APPROVAL_KEY, settingValue: value, settingType: 'boolean',
+        category: 'standing_clan', isPublic: false, lastModifiedBy: actor.id,
+      },
+    });
+    if (row.settingValue !== value) await row.update({ settingValue: value, lastModifiedBy: actor.id });
+    return Boolean(required);
   }
 
   async request(input, actor) {
@@ -148,6 +174,11 @@ class StandingClanService {
       return { request, isNew: true };
     });
     if (created.isNew) {
+      // Approval switched off: the clan is created now, with its roster and
+      // their unfinished work, exactly as if an admin had pressed Approve.
+      if (!await this.requiresApproval()) {
+        return this.decide(created.request.id, 'approved', 'Approved automatically', actor, { automatic: true });
+      }
       await this._notifyAdminsOfRequest(created.request, actor, program);
     }
     return created.request;
@@ -195,14 +226,16 @@ class StandingClanService {
       order: [['createdAt', 'DESC']] });
   }
 
-  async decide(requestId, decision, note, actor) {
-    if (!await authz.hasAdminAccess(actor)) throw new ForbiddenError('Only an admin can decide standing clan requests');
+  async decide(requestId, decision, note, actor, { automatic = false } = {}) {
+    // `automatic`: the workspace switched approval off, so the request decides
+    // itself. The mentor's eligibility was established when they asked.
+    if (!automatic && !await authz.hasAdminAccess(actor)) throw new ForbiddenError('Only an admin can decide standing clan requests');
     if (!['approved', 'rejected'].includes(decision)) throw new ValidationError('Choose approve or reject');
     // Reject note is optional; when present it is included in the mentor notification.
     const saved = await sequelize.transaction(async transaction => {
       const request = await models.StandingClanRequest.findByPk(requestId, { transaction, lock: transaction.LOCK.UPDATE });
       if (!request) throw new NotFoundError('Request not found');
-      if (!await authz.can(actor, PERMISSIONS.CLAN_CREATE, { programId: request.programId })) throw new ForbiddenError('You cannot approve clans for this program');
+      if (!automatic && !await authz.can(actor, PERMISSIONS.CLAN_CREATE, { programId: request.programId })) throw new ForbiddenError('You cannot approve clans for this program');
       if (request.status === decision) return request;
       if (request.status !== 'pending') throw new ConflictError('This request has already been decided');
       let clan = null;

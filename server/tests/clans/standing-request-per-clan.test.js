@@ -236,6 +236,32 @@ describe('standing clan requests are per clan', () => {
       await expect(ask(coreTeam, '   ')).rejects.toThrow(/1–150 characters/i);
     });
   });
+
+  describe('whether an admin has to approve', () => {
+    it('waits for an admin by default', async () => {
+      expect(await standingClanService.requiresApproval()).toBe(true);
+      const request = await ask(viralLoop, 'Viral Loop Clan 2026 · Standing');
+      expect(request.status).toBe('pending');
+    });
+
+    it('switched off, the request approves itself and the clan opens with its mentees', async () => {
+      const mentee = await (require('../helpers/seed').createMentee)({ email: 'learner@test.com' });
+      await clanService.addMember(viralLoop.id, { userId: mentee.id, role: 'mentee' });
+      await standingClanService.setRequiresApproval(false, admin);
+
+      const request = await ask(viralLoop, 'Viral Loop Clan 2026 · Standing');
+      expect(request.status).toBe('approved');
+      expect(request.createdClanId).toBeTruthy();
+      const clan = await models.Clan.findByPk(request.createdClanId);
+      expect(clan.kind).toBe('standing');
+      const seat = await models.ClanMembership.findOne({ where: { clanId: clan.id, userId: mentee.id, role: 'mentee' } });
+      expect(seat).toBeTruthy();
+    });
+
+    it('only an admin can switch it', async () => {
+      await expect(standingClanService.setRequiresApproval(false, mentor)).rejects.toThrow(/Only an admin/);
+    });
+  });
 });
 
 /**

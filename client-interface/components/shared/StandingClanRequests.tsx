@@ -78,6 +78,27 @@ export function StandingClanRequests({
   const [description, setDescription] = useState('');
   const [review, setReview] = useState<StandingClanReview | null>(null);
   const [busy, setBusy] = useState(false);
+  /*
+   * The workspace switch: does a mentor's request wait for an admin? On by
+   * default, like the review lock. Off, a request approves itself and the
+   * clan opens with its roster and their work.
+   */
+  const [requiresApproval, setRequiresApprovalState] = useState<boolean | null>(null);
+  const [savingSetting, setSavingSetting] = useState(false);
+  useEffect(() => {
+    if (!admin) return;
+    completionApi.settings().then((r) => setRequiresApprovalState(r?.requiresApproval ?? true)).catch(() => setRequiresApprovalState(null));
+  }, [admin]);
+  const toggleApproval = async (next: boolean) => {
+    setSavingSetting(true);
+    try {
+      await completionApi.setRequiresApproval(next);
+      setRequiresApprovalState(next);
+      toast.success(next ? 'Standing clan requests will wait for an admin' : 'Standing clan requests will be approved automatically');
+    } catch (e) {
+      toast.error(extractApiErrorMessage(e, 'Could not change this'));
+    } finally { setSavingSetting(false); }
+  };
 
   const load = useCallback(async () => {
     try {
@@ -110,13 +131,16 @@ export function StandingClanRequests({
     if (!closeoutEnabled) return;
     setBusy(true);
     try {
-      await completionApi.request({
+      const res: { data?: { status?: string } } = await completionApi.request({
         programId,
         sourceClanId,
         name: name.trim(),
         description: description.trim(),
       });
-      toast.success('Request sent to admins');
+      // With approval switched off the clan exists already, mentees and all.
+      toast.success(res?.data?.status === 'approved'
+        ? 'Your standing clan is ready. Its active mentees and their work came with it.'
+        : 'Request sent to admins');
       setOpen(false);
       setName('');
       setDescription('');
@@ -166,13 +190,35 @@ export function StandingClanRequests({
             </h2>
             <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">
               {admin
-                ? 'Review requests for ongoing mentoring spaces. Approved clans start empty, and the mentor chooses who joins.'
+                ? 'Review requests for ongoing mentoring spaces. Approving creates the clan with its mentor team, and every active mentee of the clan it continues comes across with their unfinished work.'
                 : hideRequestButton
                   ? 'Track requests for ongoing mentoring spaces after a program ends.'
                   : 'Continue mentoring in a fresh, ongoing clan after a program formally closes.'}
             </p>
           </div>
         </div>
+        {admin && requiresApproval !== null ? (
+          <label className="flex shrink-0 cursor-pointer items-center gap-3 rounded-2xl border border-border bg-card px-3.5 py-2.5">
+            <span className="text-sm">
+              <span className="block font-medium text-foreground">Admin approval</span>
+              <span className="block text-xs text-muted-foreground">
+                {requiresApproval ? 'Requests wait for an admin' : 'Requests are approved automatically'}
+              </span>
+            </span>
+            <input
+              type="checkbox"
+              role="switch"
+              checked={requiresApproval}
+              disabled={savingSetting}
+              onChange={(e) => toggleApproval(e.target.checked)}
+              className="peer sr-only"
+              aria-label="Require admin approval for standing clan requests"
+            />
+            <span aria-hidden className={`relative h-6 w-11 rounded-full transition-colors ${requiresApproval ? 'bg-brand-600' : 'bg-slate-300'} peer-focus-visible:ring-2 peer-focus-visible:ring-brand-500`}>
+              <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${requiresApproval ? 'translate-x-5' : 'translate-x-0.5'}`} />
+            </span>
+          </label>
+        ) : null}
         {!admin && !hideRequestButton && closeoutEnabled ? (
           <button
             type="button"

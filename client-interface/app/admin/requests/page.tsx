@@ -298,7 +298,12 @@ function AdminClanRequestsInner() {
                           <MessageSquareQuote className="w-3 h-3 mt-0.5 shrink-0" />{r.resolutionNote}
                         </p>
                       )}
-                      {r.origin === 'mentor' && r.status === 'pending' && (
+                      {r.status === 'pending' && r.toClanOpen === false && (
+                        <p className="mt-1 text-[11px] text-amber-700">
+                          {r.toClan} has closed since this was asked. Approve to choose where they go instead — its standing clan is suggested.
+                        </p>
+                      )}
+                      {r.origin === 'mentor' && r.status === 'pending' && r.toClanOpen !== false && (
                         <p className="mt-1 text-[11px] text-slate-400">
                           Waiting on {r.toClan}&apos;s mentors — approve here only if you want to decide it for them.
                         </p>
@@ -307,7 +312,8 @@ function AdminClanRequestsInner() {
                     {r.status === 'pending' ? (
                       <div className="flex items-center gap-1.5 shrink-0">
                         <button
-                          onClick={() => (r.origin === 'mentee'
+                          // A mentee's ask, or one whose clan has closed, needs a destination chosen.
+                          onClick={() => (r.origin === 'mentee' || r.toClanOpen === false
                             ? openDecision(r, true)
                             : act(r.id, () => clanRequestsApi.resolveRequest(r.id, 'approved'), 'Approved - mentee moved'))}
                           disabled={busy === r.id}
@@ -492,8 +498,8 @@ function AdminClanRequestsInner() {
                   )}
                   {deciding.request.toClanId && destinations && !destinations.some((c) => c.id === deciding.request.toClanId) ? (
                     <p className="text-[11px] text-amber-700 mt-1">
-                      They asked for {deciding.request.toClan}, which is not taking people any more (it has
-                      closed). Choose where they go instead — its standing clan is usually the right place.
+                      {deciding.request.toClan} was asked for, but it has closed and is not taking people.
+                      Choose where they go instead — its standing clan, if it has one, is at the top.
                     </p>
                   ) : deciding.request.toClanId ? (
                     <p className="text-[11px] text-slate-400 mt-1">

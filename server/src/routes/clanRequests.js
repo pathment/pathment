@@ -38,6 +38,9 @@ router.post(
   c.createStandingRequest
 );
 
+// Declared before '/standing/:id/...' routes; admin only.
+router.get('/standing/settings', adminOnly, c.standingSettings);
+router.put('/standing/settings', adminOnly, c.setStandingSettings);
 router.post(
   '/standing/:id/decision',
   authenticate,

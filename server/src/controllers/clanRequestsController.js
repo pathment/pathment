@@ -117,6 +117,15 @@ const createStandingRequest = catchAsync(async (req, res) => {
   res.status(201).json(successResponse('Request submitted', request, 201));
 });
 
+/** GET/PUT /api/clan-requests/standing/settings — does a request wait for an admin? */
+const standingSettings = catchAsync(async (req, res) => {
+  res.status(200).json(successResponse('Standing clan settings', { requiresApproval: await standingClanService.requiresApproval() }));
+});
+const setStandingSettings = catchAsync(async (req, res) => {
+  const requiresApproval = await standingClanService.setRequiresApproval(req.body?.requiresApproval !== false, req.user);
+  res.status(200).json(successResponse('Standing clan settings saved', { requiresApproval }));
+});
+
 /** POST /api/clan-requests/standing/:id/decision */
 const decideStandingRequest = catchAsync(async (req, res) => {
   const request = await standingClanService.decide(
@@ -129,6 +138,8 @@ const decideStandingRequest = catchAsync(async (req, res) => {
 });
 
 module.exports = {
+  standingSettings,
+  setStandingSettings,
   overview,
   destinations,
   createRequest,

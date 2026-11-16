@@ -97,7 +97,8 @@ class ClanRequestsService {
           // screen can filter this queue by programme — with forty-odd clans
           // in a workspace, "which of these are mine" is the first question.
           { model: models.Clan, as: 'fromClan', attributes: ['name', 'programId', 'kind', 'frozenAt'] },
-          { model: models.Clan, as: 'toClan', attributes: ['name', 'programId'] }
+          { model: models.Clan, as: 'toClan', attributes: ['name', 'programId', 'kind', 'status', 'frozenAt'],
+            include: [{ model: models.Program, as: 'program', attributes: ['closedAt'], required: false }] }
         ]
       }),
       models.CrossClanAssignment.findAll({
@@ -106,7 +107,8 @@ class ClanRequestsService {
         include: [
           { model: models.User, as: 'user', attributes: ['firstName', 'lastName'] },
           { model: models.Clan, as: 'fromClan', attributes: ['name', 'programId'] },
-          { model: models.Clan, as: 'toClan', attributes: ['name', 'programId'] }
+          { model: models.Clan, as: 'toClan', attributes: ['name', 'programId', 'kind', 'status', 'frozenAt'],
+            include: [{ model: models.Program, as: 'program', attributes: ['closedAt'], required: false }] }
         ]
       }),
       models.ClanChangeRequest.count({ where: whereFor('pending'), include: countInclude, distinct: true, col: 'id' }),
@@ -145,6 +147,15 @@ class ClanRequestsService {
           ? 'move' : 'placement',
         requestedBy: fullName(r.requester),
         resolvedAt: r.resolvedAt || null,
+        /*
+         * Whether the clan this request names still takes people. A request
+         * raised before its programme closed can name a clan that is now a
+         * read-only record; approving it as-is can only fail, so the screen
+         * offers a choice of destination instead.
+         */
+        toClanOpen: r.toClan
+          ? r.toClan.status !== 'archived' && (r.toClan.kind === 'standing' || (!r.toClan.frozenAt && !r.toClan.program?.closedAt))
+          : null,
         at: r.createdAt
       })),
       crossClan: crossClan.map((c) => ({
@@ -549,7 +560,18 @@ class ClanRequestsService {
     let destination = req.toClanId;
     if (status === 'approved' && toClanId && toClanId !== req.toClanId) {
       if (!fromMentee) {
-        throw new ValidationError('This request names its own target clan. Deny it and raise a new one to send them elsewhere.');
+        // A mentor's or admin's request names its destination, and that stands
+        // — unless that clan has since closed, when approving it as asked can
+        // only fail. Then the admin chooses where they go instead.
+        const named = req.toClanId ? await models.Clan.findByPk(req.toClanId, {
+          attributes: ['id', 'kind', 'status', 'frozenAt'],
+          include: [{ model: models.Program, as: 'program', attributes: ['closedAt'] }],
+        }) : null;
+        const namedOpen = named && named.status !== 'archived'
+          && (named.kind === 'standing' || (!named.frozenAt && !named.program?.closedAt));
+        if (namedOpen) {
+          throw new ValidationError('This request names its own target clan. Deny it and raise a new one to send them elsewhere.');
+        }
       }
       destination = toClanId;
     }

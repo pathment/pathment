@@ -467,6 +467,44 @@ describe('mentee clan change requests', () => {
     });
   });
 
+  describe('a request that names a clan which has since closed', () => {
+    const closeIntoStanding = async () => {
+      const standing = await createClan({ programId: program.id, leadMentor: mentorB, name: 'Dusk Clan · Standing' });
+      await standing.update({ kind: 'standing' });
+      await models.StandingClanRequest.create({
+        mentorId: mentorB.id, programId: program.id, sourceClanId: clanB.id, name: 'Dusk Clan · Standing',
+        status: 'approved', createdClanId: standing.id,
+      });
+      await clanB.update({ frozenAt: new Date() });
+      return standing;
+    };
+    const mentorAsk = () => models.ClanChangeRequest.create({
+      menteeId: mentee.id, fromClanId: clanA.id, toClanId: clanB.id, origin: 'mentor', createdBy: mentorA.id, status: 'pending',
+    });
+
+    it('is marked as not taking people, so the screen offers a choice', async () => {
+      await closeIntoStanding();
+      await mentorAsk();
+      const res = await api(admin).queue();
+      expect(res.body.data.requests.find((r) => r.origin === 'mentor').toClanOpen).toBe(false);
+    });
+
+    it('suggests the standing clan that continues it, first', async () => {
+      const standing = await closeIntoStanding();
+      const req = await mentorAsk();
+      const res = await request(app).get(`/api/clan-requests/requests/${req.id}/destinations`).set('Authorization', authHeader(admin));
+      expect(res.body.data.clans[0]).toMatchObject({ id: standing.id, continues: 'Dusk Clan', suggested: true });
+    });
+
+    it('can be approved into another clan instead of failing', async () => {
+      const standing = await closeIntoStanding();
+      const req = await mentorAsk();
+      const res = await api(admin).resolve(req.id, { status: 'approved', toClanId: standing.id });
+      expect(res.status).toBe(200);
+      expect(await membership(mentee.id, standing.id)).toBeTruthy();
+    });
+  });
+
   describe('where an admin can send them', () => {
     const destinations = (id) => request(app).get(`/api/clan-requests/requests/${id}/destinations`).set('Authorization', authHeader(admin));
 

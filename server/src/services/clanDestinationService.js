@@ -86,6 +86,22 @@ async function list({ fromClan = null, preferredClanId = null, excludeClanIds = 
     ),
   ]);
   const menteesOf = Object.fromEntries(counts.map((r) => [r.clanId, Number(r.n)]));
+
+  /*
+   * A closed clan lives on in the standing clan approved to continue it. When
+   * someone asked for (or is leaving) a clan that has since closed, that
+   * continuation is the obvious answer, so it is found and named.
+   */
+  const continuedFrom = new Map();
+  const closedIds = [preferredClanId, fromClan?.id].filter(Boolean);
+  if (closedIds.length && models.StandingClanRequest) {
+    const links = await models.StandingClanRequest.findAll({
+      where: { sourceClanId: { [Op.in]: closedIds }, status: 'approved', createdClanId: { [Op.ne]: null } },
+      attributes: ['sourceClanId', 'createdClanId'],
+      include: [{ model: models.Clan, as: 'sourceClan', attributes: ['name'], required: false }],
+    }).catch(() => []);
+    for (const l of links) continuedFrom.set(l.createdClanId, l.sourceClan?.name || 'their clan');
+  }
   const reviewOf = Object.fromEntries(reviews.map((r) => [r.clan_id, r]));
 
   const shaped = clans.map((c) => {
@@ -108,6 +124,8 @@ async function list({ fromClan = null, preferredClanId = null, excludeClanIds = 
       activity: activityOf(weeks),
       sameProgram: Boolean(fromClan && c.programId === fromClan.programId),
       preferred: c.id === preferredClanId,
+      // "Continues Algorithm Avengers Clan 2026": the standing clan a closed one became.
+      continues: continuedFrom.get(c.id) || null,
       effect,
     };
   });
@@ -118,6 +136,7 @@ async function list({ fromClan = null, preferredClanId = null, excludeClanIds = 
    * and cross-programme moves sink — still offered, never recommended.
    */
   const score = (d) => (d.preferred ? 1e6 : 0)
+    + (d.continues ? 5e5 : 0)
     + (d.sameProgram ? 1e4 : 0)
     + d.reviewWeeks * 100
     + (d.status === 'active' ? 50 : -500)
@@ -127,7 +146,7 @@ async function list({ fromClan = null, preferredClanId = null, excludeClanIds = 
 
   let picks = 0;
   for (const d of shaped) {
-    d.suggested = !d.preferred && picks < 3 && d.status === 'active' && d.activity !== 'none' && d.effect !== 'move_cross';
+    d.suggested = !d.preferred && (Boolean(d.continues) || (picks < 3 && d.status === 'active' && d.activity !== 'none' && d.effect !== 'move_cross'));
     if (d.suggested) picks += 1;
   }
   return shaped;

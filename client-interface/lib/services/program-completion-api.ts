@@ -73,6 +73,9 @@ export const completionApi = {
   eligiblePrograms: () => apiClient.get<{ data: { id: string; name: string; clanId?: string; clanName?: string }[] }>('/clan-requests/standing/eligible-programs').then(r => r.data),
   request: (data: { programId: string; sourceClanId: string; name: string; description: string }) => apiClient.post('/clan-requests/standing', data),
   decide: (id: string, decision: 'approved' | 'rejected', note: string) => apiClient.post(`/clan-requests/standing/${id}/decision`, { decision, note }),
+  /** Whether a mentor's request waits for an admin (on by default). */
+  settings: () => apiClient.get<{ data: { requiresApproval: boolean } }>('/clan-requests/standing/settings').then(r => r.data),
+  setRequiresApproval: (requiresApproval: boolean) => apiClient.put<{ data: { requiresApproval: boolean } }>('/clan-requests/standing/settings', { requiresApproval }).then(r => r.data),
   addMentees: (id: string, menteeIds: string[]) => apiClient.post(`/clans/${id}/standing-members`, { menteeIds }),
 
   /**

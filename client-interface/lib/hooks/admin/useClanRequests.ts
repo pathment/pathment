@@ -29,6 +29,8 @@ export interface ChangeRequest {
   moveKind?: 'move' | 'placement';
   requestedBy?: string | null;
   resolvedAt?: string | null;
+  /** False when the clan it names has since closed: approve by choosing another. */
+  toClanOpen?: boolean | null;
   at: string;
 }
 
@@ -51,6 +53,8 @@ export interface ClanDestination {
   activity: 'regular' | 'irregular' | 'none';
   sameProgram: boolean;
   preferred: boolean;
+  /** Set on the standing clan that continues the closed clan they asked for / are in. */
+  continues?: string | null;
   suggested: boolean;
   /** move · move_cross (ends their programme enrolment) · placement · join (standing) */
   effect: 'move' | 'move_cross' | 'placement' | 'join';

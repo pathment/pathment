@@ -27,6 +27,8 @@ export interface DestinationOption {
   activity?: 'regular' | 'irregular' | 'none';
   sameProgram?: boolean;
   preferred?: boolean;
+  /** "Continues <closed clan>": the standing clan a closed one became. */
+  continues?: string | null;
   suggested?: boolean;
 }
 
@@ -132,6 +134,7 @@ function Row({ clan: c, selected, onPick, preferredLabel }: {
           {c.kind === 'standing' && <Chip tone="bg-sky-50 text-sky-700">Standing</Chip>}
           {inactive && <Chip tone="bg-slate-100 text-slate-600"><Moon className="h-3 w-3" />Inactive</Chip>}
           {c.preferred && <Chip tone="bg-violet-100 text-violet-700"><Star className="h-3 w-3" />{preferredLabel}</Chip>}
+          {c.continues && <Chip tone="bg-emerald-50 text-emerald-700">Continues {c.continues}</Chip>}
         </span>
         <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
           {c.activity && <Activity clan={c} />}
