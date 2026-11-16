@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { X, ArrowRight } from "lucide-react";
+import { X, ArrowRight, Flame } from "lucide-react";
 import { Kiko } from "@/components/shared/Kiko";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -236,7 +236,8 @@ export function PointsEarnedNotifier() {
     : null;
 
   return (
-    <div className="pointer-events-none fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] z-[80] flex justify-center sm:inset-auto sm:right-6 sm:top-6 sm:block">
+    // Top centre, like every other notice: one place to look for news.
+    <div className="pointer-events-none fixed inset-x-3 top-[calc(env(safe-area-inset-top)+1rem)] z-[80] flex justify-center">
       <aside
         onMouseEnter={() => setPaused(true)}
         onMouseLeave={() => setPaused(false)}
@@ -250,53 +251,42 @@ export function PointsEarnedNotifier() {
         aria-atomic="true"
         aria-label={`${headline}. You earned ${totalPoints} XP.`}
         /**
-         * Dark in both themes, on purpose.
-         *
-         * This is the one moment in the product that is a celebration rather
-         * than a piece of furniture, and a card that matches every other card
-         * cannot say so. A deep brand surface separates it from the page
-         * underneath without needing an outline to do it.
+         * A clean card, not a dark gradient slab: the page's own surface, a
+         * hairline border and a soft lift. The colour lives where it means
+         * something: the warm streak flame, the lit days, the countdown.
          */
-        className="pointer-events-auto relative w-full max-w-[400px] overflow-hidden rounded-[1.25rem] bg-linear-to-br from-brand-800 via-brand-900 to-slate-950 text-white shadow-[0_20px_50px_-16px_rgba(6,78,59,0.65)] ring-1 ring-white/10 motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:slide-in-from-bottom-2 sm:motion-safe:slide-in-from-top-2 sm:motion-safe:duration-300"
+        className="pointer-events-auto relative w-full max-w-[420px] overflow-hidden rounded-2xl border border-slate-200/80 bg-card text-slate-900 shadow-[0_18px_40px_-18px_rgba(15,23,42,0.35),0_2px_6px_-2px_rgba(15,23,42,0.08)] dark:border-slate-700/80 dark:text-slate-50 dark:shadow-[0_18px_40px_-12px_rgba(0,0,0,0.6)] motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:slide-in-from-top-3 motion-safe:duration-300"
       >
-        {/* A few pieces of confetti behind the mark. Placed by hand rather than
-            at random so they never collide with the close button, and gone
-            entirely when motion is turned down. */}
-        <div aria-hidden="true" className="pointer-events-none absolute inset-y-0 left-0 w-32 overflow-hidden">
-          {[
-            { c: "bg-amber-300", s: "h-1.5 w-1.5 rounded-full", t: "top-5 left-6", d: "0ms" },
-            { c: "bg-emerald-300", s: "h-1 w-3 rounded-full rotate-12", t: "top-9 left-20", d: "260ms" },
-            { c: "bg-amber-400", s: "h-1 w-2.5 rounded-full -rotate-12", t: "bottom-7 left-7", d: "520ms" },
-            { c: "bg-white/70", s: "h-1 w-1 rounded-full", t: "bottom-5 left-24", d: "140ms" },
-            { c: "bg-emerald-200", s: "h-1.5 w-1.5 rounded-full", t: "top-4 left-28", d: "400ms" },
-          ].map((bit, i) => (
-            <span
-              key={i}
-              style={{ animationDelay: bit.d }}
-              className={`absolute ${bit.t} ${bit.s} ${bit.c} opacity-80 motion-safe:animate-pm-confetti`}
-            />
-          ))}
-        </div>
-
-        <div className="relative flex items-center gap-4 p-4 pr-10">
-          {/*
-              One mark carrying both facts: what happened, and what it was
-              worth. The XP rides on Kiko instead of competing with the
-              streak for the headline.
-          */}
-          <div className="relative -my-1 shrink-0">
-            {/* Kiko shows up for it: a cheer for showing up today, a wink for progress. */}
-            <Kiko mood={dailyLogin ? "celebrate" : "wink"} size={60} animated className="drop-shadow-[0_6px_10px_rgba(0,0,0,0.35)]" />
-            <span className="absolute -bottom-1.5 -right-1.5 rounded-full bg-white px-1.5 py-0.5 text-[11px] font-extrabold tabular-nums text-slate-900 shadow-md">
-              +{totalPoints}
+        <div className="relative flex items-center gap-4 p-4 pr-11">
+          {/* Kiko on a warm disc, with the XP as a small badge on the mark. */}
+          <div className="relative shrink-0">
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-50 ring-1 ring-amber-200/70 dark:bg-amber-400/10 dark:ring-amber-300/20">
+              <Kiko mood={dailyLogin ? "celebrate" : "wink"} size={54} animated />
+            </div>
+            {/* A few sparks around the mark; gone when motion is turned down. */}
+            {[
+              { c: "bg-amber-400", s: "h-1.5 w-1.5 rounded-full", t: "-top-1 left-2", d: "0ms" },
+              { c: "bg-brand-400", s: "h-1 w-2.5 rounded-full rotate-12", t: "top-3 -right-2", d: "300ms" },
+              { c: "bg-amber-300", s: "h-1 w-1 rounded-full", t: "-bottom-1 left-5", d: "600ms" },
+            ].map((bit, i) => (
+              <span
+                key={i}
+                aria-hidden="true"
+                style={{ animationDelay: bit.d }}
+                className={`pointer-events-none absolute ${bit.t} ${bit.s} ${bit.c} opacity-0 motion-safe:animate-pm-confetti`}
+              />
+            ))}
+            <span className="absolute -bottom-1.5 -right-2 rounded-full bg-slate-900 px-1.5 py-0.5 text-[11px] font-extrabold tabular-nums text-white shadow-sm ring-2 ring-white dark:bg-white dark:text-slate-900 dark:ring-slate-900">
+              +{totalPoints} XP
             </span>
           </div>
 
           <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-300/90">
+            <p className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-[0.14em] text-amber-600 dark:text-amber-300">
+              {dailyLogin ? <Flame className="h-3 w-3" aria-hidden="true" /> : null}
               {dailyLogin ? "Daily streak" : "Progress unlocked"}
             </p>
-            <p className="mt-0.5 truncate text-xl font-extrabold tracking-tight">{headline}</p>
+            <p className="mt-0.5 truncate text-lg font-extrabold tracking-tight">{headline}</p>
 
             {pips ? (
               <div className="mt-2 flex items-center gap-1" aria-hidden="true">
@@ -305,23 +295,23 @@ export function PointsEarnedNotifier() {
                     key={i}
                     style={{ animationDelay: `${i * 45}ms` }}
                     className={`h-1.5 rounded-full motion-safe:animate-pm-pip ${
-                      lit ? "w-4 bg-amber-400" : "w-2.5 bg-white/20"
+                      lit ? "w-4 bg-gradient-to-r from-amber-400 to-orange-500" : "w-2.5 bg-slate-200 dark:bg-slate-700"
                     }`}
                   />
                 ))}
                 {days > PIPS && (
-                  <span className="ml-1 text-[11px] font-semibold text-amber-300/90">+{days - PIPS}</span>
+                  <span className="ml-1 text-[11px] font-semibold text-amber-600 dark:text-amber-300">+{days - PIPS}</span>
                 )}
               </div>
             ) : null}
 
-            <p className="mt-1.5 truncate text-xs text-white/60">{sub}</p>
+            <p className="mt-1.5 truncate text-xs text-slate-500 dark:text-slate-400">{sub}</p>
           </div>
 
           <button
             type="button"
             onClick={handleDismiss}
-            className="absolute right-2.5 top-2.5 flex h-7 w-7 items-center justify-center rounded-lg text-white/50 transition-colors hover:bg-white/10 hover:text-white"
+            className="absolute right-2.5 top-2.5 flex h-7 w-7 items-center justify-center rounded-full text-slate-400 transition-[background-color,color,transform] hover:bg-slate-100 hover:text-slate-700 active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:hover:bg-slate-800 dark:hover:text-slate-200 [&>svg]:transition-transform hover:[&>svg]:rotate-90"
             aria-label="Dismiss"
           >
             <X className="h-4 w-4" />
@@ -329,11 +319,11 @@ export function PointsEarnedNotifier() {
         </div>
 
         {rewardsHref && (
-          <div className="relative px-4 pb-4">
+          <div className="relative flex justify-end border-t border-slate-100 px-4 py-2.5 dark:border-slate-800">
             <Link
               href={workspacePath(rewardsHref)}
               onClick={handleDismiss}
-              className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3.5 py-1.5 text-xs font-bold text-white ring-1 ring-white/15 transition-colors hover:bg-white/20"
+              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold text-brand-700 transition-colors hover:bg-brand-50 dark:text-brand-300 dark:hover:bg-brand-400/10"
             >
               Keep going
               <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
@@ -341,16 +331,10 @@ export function PointsEarnedNotifier() {
           </div>
         )}
 
-        {/*
-            The countdown, drawn.
-
-            It always left after 6.5s and hovering always held it; neither was
-            visible, so the card read as something to deal with rather than
-            something passing through.
-        */}
+        {/* The countdown, drawn: it leaves after 6.5s, and hovering holds it. */}
         <span
           aria-hidden="true"
-          className={`absolute bottom-0 left-0 h-0.5 origin-left bg-amber-400/80 ${
+          className={`absolute bottom-0 left-0 h-0.5 origin-left bg-gradient-to-r from-amber-400 to-orange-500 ${
             paused ? "" : "animate-pm-toast-timer"
           }`}
           style={paused ? { width: "100%", opacity: 0.3 } : undefined}

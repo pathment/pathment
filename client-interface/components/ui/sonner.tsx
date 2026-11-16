@@ -24,9 +24,9 @@ const Toaster = ({ ...props }: ToasterProps) => {
     <Sonner
       theme={theme as ToasterProps["theme"]}
       className="toaster group"
-      // Top-right: at the bottom they sat over drawer footers and the very
-      // buttons someone was about to press.
-      position="top-right"
+      // Top centre: never over drawer footers or the buttons someone is about
+      // to press, and in the same place on every screen size.
+      position="top-center"
       offset={16}
       mobileOffset={12}
       // Every toast can be dismissed at once; nobody should have to wait one out.
