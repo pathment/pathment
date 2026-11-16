@@ -100,7 +100,13 @@ const strip = catchAsync(async (req, res) => {
   res.status(200).json(successResponse('Plan summary retrieved', data));
 });
 
+// Today's plan progress for many mentees at once (clan review's mentee row).
+const strips = catchAsync(async (req, res) => {
+  const data = await board.stripsMany(req.body?.menteeIds, req.body?.clanId || clanOf(req), req.user);
+  res.status(200).json(successResponse('Plan progress retrieved', { progress: data }));
+});
+
 module.exports = {
-  getBoard, addItem, moveItem, completeItem, addSlot, updateSlot, removeSlot, strip,
+  getBoard, addItem, moveItem, completeItem, addSlot, updateSlot, removeSlot, strip, strips,
   hideSlot, listTemplates, applyTemplate, setItemRepeat,
 };

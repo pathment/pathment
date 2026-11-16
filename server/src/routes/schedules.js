@@ -45,6 +45,7 @@ router.post('/slot/:slotId/activate', mentorOnly, c.activateSlot); // generate r
  */
 const canPlan = [authenticate, requirePermissionAnyScope(PERMISSIONS.SCHEDULE_PLAN)];
 
+router.post('/board/strips', canPlan, c2.strips);
 router.get('/board/:menteeId', canPlan, c2.getBoard);
 router.get('/board/:menteeId/strip', canPlan, c2.strip);
 router.post('/board/:menteeId/slots', canPlan, c2.addSlot);

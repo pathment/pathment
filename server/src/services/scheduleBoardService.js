@@ -872,6 +872,55 @@ class ScheduleBoardService {
       unplanned: board.unplanned.length,
     };
   }
+
+  /**
+   * How far through today's plan each of these mentees is, in one call.
+   *
+   * Drives the progress ring on every face in clan review's mentee row, so a
+   * mentor can see who is behind before opening anyone. Built from the same
+   * board each mentee's own card reads, so the ring and the card can never
+   * disagree. A mentee this actor may not plan for is simply left out.
+   */
+  async stripsMany(menteeIds, clanId, actor) {
+    let ids = [...new Set((Array.isArray(menteeIds) ? menteeIds : []).map(String))].slice(0, 200);
+    /*
+     * Only mentees who are really in the clan (or, with no clan, in one this
+     * actor staffs). The per-mentee read trusts the clan it is handed, which
+     * is fine for one card a mentor opened from their own row, but a batch
+     * of arbitrary ids must not become a way to read anyone's day.
+     */
+    if (actor?.role !== 'admin') {
+      let clanIds = clanId ? [clanId] : null;
+      if (!clanIds) {
+        const staffed = await models.ClanMembership.findAll({
+          where: { userId: actor.id, role: { [Op.ne]: 'mentee' }, status: 'active' }, attributes: ['clanId'],
+        });
+        clanIds = staffed.map((m) => m.clanId);
+      }
+      const members = await models.ClanMembership.findAll({
+        where: { clanId: clanIds, userId: ids, role: 'mentee' }, attributes: ['userId'],
+      });
+      const allowed = new Set(members.map((m) => String(m.userId)));
+      ids = ids.filter((id) => allowed.has(id));
+    }
+    const out = {};
+    const CONCURRENCY = 6;
+    for (let i = 0; i < ids.length; i += CONCURRENCY) {
+      await Promise.all(ids.slice(i, i + CONCURRENCY).map(async (menteeId) => {
+        try {
+          const board = await this.board(menteeId, { clanId }, actor);
+          const total = board.slots.reduce((n, s) => n + s.items.length, 0);
+          const done = board.slots.reduce((n, s) => n + s.done, 0);
+          out[menteeId] = { hasPlan: board.slots.length > 0, total, done };
+        } catch (error) {
+          if (!(error instanceof ForbiddenError) && !(error instanceof NotFoundError)) {
+            logger.warn(`plan progress for ${menteeId} failed: ${error.message}`);
+          }
+        }
+      }));
+    }
+    return out;
+  }
 }
 
 module.exports = new ScheduleBoardService();

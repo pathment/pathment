@@ -665,6 +665,16 @@ describe('the day planner', () => {
     it('is refused to a mentor outside the clan', async () => {
       await expect(board.strip(mentee.id, clan.id, outsiderMentor)).rejects.toThrow(/cannot change this plan/i);
     });
+
+    it('gives the whole clan row its plan progress at once, leaving out who the mentor cannot see', async () => {
+      const a = await board.addItem(mentee.id, OPEN, { title: 'One' }, mentee, clan.id);
+      await board.addItem(mentee.id, OPEN, { title: 'Two' }, mentee, clan.id);
+      await board.completeItem(a.id, mentee);
+
+      const progress = await board.stripsMany([mentee.id, stranger.id], clan.id, mentor);
+      expect(progress[mentee.id]).toEqual({ hasPlan: true, total: 2, done: 1 });
+      expect(progress[stranger.id]).toBeUndefined();
+    });
   });
 
   describe('sitting out a block for one day', () => {

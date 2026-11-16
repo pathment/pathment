@@ -11,29 +11,33 @@ export interface AttendanceMentee {
   /** Pre-computed initials from the cohort payload; falls back to deriving them. */
   avatar?: string;
   profilePictureUrl?: string | null;
+  /** Submissions waiting for the mentor. */
+  pendingApprovals?: number;
 }
+
+/** Today's plan for one mentee: undefined while it loads. */
+export type FacePlan = { hasPlan: boolean; total: number; done: number } | undefined;
 
 interface MenteeAttendanceCardProps {
   mentee: AttendanceMentee;
   attendance: Attendance;
   isActive: boolean;
   onClick: () => void;
+  plan?: FacePlan;
 }
 
 /**
- * Instagram-story-style attendance chip: a circular avatar wrapped in a
- * status-coloured ring, a small status badge, and the mentee's first name.
- * The ring/badge encode attendance at a glance (green = present, red = absent,
- * amber = excused, grey = not yet marked), and the active mentee gets a brand
- * halo so the mentor never loses their place while scrubbing the cohort.
+ * One face in clan review's row, readable without opening anyone:
+ *
+ *   the ring    how far through TODAY'S PLAN they are — it fills as they tick
+ *               work off, turns green when the day is done, and is dashed when
+ *               they have no plan at all (the case a mentor most needs to see);
+ *   the badge   attendance (tick / cross / dash / question);
+ *   the dot     work waiting for the mentor's review, with a count.
+ *
+ * So a mentor stepping through a hundred people can see who is behind and who
+ * is waiting on them, and skip the ones who are fine.
  */
-
-const RING: Record<NonNullable<Attendance> | 'null', string> = {
-  present: 'bg-emerald-500',
-  absent: 'bg-red-500',
-  excused: 'bg-amber-400',
-  null: 'bg-slate-200',
-};
 
 const BADGE: Record<NonNullable<Attendance> | 'null', { cls: string; Icon: typeof Check }> = {
   present: { cls: 'bg-emerald-500 text-white', Icon: Check },
@@ -42,9 +46,8 @@ const BADGE: Record<NonNullable<Attendance> | 'null', { cls: string; Icon: typeo
   null: { cls: 'bg-slate-300 text-white', Icon: HelpCircle },
 };
 
-export function MenteeAttendanceCard({ mentee, attendance, isActive, onClick }: MenteeAttendanceCardProps) {
+export function MenteeAttendanceCard({ mentee, attendance, isActive, onClick, plan }: MenteeAttendanceCardProps) {
   const key = (attendance ?? 'null') as NonNullable<Attendance> | 'null';
-  const ring = RING[key];
   const { cls: badgeCls, Icon } = BADGE[key];
   const initials = mentee.avatar || getInitials(mentee.name);
   const firstName = mentee.name.split(' ')[0];
@@ -60,7 +63,7 @@ export function MenteeAttendanceCard({ mentee, attendance, isActive, onClick }: 
     <button
       ref={ref}
       onClick={onClick}
-      title={`${mentee.name} — ${attendance ?? 'not marked'}`}
+      title={faceTitle(mentee, attendance, plan)}
       aria-pressed={isActive}
       className={`group/card relative flex shrink-0 snap-start flex-col items-center gap-2 rounded-2xl px-1.5 pb-1.5 pt-2 outline-none transition-colors ${
         isActive ? 'w-[92px] bg-brand-50/80 dark:bg-brand-500/10' : 'w-[84px]'
@@ -76,15 +79,11 @@ export function MenteeAttendanceCard({ mentee, attendance, isActive, onClick }: 
         />
       )}
       <div className="relative">
-        {/* Status ring — a coloured halo around the avatar. The person being
-            reviewed right now carries the running light, so "where am I" is
-            answerable from the rail without reading a single name. */}
-        <div
-          className={`rounded-full transition-transform duration-200 group-hover/card:-translate-y-0.5 ${ring} ${
-            isActive ? 'pm-snake pm-snake-ring scale-110 p-[3px] shadow-lg shadow-brand-500/25' : 'p-[3px]'
-          }`}
-        >
-          <div className="rounded-full bg-card p-[2px]">
+        {/* Today's plan, as a ring that fills. */}
+        <div className={`relative rounded-full p-[5px] transition-transform duration-200 group-hover/card:-translate-y-0.5 ${
+          isActive ? 'scale-110 drop-shadow-[0_6px_12px_rgba(16,185,129,0.25)]' : ''}`}>
+          <PlanRing plan={plan} />
+          <div className="relative rounded-full bg-card p-[1px]">
             <Avatar
               name={mentee.name}
               src={mentee.profilePictureUrl}
@@ -93,6 +92,14 @@ export function MenteeAttendanceCard({ mentee, attendance, isActive, onClick }: 
             />
           </div>
         </div>
+
+        {/* Waiting for review: the one thing on the row that is the mentor's move. */}
+        {!!mentee.pendingApprovals && (
+          <span className="absolute -right-1 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-card bg-brand-600 px-1 text-[10px] font-bold tabular-nums text-white"
+            aria-label={`${mentee.pendingApprovals} waiting for review`}>
+            {mentee.pendingApprovals}
+          </span>
+        )}
 
         {/* Status badge — bottom-right tick / cross / dash / question. */}
         <span
@@ -112,5 +119,37 @@ export function MenteeAttendanceCard({ mentee, attendance, isActive, onClick }: 
         {firstName}
       </span>
     </button>
+  );
+}
+
+function faceTitle(mentee: AttendanceMentee, attendance: Attendance, plan: FacePlan) {
+  const parts = [mentee.name, attendance ?? 'not marked'];
+  if (plan) parts.push(plan.hasPlan ? `today ${plan.done}/${plan.total} done` : 'no plan today');
+  if (mentee.pendingApprovals) parts.push(`${mentee.pendingApprovals} to review`);
+  return parts.join(' — ');
+}
+
+/**
+ * The plan ring, drawn around the avatar. A track, and an arc for the share
+ * of today's plan that is done; green once it is all done; dashed with no
+ * plan; a plain track while it loads, so the row never flickers colours.
+ */
+function PlanRing({ plan }: { plan: FacePlan }) {
+  const R = 31.5;
+  const C = 2 * Math.PI * R;
+  const share = plan && plan.total > 0 ? plan.done / plan.total : 0;
+  const complete = !!plan && plan.total > 0 && plan.done === plan.total;
+  const none = !!plan && !plan.hasPlan;
+  return (
+    <svg viewBox="0 0 68 68" className="absolute inset-0 h-full w-full -rotate-90" aria-hidden>
+      <circle cx="34" cy="34" r={R} fill="none" strokeWidth="3.5"
+        className={none ? 'stroke-slate-300 dark:stroke-slate-600' : 'stroke-slate-200 dark:stroke-slate-700'}
+        strokeDasharray={none ? '3 4' : undefined} />
+      {!none && share > 0 && (
+        <circle cx="34" cy="34" r={R} fill="none" strokeWidth="3.5" strokeLinecap="round"
+          className={`transition-[stroke-dashoffset] duration-500 ease-out ${complete ? 'stroke-emerald-500' : 'stroke-brand-500'}`}
+          strokeDasharray={C} strokeDashoffset={C * (1 - share)} />
+      )}
+    </svg>
   );
 }

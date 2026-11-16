@@ -1,7 +1,7 @@
 import React, { useState, useMemo, type ReactNode } from 'react';
 import { AttendanceFilters, type AttendanceFilter } from './AttendanceFilters';
 import { MenteeCarousel } from './MenteeCarousel';
-import { MenteeAttendanceCard, type AttendanceMentee } from './MenteeAttendanceCard';
+import { MenteeAttendanceCard, type AttendanceMentee, type FacePlan } from './MenteeAttendanceCard';
 import { AttendanceModal } from './AttendanceModal';
 import { CheckCircle2 } from 'lucide-react';
 
@@ -15,6 +15,8 @@ interface AttendanceSectionProps {
   onSaveAttendance: (updates: Record<string, Attendance>) => Promise<void>;
   isSaving: boolean;
   readOnly?: boolean;
+  /** Today's plan progress per mentee, for the ring on each face. */
+  planProgress?: Record<string, FacePlan>;
   /**
    * The "jump to a mentee" field, rendered in this row.
    *
@@ -36,6 +38,7 @@ export function AttendanceSection({
   onSaveAttendance,
   isSaving,
   readOnly = false,
+  planProgress,
   search,
 }: AttendanceSectionProps) {
   const [currentFilter, setCurrentFilter] = useState<AttendanceFilter>('all');
@@ -108,6 +111,7 @@ export function AttendanceSection({
                   attendance={attendance[mentee.id] ?? null}
                   isActive={mentee.id === activeMenteeId}
                   onClick={() => onSelectMentee(originalIndex)}
+                  plan={planProgress?.[mentee.id]}
                 />
               );
             })}

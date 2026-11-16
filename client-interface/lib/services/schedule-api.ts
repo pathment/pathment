@@ -117,6 +117,9 @@ export interface SelectableTemplate {
   blocks: { label: string; time: string }[];
 }
 
+/** How far through today's plan one mentee is. */
+export interface PlanProgress { hasPlan: boolean; total: number; done: number }
+
 export interface PlanStrip {
   hasSchedule: boolean;
   blocks: { id: string; time: string; label: string; total: number; done: number }[];
@@ -174,6 +177,9 @@ export const scheduleApi = {
   // a mentor copy that drift apart.
   getBoard: (menteeId: string, clanId?: string | null) =>
     apiClient.get<{ data: PlanBoard }>(`/schedules/board/${menteeId}${clanId ? `?clanId=${clanId}` : ''}`),
+  /** Today's plan progress for a whole row of mentees (clan review's faces). */
+  getStrips: (menteeIds: string[], clanId?: string | null) =>
+    apiClient.post<{ data: { progress: Record<string, PlanProgress> } }>('/schedules/board/strips', { menteeIds, clanId: clanId || null }),
   getStrip: (menteeId: string, clanId?: string | null) =>
     apiClient.get<{ data: PlanStrip }>(`/schedules/board/${menteeId}/strip${clanId ? `?clanId=${clanId}` : ''}`),
   addPlanItem: (menteeId: string, slotId: string, body: {

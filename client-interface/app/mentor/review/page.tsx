@@ -21,8 +21,8 @@ import { submissionService } from '@/lib/services/submissionService';
 import { frictionApi } from '@/lib/services/friction-api';
 import { reviewLockApi, type MentorLockState } from '@/lib/services/review-lock-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
-import { DualProgress } from '@/components/mentor/DualProgress';
-import { AISummaryPanel } from '@/components/mentor/AISummaryPanel';
+import { scheduleApi, type PlanProgress } from '@/lib/services/schedule-api';
+import { useApiQuery } from '@/lib/query';
 import { NudgeButton } from '@/components/mentor/NudgeButton';
 import { MoveMenteeButton } from '@/components/mentor/MoveMenteeButton';
 import { ReviewDrawer } from '@/components/mentor/ReviewDrawer';
@@ -218,6 +218,30 @@ export default function CohortReview() {
     if (i >= 0) setIdx(i);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cohort]);
+  const [summaryOpen, setSummaryOpen] = useState(false);
+
+  /**
+   * Today's plan for every face in the row, in one request: the ring around
+   * each avatar. The card being reviewed reports its own reading back, so the
+   * ring follows what the mentor just changed without re-reading the clan.
+   */
+  const cohortIds = useMemo(() => cohort.map((m) => m.id), [cohort]);
+  const { data: rowProgress } = useApiQuery<Record<string, PlanProgress>>({
+    queryKey: ['mentor', 'review', 'plan-progress', effectiveClanId ?? '', cohortIds.join(',')],
+    queryFn: async () => (await scheduleApi.getStrips(cohortIds, effectiveClanId)).data.progress,
+    enabled: cohortIds.length > 0,
+    errorMessage: '',
+  });
+  const [liveProgress, setLiveProgress] = useState<Record<string, PlanProgress>>({});
+  const planProgress = useMemo(() => ({ ...(rowProgress || {}), ...liveProgress }), [rowProgress, liveProgress]);
+  // Waiting-for-review counts from the live approvals queue, not the cohort
+  // snapshot, so the dot clears the moment something is approved.
+  const rowCohort = useMemo(() => {
+    const waiting: Record<string, number> = {};
+    for (const q of queue) if (q.mentee?.id) waiting[q.mentee.id] = (waiting[q.mentee.id] || 0) + 1;
+    return cohort.map((m) => ({ ...m, pendingApprovals: waiting[m.id] || 0 }));
+  }, [cohort, queue]);
+
   const pending = useMemo(
     () => queue.filter((q) => q.mentee?.id === mentee?.id),
     [queue, mentee?.id]
@@ -410,7 +434,7 @@ export default function CohortReview() {
   // the current mentee; reset state.
   useEffect(() => {
     if (!mentee) return;
-    setFocus(0); setNote(''); setNoteSent(false); setBlockers([]); setTasks([]); setProfile(null); setAttHistory([]); setElsewhere([]); setRecordOpen(false);
+    setFocus(0); setSummaryOpen(false); setNote(''); setNoteSent(false); setBlockers([]); setTasks([]); setProfile(null); setAttHistory([]); setElsewhere([]); setRecordOpen(false);
     frictionApi.listBlockers(mentee.id, 'open').then((r: any) => setBlockers(r?.data?.blockers ?? [])).catch(() => {}); // eslint-disable-line @typescript-eslint/no-explicit-any
     mentorApi.getMenteeProfile(mentee.id).then((r: any) => setProfile(r?.data?.profile ?? r?.data ?? null)).catch(() => setProfile(null)); // eslint-disable-line @typescript-eslint/no-explicit-any
     mentorApi.getMenteeAttendanceHistory(mentee.id).then((r) => setAttHistory((r?.data?.history ?? []) as typeof attHistory)).catch(() => setAttHistory([]));
@@ -1217,7 +1241,8 @@ export default function CohortReview() {
 
       {/* Attendance Strip — now also the home of the mentee search. */}
       <AttendanceSection
-        cohort={cohort}
+        cohort={rowCohort}
+        planProgress={planProgress}
         attendance={attendance}
         activeMenteeId={menteeId}
         onSelectMentee={selectMentee}
@@ -1274,7 +1299,39 @@ export default function CohortReview() {
                     <MomentumIcon m={mentee!.momentum} />
                     <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-xs font-medium ${risk.cls}`}><span className={`w-1.5 h-1.5 rounded-full ${risk.dot}`} />{risk.label}</span>
                   </div>
-                  <div className="mt-0.5 text-xs text-slate-500">{mentee!.level} · Wk {mentee!.week}/{mentee!.totalWeeks || '-'} · {mentee!.onTimeRate}% on-time</div>
+                  {/*
+                      Everything the progress bars and the summary card said,
+                      on one line. They took a quarter of the screen to say
+                      two numbers and a sentence, above the work itself.
+                  */}
+                  <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
+                    {[
+                      mentee!.level && mentee!.level !== '-' ? mentee!.level : null,
+                      mentee!.totalWeeks ? `Week ${mentee!.week} of ${mentee!.totalWeeks}` : null,
+                      `${Math.round(mentee!.absoluteProgress || 0)}% through the plan`,
+                      Math.round(mentee!.relativeProgress || 0) !== Math.round(mentee!.absoluteProgress || 0)
+                        ? `${Math.round(mentee!.relativeProgress || 0)}% adjusted for their constraints` : null,
+                      `${mentee!.onTimeRate}% on time`,
+                    ].filter(Boolean).map((part, i) => (
+                      <span key={i} className="inline-flex items-center gap-2">
+                        {i > 0 && <span className="text-slate-300" aria-hidden>·</span>}{part}
+                      </span>
+                    ))}
+                  </div>
+                  {profile?.aiSummary && (
+                    <button type="button" onClick={() => setSummaryOpen((v) => !v)} aria-expanded={summaryOpen}
+                      className="mt-1.5 flex w-full items-start gap-1.5 text-left text-xs text-slate-600 hover:text-slate-900 dark:text-slate-300">
+                      <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand-600" aria-hidden />
+                      <span className={summaryOpen ? '' : 'line-clamp-1'}>{profile.aiSummary}</span>
+                    </button>
+                  )}
+                  {summaryOpen && !!profile?.aiSignals?.length && (
+                    <ul className="mt-1.5 flex flex-wrap gap-1.5 pl-5">
+                      {profile.aiSignals.map((sig: string, i: number) => (
+                        <li key={i} className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600 dark:bg-slate-800 dark:text-slate-300">{sig}</li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               </div>
 
@@ -1362,7 +1419,6 @@ export default function CohortReview() {
                 </button>
               </div>
             )}
-            <div className="mt-3"><DualProgress absolute={mentee!.absoluteProgress} relative={mentee!.relativeProgress} row /></div>
             {mentee!.riskReason && <p className="mt-2 text-xs text-slate-500">{mentee!.riskReason}</p>}
           </div>
 
@@ -1376,10 +1432,6 @@ export default function CohortReview() {
               here as full-width panels. They are on the mentee card now: this
               column is for the review itself. */}
 
-          {/* State of this mentee - same read as the profile (AI summary + signals). */}
-          {profile?.aiSummary && (
-            <AISummaryPanel summary={profile.aiSummary} signals={profile.aiSignals || []} collapsible />
-          )}
 
           {/* Extension requests - mentee asked to move a due date; mentor decides here. */}
           {pendingExtensions.length > 0 && (
@@ -1431,6 +1483,7 @@ export default function CohortReview() {
             tasksLoading={tasksLoading}
             pending={pending}
             reloadKey={tasks}
+            onProgress={(p) => setLiveProgress((cur) => ({ ...cur, [mentee!.id]: p }))}
             onAssign={() => setAssigning(true)}
             renderTaskRow={renderTaskRow}
             renderPending={(item) => {

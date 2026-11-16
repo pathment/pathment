@@ -36,7 +36,7 @@ type Pending = { taskId: string; submissionId: string };
  */
 export function TodayTimeline<P extends Pending>({
   menteeId, menteeName, clanId, readOnly, tasks, completedTasks, tasksLoading,
-  pending, renderPending, renderTaskRow, onAssign, reloadKey,
+  pending, renderPending, renderTaskRow, onAssign, reloadKey, onProgress,
 }: {
   menteeId: string;
   menteeName: string;
@@ -53,6 +53,8 @@ export function TodayTimeline<P extends Pending>({
   onAssign: () => void;
   /** Changes whenever their work does (the task list itself), so the board follows. */
   reloadKey: unknown;
+  /** The day's progress as this card reads it, so the face in the row agrees. */
+  onProgress?: (p: { hasPlan: boolean; total: number; done: number }) => void;
 }) {
   const [planOpen, setPlanOpen] = useState(false);
   const [filter, setFilter] = useState<Filter>('all');
@@ -65,6 +67,12 @@ export function TodayTimeline<P extends Pending>({
     // Context for the review, never a reason to replace it with an error.
     errorMessage: '',
   });
+
+  useEffect(() => {
+    if (!board) return;
+    const all = board.slots.flatMap((sl) => sl.items);
+    onProgress?.({ hasPlan: board.slots.length > 0, total: all.length, done: all.filter((i) => i.status === 'completed').length });
+  }, [board]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const first = useRef(true);
   useEffect(() => {
