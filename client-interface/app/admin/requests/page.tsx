@@ -107,7 +107,13 @@ function AdminClanRequestsInner() {
     setDestinations(null);
     if (approve) {
       clanRequestsApi.destinations(request.id)
-        .then((res: { data?: { clans?: ClanDestination[] } }) => setDestinations(res?.data?.clans ?? []))
+        .then((res: { data?: { clans?: ClanDestination[] } }) => {
+          const clans = res?.data?.clans ?? [];
+          setDestinations(clans);
+          // Their preference may have closed since they asked (a frozen clan
+          // is never a destination): then nothing is pre-chosen.
+          if (request.toClanId && !clans.some((c) => c.id === request.toClanId)) setDecisionClan('');
+        })
         .catch(() => { setDestinations([]); toast.error('Could not load the clans'); });
     }
   };
@@ -484,7 +490,12 @@ function AdminClanRequestsInner() {
                       onChange={(c) => { setDecisionClan(c.id); setConfirmCross(false); }}
                     />
                   )}
-                  {deciding.request.toClanId ? (
+                  {deciding.request.toClanId && destinations && !destinations.some((c) => c.id === deciding.request.toClanId) ? (
+                    <p className="text-[11px] text-amber-700 mt-1">
+                      They asked for {deciding.request.toClan}, which is not taking people any more (it has
+                      closed). Choose where they go instead — its standing clan is usually the right place.
+                    </p>
+                  ) : deciding.request.toClanId ? (
                     <p className="text-[11px] text-slate-400 mt-1">
                       They asked for {deciding.request.toClan}. You can place them elsewhere.
                     </p>
