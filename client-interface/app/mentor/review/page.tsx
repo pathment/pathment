@@ -40,7 +40,7 @@ import { getViewerTimeZone } from '@/lib/utils/datetime';
 import { MobileReviewActionBar } from '@/components/mentor/MobileReviewActionBar';
 import { ContinueWorkLauncher } from '@/components/mentor/ContinueWorkLauncher';
 import { MenteeRecordPanel } from '@/components/mentor/MenteeRecordPanel';
-import { PlanStripCard } from '@/components/mentor/PlanStripCard';
+import { TodayTimeline } from '@/components/mentor/TodayTimeline';
 
 type Attendance = 'present' | 'absent' | 'excused';
 type EntryStatus = 'pending' | 'reviewed' | 'deferred';
@@ -474,26 +474,9 @@ export default function CohortReview() {
    */
   const byUrgency = (a: any, b: any) => // eslint-disable-line @typescript-eslint/no-explicit-any
     TASK_STATUS_ORDER.indexOf(a.status) - TASK_STATUS_ORDER.indexOf(b.status);
-  const inProgressTasks = useMemo(
-    () => dayTasks.filter((t) => t.status !== 'completed').sort(byUrgency),
-    [dayTasks],
-  );
   const completedTasks = useMemo(() => dayTasks.filter((t) => t.status === 'completed'), [dayTasks]);
-  const [workTab, setWorkTab] = useState<'review' | 'progress' | 'done'>('review');
-  /**
-   * Land on the tab that has something in it. Opening on an empty "To review"
-   * when there are six live tasks makes the screen look broken.
-   *
-   * Once per mentee, and only after their work has loaded — keying this on the
-   * counts alone would snap the mentor back to "To review" the moment they
-   * approved something while reading the completed list.
-   */
-  const tabPickedFor = useRef<string | null>(null);
-  useEffect(() => {
-    if (tasksLoading || tabPickedFor.current === menteeId) return;
-    tabPickedFor.current = menteeId ?? null;
-    setWorkTab(pending.length ? 'review' : inProgressTasks.length ? 'progress' : completedTasks.length ? 'done' : 'review');
-  }, [menteeId, tasksLoading, pending.length, inProgressTasks.length, completedTasks.length]);
+  // Most urgent first wherever the day does not already set the order.
+  const sortedDayTasks = useMemo(() => [...dayTasks].sort(byUrgency), [dayTasks]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Latest mentor note + rating for a task, surfaced on reviewed/changes rows.
   const reviewOf = (t: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -1383,16 +1366,6 @@ export default function CohortReview() {
             {mentee!.riskReason && <p className="mt-2 text-xs text-slate-500">{mentee!.riskReason}</p>}
           </div>
 
-          {/* Today's blocks and how far through them they are — the schedule
-              finally showing up in review, where the conversation happens. */}
-          <PlanStripCard
-            menteeId={mentee.id}
-            menteeName={mentee.name}
-            clanId={effectiveClanId}
-            readOnly={historical}
-            compact
-          />
-
           {/* Day-by-day progress used to be a card of its own here, repeating
               the titles already listed below and pushing the review down the
               page. It lives in the task drawer now — open the task and the log
@@ -1440,112 +1413,50 @@ export default function CohortReview() {
           )}
 
           {/*
-              One surface for this mentee's work.
+              Their day and their work, one surface.
 
-              "To review", "Assigned work" and the finished pile were three
-              stacked cards, and the queue that is the whole point of the screen
-              sat on top of a long accordion — so the side rail, the notes and
-              the blockers were always below the fold. The counts are on the
-              tabs, so nothing looks missing when it is not the one showing.
+              The plan was a row that opened a drawer and the work a tabbed list
+              below it: the same tasks twice, once with their time and once
+              with their status. Now the work sits in the block it belongs to,
+              so a mentor reads both without opening anything.
           */}
-          <div className="bg-card rounded-2xl border border-slate-200">
-            <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 px-3 py-2.5 sm:px-4">
-              <div role="tablist" aria-label="This mentee's work" className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
-                {([
-                  { key: 'review' as const, label: 'To review', count: pending.length, icon: ClipboardCheck, tone: 'brand' },
-                  { key: 'progress' as const, label: 'In progress', count: inProgressTasks.length, icon: ListTodo, tone: 'slate' },
-                  { key: 'done' as const, label: 'Completed', count: completedTasks.length, icon: CheckCircle2, tone: 'emerald' },
-                ]).map((tab) => {
-                  const active = workTab === tab.key;
-                  const Icon = tab.icon;
-                  return (
-                    <button
-                      key={tab.key}
-                      type="button"
-                      role="tab"
-                      aria-selected={active}
-                      onClick={() => setWorkTab(tab.key)}
-                      className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors ${
-                        active
-                          ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300'
-                          : 'text-muted-foreground hover:bg-slate-50 hover:text-slate-800 dark:hover:bg-white/5 dark:hover:text-white'
-                      }`}
-                    >
-                      <Icon className={`h-4 w-4 ${active ? 'text-brand-600' : 'text-slate-400'}`} aria-hidden />
-                      {tab.label}
-                      {/* A count only earns a badge when there is something to
-                          count — a row of zeroes is noise on every tab. */}
-                      {tab.count > 0 && (
-                        <span className={`rounded-full px-1.5 py-0.5 text-[11px] font-semibold tabular-nums ${
-                          tab.tone === 'brand' && tab.key === 'review'
-                            ? 'bg-brand-600 text-white'
-                            : tab.tone === 'emerald'
-                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'
-                              : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
-                        }`}>
-                          {tab.count}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-              <button onClick={() => setAssigning(true)} disabled={historical} title={historical ? HISTORICAL_TITLE : undefined}
-                className="ml-auto inline-flex shrink-0 items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-700 disabled:opacity-50">
-                <Plus className="w-3.5 h-3.5" />Assign
-              </button>
-            </div>
-
-            <div className="p-4">
-              {workTab === 'review' && (
-                pending.length === 0 ? (
-                  <p className="text-sm text-slate-500 flex items-center gap-2 px-1 py-2"><CheckCircle2 className="w-4 h-4 text-emerald-400" />Nothing waiting. All clear.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {pending.map((item, i) => (
-                      <button key={item.submissionId} onClick={() => { setFocus(i); setReviewing(item); }}
-                        className={`group w-full text-left flex items-center gap-3 p-3 rounded-xl border transition-colors ${i === focus ? 'border-brand-300 bg-brand-50 dark:bg-brand-500/15' : 'border-slate-200 hover:border-brand-300'}`}>
-                        <span className="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-500/15 flex items-center justify-center shrink-0">
-                          <ClipboardCheck className="w-4 h-4 text-brand-600" />
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium text-slate-900 truncate">{item.title}</p>
-                          <div className="flex items-center gap-2 text-xs text-slate-500">
-                            {item.type && <span className="capitalize">{item.type}</span>}
-                            {typeof item.version === 'number' && item.version > 1 && <span>v{item.version}</span>}
-                            {item.isLate && <span className="inline-flex items-center gap-1 text-red-600"><Clock className="w-3 h-3" />late</span>}
-                          </div>
-                        </div>
-                        <span className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-brand-600 group-hover:bg-brand-700 text-white text-xs font-medium">
-                          Review &amp; decide <ChevronRight className="w-3.5 h-3.5" />
-                        </span>
-                      </button>
-                    ))}
+          <TodayTimeline
+            key={mentee!.id}
+            menteeId={mentee!.id}
+            menteeName={mentee!.name}
+            clanId={effectiveClanId}
+            readOnly={historical}
+            tasks={sortedDayTasks}
+            completedTasks={completedTasks}
+            tasksLoading={tasksLoading}
+            pending={pending}
+            reloadKey={tasks}
+            onAssign={() => setAssigning(true)}
+            renderTaskRow={renderTaskRow}
+            renderPending={(item) => {
+              const i = pending.indexOf(item);
+              return (
+                <button onClick={() => { setFocus(i); setReviewing(item); }}
+                  className={`group w-full text-left flex items-center gap-3 p-3 rounded-xl border transition-colors ${i === focus ? 'border-brand-300 bg-brand-50 dark:bg-brand-500/15' : 'border-slate-200 hover:border-brand-300'}`}>
+                  <span className="w-9 h-9 rounded-xl bg-brand-50 dark:bg-brand-500/15 flex items-center justify-center shrink-0">
+                    <ClipboardCheck className="w-4 h-4 text-brand-600" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-slate-900 truncate">{item.title}</p>
+                    <div className="flex items-center gap-2 text-xs text-slate-500">
+                      <span className="font-medium text-brand-700">Waiting for your review</span>
+                      {item.type && <span className="capitalize">{item.type}</span>}
+                      {typeof item.version === 'number' && item.version > 1 && <span>v{item.version}</span>}
+                      {item.isLate && <span className="inline-flex items-center gap-1 text-red-600"><Clock className="w-3 h-3" />late</span>}
+                    </div>
                   </div>
-                )
-              )}
-
-              {workTab === 'progress' && (
-                tasksLoading ? (
-                  <div className="flex justify-center py-4"><Loader2 className="w-5 h-5 animate-spin text-brand-600" /></div>
-                ) : inProgressTasks.length === 0 ? (
-                  <p className="text-sm text-slate-500 px-1 py-2">Nothing on {mentee!.name.split(' ')[0]}&rsquo;s plate — use Assign to give them their next task.</p>
-                ) : (
-                  <div className="space-y-1.5">{inProgressTasks.map(renderTaskRow)}</div>
-                )
-              )}
-
-              {workTab === 'done' && (
-                tasksLoading ? (
-                  <div className="flex justify-center py-4"><Loader2 className="w-5 h-5 animate-spin text-brand-600" /></div>
-                ) : completedTasks.length === 0 ? (
-                  <p className="text-sm text-slate-500 px-1 py-2">Nothing finished in this clan yet.</p>
-                ) : (
-                  <div className="space-y-1.5">{completedTasks.map(renderTaskRow)}</div>
-                )
-              )}
-            </div>
-          </div>
+                  <span className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-brand-600 group-hover:bg-brand-700 text-white text-xs font-medium">
+                    Review &amp; decide <ChevronRight className="w-3.5 h-3.5" />
+                  </span>
+                </button>
+              );
+            }}
+          />
 
         </div>
 
