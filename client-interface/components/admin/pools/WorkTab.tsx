@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { CalendarClock, Check, ClipboardList, Coins, FileQuestion, FileText, GraduationCap, ListChecks, Loader2, Mic, Plus, Route, Send, Trash2, UserPlus, Users } from 'lucide-react';
+import { CalendarClock, Check, ChevronDown, ClipboardList, Coins, FileQuestion, FileText, GraduationCap, ListChecks, Loader2, Mic, Plus, Route, Send, Trash2, UserPlus, Users } from 'lucide-react';
 import { Drawer } from '@/components/shared/Drawer';
 import RichTextEditor from '@/components/shared/RichTextEditor';
 import { TaskTimingRow, type TaskDueDraft } from '@/components/mentor/TaskTimingRow';
@@ -79,6 +79,13 @@ function AddWorkDrawer({ data, onClose, onDone }: { data: PoolDashboard; onClose
   const [kitId, setKitId] = useState('');
   const [courseId, setCourseId] = useState('');
   const [levels, setLevels] = useState<string[]>([]);
+  /*
+   * Work with no level goes to EVERY candidate. That used to be the silent
+   * default, so a course called "Level 3" reached a level-2 candidate because
+   * nobody had ticked a level. When the round has levels, "who is this for"
+   * is now a choice the admin makes: levels, or Everyone on purpose.
+   */
+  const [forEveryone, setForEveryone] = useState(false);
   const [evaluationMode, setEvaluationMode] = useState<'auto' | 'review'>('auto');
   const [allowRetake, setAllowRetake] = useState(false);
   const [required, setRequired] = useState(true);
@@ -100,8 +107,10 @@ function AddWorkDrawer({ data, onClose, onDone }: { data: PoolDashboard; onClose
   // Levels this round can aim work at. No levels = the control is not shown
   // at all, so a round that never asked for one looks exactly as before.
   const poolLevels = data.levels || [];
-  const toggleLevel = (key: string) =>
+  const toggleLevel = (key: string) => {
+    setForEveryone(false);
     setLevels((cur) => (cur.includes(key) ? cur.filter((l) => l !== key) : [...cur, key]));
+  };
   const levelCount = (key: string) => data.members.filter((m) => m.level === key && !m.decision).length;
   // Courses already in this pool: a seat can only be allocated once per round.
   const takenCourses = new Set(
@@ -140,6 +149,9 @@ function AddWorkDrawer({ data, onClose, onDone }: { data: PoolDashboard; onClose
     const typedPoints = points === '' ? undefined : Number(points);
     if (typedPoints !== undefined && (!Number.isInteger(typedPoints) || typedPoints < 0)) {
       return toast.error('Points must be a whole number, or left blank to use the difficulty');
+    }
+    if (poolLevels.length > 0 && !forEveryone && levels.length === 0) {
+      return toast.error('Choose the levels this work is for, or Everyone');
     }
     setBusy(true);
     try {
@@ -295,6 +307,10 @@ function AddWorkDrawer({ data, onClose, onDone }: { data: PoolDashboard; onClose
                     // The work is named after the course, unless the admin wrote their own title.
                     const auto = !title.trim() || courses.some((c) => c.title === title.trim());
                     if (auto) setTitle(picked.title);
+                    // "Level 2 : …" → the round's level 2, when nothing is chosen yet.
+                    const n = picked.title.match(/level\s*(\d+)/i)?.[1];
+                    const match = n ? poolLevels.find((l) => new RegExp(`(^|\\D)${n}(\\D|$)`).test(`${l.key} ${l.label}`)) : null;
+                    if (match && !forEveryone && levels.length === 0) setLevels([match.key]);
                   }}
                   unavailable={new Map([...takenCourses].map((id) => [id, 'Already in this round']))}
                 />
@@ -433,9 +449,13 @@ function AddWorkDrawer({ data, onClose, onDone }: { data: PoolDashboard; onClose
           {poolLevels.length > 0 && (
             <div>
               <span className="mb-1.5 block text-sm font-medium text-slate-700">
-                Level <span className="font-normal text-slate-400">(optional)</span>
+                Who is it for? <span className="text-red-500">*</span>
               </span>
               <div className="flex flex-wrap gap-1.5">
+                <button type="button" onClick={() => { setForEveryone(true); setLevels([]); }}
+                  className={pill(forEveryone)} aria-pressed={forEveryone}>
+                  Everyone <span className="font-normal opacity-60">· every level</span>
+                </button>
                 {poolLevels.map((l) => (
                   <button key={l.key} type="button" onClick={() => toggleLevel(l.key)}
                     className={pill(levels.includes(l.key))} aria-pressed={levels.includes(l.key)}>
@@ -444,9 +464,11 @@ function AddWorkDrawer({ data, onClose, onDone }: { data: PoolDashboard; onClose
                 ))}
               </div>
               <p className="mt-1.5 text-[11px] text-slate-400">
-                {levels.length === 0
-                  ? 'For everyone in the round, whatever level they applied at.'
-                  : 'Only candidates who applied at the chosen levels get this; it is not counted against anyone else.'}
+                {forEveryone
+                  ? 'Every candidate gets this, whatever level they applied at.'
+                  : levels.length === 0
+                    ? 'Pick the levels this work is for. Only those candidates get it, automatically, as they join or get their level.'
+                    : 'Only candidates at the chosen levels get this, automatically; it is not counted against anyone else.'}
               </p>
             </div>
           )}
@@ -556,11 +578,18 @@ export function WorkTab({ data, onChange, canAssign }: { data: PoolDashboard; on
     }
   };
   const cancel = async (a: PoolAssignment) => {
-    const ok = await confirm({ title: `Cancel “${a.title}”?`, description: 'It is withdrawn from everyone who has not finished it. Approved work stays.', confirmLabel: 'Cancel work' });
+    const course = a.kind === 'course';
+    const ok = await confirm({
+      title: `Cancel “${a.title}”?`,
+      description: course
+        ? 'It is withdrawn from every candidate who has not finished it, and their Edorax enrollments are cancelled so the seats come back. Approved work stays.'
+        : 'It is withdrawn from everyone who has not finished it. Approved work stays.',
+      confirmLabel: 'Cancel work',
+    });
     if (!ok) return;
     try {
       await poolApi.cancelAssignment(pool.id, a.id);
-      toast.success('Work cancelled');
+      toast.success(course ? 'Work cancelled, and its Edorax enrollments with it' : 'Work cancelled');
       await reload();
     } catch (e) {
       toast.error(extractApiErrorMessage(e, 'Could not cancel the work'));
@@ -569,6 +598,8 @@ export function WorkTab({ data, onChange, canAssign }: { data: PoolDashboard; on
 
   const list = assignments || [];
   const live = list.filter((a) => !a.cancelledAt);
+  const cancelledWork = list.filter((a) => a.cancelledAt);
+  const levelLabel = (key: string) => (data.levels || []).find((l) => l.key === key)?.label || key;
   // What a candidate who finishes everything would earn. Worth stating: it is
   // the denominator every score on the Shortlist tab is read against.
   const totalWorth = live.reduce((sum, a) => sum + a.points, 0);
@@ -589,14 +620,14 @@ export function WorkTab({ data, onChange, canAssign }: { data: PoolDashboard; on
           )}
         />
         {loading && <Spinner />}
-        {!loading && list.length === 0 && (
+        {!loading && live.length === 0 && (
           <div className="border-t border-border">
             <EmptyState icon={ClipboardList} title="No qualifying work yet" text="Open a roadmap and pick the steps this round should use, or write a custom task, a quiz or an interview." />
           </div>
         )}
-        {list.length > 0 && (
+        {live.length > 0 && (
           <ul className="divide-y divide-border border-t border-border">
-            {list.map((a) => {
+            {live.map((a) => {
               const Icon = KIND_ICON[a.kind];
               const counts = a.counts || {};
               const total = Object.entries(counts).filter(([k]) => k !== 'cancelled').reduce((s, [, n]) => s + n, 0);
@@ -613,6 +644,12 @@ export function WorkTab({ data, onChange, canAssign }: { data: PoolDashboard; on
                         <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
                           <span className="rounded-full bg-muted px-2 py-0.5 font-medium capitalize text-slate-600">{a.kind === 'task' ? (a.roadmapTask?.type || 'task').replace('_', ' ') : a.kind}</span>
                           <span className={`rounded-full px-2 py-0.5 font-medium ${a.required ? 'bg-brand-50 text-brand-700' : 'bg-muted text-slate-500'}`}>{a.required ? 'Required' : 'Optional'}</span>
+                          {(data.levels || []).length > 0 && (
+                            <span className={`rounded-full px-2 py-0.5 font-medium ${a.levels?.length ? 'bg-violet-50 text-violet-700' : 'bg-amber-50 text-amber-700'}`}
+                              title={a.levels?.length ? 'Only candidates at these levels get it' : 'Every candidate gets it'}>
+                              {a.levels?.length ? a.levels.map(levelLabel).join(', ') : 'Everyone'}
+                            </span>
+                          )}
                           <span className="inline-flex items-center gap-1 text-muted-foreground"><CalendarClock className="h-3.5 w-3.5" /> Due {fmtDate(a.dueAt)}</span>
                           <PointsField poolId={pool.id} assignment={a} onDone={reload} disabled={!editable || Boolean(a.cancelledAt)} />
                         </div>
@@ -651,6 +688,29 @@ export function WorkTab({ data, onChange, canAssign }: { data: PoolDashboard; on
               );
             })}
           </ul>
+        )}
+        {/* Withdrawn work is history, not the round: kept, out of the way. */}
+        {cancelledWork.length > 0 && (
+          <details className="group border-t border-border">
+            <summary className="flex cursor-pointer list-none items-center gap-2 px-5 py-3 text-sm font-medium text-slate-500 hover:bg-muted/40 sm:px-6">
+              <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" aria-hidden="true" />
+              Cancelled <span className="rounded-full bg-muted px-1.5 py-0.5 text-[11px] text-slate-500">{cancelledWork.length}</span>
+              <span className="font-normal text-slate-400">· withdrawn from candidates; seats released</span>
+            </summary>
+            <ul className="divide-y divide-border border-t border-border bg-muted/20">
+              {cancelledWork.map((a) => {
+                const Icon = KIND_ICON[a.kind];
+                return (
+                  <li key={a.id} className="flex items-center gap-3 px-5 py-3 text-sm text-slate-500 sm:px-6">
+                    <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                    <span className="min-w-0 flex-1 truncate">{a.title}</span>
+                    {a.levels?.length ? <span className="text-xs">{a.levels.map(levelLabel).join(', ')}</span> : <span className="text-xs">Everyone</span>}
+                    <span className="text-xs tabular-nums">Cancelled {fmtDate(a.cancelledAt)}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          </details>
         )}
       </section>
       {adding && <AddWorkDrawer data={data} onClose={() => setAdding(false)} onDone={reload} />}
