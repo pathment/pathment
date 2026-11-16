@@ -322,6 +322,28 @@ class PoolMemberService {
     }
     const before = { decision: member.decision, status: member.status };
     const now = new Date();
+    /*
+     * Their course seats go back to Edorax before the tasks are cancelled
+     * (once cancelled, the enrollment is no longer reachable from the task).
+     * Best effort per course, as when work is cancelled for everyone: one
+     * provider failure is logged and does not keep a person in a round they
+     * have left.
+     */
+    const openTasks = await models.AssignedTask.scope('withPoolWork').findAll({
+      where: { poolMemberId: member.id, status: { [Op.notIn]: ['completed', 'cancelled'] } },
+      attributes: ['id'],
+    });
+    if (openTasks.length) {
+      const courseService = require('./courseService');
+      for (const task of openTasks) {
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          await courseService.cancelForTask(task);
+        } catch (error) {
+          console.warn('[pool] course seat not released on exit:', task.id, error.message);
+        }
+      }
+    }
     await sequelize.transaction(async (transaction) => {
       await member.update({
         decision, decisionReason: text.slice(0, 2000), decidedById: actor.id, decidedAt: now,

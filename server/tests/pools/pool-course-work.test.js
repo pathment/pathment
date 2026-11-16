@@ -364,6 +364,19 @@ describe('taking a course back from one candidate', () => {
   });
 });
 
+describe('a candidate leaving the round', () => {
+  it('withdrawing or disqualifying them gives their Edorax seat back', async () => {
+    const { member } = await registerCandidate('c1@test.com');
+    await courseWork();
+    const task = await taskOf(member);
+
+    await poolMemberService.exit(ctx.pool.id, member.id, 'withdrawn', 'Took a job', ctx.admin);
+    expect(callsTo('POST /enrollments/cancel').map((c) => c.body.external_assignment_id)).toEqual([task.id]);
+    expect((await models.CourseEnrollment.findOne({ where: { assignedTaskId: task.id } })).lifecycle).toBe('CANCELLED');
+    expect((await PoolTask().findByPk(task.id)).status).toBe('cancelled');
+  });
+});
+
 describe('the candidate can actually get to the course', () => {
   it('carries the course facts on their own work list, so there is somewhere to go', async () => {
     const { user } = await registerCandidate('c1@test.com');
