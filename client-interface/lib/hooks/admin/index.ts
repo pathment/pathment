@@ -38,7 +38,7 @@ export { useAnnouncements } from './useAnnouncements';
 export type { UseAnnouncementsReturn, Announcement } from './useAnnouncements';
 
 export { useClanRequests } from './useClanRequests';
-export type { UseClanRequestsReturn, ChangeRequest, CrossClanItem } from './useClanRequests';
+export type { UseClanRequestsReturn, ChangeRequest, CrossClanItem, ClanDestination, ClanRequestsQuery } from './useClanRequests';
 
 export { useMentorsList } from './useMentorsList';
 export type { MentorListItem, AcceptingFilter } from './useMentorsList';

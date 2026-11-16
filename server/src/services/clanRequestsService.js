@@ -47,7 +47,7 @@ class ClanRequestsService {
    *
    * @param {string[]|null} programIds  null = unrestricted (an org-tier admin).
    */
-  async overview(programIds = null) {
+  async overview(programIds = null, { tab = 'pending', page = 1, pageSize = 20, programId = null, clanId = null } = {}) {
     const scoped = Array.isArray(programIds);
     // A request names two clans; it belongs to either. Empty scope → no rows.
     const inScope = scoped
@@ -57,10 +57,39 @@ class ClanRequestsService {
       ] }
       : {};
 
-    const [requests, crossClan] = await Promise.all([
+    /*
+     * The queue is two lists, not one sorted by status.
+     *
+     * Sorting on the status STRING put 'approved' before 'pending', so the
+     * requests still waiting on an admin sat under everything already decided.
+     * "To decide" is oldest first (the longest wait is answered first);
+     * "Decided" is newest first. Both are paged, and the admin's programme /
+     * clan filter is applied here so a page is a page of what they asked for.
+     */
+    const filters = [inScope];
+    if (programId) {
+      filters.push({ [Op.or]: [{ '$fromClan.program_id$': programId }, { '$toClan.program_id$': programId }] });
+    }
+    if (clanId) filters.push({ [Op.or]: [{ fromClanId: clanId }, { toClanId: clanId }] });
+    const DECIDED = ['approved', 'denied', 'cancelled'];
+    const whereFor = (which) => ({
+      [Op.and]: [...filters, { status: which === 'pending' ? 'pending' : { [Op.in]: DECIDED } }],
+    });
+    const countInclude = [
+      { model: models.Clan, as: 'fromClan', attributes: [] },
+      { model: models.Clan, as: 'toClan', attributes: [] },
+    ];
+    const size = Math.min(Math.max(Number(pageSize) || 20, 1), 100);
+    const current = Math.max(Number(page) || 1, 1);
+    const which = tab === 'decided' ? 'decided' : 'pending';
+
+    const [requests, crossClan, pendingCount, decidedCount] = await Promise.all([
       models.ClanChangeRequest.findAll({
-        where: inScope,
-        order: [['status', 'ASC'], ['created_at', 'DESC']],
+        where: whereFor(which),
+        order: which === 'pending' ? [['created_at', 'ASC']] : [['resolved_at', 'DESC'], ['created_at', 'DESC']],
+        limit: size,
+        offset: (current - 1) * size,
+        subQuery: false,
         include: [
           { model: models.User, as: 'mentee', attributes: ['firstName', 'lastName'] },
           { model: models.User, as: 'requester', attributes: ['firstName', 'lastName'] },
@@ -79,10 +108,17 @@ class ClanRequestsService {
           { model: models.Clan, as: 'fromClan', attributes: ['name', 'programId'] },
           { model: models.Clan, as: 'toClan', attributes: ['name', 'programId'] }
         ]
-      })
+      }),
+      models.ClanChangeRequest.count({ where: whereFor('pending'), include: countInclude, distinct: true, col: 'id' }),
+      models.ClanChangeRequest.count({ where: whereFor('decided'), include: countInclude, distinct: true, col: 'id' }),
     ]);
 
     return {
+      tab: which,
+      page: current,
+      pageSize: size,
+      total: which === 'pending' ? pendingCount : decidedCount,
+      counts: { pending: pendingCount, decided: decidedCount },
       requests: requests.map((r) => ({
         id: r.id,
         mentee: fullName(r.mentee),
@@ -108,6 +144,7 @@ class ClanRequestsService {
         moveKind: r.fromClan && r.fromClan.kind === 'cohort' && !r.fromClan.frozenAt
           ? 'move' : 'placement',
         requestedBy: fullName(r.requester),
+        resolvedAt: r.resolvedAt || null,
         at: r.createdAt
       })),
       crossClan: crossClan.map((c) => ({
@@ -214,68 +251,30 @@ class ClanRequestsService {
     });
 
     const mine = memberships.filter((m) => m.clan);
-    const mineIds = new Set(mine.map((m) => m.clanId));
-    const needsAnyProgram = mine.some((m) => this._moveKind(m.clan) === 'placement');
-    const sameProgramIds = [...new Set(
-      mine.filter((m) => this._moveKind(m.clan) === 'move').map((m) => m.clan.programId).filter(Boolean),
-    )];
+    const mineIds = [...new Set(mine.map((m) => m.clanId))];
 
     /*
-     * Candidate destinations: live cohort clans, and for a placement any of
-     * them whose PROGRAMME is still open. A closed programme's clans are a
-     * record, not somewhere to be sent.
+     * Every programme, standing clans included. A mentee names a PREFERENCE;
+     * the admin decides and is told what the move would cost. Keeping them to
+     * their own programme hid the clans that are actually running (a closed
+     * programme lives on in its standing clans) and made "I want a different
+     * programme" impossible to even say.
      */
-    const where = { kind: 'cohort', frozenAt: null };
-    if (!needsAnyProgram) {
-      if (!sameProgramIds.length) return this._emptyOptions(mine, userId);
-      where.programId = { [Op.in]: sameProgramIds };
-    }
-
-    const candidates = await models.Clan.findAll({
-      where,
-      attributes: ['id', 'name', 'programId', 'avatarUrl'],
-      include: [
-        { model: models.User, as: 'leadMentor', attributes: ['id', 'firstName', 'lastName'], required: false },
-        { model: models.Program, as: 'program', attributes: ['id', 'name'], required: true, where: { closedAt: null } },
-      ],
-      order: [['name', 'ASC']],
-    });
-
-    const counts = candidates.length
-      ? await models.ClanMembership.findAll({
-        where: {
-          clanId: { [Op.in]: candidates.map((c) => c.id) },
-          role: 'mentee',
-          status: { [Op.in]: VISIBLE_MEMBERSHIP_STATUSES },
-        },
-        attributes: ['clanId', [sequelize.fn('COUNT', sequelize.col('id')), 'n']],
-        group: ['clanId'],
-        raw: true,
-      })
-      : [];
-    const countOf = Object.fromEntries(counts.map((r) => [r.clanId, Number(r.n)]));
-
-    const shape = (c) => ({
-      id: c.id,
-      name: c.name,
-      avatarUrl: c.avatarUrl || null,
-      mentor: c.leadMentor ? fullName(c.leadMentor) : null,
-      mentees: countOf[c.id] || 0,
-      programId: c.programId,
-      // Named for a placement, where the destination may be a programme they
-      // have never been in and the clan name alone would mean nothing.
-      programName: c.program?.name || null,
-    });
-
+    const destinations = require('./clanDestinationService');
     const requests = await this.myClanChangeRequests(userId);
+    const optionsFor = async (clan) => (await destinations.list({ fromClan: clan, excludeClanIds: mineIds }))
+      .map((d) => ({
+        id: d.id, name: d.name, avatarUrl: d.avatarUrl, mentor: d.mentor, mentees: d.mentees,
+        programId: d.programId, programName: d.programName, kind: d.kind, status: d.status,
+        activity: d.activity, reviewWeeks: d.reviewWeeks, lastReviewAt: d.lastReviewAt,
+        sameProgram: d.sameProgram, suggested: d.suggested,
+      }));
+    const optionsByClan = Object.fromEntries(await Promise.all(mine.map(async (m) => [m.clanId, await optionsFor(m.clan)])));
 
     return {
       clans: mine.map((m) => {
         const kind = this._moveKind(m.clan);
-        const options = candidates
-          .filter((c) => !mineIds.has(c.id))
-          .filter((c) => kind === 'placement' || c.programId === m.clan.programId)
-          .map(shape);
+        const options = optionsByClan[m.clanId] || [];
         return {
           id: m.clan.id,
           name: m.clan.name,
@@ -387,29 +386,19 @@ class ClanRequestsService {
     let target = null;
     if (toClanId) {
       target = await models.Clan.findByPk(toClanId, {
-        attributes: ['id', 'name', 'kind', 'programId', 'frozenAt'],
+        attributes: ['id', 'name', 'kind', 'status', 'programId', 'frozenAt'],
         include: [{ model: models.Program, as: 'program', attributes: ['id', 'closedAt'] }],
       });
       if (!target) throw new NotFoundError('That clan no longer exists');
       if (target.id === from.id) throw new ValidationError('That is the clan you are already in');
-      if (target.kind !== 'cohort' || target.frozenAt || target.program?.closedAt) {
-        throw new ValidationError('That clan is not taking people');
-      }
+      const takesPeople = target.status !== 'archived'
+        && (target.kind === 'standing' || (!target.frozenAt && !target.program?.closedAt));
+      if (!takesPeople) throw new ValidationError('That clan is not taking people');
       /*
-       * The cross-programme bar applies to a MOVE only, and is enforced here
-       * rather than trusted from the form.
-       *
-       * Leaving a live cohort clan for another programme makes
-       * `reassignMentee` wipe the enrolment and its tasks, because the new
-       * roadmap is a different one - not something a mentee should set off
-       * from a form. A placement out of a closed or standing clan wipes
-       * nothing (there is no live membership to close), so the bar would only
-       * stop the people it was never about: a closed programme has no live
-       * clan of its own left to name.
+       * Any programme. This is a PREFERENCE, not a move: nothing happens until
+       * an admin approves, and the admin's screen says plainly when approving
+       * would end their current programme (and makes them confirm it).
        */
-      if (this._moveKind(from) === 'move' && target.programId !== from.programId) {
-        throw new ValidationError('You can only ask to move within your own program');
-      }
     }
 
     const request = await models.ClanChangeRequest.create({
@@ -540,7 +529,7 @@ class ClanRequestsService {
    * approving a request produced a different result from a mentor accepting the
    * same one. One path, one outcome.
    */
-  async resolveRequest(id, { status, note, toClanId }, actorId = null) {
+  async resolveRequest(id, { status, note, toClanId, confirmCrossProgram = false }, actorId = null) {
     if (!['approved', 'denied'].includes(status)) throw new ValidationError('status must be approved or denied');
     const req = await models.ClanChangeRequest.findByPk(id);
     if (!req) throw new NotFoundError('Request not found');
@@ -579,7 +568,31 @@ class ClanRequestsService {
     // Move first: if placement fails the request stays pending rather than
     // claiming a move that never happened.
     if (status === 'approved') {
-      await clanService.reassignMentee(req.menteeId, destination, actorId);
+      const [from, dest] = await Promise.all([
+        req.fromClanId ? models.Clan.findByPk(req.fromClanId, { attributes: ['id', 'kind', 'frozenAt', 'programId'] }) : null,
+        models.Clan.findByPk(destination, {
+          attributes: ['id', 'name', 'kind', 'status', 'programId', 'frozenAt'],
+          include: [{ model: models.Program, as: 'program', attributes: ['id', 'name', 'closedAt'] }],
+        }),
+      ]);
+      if (!dest || dest.status === 'archived') throw new NotFoundError('That clan is not available');
+      const effect = require('./clanDestinationService').effectOf(from, dest);
+      /*
+       * Leaving a live clan for another programme ends their current
+       * enrolment and removes its tasks (that is what reassignMentee does, so a
+       * different roadmap does not inherit meaningless copies). Never as a
+       * side effect of a click: the admin confirms it in so many words.
+       */
+      if (effect === 'move_cross' && !confirmCrossProgram) {
+        throw new ValidationError(`Moving them into ${dest.program?.name || 'another program'} ends their current program enrolment and removes its tasks. Confirm the cross-program move to continue.`);
+      }
+      if (effect === 'join') {
+        // A standing clan is joined, not transferred into: their current clan stays as it is.
+        const actor = actorId ? await models.User.findByPk(actorId) : null;
+        await clanService.addMember(destination, { userId: req.menteeId, role: 'mentee' }, actor);
+      } else {
+        await clanService.reassignMentee(req.menteeId, destination, actorId);
+      }
       // Record the clan they were actually moved into, which for a mentee's
       // open-ended ask is the only place that answer is ever written down.
       req.toClanId = destination;
@@ -651,6 +664,28 @@ class ClanRequestsService {
     }
 
     return req;
+  }
+
+  /**
+   * Where an admin can send this person: every programme they administer,
+   * suggested order first, each with whether its mentors are holding reviews
+   * and what approving would do.
+   */
+  async destinationsForRequest(id, programIds = null) {
+    const req = await models.ClanChangeRequest.findByPk(id, {
+      include: [{ model: models.Clan, as: 'fromClan', attributes: ['id', 'name', 'kind', 'frozenAt', 'programId'] }],
+    });
+    if (!req) throw new NotFoundError('Request not found');
+    const current = await models.ClanMembership.findAll({
+      where: { userId: req.menteeId, role: 'mentee', status: { [Op.in]: VISIBLE_MEMBERSHIP_STATUSES } },
+      attributes: ['clanId'],
+    });
+    return require('./clanDestinationService').list({
+      fromClan: req.fromClan,
+      preferredClanId: req.toClanId,
+      excludeClanIds: current.map((m) => m.clanId),
+      programIds,
+    });
   }
 
   async createCrossClan(data, createdBy) {

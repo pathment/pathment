@@ -28,7 +28,32 @@ export interface ChangeRequest {
    */
   moveKind?: 'move' | 'placement';
   requestedBy?: string | null;
+  resolvedAt?: string | null;
   at: string;
+}
+
+/** A clan a request could go to (GET /clan-requests/requests/:id/destinations). */
+export interface ClanDestination {
+  id: string;
+  name: string;
+  avatarUrl: string | null;
+  kind: 'cohort' | 'standing';
+  /** The admin's own on/off switch for the clan. */
+  status: 'active' | 'inactive' | string;
+  programId: string | null;
+  programName: string | null;
+  programClosed: boolean;
+  mentor: string | null;
+  mentees: number;
+  /** Weeks of the last four with at least one Clan Review. */
+  reviewWeeks: number;
+  lastReviewAt: string | null;
+  activity: 'regular' | 'irregular' | 'none';
+  sameProgram: boolean;
+  preferred: boolean;
+  suggested: boolean;
+  /** move · move_cross (ends their programme enrolment) · placement · join (standing) */
+  effect: 'move' | 'move_cross' | 'placement' | 'join';
 }
 export interface CrossClanItem {
   id: string;
@@ -47,21 +72,37 @@ export interface CrossClanItem {
 export interface UseClanRequestsReturn {
   requests: ChangeRequest[];
   crossClan: CrossClanItem[];
+  /** Rows in the selected tab, across all pages. */
+  total: number;
+  counts: { pending: number; decided: number };
   loading: boolean;
   error: string | null;
   refetch: () => Promise<void>;
 }
 
-interface RequestsData { requests: ChangeRequest[]; crossClan: CrossClanItem[] }
+interface RequestsData { requests: ChangeRequest[]; crossClan: CrossClanItem[]; total: number; counts: { pending: number; decided: number } }
 
-const EMPTY: RequestsData = { requests: [], crossClan: [] };
+const EMPTY: RequestsData = { requests: [], crossClan: [], total: 0, counts: { pending: 0, decided: 0 } };
 
-export function useClanRequests(): UseClanRequestsReturn {
+export interface ClanRequestsQuery {
+  tab?: 'pending' | 'decided';
+  page?: number;
+  pageSize?: number;
+  programId?: string;
+  clanId?: string;
+}
+
+export function useClanRequests(query: ClanRequestsQuery = {}): UseClanRequestsReturn {
   const { data, loading, error, refetch } = useApiQuery<RequestsData>({
-    queryKey: qk.admin.clanRequests,
+    queryKey: [...qk.admin.clanRequests, query],
     queryFn: async () => {
-      const res = await clanRequestsApi.overview();
-      return { requests: res?.data?.requests ?? [], crossClan: res?.data?.crossClan ?? [] };
+      const res = await clanRequestsApi.overview(query);
+      return {
+        requests: res?.data?.requests ?? [],
+        crossClan: res?.data?.crossClan ?? [],
+        total: res?.data?.total ?? 0,
+        counts: res?.data?.counts ?? { pending: 0, decided: 0 },
+      };
     },
     errorMessage: 'Failed to load clan requests',
   });

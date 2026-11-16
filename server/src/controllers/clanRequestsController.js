@@ -6,10 +6,19 @@ const standingClanService = require('../services/standingClanService');
 const authzService = require('../services/authzService');
 
 const overview = catchAsync(async (req, res) => {
+  const { tab, page, pageSize, programId, clanId } = req.query;
   const data = await clanRequestsService.overview(
     await authzService.adminProgramScope(req.user),
+    { tab, page, pageSize, programId: programId || null, clanId: clanId || null },
   );
   res.status(200).json(successResponse('Clan requests retrieved', data));
+});
+
+const destinations = catchAsync(async (req, res) => {
+  const clans = await clanRequestsService.destinationsForRequest(
+    req.params.id, await authzService.adminProgramScope(req.user),
+  );
+  res.status(200).json(successResponse('Destinations', { clans }));
 });
 
 const createRequest = catchAsync(async (req, res) => {
@@ -121,6 +130,7 @@ const decideStandingRequest = catchAsync(async (req, res) => {
 
 module.exports = {
   overview,
+  destinations,
   createRequest,
   resolveRequest,
   myClanChangeOptions,

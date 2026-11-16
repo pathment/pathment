@@ -82,6 +82,12 @@ router.post(
  * route unprivileged, and it is now guarded like the resolve beside it.
  */
 router.post('/requests', adminOnly, c.createRequest);
+router.get(
+  '/requests/:id/destinations',
+  adminOnly,
+  validateParams(clanRequestValidation.idParams),
+  c.destinations,
+);
 router.patch(
   '/requests/:id/resolve',
   adminOnly,

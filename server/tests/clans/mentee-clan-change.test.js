@@ -118,16 +118,20 @@ describe('mentee clan change requests', () => {
       expect(row.whatsappGroupLink).toBe('https://chat.whatsapp.com/standing');
     });
 
-    it('never offers another program’s clan', async () => {
+    it('offers clans in every program, their own program first, named by program', async () => {
       const otherProgram = await createProgram({ createdBy: admin.id, name: 'Other Program' });
       const outside = await createClan({
         programId: otherProgram.id, leadMentor: mentorB, name: 'Outside Clan',
       });
 
       const res = await api(mentee).options();
-      const ids = res.body.data.clans[0].options.map((c) => c.id);
+      const options = res.body.data.clans[0].options;
+      const ids = options.map((c) => c.id);
       expect(ids).toContain(clanB.id);
-      expect(ids).not.toContain(outside.id);
+      expect(ids).toContain(outside.id);
+      // Their own programme sorts ahead of another one.
+      expect(ids.indexOf(clanB.id)).toBeLessThan(ids.indexOf(outside.id));
+      expect(options.find((c) => c.id === outside.id).programName).toBe('Other Program');
     });
 
     /*
@@ -158,16 +162,21 @@ describe('mentee clan change requests', () => {
       expect(row.canRequest).toBe(true);
     });
 
-    it('never offers a standing clan as a destination', async () => {
-      const standing = await createClan({
-        programId: program.id, leadMentor: mentorA, name: 'Alumni Guild',
-      });
+    it('offers standing clans too, including a closed program’s, where it lives on', async () => {
+      const closed = await createProgram({ createdBy: admin.id, name: 'Finished Fellowship' });
+      const standing = await createClan({ programId: closed.id, leadMentor: mentorA, name: 'Alumni Guild' });
       await standing.update({ kind: 'standing' });
+      const oldCohort = await createClan({ programId: closed.id, leadMentor: mentorB, name: 'Old Cohort' });
+      await oldCohort.update({ frozenAt: new Date() });
+      await closed.update({ closedAt: new Date() });
 
       const res = await api(mentee).options();
-      const own = res.body.data.clans.find((c) => c.id === clanA.id);
-      expect(own.canRequest).toBe(true);
-      expect(own.options.map((c) => c.id)).toEqual([clanB.id]);
+      const options = res.body.data.clans.find((c) => c.id === clanA.id).options;
+      const guild = options.find((c) => c.id === standing.id);
+      expect(guild).toBeTruthy();
+      expect(guild.kind).toBe('standing');
+      // The closed programme's frozen cohort clan is a record, never a destination.
+      expect(options.map((c) => c.id)).not.toContain(oldCohort.id);
     });
 
     it('lets a mentee in a standing clan ask to be placed', async () => {
@@ -226,14 +235,15 @@ describe('mentee clan change requests', () => {
       expect(res.body.data.request.toClan).toBe('Dusk Clan');
     });
 
-    it('refuses a clan in another program while their own is still running', async () => {
+    it('records a clan in another program as their preference', async () => {
       const otherProgram = await createProgram({ createdBy: admin.id, name: 'Other Program' });
       const outside = await createClan({ programId: otherProgram.id, leadMentor: mentorB, name: 'Outside' });
 
       const res = await api(mentee).ask({ ...GOOD, toClanId: outside.id });
-      expect(res.status).toBe(400);
-      expect(res.body.message).toMatch(/within your own program/i);
-      expect(await models.ClanChangeRequest.count()).toBe(0);
+      expect(res.status).toBe(201);
+      expect(res.body.data.request.toClanId).toBe(outside.id);
+      // Nothing moves until an admin decides.
+      expect((await membership(mentee.id, clanA.id)).status).toBe('active');
     });
 
     it('refuses the clan they are already in', async () => {
@@ -426,6 +436,98 @@ describe('mentee clan change requests', () => {
       // Without this the admin's destination list is filtered to the closed
       // programme, which has no live clan - an undecidable request.
       expect(row.moveKind).toBe('placement');
+    });
+  });
+
+  // ── the admin queue and destinations ──────────────────────────────────────
+
+  describe('the admin queue', () => {
+    it('lists what is waiting apart from what is decided, waiting oldest first', async () => {
+      const first = (await api(mentee).ask(GOOD)).body.data.request;
+      const second = (await api(other).ask(GOOD)).body.data.request;
+      await api(admin).resolve(first.id, { status: 'denied', note: 'Your mentor is changing the slot.' });
+
+      const waiting = await request(app).get('/api/clan-requests').query({ tab: 'pending' }).set('Authorization', authHeader(admin));
+      expect(waiting.body.data.requests.map((r) => r.id)).toEqual([second.id]);
+      expect(waiting.body.data.counts).toEqual({ pending: 1, decided: 1 });
+
+      const decided = await request(app).get('/api/clan-requests').query({ tab: 'decided' }).set('Authorization', authHeader(admin));
+      expect(decided.body.data.requests.map((r) => r.id)).toEqual([first.id]);
+    });
+
+    it('pages', async () => {
+      await api(mentee).ask(GOOD);
+      await api(other).ask(GOOD);
+      const page1 = await request(app).get('/api/clan-requests').query({ tab: 'pending', pageSize: 1, page: 1 }).set('Authorization', authHeader(admin));
+      const page2 = await request(app).get('/api/clan-requests').query({ tab: 'pending', pageSize: 1, page: 2 }).set('Authorization', authHeader(admin));
+      expect(page1.body.data.total).toBe(2);
+      expect(page1.body.data.requests).toHaveLength(1);
+      expect(page2.body.data.requests).toHaveLength(1);
+      expect(page1.body.data.requests[0].id).not.toBe(page2.body.data.requests[0].id);
+    });
+  });
+
+  describe('where an admin can send them', () => {
+    const destinations = (id) => request(app).get(`/api/clan-requests/requests/${id}/destinations`).set('Authorization', authHeader(admin));
+
+    it('spans programs, standing clans included, with review activity and what approving does', async () => {
+      const closed = await createProgram({ createdBy: admin.id, name: 'Finished Fellowship' });
+      const standing = await createClan({ programId: closed.id, leadMentor: mentorA, name: 'Alumni Guild' });
+      await standing.update({ kind: 'standing' });
+      await closed.update({ closedAt: new Date() });
+      const otherProgram = await createProgram({ createdBy: admin.id, name: 'Other Program' });
+      const outside = await createClan({ programId: otherProgram.id, leadMentor: mentorB, name: 'Outside' });
+      // Alumni Guild's mentors met in each of the last three weeks.
+      for (const days of [2, 9, 16]) {
+        await models.CohortReviewSession.create({
+          mentorId: mentorA.id, clanId: standing.id, sessionDate: new Date(Date.now() - days * 86400000), status: 'finished',
+        });
+      }
+
+      const req = (await api(mentee).ask(GOOD)).body.data.request;
+      const res = await destinations(req.id);
+      expect(res.status).toBe(200);
+      const byId = Object.fromEntries(res.body.data.clans.map((c) => [c.id, c]));
+
+      expect(byId[clanB.id].effect).toBe('move');
+      expect(byId[outside.id].effect).toBe('move_cross');
+      expect(byId[standing.id].effect).toBe('join');
+      expect(byId[standing.id].activity).toBe('regular');
+      expect(byId[standing.id].reviewWeeks).toBe(3);
+      expect(byId[clanB.id].activity).toBe('none');
+      expect(byId[clanA.id]).toBeUndefined(); // the clan they are in
+    });
+
+    it('puts their own preference first', async () => {
+      const req = (await api(mentee).ask({ ...GOOD, toClanId: clanB.id })).body.data.request;
+      const res = await destinations(req.id);
+      expect(res.body.data.clans[0]).toMatchObject({ id: clanB.id, preferred: true });
+    });
+
+    it('will not move them into another program without the admin confirming it', async () => {
+      const otherProgram = await createProgram({ createdBy: admin.id, name: 'Other Program' });
+      const outside = await createClan({ programId: otherProgram.id, leadMentor: mentorB, name: 'Outside' });
+      const req = (await api(mentee).ask(GOOD)).body.data.request;
+
+      const refused = await api(admin).resolve(req.id, { status: 'approved', toClanId: outside.id });
+      expect(refused.status).toBe(400);
+      expect(refused.body.message).toMatch(/ends their current program enrolment/i);
+      expect((await membership(mentee.id, clanA.id)).status).toBe('active');
+
+      const ok = await api(admin).resolve(req.id, { status: 'approved', toClanId: outside.id, confirmCrossProgram: true });
+      expect(ok.status).toBe(200);
+      expect((await membership(mentee.id, outside.id)).status).toBe('active');
+    });
+
+    it('approving into a standing clan adds them there and leaves their clan as it is', async () => {
+      const standing = await createClan({ programId: program.id, leadMentor: mentorA, name: 'Alumni Guild' });
+      await standing.update({ kind: 'standing' });
+      const req = (await api(mentee).ask(GOOD)).body.data.request;
+
+      const res = await api(admin).resolve(req.id, { status: 'approved', toClanId: standing.id });
+      expect(res.status).toBe(200);
+      expect((await membership(mentee.id, standing.id))).toBeTruthy();
+      expect((await membership(mentee.id, clanA.id)).status).toBe('active');
     });
   });
 

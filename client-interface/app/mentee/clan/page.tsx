@@ -15,6 +15,7 @@ import {
   X,
 } from 'lucide-react';
 import { ClanAvatar } from '@/components/shared/ClanAvatar';
+import { ClanDestinationPicker } from '@/components/shared/ClanDestinationPicker';
 import { Drawer } from '@/components/shared/Drawer';
 import { useClan } from '@/lib/context/ClanContext';
 import { visibleClansFor } from '@/lib/utils/clan-selection';
@@ -302,18 +303,16 @@ export default function MenteeClanPage() {
               {clan.options.length > 0 && !open && (
                 <div className="border-t border-slate-200 px-5 py-4">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-3">
-                    {clan.moveKind === 'placement'
-                      ? 'Programs you could ask to join'
-                      : `Other clans in ${clan.programName || 'this program'}`}
+                    Clans you could ask to join
                   </p>
                   <ul className="space-y-2">
-                    {clan.options.map((option) => (
+                    {clan.options.slice(0, 4).map((option) => (
                       <li key={option.id} className="flex items-center gap-3">
                         <ClanAvatar name={option.name} src={option.avatarUrl} size="sm" />
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium text-slate-800 truncate">
                             {option.name}
-                            {clan.moveKind === 'placement' && option.programName && (
+                            {option.programName && !option.sameProgram && (
                               <span className="font-normal text-slate-400"> · {option.programName}</span>
                             )}
                           </p>
@@ -326,6 +325,13 @@ export default function MenteeClanPage() {
                       </li>
                     ))}
                   </ul>
+                  {clan.options.length > 4 && (
+                    <p className="mt-3 text-xs text-slate-500">
+                      and {clan.options.length - 4} more across{' '}
+                      {new Set(clan.options.map((o) => o.programId)).size} program
+                      {new Set(clan.options.map((o) => o.programId)).size === 1 ? '' : 's'} — you can pick any of them when you ask.
+                    </p>
+                  )}
                 </div>
               )}
             </section>
@@ -476,9 +482,7 @@ export default function MenteeClanPage() {
           {asking && asking.options.length > 0 && (
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                {asking?.moveKind === 'placement'
-                  ? 'Is there somewhere you would like to go?'
-                  : 'Is there a clan you would prefer?'}{' '}
+                Is there a clan you would prefer? It can be in any program.{' '}
                 <span className="font-normal text-slate-400">Optional</span>
               </label>
               <div className="space-y-1.5">
@@ -496,37 +500,15 @@ export default function MenteeClanPage() {
                   />
                   <span className="text-sm text-slate-700">Let my admin choose</span>
                 </label>
-                {asking.options.map((option) => (
-                  <label
-                    key={option.id}
-                    className={`flex items-center gap-2.5 rounded-lg border px-3 py-2 cursor-pointer transition-colors ${
-                      preferred === option.id
-                        ? 'border-brand-400 bg-brand-50/60'
-                        : 'border-slate-200 hover:border-slate-300'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="preferred"
-                      checked={preferred === option.id}
-                      onChange={() => setPreferred(option.id)}
-                      className="accent-brand-600"
-                    />
-                    <ClanAvatar name={option.name} src={option.avatarUrl} size="xs" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-sm text-slate-700 truncate">
-                        {option.name}
-                        {asking?.moveKind === 'placement' && option.programName && (
-                          <span className="text-slate-400"> · {option.programName}</span>
-                        )}
-                      </span>
-                      <span className="block text-[11px] text-slate-400">
-                        {option.mentor || 'Mentor not assigned'} · {option.mentees}{' '}
-                        {option.mentees === 1 ? 'mentee' : 'mentees'}
-                      </span>
-                    </span>
-                  </label>
-                ))}
+              </div>
+              {/* Every programme, standing clans included, with whether each
+                  clan's mentors actually meet — the thing worth choosing on. */}
+              <div className="mt-2">
+                <ClanDestinationPicker
+                  clans={asking.options}
+                  value={preferred}
+                  onChange={(c) => setPreferred(c.id)}
+                />
               </div>
               <p className="text-[11px] text-slate-400 mt-1.5 flex items-start gap-1">
                 <Clock className="w-3 h-3 mt-0.5 shrink-0" />

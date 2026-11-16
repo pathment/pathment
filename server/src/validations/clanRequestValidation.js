@@ -58,7 +58,9 @@ module.exports = {
     toClanId: Joi.string().uuid().allow('', null).optional().messages({
       'string.guid': 'Choose the clan to move them into'
     }),
-    note: Joi.string().trim().max(4000).allow('', null).optional()
+    note: Joi.string().trim().max(4000).allow('', null).optional(),
+    // Required (true) only for a move into another programme; see resolveRequest.
+    confirmCrossProgram: Joi.boolean().optional()
   }),
 
   standingDecision: Joi.object({

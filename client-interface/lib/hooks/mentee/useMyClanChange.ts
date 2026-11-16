@@ -11,8 +11,16 @@ export interface ClanOption {
   mentor: string | null;
   mentees: number;
   programId: string;
-  /** Shown for a placement, where the clan may be in a program they do not know. */
+  /** Any programme is offered, so the clan always travels with its programme's name. */
   programName: string | null;
+  kind?: 'cohort' | 'standing';
+  status?: string;
+  /** Whether its mentors hold the weekly review: weeks of the last four with one. */
+  reviewWeeks?: number;
+  lastReviewAt?: string | null;
+  activity?: 'regular' | 'irregular' | 'none';
+  sameProgram?: boolean;
+  suggested?: boolean;
 }
 
 /** One of the mentee's own clans, with where it could lead. */

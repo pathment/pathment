@@ -5,8 +5,9 @@ import { AdminScopeFilter } from '@/components/admin/AdminScopeFilter';
 import { useAdminScope, ALL_PROGRAMS, ALL_CLANS_IN_SCOPE } from '@/lib/context/AdminScopeContext';
 import { useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
-import { GitPullRequest, Loader2, Check, X, Plus, Trash2, ArrowRight, Search, UserRound, MessageSquareQuote } from 'lucide-react';
-import { useClanRequests, type ChangeRequest } from '@/lib/hooks/admin';
+import { AlertTriangle, GitPullRequest, Loader2, Check, X, Plus, Trash2, ArrowRight, Search, UserRound, MessageSquareQuote, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useClanRequests, type ChangeRequest, type ClanDestination } from '@/lib/hooks/admin';
+import { ClanDestinationPicker } from '@/components/shared/ClanDestinationPicker';
 import { clanRequestsApi } from '@/lib/services/clan-requests-api';
 import { apiClient } from '@/lib/services/api-client';
 import { Drawer } from '@/components/shared/Drawer';
@@ -29,8 +30,27 @@ const CROSS_STATUS_CLASS: Record<string, string> = {
 };
 const CROSS_STATUS_LABEL: Record<string, string> = { pending: 'Awaiting acceptance', active: 'Active', declined: 'Declined' };
 
+const PAGE_SIZE = 20;
+
 function AdminClanRequestsInner() {
-  const { requests, crossClan, loading, error, refetch } = useClanRequests();
+  /*
+   * The queue is two lists: what is waiting on an admin, and what has been
+   * decided. One list sorted by status put everything already approved above
+   * the requests still waiting. Paged on the server, with the programme / clan
+   * filter applied there, so a page is a page of what the admin is looking at.
+   */
+  const [queue, setQueue] = useState<'pending' | 'decided'>('pending');
+  const [page, setPage] = useState(1);
+  const { programId: scopeProgram, clanId: scopeClan } = useAdminScope();
+  const { requests, crossClan, total, counts, loading, error, refetch } = useClanRequests({
+    tab: queue,
+    page,
+    pageSize: PAGE_SIZE,
+    programId: scopeProgram !== ALL_PROGRAMS ? scopeProgram : undefined,
+    clanId: scopeClan !== ALL_CLANS_IN_SCOPE ? scopeClan : undefined,
+  });
+  useEffect(() => { setPage(1); }, [queue, scopeProgram, scopeClan]);
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const [tab, setTab] = useState<Tab>('requests');
   const searchParams = useSearchParams();
 
@@ -72,6 +92,10 @@ function AdminClanRequestsInner() {
   const [deciding, setDeciding] = useState<{ request: ChangeRequest; approve: boolean } | null>(null);
   const [decisionClan, setDecisionClan] = useState('');
   const [decisionNote, setDecisionNote] = useState('');
+  // Every clan this person could go to, any programme, ranked, with activity.
+  const [destinations, setDestinations] = useState<ClanDestination[] | null>(null);
+  const [confirmCross, setConfirmCross] = useState(false);
+  const chosen = destinations?.find((d) => d.id === decisionClan) || null;
 
   const openDecision = (request: ChangeRequest, approve: boolean) => {
     setDeciding({ request, approve });
@@ -79,12 +103,20 @@ function AdminClanRequestsInner() {
     // and the admin only has to intervene when it is not.
     setDecisionClan(approve ? (request.toClanId || '') : '');
     setDecisionNote('');
+    setConfirmCross(false);
+    setDestinations(null);
+    if (approve) {
+      clanRequestsApi.destinations(request.id)
+        .then((res: { data?: { clans?: ClanDestination[] } }) => setDestinations(res?.data?.clans ?? []))
+        .catch(() => { setDestinations([]); toast.error('Could not load the clans'); });
+    }
   };
 
   const submitDecision = async () => {
     if (!deciding) return;
     const { request, approve } = deciding;
     if (approve && !decisionClan) { toast.error('Choose the clan to move them into'); return; }
+    if (approve && chosen?.effect === 'move_cross' && !confirmCross) { toast.error('Confirm the move into another program first'); return; }
     if (!approve && !decisionNote.trim()) { toast.error('Explain the decision so the mentee knows where they stand'); return; }
     try {
       setBusy(request.id);
@@ -93,6 +125,7 @@ function AdminClanRequestsInner() {
         approve ? 'approved' : 'denied',
         decisionNote.trim() || undefined,
         approve ? decisionClan : undefined,
+        approve && chosen?.effect === 'move_cross' ? true : undefined,
       );
       toast.success(approve ? 'Approved - mentee moved' : 'Denied, and the mentee has been told');
       setDeciding(null);
@@ -102,20 +135,6 @@ function AdminClanRequestsInner() {
       toast.error(err?.response?.data?.message || 'Action failed');
     } finally { setBusy(null); }
   };
-
-  /**
-   * Where this person can actually be sent.
-   *
-   * Bounded by the request's programme only for a MOVE. A placement comes out
-   * of a closed or standing clan, which approving does not end, so bounding it
-   * by that clan's programme offered an empty picker for exactly the people
-   * with nowhere left to go — the case the mentee raised it about.
-   */
-  const destinationsFor = (request: ChangeRequest) => clans.filter((c) => {
-    if (c.id === request.fromClanId || !c.takingPeople) return false;
-    if (request.moveKind === 'placement') return true;
-    return !request.programId || c.programId === request.programId;
-  });
 
   // Load clans for the cross-clan pickers.
   useEffect(() => {
@@ -168,7 +187,6 @@ function AdminClanRequestsInner() {
    * small read; a row with no clan on either side is never hidden, because
    * hiding what cannot be classified is how a request goes missing.
    */
-  const { programId: scopeProgram, clanId: scopeClan } = useAdminScope();
   const inScope = <T extends { programId?: string | null; fromClanId?: string | null; toClanId?: string | null }>(row: T) => {
     if (scopeClan !== ALL_CLANS_IN_SCOPE) {
       if (!row.fromClanId && !row.toClanId) return true;
@@ -177,10 +195,10 @@ function AdminClanRequestsInner() {
     if (scopeProgram !== ALL_PROGRAMS) return !row.programId || row.programId === scopeProgram;
     return true;
   };
-  const visibleRequests = requests.filter(inScope);
+  const visibleRequests = requests;
   const visibleCrossClan = crossClan.filter(inScope);
 
-  const pendingCount = visibleRequests.filter((r) => r.status === 'pending').length;
+  const pendingCount = counts.pending;
   const field = 'border border-slate-300 rounded-lg px-3 py-2 text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500';
 
   const TABS: { key: Tab; label: string; count?: number }[] = [
@@ -220,10 +238,21 @@ function AdminClanRequestsInner() {
         <>
           {/* Change requests */}
           {tab === 'requests' && (
+            <div className="flex flex-wrap items-center gap-1 rounded-xl bg-slate-100 p-1 w-fit" role="tablist" aria-label="Change requests">
+              {([['pending', 'To decide', counts.pending], ['decided', 'Decided', counts.decided]] as const).map(([key, label, n]) => (
+                <button key={key} role="tab" aria-selected={queue === key} onClick={() => setQueue(key)}
+                  className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${queue === key ? 'bg-card text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
+                  {label}
+                  <span className={`rounded-full px-1.5 py-0.5 text-[11px] ${key === 'pending' && n ? 'bg-amber-100 text-amber-700' : 'bg-slate-200/70 text-slate-600'}`}>{n}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {tab === 'requests' && (
             visibleRequests.length === 0 ? (
               <div className="bg-card rounded-2xl border border-slate-200 py-12 px-6 text-center">
                 <GitPullRequest className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-                <p className="text-slate-600 font-medium">No clan-change requests</p>
+                <p className="text-slate-600 font-medium">{queue === 'pending' ? 'Nothing waiting on you' : 'Nothing decided yet'}</p>
                 <p className="text-slate-400 text-sm mt-1 max-w-md mx-auto">When a mentee asks to move clan, or a mentor asks another clan to take one of theirs, it shows up here. Approving moves the mentee, and their work goes with them.</p>
               </div>
             ) : (
@@ -289,6 +318,18 @@ function AdminClanRequestsInner() {
                     )}
                   </div>
                 ))}
+                {total > PAGE_SIZE && (
+                  <div className="flex items-center justify-between pt-2 text-sm text-slate-500">
+                    <span>{(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)} of {total}</span>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1} aria-label="Previous page"
+                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 hover:bg-slate-50 disabled:opacity-40"><ChevronLeft className="h-4 w-4" />Previous</button>
+                      <span className="px-2 tabular-nums">Page {page} of {pages}</span>
+                      <button onClick={() => setPage((p) => Math.min(pages, p + 1))} disabled={page >= pages} aria-label="Next page"
+                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 hover:bg-slate-50 disabled:opacity-40">Next<ChevronRight className="h-4 w-4" /></button>
+                    </div>
+                  </div>
+                )}
               </div>
             )
           )}
@@ -427,18 +468,21 @@ function AdminClanRequestsInner() {
                   <label className="block text-xs font-medium text-slate-500 mb-1">
                     Move them into <span className="text-rose-500">*</span>
                   </label>
-                  <SelectMenu
-                    value={decisionClan}
-                    onChange={setDecisionClan}
-                    options={destinationsFor(deciding.request).map((c) => ({ value: c.id, label: c.name }))}
-                    placeholder="Select a clan…"
-                    ariaLabel="Clan to move them into"
-                  />
-                  {destinationsFor(deciding.request).length === 0 && (
+                  {destinations === null ? (
+                    <div className="space-y-1.5" aria-label="Loading clans">
+                      {[0, 1, 2].map((i) => <div key={i} className="h-14 animate-pulse rounded-xl bg-slate-100" />)}
+                    </div>
+                  ) : destinations.length === 0 ? (
                     <p className="text-[11px] text-amber-700 mt-1">
                       No clan is currently taking people. Open one, or deny with a note saying when
                       to ask again.
                     </p>
+                  ) : (
+                    <ClanDestinationPicker
+                      clans={destinations}
+                      value={decisionClan}
+                      onChange={(c) => { setDecisionClan(c.id); setConfirmCross(false); }}
+                    />
                   )}
                   {deciding.request.toClanId ? (
                     <p className="text-[11px] text-slate-400 mt-1">
@@ -450,11 +494,7 @@ function AdminClanRequestsInner() {
                     </p>
                   )}
                 </div>
-                <p className="text-xs text-slate-500">
-                  {deciding.request.moveKind === 'placement'
-                    ? `${deciding.request.fromClan || 'Their current clan'} has closed or is a standing clan, so this adds them to the new clan and leaves that record untouched — including any certificates from it. They may be placed in a different program.`
-                    : 'Their tasks, submissions, feedback and day log come with them. The old clan\u2019s record is left exactly as it is.'}
-                </p>
+                {chosen && <EffectNote clan={chosen} fromClan={deciding.request.fromClan} confirm={confirmCross} onConfirm={setConfirmCross} />}
               </>
             ) : null}
 
@@ -495,6 +535,34 @@ function AdminClanRequestsInner() {
       </Drawer>
     </div>
   );
+}
+
+/** What approving into this clan will actually do — said before the button, not after. */
+function EffectNote({ clan, fromClan, confirm, onConfirm }: {
+  clan: ClanDestination; fromClan: string | null; confirm: boolean; onConfirm: (v: boolean) => void;
+}) {
+  const from = fromClan || 'their current clan';
+  if (clan.effect === 'move_cross') {
+    return (
+      <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">
+        <p className="flex items-center gap-1.5 font-semibold"><AlertTriangle className="h-3.5 w-3.5" />This moves them into another program</p>
+        <p className="mt-1">
+          They leave {from}, and their current program enrolment ends: its tasks are removed, because
+          {' '}{clan.programName || 'the new program'} has its own roadmap. Their work does not come with them.
+        </p>
+        <label className="mt-2 flex items-start gap-2 font-medium">
+          <input type="checkbox" checked={confirm} onChange={(e) => onConfirm(e.target.checked)} className="mt-0.5" />
+          I understand — move them into {clan.programName || 'the other program'}
+        </label>
+      </div>
+    );
+  }
+  const text = clan.effect === 'join'
+    ? `${clan.name} is a standing clan: they are added to it, and ${from} stays exactly as it is.`
+    : clan.effect === 'placement'
+      ? `${from} has closed or is a standing clan, so this adds them to ${clan.name} and leaves that record untouched — including any certificates from it.`
+      : `They leave ${from}. Their tasks, submissions, feedback and day log come with them; the old clan\u2019s record is left as it is.`;
+  return <p className="text-xs text-slate-500">{text}</p>;
 }
 
 export default function AdminClanRequests() {
