@@ -256,7 +256,11 @@ function AddWorkDrawer({ data, onClose, onDone }: { data: PoolDashboard; onClose
         {source === 'custom' && (<>
           <div>
             <label htmlFor="pool-work-title" className="mb-1 block text-sm font-medium text-slate-700">
-              Title {kind === 'task' ? <span className="text-red-500">*</span> : <span className="font-normal text-slate-400">(optional, defaults to the kit&apos;s name)</span>}
+              Title {kind === 'task'
+                ? <span className="text-red-500">*</span>
+                : <span className="font-normal text-slate-400">
+                    {kind === 'course' ? '(filled in from the course you pick; you can change it)' : `(optional, defaults to the ${kind === 'quiz' ? 'quiz' : 'interview kit'}’s name)`}
+                  </span>}
             </label>
             <input id="pool-work-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Build a small REST API" className={inputCls} />
           </div>
@@ -286,7 +290,12 @@ function AddWorkDrawer({ data, onClose, onDone }: { data: PoolDashboard; onClose
                 <CoursePicker
                   courses={courses}
                   value={courseId}
-                  onChange={(picked) => setCourseId(picked.courseId)}
+                  onChange={(picked) => {
+                    setCourseId(picked.courseId);
+                    // The work is named after the course, unless the admin wrote their own title.
+                    const auto = !title.trim() || courses.some((c) => c.title === title.trim());
+                    if (auto) setTitle(picked.title);
+                  }}
                   unavailable={new Map([...takenCourses].map((id) => [id, 'Already in this round']))}
                 />
               )}
