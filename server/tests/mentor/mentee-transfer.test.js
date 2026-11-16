@@ -171,4 +171,48 @@ describe('mentee transfers between clans', () => {
     await expect(transferService.request(fromLead, { menteeId: mentee.id, toClanId: toClan.id }))
       .rejects.toThrow(/isn’t available yet/i);
   });
+
+  describe('where a mentor can send them', () => {
+    const closedProgramWithStanding = async () => {
+      const closed = await createProgram({ createdBy: fromLead.id, name: 'Finished Fellowship' });
+      const frozen = await models.Clan.create({ programId: closed.id, name: 'Old Cohort', leadMentorId: toLead.id, createdBy: toLead.id });
+      const standing = await models.Clan.create({ programId: closed.id, name: 'Old Cohort · Standing', kind: 'standing', leadMentorId: toLead.id, createdBy: toLead.id });
+      await clanService.addMember(standing.id, { userId: toLead.id, role: 'lead_mentor' });
+      await frozen.update({ frozenAt: new Date() });
+      await closed.update({ closedAt: new Date() });
+      return { frozen, standing };
+    };
+
+    it('lists only clans taking people: a finished program’s standing clan, never its frozen ones', async () => {
+      const { frozen, standing } = await closedProgramWithStanding();
+      const { clans } = await transferService.targets(fromLead, mentee.id);
+      const ids = clans.map((c) => c.id);
+      expect(ids).toContain(standing.id);
+      expect(ids).toContain(toClan.id);
+      expect(ids).not.toContain(frozen.id);
+      expect(clans.find((c) => c.id === standing.id)).toMatchObject({ kind: 'standing', crossProgram: false, effect: 'join' });
+    });
+
+    it('puts clans whose mentors hold the weekly review first, marked suggested', async () => {
+      const busy = await models.Clan.create({ programId: program.id, name: 'Zebra Busy', leadMentorId: toLead.id, createdBy: toLead.id });
+      for (const days of [1, 8, 15]) {
+        await models.CohortReviewSession.create({ mentorId: toLead.id, clanId: busy.id, sessionDate: new Date(Date.now() - days * 86400000), status: 'finished' });
+      }
+      const { clans } = await transferService.targets(fromLead, mentee.id);
+      expect(clans[0]).toMatchObject({ id: busy.id, suggested: true, activity: 'regular', reviewWeeks: 3 });
+    });
+
+    it('refuses a frozen clan, and accepting into a standing clan joins it', async () => {
+      const { frozen, standing } = await closedProgramWithStanding();
+      await expect(transferService.request(fromLead, { menteeId: mentee.id, toClanId: frozen.id }))
+        .rejects.toThrow(/isn’t taking people/);
+
+      const request = await transferService.request(fromLead, { menteeId: mentee.id, toClanId: standing.id });
+      await transferService.respond(toLead, request.id, { accept: true });
+      const joined = await models.ClanMembership.findOne({ where: { userId: mentee.id, clanId: standing.id, role: 'mentee' } });
+      expect(joined).toBeTruthy();
+      // Their clan is not ended by joining a standing clan.
+      expect((await models.ClanMembership.findOne({ where: { userId: mentee.id, clanId: fromClan.id, role: 'mentee' } })).status).toBe('active');
+    });
+  });
 });

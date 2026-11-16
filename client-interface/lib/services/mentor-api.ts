@@ -25,6 +25,15 @@ export interface TransferClanOption {
   leadMentor: TransferPerson | null;
   coMentors: TransferPerson[];
   coMentorCount: number;
+  /** A standing clan is joined (their clan stays); a cohort clan is moved into. */
+  kind?: 'cohort' | 'standing';
+  status?: string;
+  /** Weeks of the last four with a Clan Review, and the last one. */
+  reviewWeeks?: number;
+  lastReviewAt?: string | null;
+  activity?: 'regular' | 'irregular' | 'none';
+  suggested?: boolean;
+  effect?: 'move' | 'move_cross' | 'placement' | 'join';
 }
 
 export interface TransferTargets {

@@ -2,10 +2,11 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { ArrowRight, Check, Loader2, Search, Users, AlertTriangle, Send, Clock } from 'lucide-react';
+import { ArrowRight, Check, Loader2, Search, Users, AlertTriangle, Send, Clock, CalendarCheck, Moon, Sparkles, Inbox } from 'lucide-react';
 
 import { Drawer } from '@/components/shared/Drawer';
 import { Avatar } from '@/components/shared/Avatar';
+import { PushToPoolDrawer } from '@/components/shared/pool/PushToPoolDrawer';
 import { mentorApi, type TransferClanOption, type TransferTargets } from '@/lib/services/mentor-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 
@@ -36,6 +37,8 @@ export function MoveMenteeDrawer({
   const [picked, setPicked] = useState<TransferClanOption | null>(null);
   const [reason, setReason] = useState('');
   const [sending, setSending] = useState(false);
+  // "Not sure where they fit" → the handover pool, where other mentors and admins can claim them.
+  const [poolOpen, setPoolOpen] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -61,6 +64,10 @@ export function MoveMenteeDrawer({
 
   const pending = data?.pendingRequest ?? null;
   const name = data?.mentee.name || menteeName || 'this mentee';
+  const firstName = name.split(' ')[0];
+  // Suggested clans lead, but only while not searching — a search is asking for something specific.
+  const suggested = query.trim() ? [] : clans.filter((c) => c.suggested);
+  const rest = clans.filter((c) => !suggested.includes(c));
 
   const send = async () => {
     if (!picked) return;
@@ -75,6 +82,77 @@ export function MoveMenteeDrawer({
     } finally {
       setSending(false);
     }
+  };
+
+  if (poolOpen && data) {
+    return (
+      <PushToPoolDrawer
+        open
+        onClose={() => setPoolOpen(false)}
+        onDone={() => { onSent?.(); onClose(); }}
+        clanId={data.currentClan.id}
+        clanName={data.currentClan.name}
+        mentee={{ id: menteeId, name }}
+      />
+    );
+  }
+
+  const card = (c: TransferClanOption) => {
+    const selected = picked?.id === c.id;
+    return (
+      <button
+        key={c.id}
+        type="button"
+        onClick={() => setPicked(selected ? null : c)}
+        aria-pressed={selected}
+        className={`w-full text-left rounded-xl border px-3.5 py-3 transition-colors ${
+          selected
+            ? 'border-brand-400 bg-brand-50/60 dark:bg-brand-500/10 ring-1 ring-brand-200'
+            : 'border-slate-200 hover:border-brand-300 hover:bg-slate-50'
+        }`}
+      >
+        <div className="flex items-start gap-3">
+          {/* The lead mentor IS the answer to "who will look after them". */}
+          <Avatar name={c.leadMentor?.name} src={c.leadMentor?.avatarUrl} size="md" />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="text-sm font-semibold text-slate-900 truncate">{c.name}</p>
+              {c.kind === 'standing' && <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-700">Standing</span>}
+              {c.status === 'inactive' && <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600"><Moon className="w-3 h-3" />Inactive</span>}
+              {selected && <Check className="w-4 h-4 text-brand-600 shrink-0" />}
+            </div>
+            <p className="text-xs text-slate-600 truncate">
+              {c.leadMentor ? <>Led by <span className="font-medium">{c.leadMentor.name}</span></> : <span className="text-amber-600">No lead mentor yet</span>}
+              {c.programName ? <span className="text-slate-400"> · {c.programName}</span> : null}
+            </p>
+
+            <div className="mt-2 flex items-center gap-3 flex-wrap">
+              {c.activity && <ReviewActivity clan={c} />}
+              <span className="inline-flex items-center gap-1 text-[11px] text-slate-500">
+                <Users className="w-3 h-3" /> {c.menteeCount} mentee{c.menteeCount === 1 ? '' : 's'}
+              </span>
+              {c.coMentors.length > 0 && (
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="flex -space-x-1.5">
+                    {c.coMentors.map((m) => (
+                      <Avatar key={m.id} name={m.name} src={m.avatarUrl} size="xs" ring title={m.name} />
+                    ))}
+                  </span>
+                  <span className="text-[11px] text-slate-500">
+                    +{c.coMentorCount} co-mentor{c.coMentorCount === 1 ? '' : 's'}
+                  </span>
+                </span>
+              )}
+              {c.crossProgram && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                  <AlertTriangle className="w-3 h-3" /> Different program
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      </button>
+    );
   };
 
   return (
@@ -123,6 +201,21 @@ export function MoveMenteeDrawer({
             </div>
           </div>
 
+          {/* The other right answer when no clan obviously fits. */}
+          {!pending && (
+            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-dashed border-violet-200 bg-violet-50/50 px-3.5 py-3 dark:border-violet-500/30 dark:bg-violet-500/5">
+              <Inbox className="w-5 h-5 text-violet-600 shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-slate-900">Not sure where {firstName} fits?</p>
+                <p className="text-xs text-slate-500">Offer them to the handover pool instead. Other mentors and admins see your note and can claim them.</p>
+              </div>
+              <button type="button" onClick={() => setPoolOpen(true)}
+                className="shrink-0 rounded-lg border border-violet-300 bg-card px-3 py-1.5 text-sm font-medium text-violet-700 hover:bg-violet-50">
+                Offer to the pool
+              </button>
+            </div>
+          )}
+
           {pending && (
             <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3">
               <Clock className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
@@ -145,64 +238,26 @@ export function MoveMenteeDrawer({
 
           {clans.length === 0 ? (
             <p className="py-10 text-center text-sm text-slate-400">
-              {query ? 'No clan matches that search.' : 'There are no other active clans to move into yet.'}
+              {query ? 'No clan matches that search.' : 'No other clan is taking people right now — the handover pool above is the way to hand them on.'}
             </p>
           ) : (
-            <div className="space-y-2">
-              {clans.map((c) => {
-                const selected = picked?.id === c.id;
-                return (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => setPicked(selected ? null : c)}
-                    aria-pressed={selected}
-                    className={`w-full text-left rounded-xl border px-3.5 py-3 transition-colors ${
-                      selected
-                        ? 'border-brand-400 bg-brand-50/60 dark:bg-brand-500/10 ring-1 ring-brand-200'
-                        : 'border-slate-200 hover:border-brand-300 hover:bg-slate-50'
-                    }`}
-                  >
-                    <div className="flex items-start gap-3">
-                      {/* The lead mentor IS the answer to "who will look after them". */}
-                      <Avatar name={c.leadMentor?.name} src={c.leadMentor?.avatarUrl} size="md" />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <p className="text-sm font-semibold text-slate-900 truncate">{c.name}</p>
-                          {selected && <Check className="w-4 h-4 text-brand-600 shrink-0" />}
-                        </div>
-                        <p className="text-xs text-slate-600 truncate">
-                          {c.leadMentor ? <>Led by <span className="font-medium">{c.leadMentor.name}</span></> : <span className="text-amber-600">No lead mentor yet</span>}
-                          {c.programName ? <span className="text-slate-400"> · {c.programName}</span> : null}
-                        </p>
-
-                        <div className="mt-2 flex items-center gap-3 flex-wrap">
-                          <span className="inline-flex items-center gap-1 text-[11px] text-slate-500">
-                            <Users className="w-3 h-3" /> {c.menteeCount} mentee{c.menteeCount === 1 ? '' : 's'}
-                          </span>
-                          {c.coMentors.length > 0 && (
-                            <span className="inline-flex items-center gap-1.5">
-                              <span className="flex -space-x-1.5">
-                                {c.coMentors.map((m) => (
-                                  <Avatar key={m.id} name={m.name} src={m.avatarUrl} size="xs" ring title={m.name} />
-                                ))}
-                              </span>
-                              <span className="text-[11px] text-slate-500">
-                                +{c.coMentorCount} co-mentor{c.coMentorCount === 1 ? '' : 's'}
-                              </span>
-                            </span>
-                          )}
-                          {c.crossProgram && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
-                              <AlertTriangle className="w-3 h-3" /> Different program
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
+            <div className="space-y-4">
+              {suggested.length > 0 && (
+                <div className="space-y-2">
+                  <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    <Sparkles className="w-3.5 h-3.5 text-brand-600" /> Suggested · mentors meeting most weeks
+                  </p>
+                  {suggested.map(card)}
+                </div>
+              )}
+              {rest.length > 0 && (
+                <div className="space-y-2">
+                  {suggested.length > 0 && (
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">All clans taking people</p>
+                  )}
+                  {rest.map(card)}
+                </div>
+              )}
             </div>
           )}
 
@@ -239,5 +294,22 @@ export function MoveMenteeDrawer({
         </div>
       )}
     </Drawer>
+  );
+}
+
+/** Whether the clan's mentors hold the weekly review — the thing worth choosing on. */
+function ReviewActivity({ clan: c }: { clan: TransferClanOption }) {
+  const weeks = c.reviewWeeks ?? 0;
+  if (c.activity === 'none') {
+    return (
+      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-rose-600">
+        <CalendarCheck className="w-3 h-3" /> No reviews in 4 weeks
+      </span>
+    );
+  }
+  return (
+    <span className={`inline-flex items-center gap-1 text-[11px] font-medium ${c.activity === 'regular' ? 'text-emerald-700' : 'text-amber-700'}`}>
+      <CalendarCheck className="w-3 h-3" /> Reviews {weeks} of last 4 weeks
+    </span>
   );
 }

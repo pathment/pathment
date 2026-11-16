@@ -48,7 +48,7 @@ class MenteeTransferService {
   async _currentClanOf(menteeId) {
     const membership = await models.ClanMembership.findOne({
       where: { userId: menteeId, role: 'mentee', status: { [Op.in]: ['active', 'paused'] } },
-      include: [{ model: models.Clan, as: 'clan', attributes: ['id', 'name', 'programId'] }],
+      include: [{ model: models.Clan, as: 'clan', attributes: ['id', 'name', 'programId', 'kind', 'frozenAt'] }],
     });
     return membership?.clan || null;
   }
@@ -86,11 +86,35 @@ class MenteeTransferService {
       throw new ForbiddenError('You don’t have permission to move this mentee.');
     }
 
-    const where = { id: { [Op.ne]: current.id }, status: 'active' };
-    if (q && q.trim()) where.name = { [Op.iLike]: `%${q.trim()}%` };
+    /*
+     * Only clans that take people: a finished programme's cohort clans are a
+     * record, its standing clans are where it carries on. Same list, same
+     * order and same "are its mentors meeting?" facts the admin decides with,
+     * so a mentor's suggestion and an admin's are never two different lists.
+     */
+    const mine = await models.ClanMembership.findAll({
+      where: { userId: menteeId, role: 'mentee', status: { [Op.in]: ['active', 'paused'] } },
+      attributes: ['clanId'],
+    });
+    let destinations = await require('./clanDestinationService').list({
+      fromClan: current, excludeClanIds: [current.id, ...mine.map((m) => m.clanId)],
+    });
+    if (q && q.trim()) {
+      const needle = q.trim().toLowerCase();
+      destinations = destinations.filter((d) => `${d.name} ${d.programName || ''} ${d.mentor || ''}`.toLowerCase().includes(needle));
+    }
+    const facts = new Map(destinations.map((d) => [d.id, d]));
+    if (!destinations.length) {
+      return {
+        mentee: { id: mentee.id, name: fullName(mentee) },
+        currentClan: { id: current.id, name: current.name, programId: current.programId },
+        pendingRequest: null,
+        clans: [],
+      };
+    }
 
     const clans = await models.Clan.findAll({
-      where,
+      where: { id: { [Op.in]: [...facts.keys()] } },
       attributes: ['id', 'name', 'programId', 'leadMentorId'],
       include: [
         { model: models.Program, as: 'program', attributes: ['id', 'name'], required: false },
@@ -103,9 +127,9 @@ class MenteeTransferService {
           include: [{ model: models.User, as: 'user', attributes: ['id', 'firstName', 'lastName', 'profilePictureUrl'] }],
         },
       ],
-      order: [['name', 'ASC']],
-      limit: 200,
     });
+    // The suggested order, not alphabetical.
+    clans.sort((a, b) => destinations.indexOf(facts.get(a.id)) - destinations.indexOf(facts.get(b.id)));
 
     // A pending request already in flight for this mentee blocks a second one —
     // surface it so the UI can say so rather than failing on submit.
@@ -123,14 +147,23 @@ class MenteeTransferService {
         const lead = members.find((m) => m.role === 'lead_mentor' && m.userId === c.leadMentorId)
           || members.find((m) => m.role === 'lead_mentor');
         const coMentors = members.filter((m) => m.role === 'co_mentor' && m.userId !== lead?.userId);
+        const d = facts.get(c.id);
         return {
           id: c.id,
           name: c.name,
           programId: c.programId,
           programName: c.program?.name || null,
+          kind: d.kind,
+          status: d.status,
+          reviewWeeks: d.reviewWeeks,
+          lastReviewAt: d.lastReviewAt,
+          activity: d.activity,
+          suggested: d.suggested,
+          effect: d.effect,
           // A different program means a clean transfer (old enrollment + tasks
-          // are wiped) — the picker warns before you send.
-          crossProgram: c.programId !== current.programId,
+          // are wiped) — the picker warns before you send. A standing clan is
+          // joined instead, which wipes nothing.
+          crossProgram: d.effect === 'move_cross',
           menteeCount: members.filter((m) => m.role === 'mentee').length,
           leadMentor: lead?.user
             ? { id: lead.user.id, name: fullName(lead.user), avatarUrl: lead.user.profilePictureUrl || null }
@@ -151,11 +184,16 @@ class MenteeTransferService {
 
     const [mentee, toClan] = await Promise.all([
       models.User.findByPk(menteeId, { attributes: ['id', 'firstName', 'lastName'] }),
-      models.Clan.findByPk(toClanId, { attributes: ['id', 'name', 'status'] }),
+      models.Clan.findByPk(toClanId, {
+        attributes: ['id', 'name', 'status', 'kind', 'frozenAt'],
+        include: [{ model: models.Program, as: 'program', attributes: ['id', 'closedAt'] }],
+      }),
     ]);
     if (!mentee) throw new NotFoundError('Mentee not found');
     if (!toClan) throw new NotFoundError('Target clan not found');
-    if (toClan.status !== 'active') throw new ValidationError('That clan isn’t active');
+    const takesPeople = toClan.status !== 'archived'
+      && (toClan.kind === 'standing' || (!toClan.frozenAt && !toClan.program?.closedAt));
+    if (!takesPeople) throw new ValidationError('That clan has closed and isn’t taking people — its standing clan is usually the right place');
 
     const current = await this._currentClanOf(menteeId);
     if (!current) throw new ValidationError('This mentee isn’t placed in a clan yet, so there’s nothing to move.');
@@ -335,7 +373,13 @@ class MenteeTransferService {
       // Placement first: if the move fails (mentee already moved elsewhere, clan
       // gone), the request stays pending rather than claiming a move that
       // never happened.
-      await clanService.reassignMentee(request.menteeId, request.toClanId, user.id);
+      const target = await models.Clan.findByPk(request.toClanId, { attributes: ['id', 'kind'] });
+      if (target?.kind === 'standing') {
+        // Joined, not transferred into: their current clan stays as it is.
+        await clanService.addMember(request.toClanId, { userId: request.menteeId, role: 'mentee' }, user);
+      } else {
+        await clanService.reassignMentee(request.menteeId, request.toClanId, user.id);
+      }
     }
 
     request.status = accept ? 'approved' : 'denied';
