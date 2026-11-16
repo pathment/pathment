@@ -178,7 +178,7 @@ export function ReviewDrawer({ poolId, item, onClose, onDone, onReviewed, next, 
       headerMeta={(
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2.5">
-            <Avatar name={who} size="sm" />
+            <Avatar name={who} src={item.member.avatarUrl} size="sm" />
             <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
               <span className="truncate text-sm font-medium text-slate-800">{who}</span>
               <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium capitalize text-slate-500 dark:bg-slate-800">{item.kind}</span>

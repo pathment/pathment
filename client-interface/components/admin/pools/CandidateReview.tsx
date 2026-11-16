@@ -87,7 +87,7 @@ function CandidateChip({ member, active, onClick }: { member: PoolMemberRow; act
       <div className="relative">
         <div className={`rounded-full p-[3px] transition-transform duration-200 group-hover/card:-translate-y-0.5 ${ringOf(member)} ${active ? 'pm-snake pm-snake-ring scale-110 shadow-lg shadow-brand-500/25' : ''}`}>
           <div className="rounded-full bg-card p-0.5">
-            <Avatar name={name} size="lg" />
+            <Avatar name={name} src={member.avatarUrl} size="lg" />
           </div>
         </div>
         {badge && (
@@ -318,7 +318,7 @@ export function CandidateReview({ data, onChange, canManage, canSelect, canRevie
             <div className="rounded-2xl border border-slate-200 bg-card p-4 sm:p-5">
               <div className="flex flex-col items-start justify-between gap-3 sm:flex-row">
                 <div className="flex w-full min-w-0 items-start gap-3 sm:w-auto">
-                  <Avatar name={member.name || member.email} size="lg" />
+                  <Avatar name={member.name || member.email} src={member.avatarUrl} size="lg" />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <h2 className="truncate text-base font-semibold text-slate-900 sm:text-lg">{member.name || member.email}</h2>
@@ -495,7 +495,7 @@ export function CandidateReview({ data, onChange, canManage, canSelect, canRevie
           <div className="space-y-4">
             {next && (
               <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-card p-3">
-                <Avatar name={next.name || next.email} size="sm" />
+                <Avatar name={next.name || next.email} src={next.avatarUrl} size="sm" />
                 <div className="min-w-0 flex-1">
                   <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Up next</p>
                   <button type="button" onClick={() => select(next)} className="block max-w-full truncate text-sm font-medium text-slate-900 hover:text-brand-700">{next.name || next.email}</button>

@@ -29,7 +29,7 @@ class PoolReviewService {
         where: { status: 'submitted' },
         include: [
           { model: models.PoolMember, as: 'poolMember', required: true, where: { poolId }, attributes: ['id', 'email', 'details', 'userId'],
-            include: [{ model: models.User, as: 'user', attributes: ['id', 'firstName', 'lastName'] }] },
+            include: [{ model: models.User, as: 'user', attributes: ['id', 'firstName', 'lastName', 'profilePictureUrl'] }] },
           { model: models.RoadmapTask, as: 'roadmapTask', attributes: ['id', 'title', 'type', 'difficulty'] },
         ],
       }],
@@ -58,7 +58,7 @@ class PoolReviewService {
         assignmentId: item?.id || null,
         points: poolService.pointsOf(pool, item, t.roadmapTask?.difficulty),
         required: item ? item.required !== false : true,
-        member: { id: m.id, email: m.email, userId: m.userId, name: models.PoolMember.displayName(m) },
+        member: { id: m.id, email: m.email, userId: m.userId, name: models.PoolMember.displayName(m), avatarUrl: m.user?.profilePictureUrl || null },
       };
     });
   }

@@ -225,7 +225,7 @@ export interface ReviewQueueItem {
   /** Which piece of the pool's work this submission is. */
   assignmentId?: string | null;
   componentKey?: string | null;
-  member: { id: string; name: string; email: string };
+  member: { id: string; name: string; email: string; avatarUrl?: string | null };
 }
 
 export interface PlacementPreview {

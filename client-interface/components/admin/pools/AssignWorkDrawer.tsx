@@ -208,7 +208,7 @@ export function AssignWorkDrawer({
                           className={checkbox}
                           aria-label={m.name}
                         />
-                        <Avatar name={m.name} size="sm" />
+                        <Avatar name={m.name} src={m.avatarUrl} size="sm" />
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-sm font-medium text-slate-800">{m.name}</span>
                           <span className="block truncate text-[11px] text-muted-foreground">
