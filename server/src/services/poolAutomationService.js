@@ -98,8 +98,14 @@ class PoolAutomationService {
    * applicant's level. The evidence and the applicant's own pick are kept on
    * the application, so an admin can see why and change it.
    */
-  async autoLevel(applicationId) {
+  async autoLevel(applicationId, { force = false } = {}) {
     const levelRecommendationService = require('./levelRecommendationService');
+    if (!force) {
+      const app = await models.Application.findByPk(applicationId, { attributes: ['cohortId'] });
+      const rules = app ? await levelRecommendationService.getRules(app.cohortId) : null;
+      // The intake's switch: off, nothing reviews on its own.
+      if (!rules || rules.autoReview === false) return { applicationId, recommended: false, reason: 'auto_review_off' };
+    }
     const result = await levelRecommendationService.recommendForApplication(applicationId, null);
     if (!result?.recommended || !result.recommendedLevel) return result;
     const application = await models.Application.findByPk(applicationId);
@@ -108,6 +114,26 @@ class PoolAutomationService {
     }
     await this.syncLevelFromApplication(applicationId);
     return result;
+  }
+
+  /**
+   * The whole hands-off path for one applicant, IN ORDER:
+   *   1. Pathment AI reviews them and sets their level (when the intake's
+   *      switch is on and there is evidence to judge — not while an
+   *      assessment they still have to sit is pending),
+   *   2. they join every selection pool attached to the intake, at THAT level,
+   *   3. any pool member they already were follows the level, and their
+   *      level-specific work is swapped to match.
+   * These used to run side by side, so a candidate could reach the pool with
+   * the level they picked themselves before the review had decided theirs,
+   * and be handed the wrong level's work.
+   */
+  async processApplication(applicationId, { review = true } = {}) {
+    if (review) await safely('AI review', () => this.autoLevel(applicationId));
+    const application = await models.Application.findByPk(applicationId);
+    if (!application) return;
+    await safely('add to attached pools', () => this.onApplication(application));
+    await safely('pool level follows', () => this.syncLevelFromApplication(applicationId));
   }
 
   /** The application's level → every undecided pool member made from it. */

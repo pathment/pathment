@@ -5,6 +5,7 @@ const applicationService = require('../services/applicationService');
 const assessmentService = require('../services/assessmentService');
 const intakeExportService = require('../services/intakeExportService');
 const levelRecommendationService = require('../services/levelRecommendationService');
+const { models } = require('../db');
 const clanAssignmentService = require('../services/clanAssignmentService');
 const { parseCsv } = require('../utils/csv');
 
@@ -143,6 +144,20 @@ const aiGradeApplications = catchAsync(async (req, res) => {
         const lvl = await levelRecommendationService.recommendForApplication(id, req.user.id);
         row.levelChecked = !!lvl.recommended;
         row.recommendedLevel = lvl.recommendedLevel || null;
+        /*
+         * With the intake's automatic review on, the review DECIDES: the level
+         * is applied and the applicant goes on to the attached pools at it,
+         * the same path a new application takes. Off, it only recommends.
+         */
+        if (lvl.recommended && lvl.recommendedLevel) {
+          const app = await models.Application.findByPk(id, { attributes: ['id', 'cohortId', 'level'] });
+          const rules = await levelRecommendationService.getRules(app.cohortId);
+          if (rules.autoReview !== false) {
+            if (app.level !== lvl.recommendedLevel) await app.update({ level: lvl.recommendedLevel });
+            await require('../services/poolAutomationService').processApplication(id, { review: false });
+            row.levelApplied = true;
+          }
+        }
       } catch (e) { row.levelError = e.message; }
     }
     results.push(row);
@@ -193,6 +208,40 @@ const recommendLevels = catchAsync(async (req, res) => {
     }
   }
   res.status(200).json(successResponse('Level recommendation run', { results }));
+});
+
+// The intake's automation switches (automatic AI review, reading GitHub).
+const setReviewAutomation = catchAsync(async (req, res) => {
+  const rules = await levelRecommendationService.setAutomation(req.params.id, req.body || {});
+  res.status(200).json(successResponse('Automation saved', { autoReview: rules.autoReview, readGithub: rules.readGithub }));
+});
+
+// Selection pools attached to this intake (its applicants go into them).
+const listIntakePools = catchAsync(async (req, res) => {
+  const cohort = await models.Cohort.findByPk(req.params.id, { attributes: ['id', 'programId'] });
+  if (!cohort) return res.status(404).json({ success: false, message: 'Cohort not found' });
+  const { Op } = require('sequelize');
+  const pools = await models.CandidatePool.findAll({
+    where: { programId: cohort.programId, archivedAt: null, status: { [Op.ne]: 'closed' } },
+    attributes: ['id', 'name', 'status', 'settings'],
+    order: [['createdAt', 'DESC']],
+  });
+  res.status(200).json(successResponse('Pools', {
+    pools: pools.map((p) => ({
+      id: p.id, name: p.name, status: p.status,
+      attached: (p.settings?.autoAddFromCohortIds || []).includes(cohort.id),
+    })),
+  }));
+});
+
+// Attach / detach one pool. Attaching brings in everyone who already applied.
+const setIntakePool = catchAsync(async (req, res) => {
+  const poolService = require('../services/poolService');
+  const pool = await poolService.getPool(req.params.poolId);
+  const ids = new Set(pool.settings?.autoAddFromCohortIds || []);
+  if (req.body?.attached === false) ids.delete(req.params.id); else ids.add(req.params.id);
+  await poolService.updatePool(pool.id, { settings: { autoAddFromCohortIds: [...ids] } }, req.user);
+  res.status(200).json(successResponse(req.body?.attached === false ? 'Pool detached' : 'Pool attached', { attached: req.body?.attached !== false }));
 });
 
 const applyLevelRecommendation = catchAsync(async (req, res) => {
@@ -326,6 +375,9 @@ module.exports = {
   getLevelRules,
   setLevelRules,
   recommendLevels,
+  setReviewAutomation,
+  listIntakePools,
+  setIntakePool,
   applyLevelRecommendation,
   aiGradeSubmission,
   applyAiScores,

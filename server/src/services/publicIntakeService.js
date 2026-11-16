@@ -195,8 +195,10 @@ class PublicIntakeService {
     // selection pool that takes this intake, and — when there is no assessment
     // to wait for — Pathment AI sets their level now (else on assessment submit).
     const automation = require('./poolAutomationService');
-    automation.safely('auto-add applicant to pool', () => automation.onApplication(application));
-    if (!assignedAssessmentId) automation.safely('auto-level on apply', () => automation.autoLevel(application.id));
+    // One ordered pipeline: review (unless an assessment is still to come),
+    // then the attached pools at the reviewed level. Not awaited — the
+    // applicant's response does not wait on the AI.
+    automation.safely('process new application', () => automation.processApplication(application.id, { review: !assignedAssessmentId }));
 
     // Admin alerts: a new applicant landed, and (separately) the cohort may have
     // just hit its application cap — both best-effort, never block the applicant.
@@ -454,7 +456,7 @@ class PublicIntakeService {
 
     // The assessment is the evidence the AI level is decided on.
     const automation = require('./poolAutomationService');
-    automation.safely('auto-level on assessment', () => automation.autoLevel(application.id));
+    automation.safely('process assessed application', () => automation.processApplication(application.id, { review: true }));
 
     return { autoScore, maxScore, pendingManualGrading: hasManual, submissionCount };
   }

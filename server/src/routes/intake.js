@@ -53,6 +53,9 @@ router.post('/cohorts/:id/ai-grade/plan', ...adminOnly, intakeController.getScor
 router.get('/cohorts/:id/level-rules', ...adminOnly, intakeController.getLevelRules);
 router.put('/cohorts/:id/level-rules', ...adminOnly, intakeController.setLevelRules);
 router.post('/cohorts/:id/recommend-levels', ...adminOnly, intakeController.recommendLevels);
+router.put('/cohorts/:id/review-automation', ...adminOnly, intakeController.setReviewAutomation);
+router.get('/cohorts/:id/pools', ...adminOnly, intakeController.listIntakePools);
+router.put('/cohorts/:id/pools/:poolId', ...adminOnly, intakeController.setIntakePool);
 router.post('/applications/:id/apply-level', ...adminOnly, intakeController.applyLevelRecommendation);
 router.post('/cohorts/:id/ai-grade', ...adminOnly, intakeController.aiGradeApplications);
 router.get('/cohorts/:id/applications/export', ...adminOnly, intakeController.exportApplicationsCsv);

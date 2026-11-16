@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { toast } from 'sonner';
 import {
   ArrowLeft, Upload, Loader2, X, CheckCircle2, XCircle,
-  Mail, Phone, Check, Link2, Copy, Power, ClipboardCheck, Pencil, Eye, CopyPlus, FormInput, Plus,
+  Mail, Phone, Check, Link2, Copy, Power, ClipboardCheck, Pencil, Eye, CopyPlus, FormInput, Plus, Bot,
   Trash2, CalendarRange, Layers, RefreshCw, CheckSquare, Square, Sparkles, Search, Settings, ChevronDown, Columns3,
   FileText, type LucideIcon,
 } from 'lucide-react';
@@ -21,6 +21,7 @@ import { AssessmentDrawer } from '@/components/admin/AssessmentDrawer';
 import { IntakeScoreToolbar } from '@/components/admin/IntakeScoreToolbar';
 import { AddToPoolButton } from '@/components/admin/pools/AddToPoolButton';
 import { LevelCriteriaEditor } from '@/components/admin/LevelCriteriaEditor';
+import { IntakeAutomationPanel } from '@/components/admin/IntakeAutomationPanel';
 import { Drawer } from '@/components/shared/Drawer';
 import RichTextEditor from '@/components/shared/RichTextEditor';
 import { RichContent } from '@/components/shared/RichContent';
@@ -563,6 +564,14 @@ function IntakePanel({ cohortId, cohort, onChange, onBusyChange }, ref) {
             )}
           </div>
         )}
+      </SettingsSection>
+
+      <SettingsSection
+        icon={Bot}
+        title="Automation"
+        hint="What happens to an applicant without anyone pressing anything: the AI review, and the selection pools they go into."
+      >
+        <IntakeAutomationPanel cohortId={cohortId} hasLevels={(cohort?.levels?.length ?? 0) > 1} />
       </SettingsSection>
 
       <SettingsSection

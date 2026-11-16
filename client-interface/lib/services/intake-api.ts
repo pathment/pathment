@@ -93,6 +93,15 @@ export const applicationApi = {
   /** Recommend levels for a batch, from evidence in their own answers. */
   recommendLevels: (cohortId: string, applicationIds: string[]) =>
     apiClient.post(`/intake/cohorts/${cohortId}/recommend-levels`, { applicationIds }, { timeout: 120000 }),
+  /** The intake's automation: Pathment AI reviews and sets levels on its own; reads GitHub. */
+  setReviewAutomation: (cohortId: string, body: { autoReview?: boolean; readGithub?: boolean }) =>
+    apiClient.put(`/intake/cohorts/${cohortId}/review-automation`, body),
+  /** The programme's selection pools, and which ones this intake feeds. */
+  intakePools: (cohortId: string) =>
+    apiClient.get<{ data: { pools: { id: string; name: string; status: string; attached: boolean }[] } }>(`/intake/cohorts/${cohortId}/pools`),
+  /** Attach (its applicants go into the pool, everyone so far included) or detach. */
+  setIntakePool: (cohortId: string, poolId: string, attached: boolean) =>
+    apiClient.put(`/intake/cohorts/${cohortId}/pools/${poolId}`, { attached }),
   /** Set the applicant's level to the recommendation (explicit admin action). */
   applyLevel: (id: string) => apiClient.post(`/intake/applications/${id}/apply-level`, {}),
 

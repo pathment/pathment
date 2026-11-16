@@ -77,6 +77,17 @@ class LevelRecommendationService {
     if (!cohort) throw new NotFoundError('Cohort not found');
     const levels = Array.isArray(cohort.levels) ? cohort.levels : [];
     const stored = cohort.levelRules;
+    /*
+     * The intake's automation switches, both on unless an admin turns them off:
+     *   autoReview  Pathment AI reviews each applicant on its own (on apply, or
+     *               when their assessment comes in) and SETS their level; off,
+     *               a review only recommends and an admin applies it.
+     *   readGithub  the review reads the applicant's public GitHub as evidence.
+     */
+    const automation = {
+      autoReview: stored?.autoReview !== false,
+      readGithub: stored?.readGithub !== false,
+    };
 
     if (stored && Array.isArray(stored.levels) && stored.levels.length) {
       // Drop rules whose level no longer exists (the admin renamed/removed it).
@@ -91,9 +102,10 @@ class LevelRecommendationService {
         baseLevelLocked: stored.baseLevelLocked !== false,
         cohortLevels: levels,
         seeded: false,
+        ...automation,
       };
     }
-    return { ...this.defaultRules(levels), cohortLevels: levels, seeded: true };
+    return { ...this.defaultRules(levels), cohortLevels: levels, seeded: true, ...automation };
   }
 
   /**
@@ -151,7 +163,29 @@ class LevelRecommendationService {
     });
 
     const baseLevelKey = validKeys.has(rules.baseLevelKey) ? rules.baseLevelKey : (levels[0] ? levels[0].key : null);
-    await cohort.update({ levelRules: { levels: cleaned, baseLevelKey } });
+    // Keep what this form does not edit (the automation switches, fall-through).
+    const prev = cohort.levelRules || {};
+    await cohort.update({ levelRules: {
+      ...prev,
+      levels: cleaned,
+      baseLevelKey,
+      ...(rules.autoReview !== undefined ? { autoReview: rules.autoReview !== false } : {}),
+      ...(rules.readGithub !== undefined ? { readGithub: rules.readGithub !== false } : {}),
+      ...(rules.baseLevelLocked !== undefined ? { baseLevelLocked: rules.baseLevelLocked !== false } : {}),
+    } });
+    return this.getRules(cohortId);
+  }
+
+  /** Turn the intake's automatic AI review / GitHub reading on or off. */
+  async setAutomation(cohortId, { autoReview, readGithub } = {}) {
+    const cohort = await models.Cohort.findByPk(cohortId);
+    if (!cohort) throw new NotFoundError('Cohort not found');
+    const prev = cohort.levelRules || {};
+    await cohort.update({ levelRules: {
+      ...prev,
+      ...(autoReview !== undefined ? { autoReview: Boolean(autoReview) } : {}),
+      ...(readGithub !== undefined ? { readGithub: Boolean(readGithub) } : {}),
+    } });
     return this.getRules(cohortId);
   }
 
@@ -221,7 +255,7 @@ class LevelRecommendationService {
 
   // ── The AI evidence pass ─────────────────────────────────────────────────
   /** Everything the applicant actually wrote, as grading context. */
-  async _evidenceFor(application) {
+  async _evidenceFor(application, { readGithub = true } = {}) {
     // Resolve each answer against the question that was actually asked — the
     // model can't judge "1+ year of experience" from `q_1a2b3c: 2 years`.
     const cohort = await models.Cohort.findByPk(application.cohortId, { attributes: ['intakeFormSchema'] });
@@ -252,7 +286,11 @@ class LevelRecommendationService {
       }
       answerBlock = parts.join('\n\n');
     }
-    return { profileLines: lines, answerBlock, submission: sub };
+    // Their public GitHub, read rather than taken on trust.
+    const github = readGithub
+      ? await require('../utils/githubProfile').githubEvidence(lines, application.responses).catch(() => null)
+      : null;
+    return { profileLines: lines, answerBlock, submission: sub, github };
   }
 
   /**
@@ -271,7 +309,7 @@ class LevelRecommendationService {
       return { applicationId, recommended: false, reason: 'no_level_rules' };
     }
 
-    const { profileLines, answerBlock, submission } = await this._evidenceFor(application);
+    const { profileLines, answerBlock, submission, github } = await this._evidenceFor(application, { readGithub: rules.readGithub !== false });
     const labelFor = (key) => (rules.cohortLevels || []).find((l) => l.key === key)?.label || key;
 
     const criteriaBlock = allCriteria
@@ -291,6 +329,9 @@ class LevelRecommendationService {
       '',
       'ASSESSMENT ANSWERS:',
       answerBlock || '(no assessment answers)',
+      '',
+      'GITHUB (fetched from their public profile, factual):',
+      github ? github.lines.join('\n') : '(no GitHub given)',
     ].filter(Boolean).join('\n');
 
     const raw = await groqService.generateText({
@@ -302,7 +343,8 @@ class LevelRecommendationService {
         'You verify placement criteria for a training-program applicant. You do NOT choose their level — you only report, for each criterion, whether the applicant\'s own words prove it.',
         'For EACH criterion return exactly one verdict: true (the evidence clearly proves it), false (the evidence clearly contradicts it or is plainly absent), or unclear (you cannot tell).',
         'Be conservative: only answer true when a specific, concrete detail supports it. Claims with no substance ("I am passionate about coding", "I know many technologies") are NOT evidence. When torn, answer unclear — never guess true.',
-        'Every true or false MUST carry `quote`: a short VERBATIM extract from the applicant\'s text that justifies it. Never invent or paraphrase a quote; leave it empty only for unclear.',
+        'Every true or false MUST carry `quote`: a short VERBATIM extract from the applicant\'s text OR from the GITHUB block that justifies it. Never invent or paraphrase a quote; leave it empty only for unclear.',
+        'The GITHUB block is fetched from their public profile and is factual: use it to confirm or contradict what they claim (real projects, languages, recent activity, account age). A GitHub with no repositories of their own does not prove experience.',
         'Also report `coherence`: one short line if their claims contradict the quality of their answers (e.g. claims years of experience but the answers read as a beginner), else an empty string.',
         'Reply with STRICT JSON only, no text outside it: {"criteria":[{"key":"<exact key given>","verdict":"true|false|unclear","quote":"<verbatim or empty>","note":"<one short sentence>"}],"coherence":"<one line or empty>"}.',
       ].join(' '),
@@ -335,8 +377,15 @@ class LevelRecommendationService {
       if (!(c.key in verdicts)) { verdicts[c.key] = null; details[c.key] = { verdict: null, quote: '', note: 'not assessed' }; }
     }
 
-    const decision = this.decide(rules, verdicts, application.level || null);
-    const reason = this.buildReason(rules, decision, verdicts, labelFor);
+    /*
+     * The base-track lock exists because the base level sits a DIFFERENT
+     * assessment, so its score says nothing about the levels above. Someone
+     * who sat no assessment at all was judged on the same form (and GitHub)
+     * as everyone else, so the criteria decide for them too.
+     */
+    const effectiveRules = submission ? rules : { ...rules, baseLevelLocked: false };
+    const decision = this.decide(effectiveRules, verdicts, application.level || null);
+    const reason = this.buildReason(effectiveRules, decision, verdicts, labelFor);
 
     // If nothing could be judged, the criteria don't match what this cohort's
     // form/assessment actually asks — surface that instead of silently placing
@@ -354,6 +403,7 @@ class LevelRecommendationService {
       reason,
       coherence: parsed.coherence ? String(parsed.coherence).slice(0, 300) : '',
       selfSelected: application.level || null,
+      github: github ? { username: github.username, read: !/could not be read|does not exist/.test(github.lines[0] || '') } : null,
       matchesSelfSelected: (application.level || null) === (decision.levelKey || null),
       submissionId: submission ? submission.id : null,
       at: new Date().toISOString(),
