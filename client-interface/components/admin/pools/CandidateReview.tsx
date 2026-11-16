@@ -5,6 +5,7 @@ import { Check, CheckCircle2, ChevronLeft, ChevronRight, ClipboardCheck, Clipboa
 import { toast } from 'sonner';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { Avatar } from '@/components/shared/Avatar';
+import { useConfirm } from '@/lib/context/ConfirmContext';
 import { MenteeCarousel } from '@/components/mentor/attendance/MenteeCarousel';
 import { qk, useApiQuery } from '@/lib/query';
 import { poolApi, type PoolDashboard, type PoolMemberRow, type ReviewQueueItem } from '@/lib/services/pool-api';
@@ -185,6 +186,50 @@ export function CandidateReview({ data, onChange, canManage, canSelect, canRevie
   const score = member ? scores.data?.rows.find((r) => r.memberId === member.id) : undefined;
   const mineQueue = member ? (queue.data || []).filter((q) => q.member.id === member.id) : [];
   const work = member ? live.map((a) => ({ a, w: member.work.find((x) => x.assignmentId === a.id) })) : [];
+
+  /*
+   * One candidate, one piece of work: give it, or take it back. Taking a
+   * course back cancels their Edorax enrollment first (the server refuses
+   * rather than leave a seat held), and it stays taken back: "Give to
+   * everyone" and the automatic paths skip them until it is given again here.
+   */
+  const confirm = useConfirm();
+  const [workBusy, setWorkBusy] = useState<string | null>(null);
+  const OPEN = ['assigned', 'not_started', 'in_progress', 'revision_needed'];
+  const forTheirLevel = (a: (typeof live)[number]) => !a.levels?.length || (!!member?.level && a.levels.includes(member.level));
+  const giveOne = async (a: (typeof live)[number]) => {
+    if (!member) return;
+    setWorkBusy(a.id);
+    try {
+      const out = await poolApi.assignToMember(pool.id, member.id, [a.id]);
+      const r = out.results[0];
+      if (r?.result === 'assigned') toast.success(`Given to ${member.name || member.email}`);
+      else toast.error(r?.reason || 'Could not give this work');
+      onChange();
+    } catch (e) {
+      toast.error(extractApiErrorMessage(e, 'Could not give this work'));
+    } finally { setWorkBusy(null); }
+  };
+  const takeBack = async (a: (typeof live)[number]) => {
+    if (!member) return;
+    const who = member.name || member.email;
+    const ok = await confirm({
+      title: `Take “${a.title}” back from ${who}?`,
+      description: a.kind === 'course'
+        ? `Their Edorax enrollment is cancelled and the seat comes back. "Give to everyone" will leave them out; you can give it to them again here.`
+        : `It is cancelled for them only. "Give to everyone" will leave them out; you can give it to them again here.`,
+      confirmLabel: 'Take it back',
+    });
+    if (!ok) return;
+    setWorkBusy(a.id);
+    try {
+      const out = await poolApi.cancelForMember(pool.id, member.id, a.id);
+      toast.success(out?.seatReleased ? 'Taken back, and their Edorax enrollment cancelled' : 'Taken back');
+      onChange();
+    } catch (e) {
+      toast.error(extractApiErrorMessage(e, 'Could not take it back'));
+    } finally { setWorkBusy(null); }
+  };
   const inReview = work.filter(({ w }) => w?.status === 'submitted');
   const inProgress = work.filter(({ w }) => w?.status !== 'submitted' && w?.status !== 'completed');
   const completed = work.filter(({ w }) => w?.status === 'completed');
@@ -478,9 +523,27 @@ export function CandidateReview({ data, onChange, canManage, canSelect, canRevie
                                 {w?.isLate && ' · late'}
                               </p>
                             </div>
-                            <span className="inline-flex shrink-0 items-center gap-1.5 text-xs text-slate-600">
-                              <span className={`h-2 w-2 rounded-full ${s?.dot || 'bg-slate-200'}`} />{s?.label || 'Not given yet'}
-                            </span>
+                            {!forTheirLevel(a) && !w?.taskId ? (
+                              <span className="shrink-0 text-xs text-slate-400" title="Aimed at another level. Change their level to give it to them.">Not their level</span>
+                            ) : (
+                              <span className="inline-flex shrink-0 items-center gap-1.5 text-xs text-slate-600">
+                                <span className={`h-2 w-2 rounded-full ${w?.status === 'cancelled' ? 'bg-slate-300' : s?.dot || 'bg-slate-200'}`} />
+                                {w?.status === 'cancelled' ? 'Taken back' : s?.label || 'Not given yet'}
+                              </span>
+                            )}
+                            {canAssign && forTheirLevel(a) && (!w?.status || w.status === 'cancelled') && (
+                              <button type="button" onClick={() => giveOne(a)} disabled={workBusy === a.id}
+                                className="shrink-0 rounded-lg border border-brand-200 px-2.5 py-1 text-xs font-medium text-brand-700 hover:bg-brand-50 disabled:opacity-50">
+                                {workBusy === a.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Give'}
+                              </button>
+                            )}
+                            {canAssign && w?.status && OPEN.includes(w.status) && (
+                              <button type="button" onClick={() => takeBack(a)} disabled={workBusy === a.id}
+                                title={a.kind === 'course' ? 'Take it back and cancel their Edorax enrollment' : 'Take it back from this candidate'}
+                                className="shrink-0 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-50">
+                                {workBusy === a.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Take back'}
+                              </button>
+                            )}
                           </div>
                         );
                       })}

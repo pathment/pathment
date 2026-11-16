@@ -74,6 +74,8 @@ pools.post('/:id/assignments/:assignmentId/assign', can(P.POOL_ASSIGN), pool.ass
 pools.post('/:id/assignments/:assignmentId/cancel', can(P.POOL_ASSIGN), pool.cancelAssignment);
 // Chosen work → one candidate (the mirror of assigning one piece to everybody).
 pools.post('/:id/members/:memberId/assign', can(P.POOL_ASSIGN), pool.assignToMember);
+// One candidate's piece of work, taken back (a course's Edorax seat with it).
+pools.post('/:id/members/:memberId/assignments/:assignmentId/cancel', can(P.POOL_ASSIGN), pool.cancelForMember);
 
 // The pool photo. Crop → upload file → save URL, exactly as a clan photo does.
 pools.post('/:id/avatar/upload', can(P.POOL_MANAGE), upload.singleSafe('file'), pool.uploadAvatar);

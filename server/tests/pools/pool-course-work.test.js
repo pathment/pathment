@@ -323,6 +323,47 @@ describe('removing course work gives the seats back', () => {
   });
 });
 
+describe('taking a course back from one candidate', () => {
+  it('cancels their task and their Edorax seat, and leaves everyone else alone', async () => {
+    const { member: one } = await registerCandidate('c1@test.com');
+    const { member: two } = await registerCandidate('c2@test.com');
+    const work = await courseWork();
+    const itemId = work.assignment?.id || work.id;
+    const mine = await taskOf(one);
+
+    const out = await poolTaskService.cancelForMember(ctx.pool.id, one.id, itemId, null, ctx.admin);
+    expect(out.seatReleased).toBe(true);
+    expect(callsTo('POST /enrollments/cancel').map((c) => c.body.external_assignment_id)).toEqual([mine.id]);
+    expect((await PoolTask().findByPk(mine.id)).status).toBe('cancelled');
+    expect((await models.CourseEnrollment.findOne({ where: { assignedTaskId: mine.id } })).lifecycle).toBe('CANCELLED');
+    expect(await taskOf(two)).toBeTruthy();
+  });
+
+  it('stays taken back: Give to everyone skips them; giving it to them again works', async () => {
+    const { member } = await registerCandidate('c1@test.com');
+    const work = await courseWork();
+    const itemId = work.assignment?.id || work.id;
+    await poolTaskService.cancelForMember(ctx.pool.id, member.id, itemId, null, ctx.admin);
+
+    const everyone = await poolTaskService.assign(ctx.pool.id, itemId, {}, ctx.admin);
+    expect(everyone.results.find((r) => r.memberId === member.id)).toMatchObject({ result: 'skipped', reason: 'Cancelled for them by an admin' });
+    expect(await taskOf(member)).toBeNull();
+
+    const again = await poolTaskService.assignToMember(ctx.pool.id, member.id, { assignmentIds: [itemId] }, ctx.admin);
+    expect(again.summary.assigned).toBe(1);
+    expect(await taskOf(member)).toBeTruthy();
+  });
+
+  it('will not leave a cancelled task holding a seat when Edorax refuses', async () => {
+    const { member } = await registerCandidate('c1@test.com');
+    const work = await courseWork();
+    const itemId = work.assignment?.id || work.id;
+    edorax['POST /enrollments/cancel'] = () => [500, { error: 'down' }];
+    await expect(poolTaskService.cancelForMember(ctx.pool.id, member.id, itemId, null, ctx.admin)).rejects.toThrow(/Could not cancel the Edorax enrollment/);
+    expect((await taskOf(member)).status).not.toBe('cancelled');
+  });
+});
+
 describe('the candidate can actually get to the course', () => {
   it('carries the course facts on their own work list, so there is somewhere to go', async () => {
     const { user } = await registerCandidate('c1@test.com');

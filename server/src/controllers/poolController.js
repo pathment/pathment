@@ -279,6 +279,12 @@ exports.assign = catchAsync(async (req, res) => {
   ok(res, 'Work assigned', await poolTaskService.assign(req.params.id, req.params.assignmentId, { memberIds }, req.user));
 });
 
+exports.cancelForMember = catchAsync(async (req, res) => {
+  ok(res, 'Work cancelled for this candidate', await poolTaskService.cancelForMember(
+    req.params.id, req.params.memberId, req.params.assignmentId, req.body?.reason, req.user,
+  ));
+});
+
 exports.cancelAssignment = catchAsync(async (req, res) => {
   const assignment = await poolTaskService.cancelAssignment(req.params.id, req.params.assignmentId, req.body.reason, req.user);
   ok(res, 'Work cancelled', { assignment });

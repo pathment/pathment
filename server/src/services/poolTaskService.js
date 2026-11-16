@@ -255,7 +255,7 @@ class PoolTaskService {
     const mentorId = actor?.id || pool.createdById;
     const results = [];
     for (const assignment of chosen) {
-      const out = await this._assignOne(pool, assignment, member, mentorId);
+      const out = await this._assignOne(pool, assignment, member, mentorId, { explicit: true });
       results.push({ ...out, assignmentId: assignment.id, title: assignment.title });
     }
     const summary = { assigned: 0, skipped: 0, failed: 0 };
@@ -420,7 +420,7 @@ class PoolTaskService {
     const members = await models.PoolMember.findAll({ where, order: [['createdAt', 'ASC']] });
     const results = [];
     for (const member of members) {
-      results.push(await this._assignOne(pool, assignment, member, actor?.id || assignment.createdById || pool.createdById));
+      results.push(await this._assignOne(pool, assignment, member, actor?.id || assignment.createdById || pool.createdById, { explicit: Array.isArray(memberIds) }));
     }
     if (Array.isArray(memberIds)) {
       for (const id of memberIds) {
@@ -433,8 +433,18 @@ class PoolTaskService {
     return { summary, results };
   }
 
-  async _assignOne(pool, assignment, member, mentorId) {
+  async _assignOne(pool, assignment, member, mentorId, { explicit = false } = {}) {
     const base = { memberId: member.id, email: member.email };
+    /*
+     * An admin took this work back from THIS candidate. "Give to everyone" and
+     * the automatic paths (activation, a level being set) must not quietly
+     * hand it back; only an admin choosing this candidate again does.
+     */
+    const withheld = Array.isArray(member.details?.withheldWork) ? member.details.withheldWork : [];
+    if (withheld.includes(assignment.id)) {
+      if (!explicit) return { ...base, result: 'skipped', reason: 'Cancelled for them by an admin' };
+      await member.update({ details: { ...(member.details || {}), withheldWork: withheld.filter((id) => id !== assignment.id) } });
+    }
     // Level targeting is checked before anything else, so aiming work at a
     // level never enrolls the wrong candidate on Edorax or takes their seat.
     if (!poolService.targetsMember(assignment, member)) {
@@ -548,6 +558,52 @@ class PoolTaskService {
       results.push(await this._assignOne(member.pool, assignment, member, actorId || assignment.createdById || member.pool.createdById));
     }
     return results;
+  }
+
+  /**
+   * Take one piece of work back from ONE candidate.
+   *
+   * A course's Edorax seat is released first: if Edorax refuses, nothing in
+   * Pathment changes and the admin is told why, rather than a cancelled task
+   * still holding a seat. Approved work is not taken back. The withdrawal is
+   * remembered on the candidate, so "Give to everyone" and the automatic
+   * paths leave them out until an admin gives it to them again.
+   */
+  async cancelForMember(poolId, memberId, assignmentId, reason, actor) {
+    const pool = await poolService.getPool(poolId);
+    poolService.assertActive(pool, 'change work');
+    const member = await models.PoolMember.findOne({ where: { id: memberId, poolId } });
+    if (!member) throw new NotFoundError('That candidate is not in this pool');
+    const item = poolService.workItems(pool).find((w) => w.id === assignmentId);
+    if (!item) throw new NotFoundError('That work is not part of this pool');
+
+    const task = await TaskModel().findOne({
+      where: { roadmapTaskId: item.roadmapTaskId, poolMemberId: member.id, status: { [Op.ne]: 'cancelled' } },
+    });
+    if (!task) throw new NotFoundError('They do not have this work');
+    if (!OPEN_STATUSES.includes(task.status)) {
+      throw new ValidationError(task.status === 'completed'
+        ? 'This work is already approved; it is part of their score'
+        : 'They have handed this in. Review it instead of cancelling it');
+    }
+
+    let seatReleased = false;
+    if (item.kind === 'course') {
+      await require('./courseService').cancelForTask(task); // throws, leaving the task as it was
+      seatReleased = true;
+    }
+    await task.update({
+      status: 'cancelled', cancelledBy: actor.id, cancelledAt: new Date(),
+      cancellationReason: reason ? String(reason).slice(0, 2000) : 'Taken back by an admin',
+    });
+    const withheld = Array.isArray(member.details?.withheldWork) ? member.details.withheldWork : [];
+    if (!withheld.includes(item.id)) {
+      await member.update({ details: { ...(member.details || {}), withheldWork: [...withheld, item.id] } });
+    }
+    await poolService.audit(pool.id, actor.id, 'POOL_WORK_CANCELLED_FOR_MEMBER', {
+      memberId: member.id, assignmentId: item.id, taskId: task.id, seatReleased,
+    });
+    return { taskId: task.id, seatReleased };
   }
 
   /** Withdraw a piece of work from the pool: cancels it for everyone who has not finished it. */

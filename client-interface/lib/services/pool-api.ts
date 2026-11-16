@@ -394,6 +394,9 @@ export const poolApi = {
   /** Chosen work → one candidate. Omit `assignmentIds` for everything in the pool. */
   assignToMember: (id: string, memberId: string, assignmentIds?: string[]) =>
     apiClient.post<Envelope<MemberAssignResult>>(`/pools/${id}/members/${memberId}/assign`, assignmentIds ? { assignmentIds } : {}).then((r) => r.data),
+  /** Take one piece of work back from one candidate; a course's Edorax seat goes with it. */
+  cancelForMember: (id: string, memberId: string, assignmentId: string, reason?: string) =>
+    apiClient.post<Envelope<{ taskId: string; seatReleased: boolean }>>(`/pools/${id}/members/${memberId}/assignments/${assignmentId}/cancel`, { reason }).then((r) => r.data),
   cancelAssignment: (id: string, assignmentId: string, reason?: string) =>
     apiClient.post(`/pools/${id}/assignments/${assignmentId}/cancel`, { reason }),
 
