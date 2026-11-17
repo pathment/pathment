@@ -79,7 +79,12 @@ class GroqService {
     const resp = await fetch(audioUrl);
     if (!resp.ok) throw new Error(`could not fetch audio (${resp.status})`);
     const buf = Buffer.from(await resp.arrayBuffer());
-    const file = await OpenAI.toFile(buf, 'answer.webm', { type: 'audio/webm' });
+    // Name the file for what it is: a video answer arrives as its mp3 audio track
+    // (see interviewProctoring.audioTrackUrl), a voice answer as the recorded webm/m4a.
+    const ext = (String(audioUrl).split('?')[0].match(/\.([a-z0-9]+)$/i) || [])[1]?.toLowerCase();
+    const TYPES = { mp3: 'audio/mpeg', m4a: 'audio/mp4', mp4: 'audio/mp4', wav: 'audio/wav', ogg: 'audio/ogg', webm: 'audio/webm' };
+    const type = TYPES[ext] ? ext : 'webm';
+    const file = await OpenAI.toFile(buf, `answer.${type}`, { type: TYPES[type] });
 
     // Anchor prompt to bias Whisper against random hallucinations in case of silence/noise
     // and guide it towards English/Urdu/Hinglish switching.

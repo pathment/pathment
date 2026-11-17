@@ -3,8 +3,9 @@ const { models, sequelize } = require('../db');
 const { NotFoundError, ForbiddenError, ValidationError, ConflictError } = require('../utils/errors/errorTypes');
 const { uploadToCloudinary } = require('../utils/cloudinaryUpload');
 const { snapToDifficultyPoints } = require('../config/points');
+const { maxRecordingSeconds } = require('./interviewProctoring');
 
-const QUESTION_KINDS = ['voice', 'code', 'text'];
+const QUESTION_KINDS = ['voice', 'code', 'text', 'video'];
 const TIMING_MODES = ['per_question', 'total'];
 const KIT_STATUSES = ['draft', 'published', 'archived'];
 
@@ -36,13 +37,18 @@ class InterviewKitService {
       // config/points.js: the same difficulty is worth the same to everybody.
       points: snapToDifficultyPoints(toPosInt(raw?.points, 10)),
       required: raw?.required !== false,
-      // Per-question timer (seconds). Default 120s for voice/text, 600s for code.
-      timeLimitSeconds: toPosInt(raw?.timeLimitSeconds, kind === 'code' ? 600 : 120),
+      // Per-question timer (seconds). Default 120s for voice/text, 600s for code,
+      // 180s for video (time to think, then up to the recording cap on camera).
+      timeLimitSeconds: toPosInt(raw?.timeLimitSeconds, kind === 'code' ? 600 : kind === 'video' ? 180 : 120),
       codeLanguage: kind === 'code' ? (String(raw?.codeLanguage || 'javascript').trim() || 'javascript') : null,
       starterCode: kind === 'code' ? (raw?.starterCode ? String(raw.starterCode) : null) : null,
       referenceAnswer: raw?.referenceAnswer ? String(raw.referenceAnswer).trim() : null,
-      config: (raw?.config && typeof raw.config === 'object') ? raw.config : {},
+      config: (raw?.config && typeof raw.config === 'object' && !Array.isArray(raw.config)) ? { ...raw.config } : {},
     };
+    // A video answer has a hard cap on its length, so the file always fits the
+    // upload. Stored clamped, so what the runner enforces is what the kit says.
+    if (kind === 'video') q.config.maxRecordingSeconds = maxRecordingSeconds(q.config);
+    else delete q.config.maxRecordingSeconds;
     return q;
   }
 

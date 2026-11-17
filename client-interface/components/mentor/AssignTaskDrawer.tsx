@@ -722,7 +722,7 @@ export function AssignTaskDrawer({
                         <div className="space-y-2 pt-1">
                           {([
                             ['Allow re-attempt', allowRetake, setAllowRetake, 'Off = strict one-take'],
-                            ['Require camera', cameraRequired, setCameraRequired, 'Proctor snapshots during the interview'],
+                            ['Full proctoring', cameraRequired, setCameraRequired, 'Camera on and entire screen shared the whole time; random snapshots of both. Needs a computer.'],
                             ['AI draft grading', aiGrading, setAiGrading, 'Uses your BYO AI key; mentor still decides'],
                           ] as const).map(([label, val, setter, hint]) => (
                             <label key={label} className="flex items-start gap-2.5 cursor-pointer">

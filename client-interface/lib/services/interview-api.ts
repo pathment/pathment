@@ -1,7 +1,7 @@
 import { apiClient } from './api-client';
 
 // ── Types ──────────────────────────────────────────────────────────────────
-export type InterviewQuestionKind = 'voice' | 'code' | 'text';
+export type InterviewQuestionKind = 'voice' | 'code' | 'text' | 'video';
 export type InterviewTimingMode = 'per_question' | 'total';
 export type InterviewKitStatus = 'draft' | 'published' | 'archived';
 
@@ -17,6 +17,8 @@ export interface InterviewQuestionInput {
   referenceAnswer?: string | null;
   promptAudioUrl?: string | null;
   promptAudioPublicId?: string | null;
+  /** Video questions: the longest one recording may run (stored in config). */
+  maxRecordingSeconds?: number;
   config?: Record<string, unknown>;
 }
 
@@ -86,12 +88,15 @@ export interface CandidateQuestion {
   codeLanguage: string | null;
   starterCode: string | null;
   promptAudioUrl: string | null;
+  /** Video questions: the longest one recording may run, in seconds. */
+  maxRecordingSeconds?: number | null;
 }
 
 export interface SavedAnswer {
   questionId: string;
   transcript: string | null;
   audioUrl: string | null;
+  videoUrl?: string | null;
   code: string | null;
   answerText: string | null;
   timeSpentSeconds: number;
@@ -104,7 +109,12 @@ export interface CandidateInterview {
   interviewer: InterviewerSettings | null;
   options: {
     allowRetake: boolean;
+    /** Camera must stay on: proctored, or it has video answers. */
     cameraRequired: boolean;
+    /** The entire screen must be shared for the whole interview. */
+    screenShareRequired?: boolean;
+    /** At least one question is answered on video. */
+    videoAnswers?: boolean;
     timingMode: InterviewTimingMode;
     totalSeconds: number | null;
   };
@@ -154,7 +164,10 @@ export const interviewApi = {
 
   // Candidate runner
   getCandidateInterview: (taskId: string) => apiClient.get(`/interviews/assignments/${taskId}`),
-  startInterview: (taskId: string) => apiClient.post(`/interviews/assignments/${taskId}/start`, {}),
+  /** `capabilities`: what this browser can do ('screen', 'video'); the server
+   *  turns away a client that can't run a proctored or video interview. */
+  startInterview: (taskId: string, capabilities: string[] = []) =>
+    apiClient.post(`/interviews/assignments/${taskId}/start`, { capabilities }),
   startQuestion: (sessionId: string, questionId: string) =>
     apiClient.post(`/interviews/sessions/${sessionId}/question/start`, { questionId }),
   saveAnswer: (sessionId: string, payload: SaveAnswerPayload) =>
@@ -167,11 +180,26 @@ export const interviewApi = {
   },
   logProctor: (sessionId: string, events: ProctorEvent[]) =>
     apiClient.post(`/interviews/sessions/${sessionId}/proctor`, { events }),
-  uploadSnapshot: (sessionId: string, blob: Blob, questionId?: string | null) => {
+  uploadSnapshot: (sessionId: string, blob: Blob, questionId?: string | null, source: 'camera' | 'screen' = 'camera') => {
     const fd = new FormData();
-    fd.append('image', blob, `snapshot-${Date.now()}.jpg`);
+    fd.append('image', blob, `${source}-${Date.now()}.jpg`);
+    fd.append('source', source);
     if (questionId) fd.append('questionId', questionId);
     return apiClient.post(`/interviews/sessions/${sessionId}/snapshot`, fd);
+  },
+  signVideoUpload: (sessionId: string, questionId: string) =>
+    apiClient.post(`/interviews/sessions/${sessionId}/video/sign`, { questionId }),
+  attachVideo: (sessionId: string, questionId: string, publicId: string) =>
+    apiClient.post(`/interviews/sessions/${sessionId}/video`, { questionId, publicId }),
+  /** The fallback: send the file through our server (25MB cap). */
+  uploadAnswerVideoFile: (sessionId: string, questionId: string, blob: Blob, onProgress?: (fraction: number) => void) => {
+    const fd = new FormData();
+    fd.append('questionId', questionId);
+    fd.append('video', blob, `answer-${questionId}.${videoExt(blob)}`);
+    return apiClient.post(`/interviews/sessions/${sessionId}/video`, fd, {
+      timeout: 180000,
+      onUploadProgress: (e: { loaded: number; total?: number }) => { if (e.total) onProgress?.(e.loaded / e.total); },
+    });
   },
   submitInterview: (sessionId: string) =>
     apiClient.post(`/interviews/sessions/${sessionId}/submit`, {}),
@@ -193,10 +221,61 @@ export const interviewApi = {
     apiClient.post(`/interviews/review/${taskId}/flag`, { flagged, reason }),
 };
 
+/** File extension for a recorded video blob. */
+export const videoExt = (blob: Blob) => (blob.type.includes('mp4') ? 'mp4' : 'webm');
+
+/** POST a file straight to a signed upload URL, reporting progress. */
+function postDirect(url: string, fields: Record<string, string>, blob: Blob, filename: string, onProgress?: (f: number) => void): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const fd = new FormData();
+    Object.entries(fields).forEach(([k, v]) => fd.append(k, v));
+    fd.append('file', blob, filename);
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url);
+    xhr.timeout = 10 * 60 * 1000;
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress?.(e.loaded / e.total); };
+    xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`upload failed (${xhr.status})`)));
+    xhr.onerror = () => reject(new Error('network error'));
+    xhr.ontimeout = () => reject(new Error('upload timed out'));
+    xhr.send(fd);
+  });
+}
+
+/**
+ * Send one video answer and attach it. Straight to Cloudinary when the server
+ * signs for it (no size or time limit from our own servers on the way), else
+ * through our server. Resolves with the stored URL; throws if neither worked.
+ */
+export async function uploadVideoAnswer(
+  sessionId: string, questionId: string, blob: Blob, onProgress?: (fraction: number) => void,
+): Promise<string | null> {
+  let signed: { direct: boolean; uploadUrl?: string; fields?: Record<string, string>; publicId?: string } | null = null;
+  try {
+    const res: any = await interviewApi.signVideoUpload(sessionId, questionId); // eslint-disable-line @typescript-eslint/no-explicit-any
+    signed = res?.data ?? null;
+  } catch (e: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+    // The session or question refused it: retrying elsewhere won't change that.
+    if (e?.response?.status && e.response.status < 500) throw e;
+  }
+  if (signed?.direct && signed.uploadUrl && signed.fields && signed.publicId) {
+    try {
+      await postDirect(signed.uploadUrl, signed.fields, blob, `answer.${videoExt(blob)}`, onProgress);
+      const res: any = await interviewApi.attachVideo(sessionId, questionId, signed.publicId); // eslint-disable-line @typescript-eslint/no-explicit-any
+      return res?.data?.videoUrl ?? null;
+    } catch {
+      // Cloudinary unreachable from here (a filtering network): try our server.
+    }
+  }
+  onProgress?.(0);
+  const res: any = await interviewApi.uploadAnswerVideoFile(sessionId, questionId, blob, onProgress); // eslint-disable-line @typescript-eslint/no-explicit-any
+  return res?.data?.videoUrl ?? null;
+}
+
 // ── Review types ────────────────────────────────────────────────────────────
 export interface ReviewAnswer {
   transcript: string | null;
   audioUrl: string | null;
+  videoUrl?: string | null;
   code: string | null;
   answerText: string | null;
   timeSpentSeconds: number;
@@ -213,18 +292,19 @@ export interface ReviewItem {
   codeLanguage: string | null;
   referenceAnswer: string | null;
   answer: ReviewAnswer | null;
-  snapshots?: { url: string; at: string; questionId: string | null }[];
+  snapshots?: ProctorSnapshot[];
 }
+export interface ProctorSnapshot { url: string; at: string; questionId?: string | null; source?: 'camera' | 'screen' }
 export interface InterviewReview {
   task: { id: string; status: string; pointsAwarded: number | null; menteeId: string };
   kit: { id: string; title: string; description: string | null };
-  options: { aiGradingEnabled: boolean; allowRetake: boolean; cameraRequired: boolean };
+  options: { aiGradingEnabled: boolean; allowRetake: boolean; cameraRequired: boolean; screenShareRequired?: boolean };
   session: {
     id: string; status: string; attemptNumber: number; startedAt: string | null; submittedAt: string | null;
     mentee: { id: string; name: string; avatarUrl: string | null } | null;
   } | null;
   proctor: {
-    snapshots: { url: string; at: string; questionId?: string | null }[];
+    snapshots: ProctorSnapshot[];
     flags: { type: string; at: string; meta: Record<string, unknown> }[];
     flagCounts: Record<string, number>;
   };

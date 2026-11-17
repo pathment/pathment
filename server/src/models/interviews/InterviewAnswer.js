@@ -31,7 +31,7 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING(20),
       allowNull: false,
       defaultValue: 'voice',
-      validate: { isIn: [['voice', 'code', 'text']] }
+      validate: { isIn: [['voice', 'code', 'text', 'video']] }
     },
     promptSnapshot: {
       type: DataTypes.TEXT,

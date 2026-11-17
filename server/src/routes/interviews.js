@@ -24,6 +24,9 @@ router.post('/assignments/:taskId/start', authenticate, interviewController.star
 router.post('/sessions/:sessionId/question/start', authenticate, interviewController.startQuestion);
 router.patch('/sessions/:sessionId/answer', authenticate, interviewController.saveAnswer);
 router.post('/sessions/:sessionId/audio', authenticate, upload.singleSafeLarge('audio'), interviewController.uploadAnswerAudio);
+// Video answers: a signed direct upload to Cloudinary, then the attach (or the file itself as a fallback).
+router.post('/sessions/:sessionId/video/sign', authenticate, interviewController.signVideoUpload);
+router.post('/sessions/:sessionId/video', authenticate, upload.singleSafeLarge('video'), interviewController.uploadAnswerVideo);
 router.post('/sessions/:sessionId/proctor', authenticate, interviewController.logProctor);
 router.post('/sessions/:sessionId/snapshot', authenticate, upload.singleSafe('image'), interviewController.uploadSnapshot);
 router.post('/sessions/:sessionId/submit', authenticate, interviewController.submitInterview);

@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { toast } from 'sonner';
 import {
   Loader2, Mic, Code2, Type, Volume2, Sparkles, Eye, AlertTriangle, CheckCircle2, Clock, Flag, Trash2, X,
-  ChevronLeft, ChevronRight, RotateCcw,
+  ChevronLeft, ChevronRight, RotateCcw, Video, Monitor, Camera,
 } from 'lucide-react';
 import { Drawer } from '@/components/shared/Drawer';
 import { CodeEditor } from '@/components/shared/CodeEditor';
@@ -28,7 +28,27 @@ const FLAG_LABEL: Record<string, string> = {
   app_foreground: 'Came back to the app',
   camera_live: 'Camera on',
   snapshot_failed: 'A photo failed to send',
+  screen_share_stopped: 'Stopped sharing the screen',
+  screen_share_restored: 'Shared the screen again',
+  screen_share_wrong_surface: 'Tried to share a tab/window, not the screen',
+  multiple_monitors: 'More than one monitor connected',
+  video_interrupted: 'Video recording cut off',
+  video_too_large: 'Video too large to send',
 };
+
+/** The icon for a question's kind. */
+const kindIcon = (kind: string) => (kind === 'code' ? Code2 : kind === 'text' ? Type : kind === 'video' ? Video : Mic);
+const recordedKind = (kind: string) => kind === 'voice' || kind === 'video';
+
+/** A thumbnail's corner badge: was this the webcam or the shared screen? */
+function SourceBadge({ source }: { source?: 'camera' | 'screen' }) {
+  const Icon = source === 'screen' ? Monitor : Camera;
+  return (
+    <span className="absolute bottom-0.5 left-0.5 inline-flex items-center rounded bg-black/60 p-0.5 text-white" title={source === 'screen' ? 'Screen' : 'Webcam'}>
+      <Icon className="h-2.5 w-2.5" />
+    </span>
+  );
+}
 
 /**
  * InterviewReviewDrawer — the mentor's review of a completed interview: each
@@ -138,7 +158,7 @@ export function InterviewReviewDrawer({
     if (aiAllBusy || !review) return;
     const targets = review.items.filter((it) => {
       const a = it.answer;
-      return !!(a && (a.audioUrl || a.transcript || a.code || a.answerText));
+      return !!(a && (a.audioUrl || a.videoUrl || a.transcript || a.code || a.answerText));
     });
     if (targets.length === 0) { toast.message('No answers to grade yet.'); return; }
 
@@ -200,7 +220,7 @@ export function InterviewReviewDrawer({
   const deleteSnaps = async () => {
     const ok = await confirm({
       title: 'Delete proctor images?',
-      description: 'This permanently removes every webcam snapshot for this interview. Behavior flags (tab switches, fullscreen exits, etc.) are kept.',
+      description: 'This permanently removes every webcam and screen snapshot for this interview. Behavior flags (tab switches, fullscreen exits, etc.) are kept.',
       confirmLabel: 'Delete images',
       variant: 'danger',
     });
@@ -316,7 +336,7 @@ export function InterviewReviewDrawer({
                 {review.items.map((it, i) => {
                   const a = it.answer;
                   const sc = scores[it.questionId] || { points: '', note: '' };
-                  const KindIcon = it.kind === 'code' ? Code2 : it.kind === 'text' ? Type : Mic;
+                  const KindIcon = kindIcon(it.kind);
                   const preview = a?.aiDraft?.transcript || a?.transcript || a?.answerText || (a?.code ? '‹code answer›' : '') || 'No answer';
                   return (
                     <div key={it.questionId} className="flex items-center gap-2 px-3 py-2">
@@ -383,16 +403,29 @@ export function InterviewReviewDrawer({
                   ))}
                 </div>
               ) : <p className="text-xs text-slate-400 mb-3">No flags raised.</p>}
+              {review.options.screenShareRequired && review.session?.status === 'submitted'
+                && !review.proctor.snapshots.some((s) => s.source === 'screen') && (
+                <p className="mb-3 inline-flex items-center gap-1.5 rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                  This interview required screen sharing, but no screen snapshot came through.
+                </p>
+              )}
               {review.proctor.snapshots.length > 0 && (
-                <div className="flex gap-2 overflow-x-auto pb-1">
-                  {review.proctor.snapshots.map((s, i) => (
-                    <button key={i} type="button" onClick={() => setZoom(i)} title={`${new Date(s.at).toLocaleTimeString()} — click to enlarge`}
-                      className="shrink-0 rounded-lg overflow-hidden border border-slate-200 hover:ring-2 hover:ring-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-500">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={s.url} alt={`Snapshot ${i + 1}`} className="w-20 h-14 object-cover cursor-zoom-in" />
-                    </button>
-                  ))}
-                </div>
+                <>
+                  <p className="mb-1 text-[11px] text-slate-400">
+                    {review.proctor.snapshots.filter((s) => s.source !== 'screen').length} webcam · {review.proctor.snapshots.filter((s) => s.source === 'screen').length} screen
+                  </p>
+                  <div className="flex gap-2 overflow-x-auto pb-1">
+                    {review.proctor.snapshots.map((s, i) => (
+                      <button key={i} type="button" onClick={() => setZoom(i)} title={`${s.source === 'screen' ? 'Screen' : 'Webcam'} · ${new Date(s.at).toLocaleTimeString()} — click to enlarge`}
+                        className="relative shrink-0 rounded-lg overflow-hidden border border-slate-200 hover:ring-2 hover:ring-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-500">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={s.url} alt={`Snapshot ${i + 1}`} className="w-20 h-14 object-cover cursor-zoom-in" />
+                        <SourceBadge source={s.source} />
+                      </button>
+                    ))}
+                  </div>
+                </>
               )}
             </div>
           )}
@@ -410,7 +443,7 @@ export function InterviewReviewDrawer({
 
           {/* Per-question review */}
           {review.items.map((it, i) => {
-            const KindIcon = it.kind === 'code' ? Code2 : it.kind === 'text' ? Type : Mic;
+            const KindIcon = kindIcon(it.kind);
             const a = it.answer;
             const sc = scores[it.questionId] || { points: '', note: '' };
             return (
@@ -434,7 +467,7 @@ export function InterviewReviewDrawer({
 
                 {/* Candidate answer */}
                 {(() => {
-                  const hasContent = !!(a && (a.audioUrl || a.transcript || a.code || a.answerText));
+                  const hasContent = !!(a && (a.audioUrl || a.videoUrl || a.transcript || a.code || a.answerText));
                   if (!a) return <p className="text-sm text-slate-400 italic">No answer given.</p>;
                   if (!hasContent) {
                     // The mentee reached this question but nothing landed — say so
@@ -444,12 +477,22 @@ export function InterviewReviewDrawer({
                         <AlertTriangle className="w-4 h-4 shrink-0" />
                         {it.kind === 'voice'
                           ? 'Voice answer — no audio uploaded and no transcript was captured.'
-                          : 'No response was recorded for this question.'}
+                          : it.kind === 'video'
+                            ? 'Video answer — no video uploaded and no captions were captured.'
+                            : 'No response was recorded for this question.'}
                       </p>
                     );
                   }
                   return (
                     <div className="space-y-2">
+                      {a.videoUrl && (
+                        <video controls playsInline preload="metadata" src={a.videoUrl} className="w-full max-h-80 rounded-lg bg-black">
+                          <track kind="captions" />
+                        </video>
+                      )}
+                      {it.kind === 'video' && !a.videoUrl && a.transcript && (
+                        <p className="text-[11px] text-amber-600 inline-flex items-center gap-1"><AlertTriangle className="w-3 h-3" />Video didn’t upload — live captions only.</p>
+                      )}
                       {a.audioUrl && (
                         <audio controls src={a.audioUrl} className="w-full h-9">
                           <track kind="captions" />
@@ -488,7 +531,7 @@ export function InterviewReviewDrawer({
                 {canReview && it.snapshots && it.snapshots.length > 0 && (
                   <div className="mt-3">
                     <p className="text-[11px] text-slate-400 mb-1 inline-flex items-center gap-1">
-                      <Eye className="w-3 h-3" /> Webcam during this question · {it.snapshots.length}
+                      <Eye className="w-3 h-3" /> Snapshots during this question · {it.snapshots.length}
                     </p>
                     <div className="flex gap-1.5 overflow-x-auto pb-1">
                       {it.snapshots.map((s, si) => {
@@ -496,9 +539,10 @@ export function InterviewReviewDrawer({
                         return (
                           <button key={si} type="button" onClick={() => { if (gi >= 0) setZoom(gi); }}
                             title={`${new Date(s.at).toLocaleTimeString()} — click to enlarge`}
-                            className="shrink-0 rounded-lg overflow-hidden border border-slate-200 hover:ring-2 hover:ring-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-500">
+                            className="relative shrink-0 rounded-lg overflow-hidden border border-slate-200 hover:ring-2 hover:ring-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-500">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img src={s.url} alt="" className="w-16 h-11 object-cover cursor-zoom-in" />
+                            <SourceBadge source={s.source} />
                           </button>
                         );
                       })}
@@ -526,12 +570,12 @@ export function InterviewReviewDrawer({
                         <span className="text-slate-400">/ {it.points}</span>
                       </label>
                       <button onClick={() => runAiDraft(it)} disabled={aiBusy === it.questionId}
-                        title={it.kind === 'voice'
-                          ? 'Transcribes the audio with Whisper and scores it against the rubric — uses your AI key (Settings → AI Connections)'
+                        title={recordedKind(it.kind)
+                          ? 'Transcribes the recording with Whisper and scores it against the rubric — uses your AI key (Settings → AI Connections)'
                           : 'Scores this answer against the rubric — uses your AI key (Settings → AI Connections)'}
                         className="ml-auto inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg border border-brand-200 dark:border-brand-800 text-brand-700 dark:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-950/50 disabled:opacity-50">
                         {aiBusy === it.questionId ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-                        {it.kind === 'voice' && a?.audioUrl ? 'AI grade (from audio)' : 'AI draft'}
+                        {(it.kind === 'voice' && a?.audioUrl) || (it.kind === 'video' && a?.videoUrl) ? 'AI grade (from recording)' : 'AI draft'}
                       </button>
                     </div>
                     <input value={sc.note} onChange={(e) => saveScore(it, { note: e.target.value })}

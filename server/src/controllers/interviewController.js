@@ -62,6 +62,8 @@ exports.getCandidateInterview = catchAsync(async (req, res) => {
 exports.startInterview = catchAsync(async (req, res) => {
   const session = await interviewSessionService.startOrResume(req.params.taskId, req.user.id, {
     clanId: requestedClanId(req),
+    // What this client can do (screen share, video answers) — see interviewProctoring.
+    capabilities: req.body && req.body.capabilities,
   });
   res.status(200).json(successResponse('Interview session ready', { session }));
 });
@@ -93,8 +95,26 @@ exports.logProctor = catchAsync(async (req, res) => {
 
 // POST /api/interviews/sessions/:sessionId/snapshot  (multipart: image)
 exports.uploadSnapshot = catchAsync(async (req, res) => {
-  const result = await interviewSessionService.attachSnapshot(req.params.sessionId, req.user.id, req.file, req.body.questionId || null);
+  const result = await interviewSessionService.attachSnapshot(
+    req.params.sessionId, req.user.id, req.file, req.body.questionId || null, req.body.source || 'camera',
+  );
   res.status(200).json(successResponse('Snapshot saved', result));
+});
+
+// POST /api/interviews/sessions/:sessionId/video/sign  { questionId }
+exports.signVideoUpload = catchAsync(async (req, res) => {
+  const result = await interviewSessionService.signVideoUpload(req.params.sessionId, req.user.id, req.body.questionId);
+  res.status(200).json(successResponse('Upload ready', result));
+});
+
+// POST /api/interviews/sessions/:sessionId/video
+//   JSON { questionId, publicId } after a direct upload, or multipart video + questionId.
+exports.uploadAnswerVideo = catchAsync(async (req, res) => {
+  const result = await interviewSessionService.attachVideo(req.params.sessionId, req.user.id, req.body.questionId, {
+    file: req.file || null,
+    publicId: req.body.publicId || null,
+  });
+  res.status(200).json(successResponse('Video saved', result));
 });
 
 // POST /api/interviews/sessions/:sessionId/submit

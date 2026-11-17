@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { interviewApi, type ProctorEvent } from '@/lib/services/interview-api';
+import { grabFrame, randomDelay } from '@/lib/utils/interviewMedia';
 
 /**
  * useProctor — the interview anti-cheat harness (all client-side, zero cost).
@@ -9,7 +10,9 @@ import { interviewApi, type ProctorEvent } from '@/lib/services/interview-api';
  *   - locks the page to fullscreen and flags any exit,
  *   - counts tab/window focus losses (visibility + blur),
  *   - blocks & logs copy / paste / right-click,
- *   - captures periodic webcam snapshots (when a camera stream is provided),
+ *   - captures webcam snapshots at random moments (when a camera stream is provided),
+ *   - captures the shared screen at random moments, and right away when they
+ *     leave the tab or window (so the mentor sees where they went),
  * and buffers every event, flushing to the server on an interval and on demand.
  * The mentor sees the resulting proctor log in review (Phase 4).
  */
@@ -23,6 +26,8 @@ export interface ProctorState {
   requestFullscreen: () => Promise<void>;
   log: (type: string, meta?: Record<string, unknown>) => void;
   flush: () => Promise<void>;
+  /** Take a camera and a screen snapshot now (e.g. as a video answer starts and ends). */
+  captureNow: (reason?: string) => void;
 }
 
 interface Options {
@@ -33,6 +38,12 @@ interface Options {
   /** Id of the question on screen — stamped onto each snapshot so the mentor can
    *  see what the candidate was doing during a specific question. */
   currentQuestionId?: string | null;
+  /** Take webcam snapshots (defaults to cameraRequired). Off for an unproctored
+   *  interview that only has the camera on for its video answers. */
+  cameraSnapshots?: boolean;
+  /** The shared screen, when the interview is proctored with screen sharing. */
+  screenStream?: MediaStream | null;
+  /** Average gap between snapshots; each one lands at a random point around it. */
   snapshotIntervalMs?: number;
   flushIntervalMs?: number;
 }
@@ -43,9 +54,12 @@ export function useProctor({
   videoRef,
   cameraRequired,
   currentQuestionId = null,
-  snapshotIntervalMs = 20000,
+  cameraSnapshots,
+  screenStream = null,
+  snapshotIntervalMs = 25000,
   flushIntervalMs = 10000,
 }: Options): ProctorState {
+  const takeCameraShots = cameraSnapshots ?? cameraRequired;
   const [focusLosses, setFocusLosses] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [cameraLive, setCameraLive] = useState(true);
@@ -151,31 +165,83 @@ export function useProctor({
     return () => clearInterval(id);
   }, [active, cameraRequired, videoRef, log]);
 
-  // ── Periodic webcam snapshots ────────────────────────────────────────────
+  // ── Snapshots: camera and screen, at moments nobody can predict ─────────────
+  // The screen is read through a hidden <video> fed by the share; it never
+  // touches the page, so the candidate doesn't see a second preview.
+  const screenVideo = useRef<HTMLVideoElement | null>(null);
   useEffect(() => {
-    if (!active || !cameraRequired) return;
-    const capture = async () => {
-      const video = videoRef.current;
-      const sid = sessionRef.current;
-      if (!video || !sid || video.readyState < 2 || !video.videoWidth) return;
-      // Never upload a black frame from a camera that's been turned off.
-      const track = (video.srcObject as MediaStream | null)?.getVideoTracks?.()[0];
-      if (!track || track.readyState !== 'live' || track.muted) return;
-      const canvas = document.createElement('canvas');
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      canvas.toBlob((blob) => {
-        if (blob) interviewApi.uploadSnapshot(sid, blob, questionRef.current).catch(() => { /* best-effort */ });
-      }, 'image/jpeg', 0.6);
-    };
-    // One shortly after start, then on the interval.
-    const first = setTimeout(capture, 3000);
-    const id = setInterval(capture, snapshotIntervalMs);
-    return () => { clearTimeout(first); clearInterval(id); };
-  }, [active, cameraRequired, snapshotIntervalMs, videoRef]);
+    if (!screenStream) { screenVideo.current = null; return; }
+    const v = document.createElement('video');
+    v.muted = true;
+    v.playsInline = true;
+    v.srcObject = screenStream;
+    v.play().catch(() => { });
+    screenVideo.current = v;
+    return () => { v.pause(); v.srcObject = null; if (screenVideo.current === v) screenVideo.current = null; };
+  }, [screenStream]);
 
-  return { focusLosses, isFullscreen, cameraLive, totalEvents, requestFullscreen, log, flush };
+  const shoot = useCallback(async (source: 'camera' | 'screen', reason?: string) => {
+    const sid = sessionRef.current;
+    if (!sid || !activeRef.current) return;
+    const video = source === 'camera' ? videoRef.current : screenVideo.current;
+    // A screen is shot larger than a face so code on it stays legible.
+    const blob = await grabFrame(video, source === 'screen' ? 1600 : 960, source === 'screen' ? 0.7 : 0.6);
+    if (!blob) return;
+    try {
+      await interviewApi.uploadSnapshot(sid, blob, questionRef.current, source);
+    } catch {
+      log('snapshot_failed', { source, ...(reason ? { reason } : {}) });
+    }
+  }, [videoRef, log]);
+
+  const captureNow = useCallback((reason?: string) => {
+    if (takeCameraShots) void shoot('camera', reason);
+    if (screenVideo.current) void shoot('screen', reason);
+  }, [takeCameraShots, shoot]);
+
+  // Each source on its own random rhythm: a fixed interval is a schedule a
+  // candidate can learn and work around.
+  const randomLoop = useCallback((source: 'camera' | 'screen', firstMs: number) => {
+    let timer: ReturnType<typeof setTimeout>;
+    const next = (ms: number) => {
+      timer = setTimeout(async () => {
+        await shoot(source);
+        next(randomDelay(snapshotIntervalMs * 0.5, snapshotIntervalMs * 1.5));
+      }, ms);
+    };
+    next(firstMs);
+    return () => clearTimeout(timer);
+  }, [shoot, snapshotIntervalMs]);
+
+  useEffect(() => {
+    if (!active || !takeCameraShots) return;
+    return randomLoop('camera', randomDelay(2000, 6000));
+  }, [active, takeCameraShots, randomLoop]);
+
+  useEffect(() => {
+    if (!active || !screenStream) return;
+    return randomLoop('screen', randomDelay(3000, 9000));
+  }, [active, screenStream, randomLoop]);
+
+  // Leaving the tab or window is the moment the screen matters most: take it
+  // right away, and again a moment later once they've landed somewhere.
+  useEffect(() => {
+    if (!active || !screenStream) return;
+    let later: ReturnType<typeof setTimeout> | null = null;
+    const onLeave = () => {
+      void shoot('screen', 'left_page');
+      if (later) clearTimeout(later);
+      later = setTimeout(() => { void shoot('screen', 'left_page'); }, 2500);
+    };
+    const onVisibility = () => { if (document.hidden) onLeave(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('blur', onLeave);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('blur', onLeave);
+      if (later) clearTimeout(later);
+    };
+  }, [active, screenStream, shoot]);
+
+  return { focusLosses, isFullscreen, cameraLive, totalEvents, requestFullscreen, log, flush, captureNow };
 }

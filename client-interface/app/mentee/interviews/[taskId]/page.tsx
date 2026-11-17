@@ -6,17 +6,20 @@ import { useMenteeScope } from '@/lib/hooks/mentee';
 import { toast } from 'sonner';
 import {
   Mic, MicOff, Loader2, ArrowRight, CheckCircle2, Video, VideoOff, Volume2,
-  Code2, Type, AlertTriangle, Play, RotateCcw, Maximize2, Eye, ShieldCheck,
+  Code2, Type, AlertTriangle, Play, RotateCcw, Maximize2, Eye, ShieldCheck, Monitor, MonitorOff, Laptop,
 } from 'lucide-react';
 import {
   interviewApi, type CandidateInterview, type CandidateQuestion,
 } from '@/lib/services/interview-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import {
-  speak, stopSpeaking, createRecognizer, VoiceRecorder,
-  recognitionSupported, recorderSupported,
+  speak, stopSpeaking, createRecognizer, VoiceRecorder, VideoAnswerRecorder,
+  recognitionSupported, recorderSupported, videoRecordingSupported, screenShareSupported, MAX_VIDEO_BYTES,
 } from '@/lib/utils/interviewMedia';
 import { useProctor } from '@/lib/hooks/mentee/useProctor';
+import { useScreenShare } from '@/lib/hooks/mentee/useScreenShare';
+import { useAnswerUploads, type RecordingKind } from '@/lib/hooks/mentee/useAnswerUploads';
+import { VideoAnswer } from '@/components/mentee/VideoAnswer';
 import { useAudioLevel } from '@/lib/hooks/mentee/useAudioLevel';
 import { CodeEditor } from '@/components/shared/CodeEditor';
 import { InterviewerOrb, Waveform, RingTimer, MicCheck } from '@/components/mentee/interviewStudio';
@@ -24,7 +27,16 @@ import { setActiveInterview, clearActiveInterview } from '@/lib/utils/activeInte
 import { useClan, isHistoricalCohortClan } from '@/lib/context/ClanContext';
 
 type Phase = 'loading' | 'intro' | 'lobby' | 'countdown' | 'active' | 'submitting' | 'done' | 'error';
-interface Draft { transcript: string; code: string; answerText: string; seconds: number; audioBlob: Blob | null }
+interface Draft {
+  transcript: string; code: string; answerText: string; seconds: number;
+  audioBlob: Blob | null;
+  /** This visit's video take, and the one already stored (after a resume). */
+  videoBlob: Blob | null; videoUrl: string | null;
+}
+
+/** What this browser can do, sent when the attempt starts (see interviewProctoring). */
+const browserCapabilities = () =>
+  [screenShareSupported() ? 'screen' : null, videoRecordingSupported() ? 'video' : null].filter(Boolean) as string[];
 
 const DEFAULT_NAME = 'Aria';
 const STUDIO = 'bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950';
@@ -71,6 +83,12 @@ export default function InterviewRunnerPage({ params }: { params: Promise<{ task
   const [countdownN, setCountdownN] = useState(3);
 
   const recorderRef = useRef<VoiceRecorder | null>(null);
+  const videoRecRef = useRef<VideoAnswerRecorder | null>(null);
+  const [videoElapsed, setVideoElapsed] = useState(0);
+  // The camera kept for the session, as state too so the video question can show it.
+  const [camStream, setCamStream] = useState<MediaStream | null>(null);
+  // Video answers that didn't send when they pressed Finish (how many).
+  const [uploadProblem, setUploadProblem] = useState<number | null>(null);
   const recognizerRef = useRef<ReturnType<typeof createRecognizer>>(null);
   const camStreamRef = useRef<MediaStream | null>(null);
   const previewRef = useRef<MediaStream | null>(null);
@@ -78,7 +96,6 @@ export default function InterviewRunnerPage({ params }: { params: Promise<{ task
   const lobbyVideoRef = useRef<HTMLVideoElement | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clockSkewRef = useRef(0);
-  const pendingAudioRef = useRef<Map<string, Blob>>(new Map());
   const finishingRef = useRef(false);
   const promptAudioRef = useRef<HTMLAudioElement | null>(null);
   // Fresh mirrors of state for the debounced autosave and the timer-driven
@@ -100,6 +117,14 @@ export default function InterviewRunnerPage({ params }: { params: Promise<{ task
   const q: CandidateQuestion | undefined = questions[idx];
   const draft = q ? drafts[q.id] : undefined;
   const cameraRequired = !!data?.options.cameraRequired;
+  // Full proctoring: the entire screen is shared for the whole interview.
+  const screenRequired = !!data?.options.screenShareRequired;
+  const hasVideo = !!data?.options.videoAnswers || questions.some((qq) => qq.kind === 'video');
+  // Something this interview needs that this browser can't do (a phone can't
+  // share its screen). Said up front, before the lobby, not after the clock.
+  const deviceProblem: 'screen' | 'video' | null =
+    data && screenRequired && !screenShareSupported() ? 'screen'
+      : data && hasVideo && !videoRecordingSupported() ? 'video' : null;
   const interviewerName = data?.interviewer?.name || DEFAULT_NAME;
   const ttsOpts = { pitch: data?.interviewer?.pitch, rate: data?.interviewer?.rate, voiceName: data?.interviewer?.voiceName };
 
@@ -108,13 +133,23 @@ export default function InterviewRunnerPage({ params }: { params: Promise<{ task
   const meterStream = phase === 'lobby' ? previewStream : (recording ? recordingStream : null);
   const level = useAudioLevel(meterStream);
 
+  // The screen share reports into the proctor log, which exists a line later.
+  const logRef = useRef<(type: string, meta?: Record<string, unknown>) => void>(() => { });
+  const screen = useScreenShare((type, meta) => logRef.current(type, meta));
+  const uploads = useAnswerUploads();
+
   const proctor = useProctor({
     sessionId,
     active: phase === 'active',
     videoRef,
     cameraRequired,
+    // Snapshots are proctoring: only when the mentor asked for it, not merely
+    // because the camera is on for a video answer.
+    cameraSnapshots: screenRequired,
+    screenStream: screenRequired ? screen.stream : null,
     currentQuestionId: q?.id ?? null,
   });
+  useEffect(() => { logRef.current = proctor.log; }, [proctor.log]);
 
   // ── Load ───────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -136,6 +171,8 @@ export default function InterviewRunnerPage({ params }: { params: Promise<{ task
             answerText: saved?.answerText || '',
             seconds: saved?.timeSpentSeconds || 0,
             audioBlob: null,
+            videoBlob: null,
+            videoUrl: saved?.videoUrl || null,
           };
         });
         setDrafts(seed);
@@ -228,12 +265,12 @@ export default function InterviewRunnerPage({ params }: { params: Promise<{ task
 
     let left = compute();
     setTotalRemaining(left);
-    if (left <= 0) { finish(); return; }
+    if (left <= 0) { finish({ force: true }); return; }
     const tick = setInterval(() => {
       if (finishingRef.current) { clearInterval(tick); return; }
       left = compute();
       setTotalRemaining(left);
-      if (left <= 0) { clearInterval(tick); finish(); }
+      if (left <= 0) { clearInterval(tick); finish({ force: true }); }
     }, 1000);
     return () => clearInterval(tick);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -266,9 +303,14 @@ export default function InterviewRunnerPage({ params }: { params: Promise<{ task
     }
   };
 
-  // Ask the prompt when arriving at a question (animates the interviewer).
+  // Ask the prompt when arriving at a question (animates the interviewer) —
+  // once per question, so coming back from a stopped Finish doesn't ask again.
+  const askedIdxRef = useRef<number | null>(null);
   useEffect(() => {
-    if (phase === 'active' && q) askQuestion(q);
+    if (phase === 'active' && q && askedIdxRef.current !== idx) {
+      askedIdxRef.current = idx;
+      askQuestion(q);
+    }
     return () => { stopAsking(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, idx]);
@@ -292,47 +334,107 @@ export default function InterviewRunnerPage({ params }: { params: Promise<{ task
     }, 1200);
   }, [sessionId]);
 
-  // ── Background audio upload (never blocks the candidate) ──────────────────────
-  const uploadAudioBg = useCallback(async (sid: string, questionId: string, blob: Blob) => {
-    pendingAudioRef.current.set(questionId, blob);
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      try {
-        await interviewApi.uploadAnswerAudio(sid, questionId, blob);
-        pendingAudioRef.current.delete(questionId);
-        return true;
-      } catch {
-        await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+  // ── Stopping a recording (voice or video) ───────────────────────────────────
+  // One way out of every recording: the stop button, the recording cap, the
+  // question's clock, a dead camera, or Finish. Concurrent callers share one
+  // stop, so a take is never cut twice or sent twice. The take is pinned to
+  // the question it was RECORDED for (navigation can move on during the async
+  // stop), kept on its draft, and sent in the background.
+  const stoppingRef = useRef<Promise<void> | null>(null);
+  const stopActiveRecording = (): Promise<void> => {
+    if (stoppingRef.current) return stoppingRef.current;
+    if (!recordingRef.current) return Promise.resolve();
+    const run = (async () => {
+      const owner = recordingQuestionIdRef.current || q?.id || null;
+      recordingQuestionIdRef.current = null;
+      recognizerRef.current?.stop();
+      let kind: RecordingKind = 'voice';
+      let blob: Blob | null;
+      if (videoRecRef.current) {
+        kind = 'video';
+        const rec = videoRecRef.current;
+        videoRecRef.current = null;
+        blob = await rec.stop();
+        proctor.captureNow('video_end');
+      } else {
+        blob = (await recorderRef.current?.stop()) ?? null;
       }
-    }
-    return false;
-  }, []);
+      setRecording(false);
+      recordingRef.current = false;
+      setRecordingStream(null);
+      if (!owner || !blob) return;
+      if (kind === 'video' && blob.size > MAX_VIDEO_BYTES) {
+        proctor.log('video_too_large', { bytes: blob.size, questionId: owner });
+        toast.error('That recording is too large to send. Please record a shorter answer.');
+        return;
+      }
+      setDrafts((prev) => ({ ...prev, [owner]: { ...prev[owner], ...(kind === 'video' ? { videoBlob: blob } : { audioBlob: blob }) } }));
+      if (sessionId) void uploads.upload(sessionId, owner, kind, blob);
+    })().finally(() => { stoppingRef.current = null; });
+    stoppingRef.current = run;
+    return run;
+  };
 
-  const flushPendingAudio = useCallback(async (sid: string) => {
-    for (const [questionId, blob] of Array.from(pendingAudioRef.current.entries())) {
-      try {
-        await interviewApi.uploadAnswerAudio(sid, questionId, blob);
-        pendingAudioRef.current.delete(questionId);
-      } catch { /* give up — the transcript is saved either way */ }
+  // ── Recording (video questions) ──────────────────────────────────────────────
+  const startVideo = async () => {
+    if (!q || recordingRef.current || stoppingRef.current) return;
+    const question = q;
+    const rec: VideoAnswerRecorder = new VideoAnswerRecorder((reason) => {
+      if (videoRecRef.current !== rec) return;
+      proctor.log('video_interrupted', { reason, questionId: question.id });
+      toast.error(`${reason === 'mic' ? 'Your microphone stopped' : reason === 'camera' ? 'Your camera turned off' : 'The recording failed'}, so the recording stopped. What was recorded is kept — you can record again.`);
+      void stopActiveRecording();
+    });
+    const problem = await rec.start(camStreamRef.current?.getVideoTracks()[0] ?? null);
+    if (problem) {
+      toast.error(problem === 'mic' ? 'Microphone access is needed to answer on video.'
+        : problem === 'camera' ? 'Camera access is needed to answer on video.'
+          : 'This browser can’t record video. Use Chrome, Edge or Firefox on a computer.');
+      return;
     }
-    if (pendingAudioRef.current.size) toast.message('Some audio could not be uploaded — your transcripts were saved.');
-  }, []);
+    videoRecRef.current = rec;
+    recordingQuestionIdRef.current = question.id;
+    setVideoElapsed(0);
+    setRecordingStream(rec.getStream());
+    // Live captions for the mentor (and the AI grade). A new take replaces the
+    // old one, so its captions replace the old captions too.
+    recognizerRef.current = createRecognizer((text) => queueSave(question.id, { transcript: text }));
+    recognizerRef.current?.start();
+    recordingRef.current = true;
+    setRecording(true);
+    proctor.captureNow('video_start');
+  };
+
+  // The recording's clock, and its cap: it stops itself at the question's limit.
+  useEffect(() => {
+    const rec = videoRecRef.current;
+    if (!recording || !rec) return;
+    const cap = q?.maxRecordingSeconds || 120;
+    const id = setInterval(() => {
+      const secs = Math.floor((Date.now() - rec.startedAt) / 1000);
+      setVideoElapsed(Math.min(secs, cap));
+      if (secs >= cap && videoRecRef.current === rec) {
+        clearInterval(id);
+        toast.message('That’s the time for this recording — it has been saved.');
+        void stopActiveRecording();
+      }
+    }, 250);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recording]);
+
+  // Stopping the screen share mid-answer stops the take: the screen overlay
+  // covers the stop button, and an answer recorded off the record is no answer.
+  useEffect(() => {
+    if (screenRequired && !screen.live && phase === 'active' && videoRecRef.current) void stopActiveRecording();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screen.live]);
 
   // ── Recording (voice questions) ──────────────────────────────────────────────
   const toggleRecording = async () => {
     if (!q) return;
     if (recording) {
-      recognizerRef.current?.stop();
-      const blob = await recorderRef.current?.stop();
-      setRecording(false);
-      setRecordingStream(null);
-      // Attribute the clip to the question it was RECORDED for, not whatever
-      // question is on screen now (navigation can move on during the async stop).
-      const owner = recordingQuestionIdRef.current || q.id;
-      recordingQuestionIdRef.current = null;
-      if (blob) {
-        setDrafts((prev) => ({ ...prev, [owner]: { ...prev[owner], audioBlob: blob } }));
-        if (sessionId) uploadAudioBg(sessionId, owner, blob);
-      }
+      await stopActiveRecording();
       return;
     }
     const rec = new VoiceRecorder();
@@ -351,6 +453,7 @@ export default function InterviewRunnerPage({ params }: { params: Promise<{ task
       queueSave(owner, { transcript: merged });
     });
     recognizerRef.current?.start();
+    recordingRef.current = true;
     setRecording(true);
   };
 
@@ -380,13 +483,16 @@ export default function InterviewRunnerPage({ params }: { params: Promise<{ task
   };
 
   const startFromLobby = async () => {
+    if (screenRequired && !screen.live) { toast.error('Share your entire screen to begin.'); return; }
     // Keep the camera video track for the session; drop preview audio (the recorder
     // reopens the mic per answer).
     if (previewStream) {
       const vids = previewStream.getVideoTracks();
       previewStream.getAudioTracks().forEach((t) => t.stop());
-      if (vids.length && cameraRequired) camStreamRef.current = new MediaStream(vids);
-      else vids.forEach((t) => t.stop());
+      if (vids.length && cameraRequired) {
+        camStreamRef.current = new MediaStream(vids);
+        setCamStream(camStreamRef.current);
+      } else vids.forEach((t) => t.stop());
     }
     setPreviewStream(null);
     await proctor.requestFullscreen(); // must ride this user gesture
@@ -401,6 +507,7 @@ export default function InterviewRunnerPage({ params }: { params: Promise<{ task
       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
       camStreamRef.current?.getTracks().forEach((t) => t.stop());
       camStreamRef.current = stream;
+      setCamStream(stream);
       if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.play().catch(() => { }); }
     } catch {
       toast.error('Still no camera access — enable it for this site in your browser, then retry.');
@@ -418,7 +525,7 @@ export default function InterviewRunnerPage({ params }: { params: Promise<{ task
 
   const begin = async () => {
     try {
-      const res: any = await interviewApi.startInterview(taskId);
+      const res: any = await interviewApi.startInterview(taskId, browserCapabilities());
       const session = res?.data?.session;
       setSessionId(session?.id);
       const startedAt = session?.startedAt || sessionStartedAt;
@@ -447,16 +554,8 @@ export default function InterviewRunnerPage({ params }: { params: Promise<{ task
   const persistCurrent = async () => {
     if (!q || !sessionId) return;
     const question = q;
-    let blob = draftsRef.current[question.id]?.audioBlob || null;
-    let audioOwner = question.id;
-    if (recordingRef.current) {
-      recognizerRef.current?.stop();
-      const stopped = await recorderRef.current?.stop();
-      if (stopped) { blob = stopped; audioOwner = recordingQuestionIdRef.current || question.id; }
-      recordingQuestionIdRef.current = null;
-      setRecording(false);
-      setRecordingStream(null);
-    }
+    // A recording still running is stopped and sent (in the background).
+    await stopActiveRecording();
     // Read the draft AFTER the async stop — the recognizer may have just finalised
     // the transcript — and from the ref so we never serialise a stale/empty snapshot.
     const d = draftsRef.current[question.id];
@@ -467,7 +566,6 @@ export default function InterviewRunnerPage({ params }: { params: Promise<{ task
       answerText: d?.answerText || null,
       timeSpentSeconds: d?.seconds || 0,
     }).catch(() => { });
-    if (blob) uploadAudioBg(sessionId, audioOwner, blob);
   };
 
   const advance = async (auto = false) => {
@@ -479,7 +577,8 @@ export default function InterviewRunnerPage({ params }: { params: Promise<{ task
         await persistCurrent();
         setIdx((i) => i + 1);
       } else {
-        await finish();
+        // Out of time: submit whatever made it. By hand: stop if a video didn't send.
+        await finish({ force: auto });
       }
     } finally {
       setAdvancing(false);
@@ -487,20 +586,38 @@ export default function InterviewRunnerPage({ params }: { params: Promise<{ task
     if (auto) toast.message('Time up — moving to the next question.');
   };
 
-  const finish = async () => {
+  /**
+   * Submit. Every recording is sent first. A video answer that still won't
+   * send stops a hand-pressed Finish so they can retry (the video IS that
+   * answer); when the clock forces it (`force`), the interview is submitted and
+   * the page keeps trying in the background, which the server accepts for a
+   * short while after submit.
+   */
+  const finish = async ({ force = false }: { force?: boolean } = {}) => {
     if (!sessionId || finishingRef.current) return;
     finishingRef.current = true;
+    setUploadProblem(null);
     setPhase('submitting');
     stopAsking();
     try {
       await persistCurrent();
-      await flushPendingAudio(sessionId);
+      const unsent = await uploads.flush(sessionId);
+      const videos = unsent.filter((u) => u.kind === 'video').length;
+      if (videos && !force) {
+        finishingRef.current = false;
+        setUploadProblem(videos);
+        setPhase('active');
+        return;
+      }
+      if (unsent.some((u) => u.kind === 'voice')) toast.message('Some audio could not be uploaded — your transcripts were saved.');
       await proctor.flush();
       await interviewApi.submitInterview(sessionId);
       clearActiveInterview();
       camStreamRef.current?.getTracks().forEach((t) => t.stop());
+      screen.stop();
       if (document.fullscreenElement) document.exitFullscreen().catch(() => { });
       setPhase('done');
+      if (unsent.length) void uploads.flush(sessionId);
     } catch (e: any) {
       toast.error(extractApiErrorMessage(e, 'Could not submit the interview'));
       finishingRef.current = false;
@@ -513,6 +630,7 @@ export default function InterviewRunnerPage({ params }: { params: Promise<{ task
     stopSpeaking();
     promptAudioRef.current?.pause();
     recognizerRef.current?.stop();
+    void videoRecRef.current?.stop();
     camStreamRef.current?.getTracks().forEach((t) => t.stop());
     previewRef.current?.getTracks().forEach((t) => t.stop());
   }, []);
@@ -528,7 +646,9 @@ export default function InterviewRunnerPage({ params }: { params: Promise<{ task
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin text-brand-400 mx-auto mb-3" />
           <p className="text-slate-100 font-medium">Submitting your interview…</p>
-          <p className="text-slate-400 text-sm mt-1">Saving your answers and recordings.</p>
+          <p className="text-slate-400 text-sm mt-1">
+            {uploads.unsent > 0 ? `Sending ${uploads.unsent} recording${uploads.unsent === 1 ? '' : 's'} — keep this page open.` : 'Saving your answers and recordings.'}
+          </p>
         </div>
       </Stage>
     );
@@ -555,6 +675,11 @@ export default function InterviewRunnerPage({ params }: { params: Promise<{ task
           </div>
           <h1 className="text-xl font-semibold text-slate-100">Interview submitted</h1>
           <p className="text-slate-400 mt-2">Nice work. {interviewerName}&apos;s done — your mentor will review your answers and share feedback on your task page.</p>
+          {uploads.unsent > 0 && (
+            <p className="mt-3 inline-flex items-center gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+              <Loader2 className="w-4 h-4 animate-spin" />Still sending {uploads.unsent} recording{uploads.unsent === 1 ? '' : 's'} — keep this page open a moment.
+            </p>
+          )}
           <button onClick={() => backToTask()} className="mt-6 px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-sm font-medium">Back to task</button>
         </div>
       </Stage>
@@ -591,12 +716,24 @@ export default function InterviewRunnerPage({ params }: { params: Promise<{ task
               <li className="flex gap-2"><Volume2 className="w-4 h-4 text-brand-400 shrink-0 mt-0.5" />{interviewerName} reads each question aloud, like a real interviewer.</li>
               <li className="flex gap-2"><Mic className="w-4 h-4 text-brand-400 shrink-0 mt-0.5" />You answer by voice — we transcribe and keep your recording.</li>
               {cameraRequired && <li className="flex gap-2"><Video className="w-4 h-4 text-brand-400 shrink-0 mt-0.5" />Your camera stays on during the interview.</li>}
+              {hasVideo && <li className="flex gap-2"><Video className="w-4 h-4 text-brand-400 shrink-0 mt-0.5" />Some questions are answered on camera — you record a short video answer.</li>}
+              {screenRequired && <li className="flex gap-2"><Monitor className="w-4 h-4 text-brand-400 shrink-0 mt-0.5" />You share your entire screen for the whole interview. Your camera and screen are captured at random moments for your mentor.</li>}
               <li className="flex gap-2"><ArrowRight className="w-4 h-4 text-brand-400 shrink-0 mt-0.5" />You can&apos;t go back to a question once you move on.</li>
               <li className="flex gap-2"><AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />The clock runs continuously once you start. Refreshing, closing, or losing power/internet will <strong>not</strong> pause it — make sure your power and connection are stable.</li>
               {!data?.options.allowRetake && <li className="flex gap-2"><AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />One attempt only — make it count.</li>}
             </ul>
 
-            {cannot ? (
+            {deviceProblem && !cannot ? (
+              <div className="mt-6 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-left text-sm text-amber-100 flex items-start gap-2">
+                <Laptop className="w-4 h-4 text-amber-300 shrink-0 mt-0.5" />
+                <span>
+                  {deviceProblem === 'screen'
+                    ? 'This interview is proctored with screen sharing, which this device can’t do.'
+                    : 'This interview has questions you answer on video, which this browser can’t record.'}
+                  {' '}Open it on a laptop or desktop in Chrome, Edge or Firefox to take it.
+                </span>
+              </div>
+            ) : cannot ? (
               <div className="mt-6">
                 <p className="text-sm text-slate-400">{submittedBefore ? 'You’ve already completed this interview.' : 'This interview isn’t available.'}</p>
                 <button onClick={() => backToTask()} className="mt-4 px-5 py-2.5 border border-slate-600 text-slate-200 rounded-xl text-sm">Back to task</button>
@@ -633,6 +770,31 @@ export default function InterviewRunnerPage({ params }: { params: Promise<{ task
               : <div className="text-slate-500 text-sm inline-flex items-center gap-2"><Video className="w-4 h-4" />{cameraRequired ? 'Waiting for camera…' : 'Camera off'}</div>}
           </div>
 
+          {screenRequired && (
+            <div className={`mt-4 rounded-xl border p-3 ${screen.live ? 'border-emerald-500/40 bg-emerald-500/5' : 'border-slate-700 bg-slate-900/50'}`}>
+              <div className="flex items-center gap-3">
+                <Monitor className={`w-5 h-5 shrink-0 ${screen.live ? 'text-emerald-400' : 'text-brand-400'}`} />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-slate-100">{screen.live ? 'Sharing your entire screen' : 'Share your entire screen'}</p>
+                  <p className="text-xs text-slate-400">
+                    {screen.live
+                      ? 'Keep it shared until you finish. Stopping it pauses the interview, and the clock keeps running.'
+                      : 'In the window that opens, choose “Entire screen”. A tab or a single window won’t do.'}
+                  </p>
+                </div>
+                {screen.live
+                  ? <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-400" />
+                  : (
+                    <button type="button" onClick={() => void screen.start()} disabled={screen.busy}
+                      className="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50">
+                      {screen.busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Monitor className="w-3.5 h-3.5" />}Share screen
+                    </button>
+                  )}
+              </div>
+              {!screen.live && screen.problem && <ScreenProblem problem={screen.problem} />}
+            </div>
+          )}
+
           <div className="mt-4 space-y-3">
             <MicCheck level={level} heard={micHeard} />
             <button onClick={testVoice} className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl border border-slate-600 text-slate-200 text-sm hover:bg-slate-700/40">
@@ -646,14 +808,15 @@ export default function InterviewRunnerPage({ params }: { params: Promise<{ task
           </div>
 
           <div className="mt-5 flex items-center justify-between gap-3">
-            <button onClick={() => { previewStream?.getTracks().forEach((t) => t.stop()); setPreviewStream(null); setPhase('intro'); }}
+            <button onClick={() => { previewStream?.getTracks().forEach((t) => t.stop()); setPreviewStream(null); screen.stop(); setPhase('intro'); }}
               className="px-4 py-2 text-slate-300 text-sm hover:text-white">Back</button>
-            <button onClick={startFromLobby} disabled={!camReady}
+            <button onClick={startFromLobby} disabled={!camReady || (screenRequired && !screen.live)}
               className="inline-flex items-center gap-2 px-6 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-medium disabled:opacity-50">
               I’m ready <ArrowRight className="w-4 h-4" />
             </button>
           </div>
           {!camReady && <p className="text-xs text-amber-400 mt-2 text-right">Camera access is required — allow it and it’ll appear above.</p>}
+          {camReady && screenRequired && !screen.live && <p className="text-xs text-amber-400 mt-2 text-right">Share your entire screen to begin.</p>}
         </div>
       </Stage>
     );
@@ -676,7 +839,7 @@ export default function InterviewRunnerPage({ params }: { params: Promise<{ task
   }
 
   // ── Active question (cinematic stage) ────────────────────────────────────────
-  const KindIcon = q?.kind === 'code' ? Code2 : q?.kind === 'text' ? Type : Mic;
+  const KindIcon = q?.kind === 'code' ? Code2 : q?.kind === 'text' ? Type : q?.kind === 'video' ? Video : Mic;
   const isLast = idx === questions.length - 1;
   const timerRemaining = data?.options.timingMode === 'total' ? totalRemaining : remaining;
   const timerTotal = data?.options.timingMode === 'total' ? (data?.options.totalSeconds || 0) : (q?.timeLimitSeconds || 0);
@@ -773,6 +936,25 @@ export default function InterviewRunnerPage({ params }: { params: Promise<{ task
             </div>
           )}
 
+          {q?.kind === 'video' && (
+            <VideoAnswer
+              supported={videoRecordingSupported()}
+              recording={recording}
+              elapsed={videoElapsed}
+              maxSeconds={q.maxRecordingSeconds || 120}
+              liveStream={recordingStream}
+              cameraStream={camStream}
+              takeBlob={draft?.videoBlob || null}
+              savedUrl={draft?.videoUrl || null}
+              upload={uploads.status[q.id]}
+              transcript={draft?.transcript || ''}
+              disabled={advancing || (cameraRequired && !proctor.cameraLive)}
+              onStart={() => void startVideo()}
+              onStop={() => void stopActiveRecording()}
+              onRetry={() => { if (sessionId && draft?.videoBlob) void uploads.upload(sessionId, q.id, 'video', draft.videoBlob); }}
+            />
+          )}
+
           {q?.kind === 'code' && (
             <div className="rounded-2xl border border-slate-700 overflow-hidden">
               <div className="flex items-center justify-between px-4 py-2 bg-slate-950 text-slate-300 text-xs">
@@ -845,7 +1027,65 @@ export default function InterviewRunnerPage({ params }: { params: Promise<{ task
           </div>
         </div>
       )}
+
+      {/* Required screen share: stopping it stops the interview here until it's
+          shared again (the clock keeps running, and the gap is logged). */}
+      {screenRequired && !screen.live && (cameraRequired ? proctor.cameraLive : true) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/95 backdrop-blur-sm p-6">
+          <div className="max-w-md w-full text-center rounded-2xl border border-red-500/40 bg-slate-900 p-8">
+            <div className="w-16 h-16 rounded-full bg-red-500/15 flex items-center justify-center mx-auto mb-4">
+              <MonitorOff className="w-9 h-9 text-red-400" />
+            </div>
+            <h2 className="text-xl font-semibold text-slate-100">Your screen isn&apos;t being shared</h2>
+            <p className="text-slate-400 mt-2 text-sm">
+              This interview requires your entire screen to be shared the whole time. Share it again to continue —{' '}
+              <span className="text-amber-300 font-medium">the clock is still running</span> and this pause is recorded for your mentor.
+            </p>
+            <button onClick={async () => { if (await screen.start()) { proctor.log('screen_share_restored'); void proctor.requestFullscreen(); } }} disabled={screen.busy}
+              className="mt-6 inline-flex items-center gap-2 px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-sm font-medium disabled:opacity-50">
+              {screen.busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Monitor className="w-4 h-4" />} Share entire screen
+            </button>
+            {screen.problem && <ScreenProblem problem={screen.problem} />}
+          </div>
+        </div>
+      )}
+
+      {/* A hand-pressed Finish with a video answer that didn't send. */}
+      {uploadProblem !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 backdrop-blur-sm p-6">
+          <div className="max-w-md w-full text-center rounded-2xl border border-amber-500/40 bg-slate-900 p-8">
+            <AlertTriangle className="w-10 h-10 text-amber-400 mx-auto mb-3" />
+            <h2 className="text-lg font-semibold text-slate-100">
+              {uploadProblem === 1 ? 'A video answer didn’t send' : `${uploadProblem} video answers didn’t send`}
+            </h2>
+            <p className="text-slate-400 mt-2 text-sm">
+              Check your connection and try again. If you submit without {uploadProblem === 1 ? 'it' : 'them'}, this page keeps trying for a few minutes — keep it open.
+            </p>
+            <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-2">
+              <button onClick={() => void finish()} className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-sm font-medium">
+                <RotateCcw className="w-4 h-4" />Try again
+              </button>
+              <button onClick={() => void finish({ force: true })} className="w-full sm:w-auto px-5 py-2.5 rounded-xl border border-slate-600 text-slate-200 text-sm hover:bg-slate-800">
+                Submit anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+/** Why the screen share didn't take, in words a candidate can act on. */
+function ScreenProblem({ problem }: { problem: 'unsupported' | 'denied' | 'not_entire_screen' }) {
+  return (
+    <p className="mt-2 text-xs text-amber-300 text-left">
+      {problem === 'not_entire_screen'
+        ? 'You shared a tab or a window. Share your entire screen instead — pick “Entire screen” in the window that opens.'
+        : problem === 'unsupported'
+          ? 'This browser can’t share a screen. Use Chrome, Edge or Firefox on a computer.'
+          : 'Screen sharing was cancelled or blocked. It’s required for this interview — press the button and choose “Entire screen”. If nothing opens, allow screen sharing for this site in your browser or system settings.'}
+    </p>
   );
 }
 

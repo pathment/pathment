@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { Loader2, Plus, Trash2, GripVertical, Mic, Code2, Type, ChevronUp, ChevronDown, Volume2, Play, Square, User, FileJson, Copy, Download, Upload } from 'lucide-react';
+import { Loader2, Plus, Trash2, GripVertical, Mic, Code2, Type, Video, ChevronUp, ChevronDown, Volume2, Play, Square, User, FileJson, Copy, Download, Upload } from 'lucide-react';
 import { Drawer } from '@/components/shared/Drawer';
 import {
   interviewApi,
@@ -17,6 +17,7 @@ const KIND_META: { kind: InterviewQuestionKind; label: string; icon: typeof Mic 
   { kind: 'voice', label: 'Voice', icon: Mic },
   { kind: 'code', label: 'Code', icon: Code2 },
   { kind: 'text', label: 'Written', icon: Type },
+  { kind: 'video', label: 'Video', icon: Video },
 ];
 
 // Forgiving aliases so JSON prepared by hand (or by Claude) still maps to a valid kind.
@@ -24,17 +25,29 @@ const KIND_ALIAS: Record<string, InterviewQuestionKind> = {
   voice: 'voice', speaking: 'voice', audio: 'voice', spoken: 'voice',
   code: 'code', coding: 'code', programming: 'code',
   text: 'text', written: 'text', writing: 'text', essay: 'text',
+  video: 'video', camera: 'video', 'on-camera': 'video', video_answer: 'video', recorded: 'video',
+};
+
+/** How long one video answer may run. The server caps it at 5 minutes so the file always uploads. */
+const RECORDING_CHOICES = [60, 120, 180, 300];
+const DEFAULT_RECORDING = 120;
+/** Seconds a fresh question of each kind gets on the clock. */
+const defaultTimeLimit = (kind: InterviewQuestionKind) => (kind === 'code' ? 600 : kind === 'video' ? 180 : 120);
+const clampRecording = (n: unknown) => {
+  const v = Math.round(Number(n));
+  return Number.isFinite(v) && v > 0 ? Math.min(300, Math.max(15, v)) : DEFAULT_RECORDING;
 };
 
 // Copy-paste starter for the JSON import — hand this shape to Claude to generate a
-// full kit. kind ∈ voice | code | text. Recorded-voice prompts can't ride in JSON
+// full kit. kind ∈ voice | code | text | video (video: "maxRecordingSeconds",
+// 15–300, how long the on-camera answer may run). Recorded-voice prompts can't ride in JSON
 // (they're uploaded audio), so record those in the editor after loading.
 const JSON_TEMPLATE = `{
   "title": "Frontend screen — React fundamentals",
   "description": "What this interview covers (optional).",
   "timingMode": "per_question",
   "totalMinutes": 30,
-  "requireCamera": false,
+  "requireCamera": true,
   "aiGrading": false,
   "allowRetake": false,
   "interviewer": { "name": "", "voiceName": "", "pitch": 1, "rate": 1 },
@@ -63,6 +76,14 @@ const JSON_TEMPLATE = `{
       "points": 10,
       "timeLimitSeconds": 300,
       "required": false
+    },
+    {
+      "kind": "video",
+      "prompt": "Introduce yourself and the project you are proudest of.",
+      "points": 10,
+      "timeLimitSeconds": 180,
+      "maxRecordingSeconds": 120,
+      "required": true
     }
   ]
 }`;
@@ -74,8 +95,9 @@ const blankQuestion = (kind: InterviewQuestionKind = 'voice'): InterviewQuestion
   prompt: '',
   points: 10,
   required: true,
-  timeLimitSeconds: kind === 'code' ? 600 : 120,
+  timeLimitSeconds: defaultTimeLimit(kind),
   codeLanguage: kind === 'code' ? 'javascript' : undefined,
+  maxRecordingSeconds: kind === 'video' ? DEFAULT_RECORDING : undefined,
   starterCode: '',
   referenceAnswer: '',
 });
@@ -103,7 +125,8 @@ export function InterviewKitDrawer({
   const [status, setStatus] = useState<'draft' | 'published' | 'archived'>('draft');
   const [timingMode, setTimingMode] = useState<InterviewTimingMode>('per_question');
   const [totalMinutes, setTotalMinutes] = useState<number>(30);
-  const [cameraDefault, setCameraDefault] = useState(false);
+  // New kits are fully proctored unless the mentor turns it off.
+  const [cameraDefault, setCameraDefault] = useState(true);
   const [aiGradingDefault, setAiGradingDefault] = useState(false);
   const [allowRetakeDefault, setAllowRetakeDefault] = useState(false);
   const [questions, setQuestions] = useState<InterviewQuestionInput[]>([blankQuestion()]);
@@ -154,6 +177,7 @@ export function InterviewKitDrawer({
           starterCode: q.starterCode || '', referenceAnswer: q.referenceAnswer || '',
           promptAudioUrl: q.config?.promptAudioUrl || null,
           promptAudioPublicId: q.config?.promptAudioPublicId || null,
+          maxRecordingSeconds: q.kind === 'video' ? clampRecording(q.config?.maxRecordingSeconds) : undefined,
         })) : [blankQuestion()]);
       })
       .catch((e: any) => { toast.error(extractApiErrorMessage(e, 'Could not load kit')); onClose(); })
@@ -167,9 +191,12 @@ export function InterviewKitDrawer({
   const setKind = (i: number, kind: InterviewQuestionKind) =>
     patchQuestion(i, {
       kind,
-      timeLimitSeconds: kind === 'code' ? 600 : 120,
+      timeLimitSeconds: defaultTimeLimit(kind),
       codeLanguage: kind === 'code' ? (questions[i].codeLanguage || 'javascript') : undefined,
+      maxRecordingSeconds: kind === 'video' ? (questions[i].maxRecordingSeconds || DEFAULT_RECORDING) : undefined,
     });
+  // A video question needs the camera; say so the moment one is added.
+  const hasVideo = questions.some((q) => q.kind === 'video');
 
   const move = (i: number, dir: -1 | 1) =>
     setQuestions((prev) => {
@@ -252,7 +279,7 @@ export function InterviewKitDrawer({
       }
       const tl = raw.timeLimitSeconds ?? raw.timeLimit ?? null;
       const timeLimitSeconds = tl != null && Number.isFinite(Number(tl))
-        ? Math.max(0, Math.round(Number(tl))) : (kind === 'code' ? 600 : 120);
+        ? Math.max(0, Math.round(Number(tl))) : defaultTimeLimit(kind);
       drafts.push({
         kind,
         prompt,
@@ -265,6 +292,7 @@ export function InterviewKitDrawer({
           : (typeof raw.rubric === 'string' ? raw.rubric : ''),
         promptAudioUrl: null,
         promptAudioPublicId: null,
+        maxRecordingSeconds: kind === 'video' ? clampRecording(raw.maxRecordingSeconds ?? raw.maxRecording ?? DEFAULT_RECORDING) : undefined,
       });
     });
 
@@ -294,6 +322,7 @@ export function InterviewKitDrawer({
       required: q.required !== false,
       codeLanguage: q.kind === 'code' ? (q.codeLanguage || 'javascript') : undefined,
       starterCode: q.kind === 'code' ? (q.starterCode || undefined) : undefined,
+      maxRecordingSeconds: q.kind === 'video' ? clampRecording(q.maxRecordingSeconds) : undefined,
       referenceAnswer: q.referenceAnswer?.trim() || undefined,
     })),
   }, null, 2);
@@ -359,7 +388,10 @@ export function InterviewKitDrawer({
         referenceAnswer: q.referenceAnswer?.trim() || null,
         // The mentor's recording (if any) rides in the question config; the
         // candidate hears it instead of TTS for that question.
-        config: q.promptAudioUrl ? { promptAudioUrl: q.promptAudioUrl, promptAudioPublicId: q.promptAudioPublicId || null } : {},
+        config: {
+          ...(q.promptAudioUrl ? { promptAudioUrl: q.promptAudioUrl, promptAudioPublicId: q.promptAudioPublicId || null } : {}),
+          ...(q.kind === 'video' ? { maxRecordingSeconds: clampRecording(q.maxRecordingSeconds) } : {}),
+        },
       })),
     };
 
@@ -449,7 +481,7 @@ export function InterviewKitDrawer({
             <div className="space-y-2">
               {([
                 ['Allow re-attempt', allowRetakeDefault, setAllowRetakeDefault],
-                ['Require camera (proctor snapshots)', cameraDefault, setCameraDefault],
+                ['Full proctoring — camera + entire screen shared, random snapshots of both', cameraDefault, setCameraDefault],
                 ['AI draft grading (BYO key)', aiGradingDefault, setAiGradingDefault],
               ] as const).map(([label, val, setter]) => (
                 <label key={label} className="flex items-center gap-2.5 cursor-pointer">
@@ -458,6 +490,11 @@ export function InterviewKitDrawer({
                 </label>
               ))}
             </div>
+            {hasVideo && (
+              <p className="mt-2 text-xs text-slate-500">
+                This kit has video questions, so the candidate&apos;s camera is always on and they take it on a computer.
+              </p>
+            )}
           </div>
 
           {/* Interviewer voice */}
@@ -546,7 +583,7 @@ export function InterviewKitDrawer({
                   </div>
 
                   {/* Kind */}
-                  <div className="flex gap-1.5 mb-2.5">
+                  <div className="flex flex-wrap gap-1.5 mb-2.5">
                     {KIND_META.map(({ kind, label, icon: Icon }) => (
                       <button key={kind} type="button" onClick={() => setKind(i, kind)}
                         className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-medium ${q.kind === kind ? 'border-brand-400 bg-brand-50 text-brand-700' : 'border-slate-200 text-slate-600 hover:border-slate-300'}`}>
@@ -563,6 +600,19 @@ export function InterviewKitDrawer({
                     url={q.promptAudioUrl || null}
                     onChange={(url, publicId) => patchQuestion(i, { promptAudioUrl: url, promptAudioPublicId: publicId })}
                   />
+
+                  {q.kind === 'video' && (
+                    <label className="mb-2.5 flex items-center gap-2 text-xs text-slate-500">
+                      Longest recording
+                      <select value={clampRecording(q.maxRecordingSeconds)} onChange={(e) => patchQuestion(i, { maxRecordingSeconds: Number(e.target.value) })}
+                        className="rounded-lg border border-slate-200 bg-transparent px-2 py-1 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-500">
+                        {[...new Set([...RECORDING_CHOICES, clampRecording(q.maxRecordingSeconds)])].sort((a, b) => a - b).map((s) => (
+                          <option key={s} value={s}>{s % 60 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')} min` : `${s / 60} min`}</option>
+                        ))}
+                      </select>
+                      <span className="text-slate-400">The candidate answers on camera; it stops by itself at this length.</span>
+                    </label>
+                  )}
 
                   {q.kind === 'code' && (
                     <div className="grid grid-cols-2 gap-2 mb-2.5">

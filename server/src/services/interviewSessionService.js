@@ -8,6 +8,7 @@ const authzService = require('./authzService');
 const { PERMISSIONS } = require('../config/permissions');
 const submissionService = require('./submissionService');
 const clanLifecycleService = require('./clanLifecycleService');
+const proctoring = require('./interviewProctoring');
 
 /**
  * InterviewSessionService — the candidate runner (Phase 2). Owns starting/resuming
@@ -49,7 +50,17 @@ class InterviewSessionService {
       starterCode: q.starterCode,
       // Mentor's own recording for this question (plays instead of TTS if present).
       promptAudioUrl: (q.config && q.config.promptAudioUrl) || null,
+      // Video questions: the longest a single recording may run.
+      maxRecordingSeconds: q.kind === proctoring.VIDEO_KIND ? proctoring.maxRecordingSeconds(q.config) : null,
     };
+  }
+
+  /** The recording on an answer, named for what it is. Voice and video share
+   *  the same columns (a video is a recording with a picture), so the API says
+   *  `videoUrl` for one and `audioUrl` for the other and nobody has to know. */
+  _recordingUrls(a) {
+    const isVideo = a.kind === proctoring.VIDEO_KIND;
+    return { audioUrl: isVideo ? null : a.audioUrl, videoUrl: isVideo ? a.audioUrl : null };
   }
 
   /**
@@ -58,6 +69,7 @@ class InterviewSessionService {
    */
   async getForCandidate(taskId, menteeId, { clanId = null } = {}) {
     const { task, assignment, kit, questions } = await this._loadContext(taskId, menteeId, { clanId });
+    const requirements = proctoring.requirementsFor({ cameraRequired: assignment.cameraRequired, questions });
 
     // Interviewer identity: the mentor's kit config, defaulting the NAME to the
     // kit creator's own name (so it's "Meet <mentor>", not a generic persona).
@@ -96,7 +108,7 @@ class InterviewSessionService {
       answers = rows.map((a) => ({
         questionId: a.questionId,
         transcript: a.transcript,
-        audioUrl: a.audioUrl,
+        ...this._recordingUrls(a),
         code: a.code,
         answerText: a.answerText,
         timeSpentSeconds: a.timeSpentSeconds,
@@ -117,7 +129,10 @@ class InterviewSessionService {
       interviewer,
       options: {
         allowRetake: assignment.allowRetake,
-        cameraRequired: assignment.cameraRequired,
+        // What the runner must have before the clock starts (see interviewProctoring).
+        cameraRequired: requirements.camera,
+        screenShareRequired: requirements.screen,
+        videoAnswers: requirements.video,
         timingMode: assignment.timingMode,
         totalSeconds: assignment.totalSeconds,
       },
@@ -183,9 +198,15 @@ class InterviewSessionService {
   }
 
   /** Start a fresh attempt or resume the in-progress one. Enforces retake rules. */
-  async startOrResume(taskId, menteeId, { clanId = null } = {}) {
+  async startOrResume(taskId, menteeId, { clanId = null, capabilities } = {}) {
     await clanLifecycleService.assertTaskWritable(taskId);
-    const { assignment } = await this._loadContext(taskId, menteeId, { clanId });
+    const { assignment, questions } = await this._loadContext(taskId, menteeId, { clanId });
+
+    // Before any clock starts: a client that can't share a screen or record video
+    // is told where to take this interview, instead of starting one it can't run.
+    const requirements = proctoring.requirementsFor({ cameraRequired: assignment.cameraRequired, questions });
+    const missing = proctoring.missingCapability(requirements, proctoring.parseCapabilities(capabilities));
+    if (missing) throw new ConflictError(proctoring.unsupportedClientMessage(missing));
 
     const existing = await models.InterviewSession.findOne({
       where: { assignedTaskId: taskId, menteeId, status: 'in_progress' },
@@ -309,20 +330,74 @@ class InterviewSessionService {
     return assignment ? assignment.kitId : null;
   }
 
+  /**
+   * The session a recording may land on: theirs, and still open — or submitted
+   * only moments ago, so a background upload that finishes after the candidate
+   * pressed Finish isn't lost. Never once the window has passed or the mentor
+   * has completed the review: that would change an answer after it was graded.
+   */
+  async _recordingSession(sessionId, menteeId) {
+    const session = await this._ownedSession(sessionId, menteeId);
+    if (session.status !== 'in_progress') {
+      const age = Date.now() - new Date(session.submittedAt || 0).getTime();
+      const task = await models.AssignedTask.scope('withPoolWork').findByPk(session.assignedTaskId, { attributes: ['id', 'status'] });
+      if (!(age >= 0 && age <= proctoring.LATE_UPLOAD_GRACE_MS) || !task || task.status === 'completed') {
+        throw new ConflictError('This interview has already been submitted.');
+      }
+    }
+    await clanLifecycleService.assertTaskWritable(session.assignedTaskId);
+    return session;
+  }
+
+  /** The question a recording is for, which must be in this session's kit and of `kind`. */
+  async _recordingQuestion(session, questionId, kind) {
+    if (!questionId) throw new ValidationError('questionId is required');
+    const question = await models.InterviewQuestion.findByPk(questionId);
+    if (!question || question.kitId !== (await this._kitIdForSession(session))) {
+      throw new ValidationError('That question is not part of this interview');
+    }
+    // A clip landing on a question of another kind is always a client
+    // misattribution (a stale/shared recorder ref) — reject it rather than
+    // corrupt that question's row with someone else's recording.
+    if (question.kind !== kind) {
+      throw new ValidationError(kind === 'voice'
+        ? 'Audio can only be attached to a voice question'
+        : 'Video can only be attached to a video question');
+    }
+    return question;
+  }
+
+  /** Point the answer at its recording, removing the one it replaces (a re-record). */
+  async _storeRecording(session, question, { url, publicId }) {
+    const fields = {
+      position: question.position,
+      kind: question.kind,
+      promptSnapshot: question.prompt,
+      pointsPossible: question.points,
+      audioUrl: url,
+      audioPublicId: publicId,
+    };
+    const [answer] = await models.InterviewAnswer.findOrCreate({
+      where: { sessionId: session.id, questionId: question.id },
+      defaults: { sessionId: session.id, questionId: question.id, ...fields },
+    });
+    const replaced = answer.audioPublicId && answer.audioPublicId !== publicId ? answer.audioPublicId : null;
+    // A re-record replaces the AI's transcript of the old take too.
+    const aiDraft = replaced && answer.aiDraft ? { ...answer.aiDraft, transcript: null } : answer.aiDraft;
+    await answer.update({ ...fields, aiDraft });
+    if (replaced) {
+      const { deleteFromCloudinary } = require('../utils/cloudinaryUpload');
+      deleteFromCloudinary(replaced, 'video').catch((err) => console.error('[interview] old recording delete failed:', err?.message));
+    }
+    return answer;
+  }
+
   /** Upload a recorded audio clip for one question and store its URL. Accepts a
    *  just-submitted session too, so a background/retry upload isn't lost. */
   async attachAudio(sessionId, menteeId, questionId, file) {
-    const session = await this._ownedSession(sessionId, menteeId);
-    await clanLifecycleService.assertTaskWritable(session.assignedTaskId);
-    if (!questionId) throw new ValidationError('questionId is required');
+    const session = await this._recordingSession(sessionId, menteeId);
     if (!file || !file.buffer) throw new ValidationError('No audio file received');
-
-    const question = await models.InterviewQuestion.findByPk(questionId);
-    if (!question) throw new ValidationError('That question is not part of this interview');
-    // Audio only belongs to a voice question. A clip landing on a code/text question
-    // is always a client misattribution (a stale/shared recorder ref) — reject it
-    // rather than corrupt that question's row with someone else's recording.
-    if (question.kind !== 'voice') throw new ValidationError('Audio can only be attached to a voice question');
+    const question = await this._recordingQuestion(session, questionId, 'voice');
 
     // Audio goes under Cloudinary's 'video' resource type (it handles audio there).
     // Log the real reason on failure — otherwise the client only sees a generic
@@ -336,21 +411,97 @@ class InterviewSessionService {
       });
       throw new ValidationError('Audio upload failed. Please check your connection and try again.');
     }
-
-    const fields = {
-      position: question.position,
-      kind: question.kind,
-      promptSnapshot: question.prompt,
-      pointsPossible: question.points,
-      audioUrl: result.secure_url,
-      audioPublicId: result.public_id,
-    };
-    const [answer] = await models.InterviewAnswer.findOrCreate({
-      where: { sessionId, questionId },
-      defaults: { sessionId, questionId, ...fields },
-    });
-    await answer.update(fields);
+    await this._storeRecording(session, question, { url: result.secure_url, publicId: result.public_id });
     return { audioUrl: result.secure_url, questionId };
+  }
+
+  /**
+   * Permission for the browser to upload one video answer straight to
+   * Cloudinary. A video is several megabytes; sent through this server it would
+   * race the platform's 30-second request limit on a slow connection, so the
+   * browser sends it directly and only tells us where it landed. The signature
+   * fixes the public id to this session and question, so it can't be reused to
+   * put a file anywhere else.
+   */
+  async signVideoUpload(sessionId, menteeId, questionId) {
+    const session = await this._recordingSession(sessionId, menteeId);
+    const question = await this._recordingQuestion(session, questionId, proctoring.VIDEO_KIND);
+    const cloudinary = require('../config/cloudinary');
+    const { cloud_name: cloudName, api_key: apiKey, api_secret: apiSecret } = cloudinary.config();
+    // Not configured for direct uploads: the client falls back to sending it here.
+    if (!cloudName || !apiKey || !apiSecret) return { direct: false };
+    const timestamp = Math.floor(Date.now() / 1000);
+    const publicId = `${proctoring.videoPublicIdPrefix(session.id, question.id)}${timestamp}`;
+    const params = { public_id: publicId, timestamp };
+    const signature = cloudinary.utils.api_sign_request(params, apiSecret);
+    return {
+      direct: true,
+      uploadUrl: `https://api.cloudinary.com/v1_1/${cloudName}/video/upload`,
+      fields: { api_key: apiKey, timestamp: String(timestamp), public_id: publicId, signature },
+      publicId,
+    };
+  }
+
+  /**
+   * Store a video answer: either the file itself (the fallback path, through
+   * this server) or the id of a direct upload we signed. A direct upload is
+   * checked with Cloudinary before it is trusted — the id must be one we could
+   * have signed for this answer, and the video must really be there.
+   */
+  async attachVideo(sessionId, menteeId, questionId, { file = null, publicId = null } = {}) {
+    const session = await this._recordingSession(sessionId, menteeId);
+    const question = await this._recordingQuestion(session, questionId, proctoring.VIDEO_KIND);
+
+    let url;
+    let storedId;
+    if (file && file.buffer) {
+      try {
+        const result = await uploadToCloudinary(file.buffer, `pathment/interviews/videos/${session.id}`, 'video');
+        url = result.secure_url;
+        storedId = result.public_id;
+      } catch (err) {
+        console.error('[interview] video upload to Cloudinary failed:', {
+          message: err?.message, httpCode: err?.http_code, bytes: file.buffer?.length,
+        });
+        throw new ValidationError('Video upload failed. Please check your connection and try again.');
+      }
+    } else if (publicId) {
+      const id = String(publicId);
+      if (!id.startsWith(proctoring.videoPublicIdPrefix(session.id, question.id))) {
+        throw new ValidationError('That video does not belong to this answer');
+      }
+      const cloudinary = require('../config/cloudinary');
+      let resource;
+      try {
+        resource = await cloudinary.api.resource(id, { resource_type: 'video' });
+      } catch (err) {
+        console.error('[interview] video lookup failed:', { publicId: id, message: err?.message || err?.error?.message });
+        throw new ValidationError('We could not find that video. Please record it again.');
+      }
+      url = resource.secure_url;
+      storedId = resource.public_id;
+    } else {
+      throw new ValidationError('No video received');
+    }
+
+    await this._storeRecording(session, question, { url, publicId: storedId });
+    return { videoUrl: url, questionId: question.id };
+  }
+
+  /**
+   * Add events to the end of a session's proctor log in one statement.
+   *
+   * Camera shots, screen shots and the event flush arrive at the same time; a
+   * read-then-write of the whole array let one of them overwrite the others, so
+   * a snapshot could vanish from the log as another landed. `||` on jsonb
+   * appends in the database, where concurrent writers queue on the row instead.
+   */
+  async _appendProctor(sessionId, events) {
+    if (!events.length) return;
+    await sequelize.query(
+      'UPDATE interview_sessions SET proctor_log = COALESCE(proctor_log, \'[]\'::jsonb) || CAST(:events AS jsonb), updated_at = NOW() WHERE id = :id',
+      { replacements: { events: JSON.stringify(events), id: sessionId } },
+    );
   }
 
   /** Append proctor events (focus-loss, fullscreen-exit, paste, snapshot refs). */
@@ -359,9 +510,14 @@ class InterviewSessionService {
     await clanLifecycleService.assertTaskWritable(session.assignedTaskId);
     if (!Array.isArray(events) || !events.length) return { logged: 0 };
     const clean = events
-      .filter((e) => e && typeof e.type === 'string')
-      .map((e) => ({ type: e.type, at: e.at || new Date().toISOString(), meta: e.meta || {} }));
-    await session.update({ proctorLog: [...(session.proctorLog || []), ...clean] });
+      .slice(0, 500)
+      .filter((e) => e && typeof e.type === 'string' && e.type !== 'snapshot')
+      .map((e) => ({
+        type: e.type.slice(0, 60),
+        at: e.at || new Date().toISOString(),
+        meta: e.meta && typeof e.meta === 'object' && !Array.isArray(e.meta) ? e.meta : {},
+      }));
+    await this._appendProctor(session.id, clean);
     return { logged: clean.length };
   }
 
@@ -370,15 +526,16 @@ class InterviewSessionService {
    * `snapshot` event carrying its URL. Called on an interval (and on suspicious
    * events) while the camera is required, so the mentor can eyeball presence.
    */
-  async attachSnapshot(sessionId, menteeId, file, questionId = null) {
+  async attachSnapshot(sessionId, menteeId, file, questionId = null, source = 'camera') {
     const session = await this._openSession(sessionId, menteeId);
     await clanLifecycleService.assertTaskWritable(session.assignedTaskId);
     if (!file || !file.buffer) throw new ValidationError('No snapshot received');
+    if (!String(file.mimetype || '').startsWith('image/')) throw new ValidationError('A snapshot must be an image');
     const result = await uploadToCloudinary(file.buffer, 'pathment/interviews/snapshots', 'image');
-    const meta = { url: result.secure_url, publicId: result.public_id };
+    // Where the picture came from: the webcam, or the candidate's shared screen.
+    const meta = { url: result.secure_url, publicId: result.public_id, source: source === 'screen' ? 'screen' : 'camera' };
     if (questionId) meta.questionId = String(questionId);
-    const event = { type: 'snapshot', at: new Date().toISOString(), meta };
-    await session.update({ proctorLog: [...(session.proctorLog || []), event] });
+    await this._appendProctor(session.id, [{ type: 'snapshot', at: new Date().toISOString(), meta }]);
     return { url: result.secure_url };
   }
 
@@ -449,6 +606,7 @@ class InterviewSessionService {
       url: e.meta?.url,
       at: e.at,
       questionId: e.meta?.questionId || bucketQuestion(e.at),
+      source: e.meta?.source === 'screen' ? 'screen' : 'camera',
     }));
     const flags = proctorLog.filter((e) => e.type !== 'snapshot');
     const flagCounts = flags.reduce((m, e) => { m[e.type] = (m[e.type] || 0) + 1; return m; }, {});
@@ -466,7 +624,7 @@ class InterviewSessionService {
         referenceAnswer: isOwnerMentee ? null : (q.referenceAnswer || null), // hidden from the mentee
         answer: a ? {
           transcript: a.transcript,
-          audioUrl: a.audioUrl,
+          ...this._recordingUrls(a),
           code: a.code,
           answerText: a.answerText,
           timeSpentSeconds: a.timeSpentSeconds,
@@ -488,6 +646,8 @@ class InterviewSessionService {
         aiGradingEnabled: assignment.aiGradingEnabled,
         allowRetake: assignment.allowRetake,
         cameraRequired: assignment.cameraRequired,
+        // Proctored with screen sharing — the review warns when no screen came through.
+        screenShareRequired: proctoring.requirementsFor({ cameraRequired: assignment.cameraRequired, questions }).screen,
       },
       session: session ? {
         id: session.id,
@@ -683,9 +843,9 @@ class InterviewSessionService {
     // browser's live STT frequently garbles accent/pronunciation, and grading that
     // garbled text is unfair. Fall back to the browser transcript if unavailable.
     let aiTranscript = null;
-    if (question.kind === 'voice' && answer?.audioUrl) {
+    if ((question.kind === 'voice' || question.kind === proctoring.VIDEO_KIND) && answer?.audioUrl) {
       try {
-        aiTranscript = await groqService.transcribeAudio({ audioUrl: answer.audioUrl, userId: mentorId, feature: 'feedback' });
+        aiTranscript = await groqService.transcribeAudio({ audioUrl: proctoring.audioTrackUrl(answer.audioUrl), userId: mentorId, feature: 'feedback' });
       } catch (e) {
         console.error('[interview] Whisper transcription failed:', e.message);
       }
@@ -771,13 +931,13 @@ class InterviewSessionService {
     //    browser transcript for that one question.
     const transcripts = new Map(); // questionId -> transcript text
     await Promise.all(questions
-      .filter((q) => q.kind === 'voice')
+      .filter((q) => q.kind === 'voice' || q.kind === proctoring.VIDEO_KIND)
       .map(async (q) => {
         const a = answerByQ.get(q.id);
         if (!a || !a.audioUrl) return;
         if (a.aiDraft && a.aiDraft.transcript) { transcripts.set(q.id, a.aiDraft.transcript); return; }
         try {
-          const t = await groqService.transcribeAudio({ audioUrl: a.audioUrl, userId: mentorId, feature: 'feedback' });
+          const t = await groqService.transcribeAudio({ audioUrl: proctoring.audioTrackUrl(a.audioUrl), userId: mentorId, feature: 'feedback' });
           if (t) transcripts.set(q.id, t);
         } catch (e) {
           console.error('[interview] batch Whisper failed:', e.message);
