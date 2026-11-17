@@ -1,5 +1,6 @@
 'use client';
 import { AttendanceHistoryCalendar } from '@/components/mentor/AttendanceHistoryCalendar';
+import { ActiveFilters, ChipRow, FilterToggle, TypeChips, taskTypeOf, typeCounts, typeLabel } from '@/components/mentor/WorkFilters';
 
 import { useState } from 'react';
 import Link from 'next/link';
@@ -175,6 +176,23 @@ const STATUS_META: Record<string, { label: string; className: string }> = {
   rejected: { label: 'Rejected', className: 'bg-red-100 text-red-700' },
 };
 
+// The status filter on Work history: the stages a mentor asks about, each
+// standing for the raw statuses that mean it.
+type StatusFilter = 'all' | 'open' | 'review' | 'completed' | 'closed';
+const STATUS_FILTERS: { key: StatusFilter; label: string; statuses: string[] | null }[] = [
+  { key: 'all', label: 'All', statuses: null },
+  { key: 'open', label: 'In progress', statuses: ['in_progress', 'assigned', 'not_started', 'revision_needed', 'changes_requested'] },
+  { key: 'review', label: 'Waiting review', statuses: ['submitted', 'under_review'] },
+  { key: 'completed', label: 'Completed', statuses: ['completed'] },
+  { key: 'closed', label: 'Cancelled', statuses: ['cancelled', 'rejected'] },
+];
+
+function shortDate(iso?: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? null : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: d.getFullYear() === new Date().getFullYear() ? undefined : 'numeric' });
+}
+
 // Order statuses so the work most needing attention surfaces first.
 const STATUS_ORDER = [
   'submitted',
@@ -283,6 +301,10 @@ export default function MenteeDetail() {
   const [assigningTask, setAssigningTask] = useState(false);
   // A clicked work-history task opens in the shared task drawer (like Clan Review).
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
+  // Work history filters, behind the funnel so the list keeps its room.
+  const [showWorkFilters, setShowWorkFilters] = useState(false);
+  const [workStatus, setWorkStatus] = useState<StatusFilter>('all');
+  const [workType, setWorkType] = useState('all');
 
   // Full cohort-review attendance record for this mentee (every meeting they
   // were marked on, newest first) — same data as the cohort-review drawer.
@@ -442,8 +464,11 @@ export default function MenteeDetail() {
       const k = t.status || 'assigned';
       (acc[k] = acc[k] || []).push({
         id: t.id,
-        title: t.roadmapTask?.title || t.title,
+        title: t.titleOverride || t.roadmapTask?.title || t.title,
+        type: taskTypeOf(t),
         status: t.status,
+        submittedAt: t.submittedAt,
+        completedAt: t.completedAt,
         source: t.isCustomTask
           ? 'Custom'
           : t.roadmapName || t.roadmapTask?.roadmap?.name
@@ -453,11 +478,31 @@ export default function MenteeDetail() {
       });
       return acc;
     }, {});
-  const orderedStatuses = STATUS_ORDER.filter((s) => grouped[s]?.length);
   const totalTasks = Object.values(grouped).reduce(
     (n, arr) => n + arr.length,
     0,
   );
+  // Filters: the type chips count within the chosen status, and the status
+  // chips within the chosen type, so every number is what a click would show.
+  const allWork = Object.values(grouped).flat();
+  type WorkRow = { type?: string | null; status?: string };
+  const typeOfRow = (t: WorkRow) => t.type || 'custom';
+  const statusFilter = STATUS_FILTERS.find((f) => f.key === workStatus)!;
+  const inStatus = (t: WorkRow, f = statusFilter) => !f.statuses || f.statuses.includes(t.status || 'assigned');
+  const inType = (t: WorkRow) => workType === 'all' || typeOfRow(t) === workType;
+  const workKinds = typeCounts(allWork.filter((t) => inStatus(t)).map(typeOfRow));
+  // Keep the chosen type on offer even when the status leaves none of it.
+  if (workType !== 'all' && !workKinds.some((k) => k.type === workType)) workKinds.push({ type: workType, count: 0 });
+  const statusCounts = Object.fromEntries(
+    STATUS_FILTERS.map((f) => [f.key, allWork.filter((t) => inType(t) && inStatus(t, f)).length]),
+  ) as Record<StatusFilter, number>;
+  const workFiltered = workStatus !== 'all' || workType !== 'all';
+  const shownGroups: typeof grouped = Object.fromEntries(
+    Object.entries(grouped).map(([k, arr]) => [k, arr.filter((t) => inStatus(t) && inType(t))]),
+  );
+  const orderedStatuses = STATUS_ORDER.filter((s) => shownGroups[s]?.length);
+  const shownTotal = orderedStatuses.reduce((n, s) => n + shownGroups[s].length, 0);
+  const clearWorkFilters = () => { setWorkStatus('all'); setWorkType('all'); };
 
   return (
     <div className="space-y-6">
@@ -791,18 +836,56 @@ export default function MenteeDetail() {
                   </span>
                 )}
               </div>
-              <button
-                onClick={() => setAssigningTask(true)}
-                disabled={historical}
-                title={historical ? 'Completed programs are read-only' : undefined}
-                className="text-brand-600 hover:text-brand-700 text-sm flex items-center gap-1 disabled:opacity-50"
-              >
-                <Plus className="w-4 h-4" />
-                Assign task
-              </button>
+              <div className="flex items-center gap-3">
+                {totalTasks > 0 && (
+                  <FilterToggle
+                    open={showWorkFilters}
+                    active={(workStatus !== 'all' ? 1 : 0) + (workType !== 'all' ? 1 : 0)}
+                    onClick={() => setShowWorkFilters((v) => !v)}
+                  />
+                )}
+                <button
+                  onClick={() => setAssigningTask(true)}
+                  disabled={historical}
+                  title={historical ? 'Completed programs are read-only' : undefined}
+                  className="text-brand-600 hover:text-brand-700 text-sm flex items-center gap-1 disabled:opacity-50"
+                >
+                  <Plus className="w-4 h-4" />
+                  Assign task
+                </button>
+              </div>
             </div>
+            {totalTasks > 0 && showWorkFilters && (
+              <div className="space-y-2 border-b border-slate-200 bg-slate-50/60 px-6 py-3 dark:bg-white/5">
+                <ChipRow
+                  label="Status"
+                  value={workStatus}
+                  onChange={setWorkStatus}
+                  options={STATUS_FILTERS.map((f) => ({ key: f.key, label: f.label, count: statusCounts[f.key] }))}
+                />
+                <TypeChips types={workKinds} value={workType} onChange={setWorkType} />
+              </div>
+            )}
+            {workFiltered && !showWorkFilters && (
+              <div className="border-b border-slate-200 px-6 py-2">
+                <ActiveFilters
+                  parts={[
+                    ...(workType !== 'all' ? [typeLabel(workType)] : []),
+                    ...(workStatus !== 'all' ? [statusFilter.label.toLowerCase()] : []),
+                  ]}
+                  onClear={clearWorkFilters}
+                />
+              </div>
+            )}
             <div className="p-6">
-              {totalTasks === 0 ? (
+              {totalTasks > 0 && shownTotal === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-slate-600 text-sm">Nothing matches these filters.</p>
+                  <button onClick={clearWorkFilters} className="mt-2 text-sm text-brand-600 hover:text-brand-700">
+                    Clear filters
+                  </button>
+                </div>
+              ) : totalTasks === 0 ? (
                 <div className="text-center py-8">
                   <CheckCircle2 className="w-12 h-12 text-slate-300 mx-auto mb-3" />
                   <p className="text-slate-600 text-sm">No tasks yet</p>
@@ -816,8 +899,11 @@ export default function MenteeDetail() {
                     };
                     return (
                       <details
-                        key={status}
+                        // Re-mount when the filters change, so a filtered view
+                        // opens what it found instead of keeping it folded.
+                        key={`${status}:${workStatus}:${workType}`}
                         open={
+                          workFiltered ||
                           !['completed', 'cancelled', 'rejected'].includes(
                             status,
                           )
@@ -830,14 +916,14 @@ export default function MenteeDetail() {
                             {meta.label}
                           </span>
                           <span className="text-xs text-slate-400">
-                            {grouped[status].length}
+                            {shownGroups[status].length}
                           </span>
                           <span className="ml-auto text-xs text-muted-foreground">
                             Expand / collapse
                           </span>
                         </summary>
                         <div className="space-y-2">
-                          {grouped[status].map((t: any) => (
+                          {shownGroups[status].map((t: any) => (
                             <button
                               key={t.id}
                               onClick={() => setOpenTaskId(t.id)}
@@ -848,8 +934,16 @@ export default function MenteeDetail() {
                                   {t.title}
                                 </span>
                                 <span className="block text-[11px] text-slate-500 truncate">
-                                  {t.source}
-                                  {t.points != null ? ` · ${t.points} pts` : ''}
+                                  {[
+                                    typeLabel(typeOfRow(t), true),
+                                    t.source,
+                                    t.points != null ? `${t.points} pts` : null,
+                                    t.completedAt && t.status === 'completed'
+                                      ? `completed ${shortDate(t.completedAt)}`
+                                      : t.submittedAt
+                                        ? `submitted ${shortDate(t.submittedAt)}`
+                                        : null,
+                                  ].filter(Boolean).join(' · ')}
                                 </span>
                               </span>
                               <div className="flex items-center gap-2 shrink-0">

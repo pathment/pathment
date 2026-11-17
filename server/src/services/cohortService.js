@@ -578,10 +578,12 @@ class CohortService {
       const key = t.status || 'assigned';
       (tasksByStatus[key] = tasksByStatus[key] || []).push({
         id: t.id,
-        title: t.roadmapTask?.title || 'Task',
+        title: t.titleOverride || t.roadmapTask?.title || 'Task',
         type: t.typeOverride || t.roadmapTask?.type || null,
         status: t.status,
         dueDate: t.dueDate,
+        submittedAt: t.submittedAt || null,
+        completedAt: t.completedAt || null,
         isLate: t.isLate,
         finalRating: t.finalRating != null ? Number(t.finalRating) : null
       });

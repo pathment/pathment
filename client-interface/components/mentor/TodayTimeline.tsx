@@ -13,11 +13,12 @@ import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { taskApi } from '@/lib/services/task-api';
 import { submissionService } from '@/lib/services/submissionService';
 import { useConfirm } from '@/lib/context/ConfirmContext';
+import { ActiveFilters, FilterToggle, TypeChips, taskTypeOf, typeCounts, typeLabel } from '@/components/mentor/WorkFilters';
 
 type Filter = 'all' | 'review' | 'open' | 'done';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Task = any;
-type Pending = { taskId: string; submissionId: string; title?: string; isLate?: boolean; isExtensionRequest?: boolean };
+type Pending = { taskId: string; submissionId: string; title?: string; type?: string | null; isLate?: boolean; isExtensionRequest?: boolean };
 
 /**
  * One mentee's day and their work, as one surface on the review screen.
@@ -64,6 +65,9 @@ export function TodayTimeline<P extends Pending>({
   const [planOpen, setPlanOpen] = useState(false);
   const [filter, setFilter] = useState<Filter>('all');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  // What kind of work to show (interviews, quizzes ...), behind the filter icon.
+  const [kindPick, setKind] = useState('all');
+  const [showFilters, setShowFilters] = useState(false);
 
   const { data: board, loading: boardLoading, refetch } = useApiQuery<PlanBoard>({
     queryKey: [...qk.mentee.planStrip(menteeId, clanId), 'board'],
@@ -102,9 +106,36 @@ export function TodayTimeline<P extends Pending>({
     return s;
   }, [slots]);
 
-  const openTasks = useMemo(() => tasks.filter((t) => t.status !== 'completed'), [tasks]);
+  // The kinds of work they have, for the type chips (every list, not just the open one).
+  const kinds = useMemo(() => {
+    const seen = new Set<string>();
+    const types: string[] = [];
+    for (const p of pending) { seen.add(p.taskId); types.push(p.type || 'custom'); }
+    for (const t of [...tasks, ...completedTasks]) {
+      if (seen.has(t.id)) continue;
+      seen.add(t.id); types.push(taskTypeOf(t));
+    }
+    return typeCounts(types);
+  }, [pending, tasks, completedTasks]);
+  // A type whose last task just went away falls back to all, rather than show nothing.
+  const kind = kindPick === 'all' || kinds.some((k) => k.type === kindPick) ? kindPick : 'all';
+  const fits = (type: string | null | undefined) => kind === 'all' || (type || 'custom') === kind;
+  const narrowed = filter !== 'all' || kind !== 'all';
+
+  const openTasks = useMemo(
+    () => tasks.filter((t) => t.status !== 'completed' && (kind === 'all' || taskTypeOf(t) === kind)),
+    [tasks, kind],
+  );
+  const doneTasks = useMemo(
+    () => (kind === 'all' ? completedTasks : completedTasks.filter((t) => taskTypeOf(t) === kind)),
+    [completedTasks, kind],
+  );
+  const shownPending = useMemo(
+    () => (kind === 'all' ? pending : pending.filter((p) => (p.type || 'custom') === kind)),
+    [pending, kind],
+  );
   const looseOpen = useMemo(() => openTasks.filter((t) => !placed.has(t.id)), [openTasks, placed]);
-  const loosePending = useMemo(() => pending.filter((p) => !placed.has(p.taskId)), [pending, placed]);
+  const loosePending = useMemo(() => shownPending.filter((p) => !placed.has(p.taskId)), [shownPending, placed]);
 
   const plannedTotal = slots.reduce((n, s) => n + s.items.length, 0);
   const plannedDone = slots.reduce((n, s) => n + s.items.filter((i) => i.status === 'completed').length, 0);
@@ -112,7 +143,7 @@ export function TodayTimeline<P extends Pending>({
   const hasPlan = slots.length > 0;
   const first_ = menteeName.split(' ')[0];
 
-  const counts = { all: null, review: pending.length, open: openTasks.length, done: completedTasks.length };
+  const counts = { all: null, review: shownPending.length, open: openTasks.length, done: doneTasks.length };
 
   // ── Selecting several tasks at once ──────────────────────────────────────
   // Only open, mentor-given work can be picked: a submission waits for its
@@ -126,7 +157,7 @@ export function TodayTimeline<P extends Pending>({
   const selectableIds = useMemo(() => new Set(selectable.map((t) => t.id)), [selectable]);
   // Submissions can be picked to approve together. An extension request is a
   // different question (more time, not "is this good"), so it stays one by one.
-  const approvable = useMemo(() => (readOnly ? [] : pending.filter((p) => !p.isExtensionRequest)), [pending, readOnly]);
+  const approvable = useMemo(() => (readOnly ? [] : shownPending.filter((p) => !p.isExtensionRequest)), [shownPending, readOnly]);
   const approvableIds = useMemo(() => new Set(approvable.map((p) => p.submissionId)), [approvable]);
   // What is picked AND still pickable (a task can finish or vanish under us).
   const chosen = useMemo(() => [...picked].filter((id) => selectableIds.has(id)), [picked, selectableIds]);
@@ -175,9 +206,10 @@ export function TodayTimeline<P extends Pending>({
   /** One item of a block, as the richest row we have for it. */
   const renderItem = (item: PlanItem, index: number) => {
     const p = pendingByTask.get(item.id);
+    const t = byId.get(item.id);
+    if (!fits(p ? p.type : t ? taskTypeOf(t) : item.kind === 'personal' ? 'personal' : item.type)) return null;
     if (p) return filter === 'open' || filter === 'done' ? null : pendingRow(p, index, item.id);
     if (filter === 'review') return null;
-    const t = byId.get(item.id);
     const done = item.status === 'completed';
     if (filter === 'open' && done) return null;
     if (filter === 'done' && !done) return null;
@@ -242,7 +274,8 @@ export function TodayTimeline<P extends Pending>({
               </button>
             </div>
           </div>
-          <div role="tablist" aria-label="Show" className="mt-2.5 flex flex-wrap gap-1.5">
+          <div className="mt-2.5 flex items-start gap-2">
+          <div role="tablist" aria-label="Show" className="flex min-w-0 flex-1 flex-wrap gap-1.5">
             {([
               { key: 'all', label: 'All' },
               { key: 'review', label: 'To review' },
@@ -269,6 +302,20 @@ export function TodayTimeline<P extends Pending>({
               );
             })}
           </div>
+          {kinds.length > 1 && (
+            <FilterToggle open={showFilters} active={kind !== 'all' ? 1 : 0} onClick={() => setShowFilters((v) => !v)} />
+          )}
+          </div>
+          {kinds.length > 1 && showFilters && (
+            <div className="mt-2 rounded-xl bg-slate-50 px-2.5 py-2 dark:bg-white/5">
+              <TypeChips types={kinds} value={kind} onChange={setKind} />
+            </div>
+          )}
+          {kind !== 'all' && !showFilters && (
+            <div className="mt-2">
+              <ActiveFilters parts={[typeLabel(kind)]} onClear={() => setKind('all')} />
+            </div>
+          )}
           {selecting && (
             <BulkBar
               count={chosen.length}
@@ -293,9 +340,9 @@ export function TodayTimeline<P extends Pending>({
           {loading ? (
             <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-brand-600" /></div>
           ) : filter === 'done' && !hasPlan ? (
-            completedTasks.length
-              ? <div className="space-y-1.5">{completedTasks.map((t) => taskRow(t, 'opacity-80'))}</div>
-              : <Empty>Nothing finished in this clan yet.</Empty>
+            doneTasks.length
+              ? <div className="space-y-1.5">{doneTasks.map((t) => taskRow(t, 'opacity-80'))}</div>
+              : <Empty>{kind === 'all' ? 'Nothing finished in this clan yet.' : `No finished ${typeLabel(kind).toLowerCase()} yet.`}</Empty>
           ) : (
             <>
               {/* Waiting for review and not tied to a block: first, it is the job. */}
@@ -305,7 +352,7 @@ export function TodayTimeline<P extends Pending>({
                 </Group>
               )}
 
-              {filter === 'review' && pending.length === 0 && (
+              {filter === 'review' && shownPending.length === 0 && (
                 <Empty><CheckCircle2 className="h-4 w-4 text-emerald-400" />Nothing waiting. All clear.</Empty>
               )}
 
@@ -316,21 +363,21 @@ export function TodayTimeline<P extends Pending>({
                 const done = slot.items.filter((i) => i.status === 'completed').length;
                 const finished = total > 0 && done === total;
                 // In a filtered view a block with nothing to show steps aside.
-                if (filter !== 'all' && rows.length === 0) return null;
+                if (narrowed && rows.length === 0) return null;
                 // A finished block folds to one line unless asked for.
-                const collapsed = filter === 'all' && finished && !expanded.has(slot.id);
+                const collapsed = !narrowed && finished && !expanded.has(slot.id);
                 return (
                   <div key={slot.id}>
                     <BlockHeader
                       slot={slot} done={done} total={total} finished={finished}
-                      collapsible={finished && filter === 'all'} collapsed={collapsed} onToggle={() => toggle(slot.id)}
+                      collapsible={finished && !narrowed} collapsed={collapsed} onToggle={() => toggle(slot.id)}
                     />
                     {!collapsed && (
                       <div className="mt-1.5 space-y-1.5 border-l-2 border-slate-100 pl-3 dark:border-slate-800">
-                        {rows.length ? rows : filter === 'all' && (
+                        {rows.length ? rows : !narrowed && (
                           <p className="py-1 text-xs text-muted-foreground">Nothing in this block today.</p>
                         )}
-                        {filter === 'all' && !readOnly && slot.rights?.canAddItems && (
+                        {!narrowed && !readOnly && slot.rights?.canAddItems && (
                           <InlineAdd menteeId={menteeId} slotId={slot.id} clanId={clanId} onAdded={() => void refetch()} />
                         )}
                       </div>
@@ -347,7 +394,7 @@ export function TodayTimeline<P extends Pending>({
               )}
 
               {filter === 'done' && (() => {
-                const earlier = completedTasks.filter((t) => !placed.has(t.id));
+                const earlier = doneTasks.filter((t) => !placed.has(t.id));
                 return earlier.length > 0 && (
                   <Group title={hasPlan ? 'Finished before today' : 'Finished'}>
                     {earlier.map((t) => taskRow(t, 'opacity-80'))}
@@ -355,12 +402,15 @@ export function TodayTimeline<P extends Pending>({
                 );
               })()}
 
-              {filter === 'open' && openTasks.length === 0 && (
+              {filter === 'open' && openTasks.length === 0 && kind !== 'all' && (
+                <Empty>No open {typeLabel(kind).toLowerCase()} for {first_}.</Empty>
+              )}
+              {filter === 'open' && openTasks.length === 0 && kind === 'all' && (
                 <Empty>Nothing on {first_}&rsquo;s plate — use Assign to give them their next task.</Empty>
               )}
 
               {/* No plan: say so, and make fixing it one click. */}
-              {!hasPlan && filter === 'all' && (
+              {!hasPlan && !narrowed && (
                 <div className="flex flex-wrap items-center gap-2 rounded-xl border border-dashed border-slate-300 px-3 py-2.5 dark:border-slate-700">
                   <CalendarClock className="h-4 w-4 shrink-0 text-slate-400" />
                   <p className="min-w-0 flex-1 text-xs text-muted-foreground">
@@ -375,10 +425,10 @@ export function TodayTimeline<P extends Pending>({
                 </div>
               )}
 
-              {filter === 'all' && hasPlan && completedTasks.some((t) => !placed.has(t.id)) && (
+              {filter === 'all' && kind === 'all' && hasPlan && doneTasks.some((t) => !placed.has(t.id)) && (
                 <button type="button" onClick={() => setFilter('done')}
                   className="text-xs text-muted-foreground underline-offset-4 hover:text-brand-700 hover:underline">
-                  {completedTasks.filter((t) => !placed.has(t.id)).length} finished before today
+                  {doneTasks.filter((t) => !placed.has(t.id)).length} finished before today
                 </button>
               )}
             </>

@@ -493,7 +493,7 @@ class TaskService {
     }
     return models.AssignedTask.findAll({
       where,
-      attributes: ['id', 'status', 'dueDate', 'submittedAt', 'completedAt', 'isLate', 'finalRating', 'enrollmentId', 'clanId'],
+      attributes: ['id', 'status', 'dueDate', 'submittedAt', 'completedAt', 'isLate', 'finalRating', 'enrollmentId', 'clanId', 'typeOverride', 'titleOverride'],
       include: [{ model: models.RoadmapTask, as: 'roadmapTask', attributes: ['title', 'type'] }],
       order: [['dueDate', 'ASC']]
     });
