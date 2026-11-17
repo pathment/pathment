@@ -80,7 +80,7 @@ class GroqService {
     if (!resp.ok) throw new Error(`could not fetch audio (${resp.status})`);
     const buf = Buffer.from(await resp.arrayBuffer());
     // Name the file for what it is: a video answer arrives as its mp3 audio track
-    // (see interviewProctoring.audioTrackUrl), a voice answer as the recorded webm/m4a.
+    // (see proctoringRules.audioTrackUrl), a voice answer as the recorded webm/m4a.
     const ext = (String(audioUrl).split('?')[0].match(/\.([a-z0-9]+)$/i) || [])[1]?.toLowerCase();
     const TYPES = { mp3: 'audio/mpeg', m4a: 'audio/mp4', mp4: 'audio/mp4', wav: 'audio/wav', ogg: 'audio/ogg', webm: 'audio/webm' };
     const type = TYPES[ext] ? ext : 'webm';

@@ -57,6 +57,12 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.INTEGER,
       allowNull: true,
       field: 'pass_score'
+    },
+    // Full proctoring: camera on and the entire screen shared, the whole time.
+    proctored: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false
     }
   }, {
     tableName: 'quiz_assignments',

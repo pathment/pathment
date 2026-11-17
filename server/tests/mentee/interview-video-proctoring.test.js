@@ -28,18 +28,18 @@ jest.mock('../../src/config/cloudinary', () => ({
 const { models } = require('../../src/db');
 const interviewSessionService = require('../../src/services/interviewSessionService');
 const interviewKitService = require('../../src/services/interviewKitService');
-const proctoring = require('../../src/services/interviewProctoring');
+const proctoring = require('../../src/services/proctoringRules');
 const cloudinary = require('../../src/config/cloudinary');
 const { deleteFromCloudinary } = require('../../src/utils/cloudinaryUpload');
 const { cleanDb, createMentor, createMentee } = require('../helpers/seed');
 
 describe('interview proctoring rules', () => {
   it('needs a camera for proctoring or any video question, a screen only for proctoring', () => {
-    expect(proctoring.requirementsFor({ cameraRequired: false, questions: [{ kind: 'voice' }] }))
+    expect(proctoring.requirementsFor({ proctored: false, questions: [{ kind: 'voice' }] }))
       .toEqual({ camera: false, screen: false, video: false });
-    expect(proctoring.requirementsFor({ cameraRequired: false, questions: [{ kind: 'video' }] }))
+    expect(proctoring.requirementsFor({ proctored: false, questions: [{ kind: 'video' }] }))
       .toEqual({ camera: true, screen: false, video: true });
-    expect(proctoring.requirementsFor({ cameraRequired: true, questions: [{ kind: 'text' }] }))
+    expect(proctoring.requirementsFor({ proctored: true, questions: [{ kind: 'text' }] }))
       .toEqual({ camera: true, screen: true, video: false });
   });
 
@@ -110,7 +110,7 @@ describe('interview video answers and snapshots', () => {
     it('signs an upload that can only land on this answer, then attaches it', async () => {
       const signed = await interviewSessionService.signVideoUpload(session.id, mentee.id, videoQ.id);
       expect(signed.direct).toBe(true);
-      expect(signed.publicId.startsWith(proctoring.videoPublicIdPrefix(session.id, videoQ.id))).toBe(true);
+      expect(signed.publicId.startsWith(proctoring.videoPublicIdPrefix('interviews', session.id, videoQ.id))).toBe(true);
       expect(signed.fields).toMatchObject({ api_key: 'key', public_id: signed.publicId, signature: 'signed' });
 
       const out = await interviewSessionService.attachVideo(session.id, mentee.id, videoQ.id, { publicId: signed.publicId });
@@ -121,7 +121,7 @@ describe('interview video answers and snapshots', () => {
     });
 
     it('refuses a video id signed for another answer, and video on a voice question', async () => {
-      const elsewhere = `${proctoring.videoPublicIdPrefix(session.id, voiceQ.id)}123`;
+      const elsewhere = `${proctoring.videoPublicIdPrefix('interviews', session.id, voiceQ.id)}123`;
       await expect(interviewSessionService.attachVideo(session.id, mentee.id, videoQ.id, { publicId: elsewhere }))
         .rejects.toThrow(/does not belong/);
       await expect(interviewSessionService.signVideoUpload(session.id, mentee.id, voiceQ.id)).rejects.toThrow(/video question/);

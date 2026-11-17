@@ -3,18 +3,21 @@
 import { useEffect, useState, useCallback } from 'react';
 import { toast } from 'sonner';
 import {
-  Loader2, CheckCircle2, XCircle, Check, X, ListChecks, Type, ToggleLeft, MessageSquare,
+  Loader2, CheckCircle2, XCircle, Check, X, ListChecks, Type, ToggleLeft, MessageSquare, Video, Eye, AlertTriangle,
 } from 'lucide-react';
 import { Drawer } from '@/components/shared/Drawer';
 import { quizApi, type QuizReview, type QuizReviewItem } from '@/lib/services/quiz-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { Avatar } from '@/components/shared/Avatar';
+import { useConfirm } from '@/lib/context/ConfirmContext';
+import { ProctorSummary, SnapshotStrip } from '@/components/mentor/ProctorSummary';
 
 const KIND_ICON = {
   single: ListChecks,
   multi: ListChecks,
   boolean: ToggleLeft,
   short: Type,
+  video: Video,
 } as const;
 
 const KIND_LABEL: Record<string, string> = {
@@ -22,6 +25,7 @@ const KIND_LABEL: Record<string, string> = {
   multi: 'Multiple choice',
   boolean: 'True / false',
   short: 'Short answer',
+  video: 'Video answer',
 };
 
 /**
@@ -47,6 +51,8 @@ export function QuizReviewDrawer({
   const [scores, setScores] = useState<Record<string, { points: string; note: string }>>({});
   const [overallNote, setOverallNote] = useState('');
   const [finalizing, setFinalizing] = useState(false);
+  const [deletingSnaps, setDeletingSnaps] = useState(false);
+  const confirm = useConfirm();
 
   const load = useCallback(() => {
     setLoading(true);
@@ -103,6 +109,29 @@ export function QuizReviewDrawer({
     }
   };
 
+  const deleteSnaps = async () => {
+    const ok = await confirm({
+      title: 'Delete proctoring images?',
+      description: 'This permanently removes every webcam and screen snapshot for this quiz. Behaviour flags (tab switches, fullscreen exits, etc.) are kept.',
+      confirmLabel: 'Delete images',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    setDeletingSnaps(true);
+    try {
+      await quizApi.deleteSnapshots(taskId);
+      toast.success('Images deleted');
+      load();
+    } catch (e) {
+      toast.error(extractApiErrorMessage(e, 'Could not delete the images'));
+    } finally {
+      setDeletingSnaps(false);
+    }
+  };
+
+  // Video answers are the mentor's to score: finishing waits for every one.
+  const unscoredVideos = review?.items.filter((it) => it.kind === 'video' && it.answer?.videoUrl && (scores[it.questionId]?.points ?? '') === '').length ?? 0;
+
   const session = review?.session ?? null;
   const totalAwarded = review?.items.reduce((s, it) => s + (Number(scores[it.questionId]?.points) || 0), 0) ?? 0;
   const totalPossible = review?.totals.totalPossible ?? 0;
@@ -118,7 +147,9 @@ export function QuizReviewDrawer({
       footer={canReview ? (
         <>
           <button onClick={onClose} className="px-4 py-2 border border-slate-200 text-slate-700 rounded-xl text-sm hover:bg-slate-50">Close</button>
-          <button onClick={finalize} disabled={finalizing} className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-sm inline-flex items-center gap-2 disabled:opacity-50">
+          <button onClick={finalize} disabled={finalizing || unscoredVideos > 0}
+            title={unscoredVideos ? `Score the ${unscoredVideos === 1 ? 'video answer' : `${unscoredVideos} video answers`} first` : undefined}
+            className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-sm inline-flex items-center gap-2 disabled:opacity-50">
             {finalizing ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
             Finalize · {totalAwarded}/{totalPossible} pts ({livePercent}%)
           </button>
@@ -157,7 +188,7 @@ export function QuizReviewDrawer({
                   {totalAwarded}<span className="text-slate-400"> / {totalPossible} pts</span>
                 </div>
                 <div className="text-[11px] text-slate-400">
-                  {review.totals.questionCount} question{review.totals.questionCount === 1 ? '' : 's'} · Auto-graded
+                  {review.totals.questionCount} question{review.totals.questionCount === 1 ? '' : 's'} · {review.items.some((it) => it.kind === 'video') ? 'videos scored by you' : 'Auto-graded'}
                 </div>
               </div>
               {session?.passed != null && (
@@ -172,17 +203,32 @@ export function QuizReviewDrawer({
             </div>
             {canReview && (
               <p className="text-[11px] text-slate-400">
-                This quiz was auto-graded. Confirm or adjust the points below, then finalize to post the score.
+                {unscoredVideos > 0
+                  ? `Watch and score the ${unscoredVideos === 1 ? 'video answer' : `${unscoredVideos} video answers`}; the rest was auto-graded. Then finalize to post the score.`
+                  : 'This quiz was auto-graded. Confirm or adjust the points below, then finalize to post the score.'}
               </p>
             )}
           </div>
+
+          {/* Proctoring (reviewer-only; the server sends nothing for the mentee) */}
+          {review.proctor && (review.options.proctored || review.proctor.snapshots.length > 0 || Object.keys(review.proctor.flagCounts).length > 0) && (
+            <ProctorSummary
+              proctor={review.proctor}
+              screenRequired={review.options.screenShareRequired}
+              submitted={session?.status === 'submitted'}
+              canDelete={canReview}
+              deleting={deletingSnaps}
+              onDelete={deleteSnaps}
+            />
+          )}
 
           {/* Per-question review */}
           {review.items.map((it, i) => {
             const KindIcon = KIND_ICON[it.kind] ?? Type;
             const a = it.answer;
             const sc = scores[it.questionId] || { points: '', note: '' };
-            const isChoice = it.kind !== 'short';
+            const isChoice = it.kind !== 'short' && it.kind !== 'video';
+            const needsScore = canReview && it.kind === 'video' && !!a?.videoUrl && sc.points === '';
             const selected = a?.selectedOptionIds ?? [];
             const correctIds = it.correctOptionIds ?? [];
             return (
@@ -195,9 +241,13 @@ export function QuizReviewDrawer({
                       <span className="ml-auto inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
                         <Check className="w-3 h-3" /> Correct
                       </span>
-                    ) : a.isCorrect === false ? (
+                    ) : a.isCorrect === false && it.kind !== 'video' ? (
                       <span className="ml-auto inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-red-50 text-red-700">
                         <X className="w-3 h-3" /> Incorrect
+                      </span>
+                    ) : needsScore ? (
+                      <span className="ml-auto inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">
+                        <AlertTriangle className="w-3 h-3" /> Needs your score
                       </span>
                     ) : null
                   )}
@@ -205,7 +255,26 @@ export function QuizReviewDrawer({
                 <p className="text-sm text-slate-900 mb-3">{it.prompt}</p>
 
                 {/* Mentee answer */}
-                {!a ? (
+                {it.kind === 'video' ? (
+                  a?.videoUrl ? (
+                    <div className="space-y-2">
+                      <video controls playsInline preload="metadata" src={a.videoUrl} className="w-full max-h-80 rounded-lg bg-black">
+                        <track kind="captions" />
+                      </video>
+                      {a.transcript && (
+                        <details>
+                          <summary className="text-xs font-medium text-slate-500 cursor-pointer">Live captions</summary>
+                          <div className="text-sm text-slate-700 bg-slate-50 rounded-lg p-3 mt-1.5 whitespace-pre-wrap">{a.transcript}</div>
+                        </details>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-amber-700 bg-amber-50 rounded-lg p-3 inline-flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 shrink-0" />
+                      No video was recorded{a?.transcript ? ' (live captions only)' : ''} — scored 0.
+                    </p>
+                  )
+                ) : !a ? (
                   <p className="text-sm text-slate-400 italic">No answer given.</p>
                 ) : isChoice ? (
                   <div className="space-y-1.5">
@@ -253,6 +322,16 @@ export function QuizReviewDrawer({
                   </div>
                 )}
 
+                {/* Snapshots taken while this question was on screen (reviewer only). */}
+                {canReview && it.snapshots && it.snapshots.length > 0 && (
+                  <div className="mt-3">
+                    <p className="text-[11px] text-slate-400 mb-1 inline-flex items-center gap-1">
+                      <Eye className="w-3 h-3" /> Snapshots during this question · {it.snapshots.length}
+                    </p>
+                    <SnapshotStrip snapshots={it.snapshots} size="sm" />
+                  </div>
+                )}
+
                 {/* Explanation */}
                 {it.explanation && (
                   <details className="mt-3">
@@ -272,7 +351,7 @@ export function QuizReviewDrawer({
                           className="w-16 border border-slate-300 rounded-lg px-2 py-1 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-brand-500" />
                         <span className="text-slate-400">/ {it.points}</span>
                       </label>
-                      {a?.autoPoints != null && (
+                      {a?.autoPoints != null && it.kind !== 'video' && (
                         <span className="text-[11px] text-slate-400">Auto: {a.autoPoints}</span>
                       )}
                     </div>

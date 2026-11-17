@@ -7,12 +7,21 @@ const authzService = require('./authzService');
 const { PERMISSIONS } = require('../config/permissions');
 const submissionService = require('./submissionService');
 const clanLifecycleService = require('./clanLifecycleService');
+const proctoring = require('./proctoringRules');
+const media = require('./proctoredMedia');
+
+const { VIDEO_KIND } = proctoring;
 
 /**
  * QuizSessionService — the candidate runner + auto-grading + mentor review for
  * `quiz` tasks. The mentee takes the quiz; objective answers grade instantly on
  * submit. If the assignment is 'auto' the score finalizes immediately (points +
  * gamification), otherwise it lands in Approvals for the mentor to confirm/adjust.
+ *
+ * Video questions are answered on camera and scored by the mentor, so a quiz
+ * with one always goes to review. Proctored quizzes (camera + entire screen)
+ * keep a proctor log of snapshots and events, like interviews — both use
+ * proctoringRules (who needs what) and proctoredMedia (storing it).
  */
 class QuizSessionService {
   // ── Grading (pure) ───────────────────────────────────────────────────────────
@@ -26,6 +35,11 @@ class QuizSessionService {
   _grade(question, answer = {}) {
     const kind = question.kind;
     const points = question.points || 0;
+    // A video is scored by the mentor: ungraded (null) when there's a recording,
+    // nothing to grade (0) when there isn't.
+    if (kind === VIDEO_KIND) {
+      return answer.recordingUrl ? { isCorrect: null, points: null } : { isCorrect: false, points: 0 };
+    }
     if (kind === 'single' || kind === 'boolean') {
       const picked = (answer.selectedOptionIds || []).map(String);
       const correct = (question.correctOptionIds || []).map(String);
@@ -97,11 +111,23 @@ class QuizSessionService {
       // Options carry no "correct" marker; short questions carry none at all.
       options: (q.options || []).map((o) => ({ id: o.id, label: o.label })),
       multiple: q.kind === 'multi',
+      maxRecordingSeconds: q.kind === VIDEO_KIND ? proctoring.maxRecordingSeconds(q.config) : null,
     };
+  }
+
+  /** What an attempt at this assignment needs (camera / screen / video). */
+  _requirements(assignment, questions) {
+    return proctoring.requirementsFor({ proctored: assignment.proctored, questions });
+  }
+
+  /** A quiz with a video question is reviewed by the mentor, whatever the setting. */
+  _evaluationMode(assignment, questions) {
+    return questions.some((q) => q.kind === VIDEO_KIND) ? 'review' : assignment.evaluationMode;
   }
 
   async getForCandidate(taskId, menteeId, { clanId = null } = {}) {
     const { task, assignment, kit, questions } = await this._loadContext(taskId, menteeId, { clanId });
+    const requirements = this._requirements(assignment, questions);
 
     const sessions = await models.QuizSession.findAll({
       where: { assignedTaskId: taskId, menteeId },
@@ -119,6 +145,8 @@ class QuizSessionService {
         questionId: a.questionId,
         selectedOptionIds: a.selectedOptionIds || [],
         answerText: a.answerText,
+        videoUrl: a.recordingUrl || null,
+        transcript: a.transcript || null,
       }));
     }
 
@@ -145,11 +173,15 @@ class QuizSessionService {
         totalPoints: questions.reduce((s, q) => s + (q.points || 0), 0),
       },
       options: {
-        evaluationMode: assignment.evaluationMode,
+        evaluationMode: this._evaluationMode(assignment, questions),
         allowRetake: assignment.allowRetake,
         timeLimitSeconds: assignment.timeLimitSeconds,
         showAnswers: assignment.showAnswers,
         passScore: assignment.passScore,
+        // What the runner must have before the clock starts (see proctoringRules).
+        cameraRequired: requirements.camera,
+        screenShareRequired: requirements.screen,
+        videoAnswers: requirements.video,
       },
       questions: questions.map((q) => this._publicQuestion(q)),
       state: {
@@ -168,9 +200,14 @@ class QuizSessionService {
 
   // ── Attempt lifecycle ────────────────────────────────────────────────────────
 
-  async startOrResume(taskId, menteeId, { clanId = null } = {}) {
+  async startOrResume(taskId, menteeId, { clanId = null, capabilities } = {}) {
     await clanLifecycleService.assertTaskWritable(taskId);
-    const { assignment } = await this._loadContext(taskId, menteeId, { clanId });
+    const { assignment, questions } = await this._loadContext(taskId, menteeId, { clanId });
+
+    // Before any clock starts: a client that can't share a screen or record
+    // video is told where to take this quiz, instead of starting one it can't run.
+    const missing = proctoring.missingCapability(this._requirements(assignment, questions), proctoring.parseCapabilities(capabilities));
+    if (missing) throw new ConflictError(proctoring.unsupportedClientMessage(missing, 'quiz'));
 
     const existing = await models.QuizSession.findOne({
       where: { assignedTaskId: taskId, menteeId, status: 'in_progress' },
@@ -242,6 +279,10 @@ class QuizSessionService {
       fields.selectedOptionIds = ids.filter((id) => valid.has(id));
     }
     if (payload.answerText !== undefined) fields.answerText = payload.answerText ? String(payload.answerText) : null;
+    // A video answer's live captions (the recording itself arrives separately).
+    if (question.kind === VIDEO_KIND && payload.transcript !== undefined) {
+      fields.transcript = payload.transcript ? String(payload.transcript).slice(0, 20000) : null;
+    }
     // Forward-only resume position.
     if (question.position > (session.currentPosition || 0)) {
       await session.update({ currentPosition: question.position });
@@ -251,8 +292,102 @@ class QuizSessionService {
       where: { sessionId, questionId },
       defaults: { sessionId, questionId, ...fields },
     });
+    // A stray empty caption flush never wipes captions already saved.
+    if (fields.transcript === null && answer.transcript) delete fields.transcript;
     await answer.update(fields);
     return { saved: true, questionId };
+  }
+
+  // ── Video answers and proctoring ─────────────────────────────────────────────
+
+  /** The session a recording may land on: open, or submitted moments ago (see proctoredMedia). */
+  async _recordingSession(sessionId, menteeId) {
+    const session = await models.QuizSession.findByPk(sessionId);
+    if (!session) throw new NotFoundError('Quiz session not found');
+    if (session.menteeId !== menteeId) throw new ForbiddenError('This session is not yours');
+    const task = await models.AssignedTask.scope('withPoolWork').findByPk(session.assignedTaskId, { attributes: ['id', 'status'] });
+    if (!media.recordingStillAccepted(session, task?.status)) throw new ConflictError('This quiz has already been submitted.');
+    await clanLifecycleService.assertTaskWritable(session.assignedTaskId);
+    return session;
+  }
+
+  async _videoQuestion(session, questionId) {
+    if (!questionId) throw new ValidationError('questionId is required');
+    const question = await models.QuizQuestion.findByPk(questionId);
+    if (!question || question.kitId !== (await this._kitIdForSession(session))) {
+      throw new ValidationError('That question is not part of this quiz');
+    }
+    if (question.kind !== VIDEO_KIND) throw new ValidationError('Video can only be attached to a video question');
+    return question;
+  }
+
+  /** Permission to upload one video answer straight to Cloudinary (see proctoredMedia). */
+  async signVideoUpload(sessionId, menteeId, questionId) {
+    const session = await this._recordingSession(sessionId, menteeId);
+    const question = await this._videoQuestion(session, questionId);
+    return media.signDirectVideo(`${proctoring.videoPublicIdPrefix('quizzes', session.id, question.id)}${Math.floor(Date.now() / 1000)}`);
+  }
+
+  /**
+   * Store a video answer (the file, or a direct upload we signed). A new take
+   * replaces the old one. One arriving just after submit is put up for the
+   * mentor to grade, since submit marked the empty answer as nothing to grade.
+   */
+  async attachVideo(sessionId, menteeId, questionId, { file = null, publicId = null } = {}) {
+    const session = await this._recordingSession(sessionId, menteeId);
+    const question = await this._videoQuestion(session, questionId);
+    const { url, publicId: storedId } = await media.resolveVideo({
+      file,
+      publicId,
+      prefix: proctoring.videoPublicIdPrefix('quizzes', session.id, question.id),
+      folder: `pathment/quizzes/videos/${session.id}`,
+    });
+
+    const fields = {
+      position: question.position,
+      kind: question.kind,
+      promptSnapshot: question.prompt,
+      pointsPossible: question.points,
+      recordingUrl: url,
+      recordingPublicId: storedId,
+    };
+    const [answer] = await models.QuizAnswer.findOrCreate({
+      where: { sessionId: session.id, questionId: question.id },
+      defaults: { sessionId: session.id, questionId: question.id, selectedOptionIds: [], ...fields },
+    });
+    const replaced = answer.recordingPublicId && answer.recordingPublicId !== storedId ? answer.recordingPublicId : null;
+    if (session.status === 'submitted') Object.assign(fields, { isCorrect: null, autoPoints: null, pointsAwarded: null });
+    await answer.update(fields);
+    media.removeRecording(replaced);
+    return { videoUrl: url, questionId: question.id };
+  }
+
+  async logProctorEvents(sessionId, menteeId, events = []) {
+    const session = await this._openSession(sessionId, menteeId);
+    await clanLifecycleService.assertTaskWritable(session.assignedTaskId);
+    const clean = media.cleanClientEvents(events);
+    await media.appendProctorEvents('quiz_sessions', session.id, clean);
+    return { logged: clean.length };
+  }
+
+  async attachSnapshot(sessionId, menteeId, file, questionId = null, source = 'camera') {
+    const session = await this._openSession(sessionId, menteeId);
+    await clanLifecycleService.assertTaskWritable(session.assignedTaskId);
+    return media.storeSnapshot('quiz_sessions', session.id, file, { questionId, source, folder: 'pathment/quizzes/snapshots' });
+  }
+
+  /** Delete the proctor snapshot images (mentor); behaviour flags are kept. */
+  async deleteSnapshots(taskId, mentorId) {
+    await clanLifecycleService.assertTaskWritable(taskId);
+    const task = await models.AssignedTask.scope('withPoolWork').findByPk(taskId);
+    if (!task) throw new NotFoundError('Task not found');
+    await this._assertReviewer(mentorId, task);
+    await submissionService.assertClanWritableForReview(task.clanId);
+    const session = await this._latestSubmittedSession(taskId);
+    if (!session) throw new NotFoundError('No quiz session found');
+    const { kept, deleted } = await media.deleteSnapshotImages(session.proctorLog || []);
+    await session.update({ proctorLog: kept });
+    return { deleted };
   }
 
   /**
@@ -272,6 +407,7 @@ class QuizSessionService {
 
     let autoScore = 0;
     let maxScore = 0;
+    let videosToGrade = 0;
     const graded = [];
     for (const q of questions) {
       maxScore += q.points || 0;
@@ -279,12 +415,18 @@ class QuizSessionService {
       const { isCorrect, points } = this._grade(q, {
         selectedOptionIds: a ? (a.selectedOptionIds || []) : [],
         answerText: a ? a.answerText : null,
+        recordingUrl: a ? a.recordingUrl : null,
       });
-      autoScore += points;
+      if (points === null) videosToGrade += 1;
+      autoScore += points || 0;
       graded.push({ question: q, existing: a, isCorrect, points });
     }
     const pct = maxScore > 0 ? (autoScore / maxScore) * 100 : 0;
-    const passed = assignment.passScore != null ? pct >= assignment.passScore : null;
+    const evaluationMode = this._evaluationMode(assignment, questions);
+    // With videos still to score, any percentage now would be wrong: the
+    // mentor's review sets it.
+    const scored = videosToGrade === 0;
+    const passed = scored && assignment.passScore != null ? pct >= assignment.passScore : null;
 
     const out = await sequelize.transaction(async (transaction) => {
       // Persist per-answer grade snapshots.
@@ -307,7 +449,7 @@ class QuizSessionService {
 
       await session.update({
         status: 'submitted', submittedAt: new Date(),
-        autoScore, maxScore, scorePercent: pct, passed,
+        autoScore, maxScore, scorePercent: scored ? pct : null, passed,
       }, { transaction });
 
       // Next submission version for this assignment (mirrors submissionService).
@@ -320,7 +462,9 @@ class QuizSessionService {
       const submission = await models.TaskSubmission.create({
         assignedTaskId: task.id,
         version,
-        submissionText: `Quiz completed — ${autoScore}/${maxScore} points (${Math.round(pct)}%).`,
+        submissionText: scored
+          ? `Quiz completed — ${autoScore}/${maxScore} points (${Math.round(pct)}%).`
+          : `Quiz completed — ${autoScore}/${maxScore} points so far; ${videosToGrade} video answer${videosToGrade === 1 ? '' : 's'} to score.`,
         submissionUrls: [],
         status: 'pending',
         submittedAt: new Date(),
@@ -336,7 +480,7 @@ class QuizSessionService {
 
     // Auto mode → finalize now (posts points + gamification, marks completed).
     let finalized = false;
-    if (assignment.evaluationMode === 'auto') {
+    if (evaluationMode === 'auto') {
       await submissionService.reviewSubmission(out.submissionId, task.mentorId, {
         decision: 'approved',
         isApproved: true,
@@ -360,7 +504,9 @@ class QuizSessionService {
           recipients: [{ userId: task.mentorId }],
           payload: {
             title: `${name} completed a quiz`,
-            message: `${name} scored ${Math.round(pct)}% on a quiz. Confirm the result when you can.`,
+            message: scored
+              ? `${name} scored ${Math.round(pct)}% on a quiz. Confirm the result when you can.`
+              : `${name} finished a quiz with ${videosToGrade} video answer${videosToGrade === 1 ? '' : 's'} for you to score.`,
             actionUrl: `/mentor/approvals?task=${task.id}`,
             actionLabel: 'Review quiz',
             relatedEntityType: 'task_submission',
@@ -375,7 +521,7 @@ class QuizSessionService {
 
     return {
       autoScore, maxScore, scorePercent: Math.round(pct), passed,
-      evaluationMode: assignment.evaluationMode, finalized,
+      evaluationMode, finalized,
       // Only reveal per-question correctness when the assignment allows it.
       review: assignment.showAnswers ? await this._candidateResult(session.id, menteeId) : null,
     };
@@ -401,6 +547,8 @@ class QuizSessionService {
         explanation: q.explanation || null,
         selectedOptionIds: a ? (a.selectedOptionIds || []) : [],
         answerText: a ? a.answerText : null,
+        videoUrl: a ? (a.recordingUrl || null) : null,
+        // A video waiting for the mentor is neither right nor wrong yet.
         isCorrect: a ? a.isCorrect : false,
         pointsAwarded: a ? a.pointsAwarded : 0,
       };
@@ -449,6 +597,10 @@ class QuizSessionService {
     const session = sessions.find((s) => s.status === 'submitted') || sessions[0] || null;
     const answers = session ? (session.answers || []) : [];
     const answerByQ = new Map(answers.map((a) => [a.questionId, a]));
+    // Proctoring is reviewer-only — never shown back to the person proctored.
+    const proctor = isOwnerMentee
+      ? { snapshots: [], flags: [], flagCounts: {} }
+      : media.splitProctorLog(session ? (session.proctorLog || []) : [], []);
 
     const items = questions.map((q) => {
       const a = answerByQ.get(q.id);
@@ -464,9 +616,13 @@ class QuizSessionService {
         acceptedAnswers: isOwnerMentee ? null : (q.acceptedAnswers || []),
         matchMode: q.matchMode,
         explanation: q.explanation || null,
+        maxRecordingSeconds: q.kind === VIDEO_KIND ? proctoring.maxRecordingSeconds(q.config) : null,
+        snapshots: isOwnerMentee ? [] : proctor.snapshots.filter((sn) => sn.questionId === q.id),
         answer: a ? {
           selectedOptionIds: a.selectedOptionIds || [],
           answerText: a.answerText,
+          videoUrl: a.recordingUrl || null,
+          transcript: a.transcript || null,
           isCorrect: a.isCorrect,
           autoPoints: a.autoPoints,
           pointsAwarded: a.pointsAwarded,
@@ -482,10 +638,15 @@ class QuizSessionService {
       task: { id: task.id, status: task.status, pointsAwarded: task.pointsAwarded, menteeId: task.menteeId },
       kit: { id: kit?.id, title: kit?.title, description: kit?.description },
       options: {
-        evaluationMode: assignment.evaluationMode,
+        evaluationMode: this._evaluationMode(assignment, questions),
         allowRetake: assignment.allowRetake,
         passScore: assignment.passScore,
+        proctored: assignment.proctored,
+        screenShareRequired: this._requirements(assignment, questions).screen,
       },
+      proctor,
+      // Video answers the mentor still has to score before finishing.
+      videosToGrade: items.filter((it) => it.kind === VIDEO_KIND && it.answer?.videoUrl && it.answer.pointsAwarded == null).length,
       session: session ? {
         id: session.id,
         status: session.status,
@@ -553,6 +714,10 @@ class QuizSessionService {
     if (!submissionId) throw new ValidationError('This quiz has no submission to review');
 
     const answers = await models.QuizAnswer.findAll({ where: { sessionId: session.id } });
+    const unscored = answers.filter((a) => a.kind === VIDEO_KIND && a.recordingUrl && a.pointsAwarded == null).length;
+    if (unscored) {
+      throw new ValidationError(`Score the ${unscored === 1 ? 'video answer' : `${unscored} video answers`} before finishing the review.`);
+    }
     const totalPossible = answers.reduce((s, a) => s + (a.pointsPossible || 0), 0);
     const totalAwarded = answers.reduce((s, a) => s + (Number(a.pointsAwarded) || 0), 0);
     const pct = totalPossible > 0 ? (totalAwarded / totalPossible) * 100 : 0;
@@ -564,6 +729,12 @@ class QuizSessionService {
       { submissionText: `Quiz reviewed — ${totalAwarded}/${totalPossible} points (${Math.round(pct)}%).` },
       { where: { id: submissionId } }
     );
+    // The attempt shows the reviewed score too (the mentee's "already done" screen reads it).
+    const assignment = await models.QuizAssignment.findOne({ where: { assignedTaskId: taskId }, attributes: ['passScore'] });
+    await session.update({
+      scorePercent: pct,
+      passed: assignment?.passScore != null ? pct >= assignment.passScore : null,
+    });
 
     await submissionService.reviewSubmission(submissionId, mentorId, {
       decision: 'approved',

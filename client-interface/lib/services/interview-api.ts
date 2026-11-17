@@ -1,4 +1,11 @@
 import { apiClient } from './api-client';
+import { videoFormData, type VideoUploadEndpoints } from './video-upload';
+
+/** Where a proctored attempt sends its events and snapshots (interviews and quizzes). */
+export interface ProctorApi {
+  logProctor: (sessionId: string, events: ProctorEvent[]) => Promise<unknown>;
+  uploadSnapshot: (sessionId: string, blob: Blob, questionId?: string | null, source?: 'camera' | 'screen') => Promise<unknown>;
+}
 
 // ── Types ──────────────────────────────────────────────────────────────────
 export type InterviewQuestionKind = 'voice' | 'code' | 'text' | 'video';
@@ -193,9 +200,7 @@ export const interviewApi = {
     apiClient.post(`/interviews/sessions/${sessionId}/video`, { questionId, publicId }),
   /** The fallback: send the file through our server (25MB cap). */
   uploadAnswerVideoFile: (sessionId: string, questionId: string, blob: Blob, onProgress?: (fraction: number) => void) => {
-    const fd = new FormData();
-    fd.append('questionId', questionId);
-    fd.append('video', blob, `answer-${questionId}.${videoExt(blob)}`);
+    const fd = videoFormData(questionId, blob);
     return apiClient.post(`/interviews/sessions/${sessionId}/video`, fd, {
       timeout: 180000,
       onUploadProgress: (e: { loaded: number; total?: number }) => { if (e.total) onProgress?.(e.loaded / e.total); },
@@ -221,55 +226,18 @@ export const interviewApi = {
     apiClient.post(`/interviews/review/${taskId}/flag`, { flagged, reason }),
 };
 
-/** File extension for a recorded video blob. */
-export const videoExt = (blob: Blob) => (blob.type.includes('mp4') ? 'mp4' : 'webm');
+/** Where interview video answers go (see video-upload). */
+export const interviewVideoEndpoints: VideoUploadEndpoints = {
+  sign: interviewApi.signVideoUpload,
+  attach: interviewApi.attachVideo,
+  uploadFile: interviewApi.uploadAnswerVideoFile,
+};
 
-/** POST a file straight to a signed upload URL, reporting progress. */
-function postDirect(url: string, fields: Record<string, string>, blob: Blob, filename: string, onProgress?: (f: number) => void): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const fd = new FormData();
-    Object.entries(fields).forEach(([k, v]) => fd.append(k, v));
-    fd.append('file', blob, filename);
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', url);
-    xhr.timeout = 10 * 60 * 1000;
-    xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress?.(e.loaded / e.total); };
-    xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`upload failed (${xhr.status})`)));
-    xhr.onerror = () => reject(new Error('network error'));
-    xhr.ontimeout = () => reject(new Error('upload timed out'));
-    xhr.send(fd);
-  });
-}
-
-/**
- * Send one video answer and attach it. Straight to Cloudinary when the server
- * signs for it (no size or time limit from our own servers on the way), else
- * through our server. Resolves with the stored URL; throws if neither worked.
- */
-export async function uploadVideoAnswer(
-  sessionId: string, questionId: string, blob: Blob, onProgress?: (fraction: number) => void,
-): Promise<string | null> {
-  let signed: { direct: boolean; uploadUrl?: string; fields?: Record<string, string>; publicId?: string } | null = null;
-  try {
-    const res: any = await interviewApi.signVideoUpload(sessionId, questionId); // eslint-disable-line @typescript-eslint/no-explicit-any
-    signed = res?.data ?? null;
-  } catch (e: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
-    // The session or question refused it: retrying elsewhere won't change that.
-    if (e?.response?.status && e.response.status < 500) throw e;
-  }
-  if (signed?.direct && signed.uploadUrl && signed.fields && signed.publicId) {
-    try {
-      await postDirect(signed.uploadUrl, signed.fields, blob, `answer.${videoExt(blob)}`, onProgress);
-      const res: any = await interviewApi.attachVideo(sessionId, questionId, signed.publicId); // eslint-disable-line @typescript-eslint/no-explicit-any
-      return res?.data?.videoUrl ?? null;
-    } catch {
-      // Cloudinary unreachable from here (a filtering network): try our server.
-    }
-  }
-  onProgress?.(0);
-  const res: any = await interviewApi.uploadAnswerVideoFile(sessionId, questionId, blob, onProgress); // eslint-disable-line @typescript-eslint/no-explicit-any
-  return res?.data?.videoUrl ?? null;
-}
+/** Interview proctoring: where events and snapshots go (see useProctor). */
+export const interviewProctorApi: ProctorApi = {
+  logProctor: interviewApi.logProctor,
+  uploadSnapshot: interviewApi.uploadSnapshot,
+};
 
 // ── Review types ────────────────────────────────────────────────────────────
 export interface ReviewAnswer {

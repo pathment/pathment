@@ -1,7 +1,9 @@
 import { apiClient } from './api-client';
+import { videoFormData, type VideoUploadEndpoints } from './video-upload';
+import type { ProctorApi, ProctorEvent, ProctorSnapshot } from './interview-api';
 
 // ── Types ──────────────────────────────────────────────────────────────────
-export type QuizQuestionKind = 'single' | 'multi' | 'boolean' | 'short';
+export type QuizQuestionKind = 'single' | 'multi' | 'boolean' | 'short' | 'video';
 export type QuizMatchMode = 'exact' | 'keyword';
 export type QuizKitStatus = 'draft' | 'published' | 'archived';
 export type QuizEvaluationMode = 'auto' | 'review';
@@ -22,6 +24,8 @@ export interface QuizQuestionInput {
   acceptedAnswers?: string[];
   matchMode?: QuizMatchMode;
   explanation?: string | null;
+  /** Video questions: the longest one recording may run (seconds, 15–300). */
+  maxRecordingSeconds?: number;
   config?: Record<string, unknown>;
 }
 
@@ -34,6 +38,8 @@ export interface QuizKitInput {
   showAnswers?: boolean;
   allowRetakeDefault?: boolean;
   evaluationDefault?: QuizEvaluationMode;
+  /** Assign it with full proctoring (camera + entire screen) unless the mentor turns it off. */
+  proctorDefault?: boolean;
   status?: QuizKitStatus;
   questions?: QuizQuestionInput[];
 }
@@ -47,6 +53,9 @@ export interface QuizKitSummary {
   passScore: number | null;
   evaluationDefault: QuizEvaluationMode;
   allowRetakeDefault: boolean;
+  proctorDefault?: boolean;
+  /** Has a video question — always reviewed by the mentor. */
+  hasVideo?: boolean;
   questionCount: number;
   totalPoints: number;
   updatedAt: string;
@@ -72,6 +81,7 @@ export interface QuizAssignOptions {
   shuffleQuestions?: boolean;
   showAnswers?: boolean;
   passScore?: number | null;
+  proctored?: boolean;
 }
 
 // ── Candidate runner types ─────────────────────────────────────────────────
@@ -84,12 +94,15 @@ export interface CandidateQuizQuestion {
   required: boolean;
   options: QuizOption[];
   multiple: boolean;
+  maxRecordingSeconds?: number | null;
 }
 
 export interface QuizSavedAnswer {
   questionId: string;
   selectedOptionIds: string[];
   answerText: string | null;
+  videoUrl?: string | null;
+  transcript?: string | null;
 }
 
 export interface QuizResultItem {
@@ -103,8 +116,10 @@ export interface QuizResultItem {
   explanation: string | null;
   selectedOptionIds: string[];
   answerText: string | null;
-  isCorrect: boolean;
-  pointsAwarded: number;
+  videoUrl?: string | null;
+  /** null for a video waiting for the mentor's score. */
+  isCorrect: boolean | null;
+  pointsAwarded: number | null;
 }
 
 export interface CandidateQuiz {
@@ -116,6 +131,9 @@ export interface CandidateQuiz {
     timeLimitSeconds: number | null;
     showAnswers: boolean;
     passScore: number | null;
+    cameraRequired?: boolean;
+    screenShareRequired?: boolean;
+    videoAnswers?: boolean;
   };
   questions: CandidateQuizQuestion[];
   state: {
@@ -151,12 +169,16 @@ export interface SaveQuizAnswerPayload {
   questionId: string;
   selectedOptionIds?: string[];
   answerText?: string | null;
+  /** Video answers: the live captions. */
+  transcript?: string | null;
 }
 
 // ── Review types ────────────────────────────────────────────────────────────
 export interface QuizReviewAnswer {
   selectedOptionIds: string[];
   answerText: string | null;
+  videoUrl?: string | null;
+  transcript?: string | null;
   isCorrect: boolean | null;
   autoPoints: number | null;
   pointsAwarded: number | null;
@@ -173,12 +195,21 @@ export interface QuizReviewItem {
   acceptedAnswers: string[] | null;
   matchMode: QuizMatchMode;
   explanation: string | null;
+  maxRecordingSeconds?: number | null;
+  snapshots?: ProctorSnapshot[];
   answer: QuizReviewAnswer | null;
 }
 export interface QuizReview {
   task: { id: string; status: string; pointsAwarded: number | null; menteeId: string };
   kit: { id: string; title: string; description: string | null };
-  options: { evaluationMode: QuizEvaluationMode; allowRetake: boolean; passScore: number | null };
+  options: { evaluationMode: QuizEvaluationMode; allowRetake: boolean; passScore: number | null; proctored?: boolean; screenShareRequired?: boolean };
+  proctor?: {
+    snapshots: ProctorSnapshot[];
+    flags: { type: string; at: string; meta: Record<string, unknown> }[];
+    flagCounts: Record<string, number>;
+  };
+  /** Video answers still to score before the review can finish. */
+  videosToGrade?: number;
   session: {
     id: string; status: string; attemptNumber: number; submittedAt: string | null;
     autoScore: number | null; maxScore: number | null; scorePercent: number | null; passed: boolean | null;
@@ -201,10 +232,30 @@ export const quizApi = {
 
   // Candidate runner
   getCandidateQuiz: (taskId: string) => apiClient.get(`/quizzes/assignments/${taskId}`),
-  startQuiz: (taskId: string) => apiClient.post(`/quizzes/assignments/${taskId}/start`, {}),
+  /** `capabilities`: what this browser can do ('screen', 'video'). */
+  startQuiz: (taskId: string, capabilities: string[] = []) =>
+    apiClient.post(`/quizzes/assignments/${taskId}/start`, { capabilities }),
   saveAnswer: (sessionId: string, payload: SaveQuizAnswerPayload) =>
     apiClient.patch(`/quizzes/sessions/${sessionId}/answer`, payload),
   submitQuiz: (sessionId: string) => apiClient.post(`/quizzes/sessions/${sessionId}/submit`, {}),
+  signVideoUpload: (sessionId: string, questionId: string) =>
+    apiClient.post(`/quizzes/sessions/${sessionId}/video/sign`, { questionId }),
+  attachVideo: (sessionId: string, questionId: string, publicId: string) =>
+    apiClient.post(`/quizzes/sessions/${sessionId}/video`, { questionId, publicId }),
+  uploadAnswerVideoFile: (sessionId: string, questionId: string, blob: Blob, onProgress?: (fraction: number) => void) =>
+    apiClient.post(`/quizzes/sessions/${sessionId}/video`, videoFormData(questionId, blob), {
+      timeout: 180000,
+      onUploadProgress: (e: { loaded: number; total?: number }) => { if (e.total) onProgress?.(e.loaded / e.total); },
+    }),
+  logProctor: (sessionId: string, events: ProctorEvent[]) =>
+    apiClient.post(`/quizzes/sessions/${sessionId}/proctor`, { events }),
+  uploadSnapshot: (sessionId: string, blob: Blob, questionId?: string | null, source: 'camera' | 'screen' = 'camera') => {
+    const fd = new FormData();
+    fd.append('image', blob, `${source}-${Date.now()}.jpg`);
+    fd.append('source', source);
+    if (questionId) fd.append('questionId', questionId);
+    return apiClient.post(`/quizzes/sessions/${sessionId}/snapshot`, fd);
+  },
 
   // Mentor review
   getReview: (taskId: string) => apiClient.get(`/quizzes/review/${taskId}`),
@@ -212,6 +263,20 @@ export const quizApi = {
     apiClient.patch(`/quizzes/review/${taskId}/answer`, { questionId, ...data }),
   finalizeReview: (taskId: string, overallNote?: string) =>
     apiClient.post(`/quizzes/review/${taskId}/finalize`, { overallNote }),
+  deleteSnapshots: (taskId: string) => apiClient.delete(`/quizzes/review/${taskId}/snapshots`),
+};
+
+/** Where quiz video answers go (see video-upload). */
+export const quizVideoEndpoints: VideoUploadEndpoints = {
+  sign: quizApi.signVideoUpload,
+  attach: quizApi.attachVideo,
+  uploadFile: quizApi.uploadAnswerVideoFile,
+};
+
+/** Quiz proctoring: where events and snapshots go (see useProctor). */
+export const quizProctorApi: ProctorApi = {
+  logProctor: quizApi.logProctor,
+  uploadSnapshot: quizApi.uploadSnapshot,
 };
 
 export default quizApi;

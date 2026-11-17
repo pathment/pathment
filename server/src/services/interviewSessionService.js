@@ -8,7 +8,8 @@ const authzService = require('./authzService');
 const { PERMISSIONS } = require('../config/permissions');
 const submissionService = require('./submissionService');
 const clanLifecycleService = require('./clanLifecycleService');
-const proctoring = require('./interviewProctoring');
+const proctoring = require('./proctoringRules');
+const media = require('./proctoredMedia');
 
 /**
  * InterviewSessionService — the candidate runner (Phase 2). Owns starting/resuming
@@ -69,7 +70,7 @@ class InterviewSessionService {
    */
   async getForCandidate(taskId, menteeId, { clanId = null } = {}) {
     const { task, assignment, kit, questions } = await this._loadContext(taskId, menteeId, { clanId });
-    const requirements = proctoring.requirementsFor({ cameraRequired: assignment.cameraRequired, questions });
+    const requirements = proctoring.requirementsFor({ proctored: assignment.cameraRequired, questions });
 
     // Interviewer identity: the mentor's kit config, defaulting the NAME to the
     // kit creator's own name (so it's "Meet <mentor>", not a generic persona).
@@ -129,7 +130,7 @@ class InterviewSessionService {
       interviewer,
       options: {
         allowRetake: assignment.allowRetake,
-        // What the runner must have before the clock starts (see interviewProctoring).
+        // What the runner must have before the clock starts (see proctoringRules).
         cameraRequired: requirements.camera,
         screenShareRequired: requirements.screen,
         videoAnswers: requirements.video,
@@ -204,7 +205,7 @@ class InterviewSessionService {
 
     // Before any clock starts: a client that can't share a screen or record video
     // is told where to take this interview, instead of starting one it can't run.
-    const requirements = proctoring.requirementsFor({ cameraRequired: assignment.cameraRequired, questions });
+    const requirements = proctoring.requirementsFor({ proctored: assignment.cameraRequired, questions });
     const missing = proctoring.missingCapability(requirements, proctoring.parseCapabilities(capabilities));
     if (missing) throw new ConflictError(proctoring.unsupportedClientMessage(missing));
 
@@ -339,11 +340,8 @@ class InterviewSessionService {
   async _recordingSession(sessionId, menteeId) {
     const session = await this._ownedSession(sessionId, menteeId);
     if (session.status !== 'in_progress') {
-      const age = Date.now() - new Date(session.submittedAt || 0).getTime();
       const task = await models.AssignedTask.scope('withPoolWork').findByPk(session.assignedTaskId, { attributes: ['id', 'status'] });
-      if (!(age >= 0 && age <= proctoring.LATE_UPLOAD_GRACE_MS) || !task || task.status === 'completed') {
-        throw new ConflictError('This interview has already been submitted.');
-      }
+      if (!media.recordingStillAccepted(session, task?.status)) throw new ConflictError('This interview has already been submitted.');
     }
     await clanLifecycleService.assertTaskWritable(session.assignedTaskId);
     return session;
@@ -385,10 +383,7 @@ class InterviewSessionService {
     // A re-record replaces the AI's transcript of the old take too.
     const aiDraft = replaced && answer.aiDraft ? { ...answer.aiDraft, transcript: null } : answer.aiDraft;
     await answer.update({ ...fields, aiDraft });
-    if (replaced) {
-      const { deleteFromCloudinary } = require('../utils/cloudinaryUpload');
-      deleteFromCloudinary(replaced, 'video').catch((err) => console.error('[interview] old recording delete failed:', err?.message));
-    }
+    media.removeRecording(replaced);
     return answer;
   }
 
@@ -426,20 +421,7 @@ class InterviewSessionService {
   async signVideoUpload(sessionId, menteeId, questionId) {
     const session = await this._recordingSession(sessionId, menteeId);
     const question = await this._recordingQuestion(session, questionId, proctoring.VIDEO_KIND);
-    const cloudinary = require('../config/cloudinary');
-    const { cloud_name: cloudName, api_key: apiKey, api_secret: apiSecret } = cloudinary.config();
-    // Not configured for direct uploads: the client falls back to sending it here.
-    if (!cloudName || !apiKey || !apiSecret) return { direct: false };
-    const timestamp = Math.floor(Date.now() / 1000);
-    const publicId = `${proctoring.videoPublicIdPrefix(session.id, question.id)}${timestamp}`;
-    const params = { public_id: publicId, timestamp };
-    const signature = cloudinary.utils.api_sign_request(params, apiSecret);
-    return {
-      direct: true,
-      uploadUrl: `https://api.cloudinary.com/v1_1/${cloudName}/video/upload`,
-      fields: { api_key: apiKey, timestamp: String(timestamp), public_id: publicId, signature },
-      publicId,
-    };
+    return media.signDirectVideo(`${proctoring.videoPublicIdPrefix('interviews', session.id, question.id)}${Math.floor(Date.now() / 1000)}`);
   }
 
   /**
@@ -451,73 +433,22 @@ class InterviewSessionService {
   async attachVideo(sessionId, menteeId, questionId, { file = null, publicId = null } = {}) {
     const session = await this._recordingSession(sessionId, menteeId);
     const question = await this._recordingQuestion(session, questionId, proctoring.VIDEO_KIND);
-
-    let url;
-    let storedId;
-    if (file && file.buffer) {
-      try {
-        const result = await uploadToCloudinary(file.buffer, `pathment/interviews/videos/${session.id}`, 'video');
-        url = result.secure_url;
-        storedId = result.public_id;
-      } catch (err) {
-        console.error('[interview] video upload to Cloudinary failed:', {
-          message: err?.message, httpCode: err?.http_code, bytes: file.buffer?.length,
-        });
-        throw new ValidationError('Video upload failed. Please check your connection and try again.');
-      }
-    } else if (publicId) {
-      const id = String(publicId);
-      if (!id.startsWith(proctoring.videoPublicIdPrefix(session.id, question.id))) {
-        throw new ValidationError('That video does not belong to this answer');
-      }
-      const cloudinary = require('../config/cloudinary');
-      let resource;
-      try {
-        resource = await cloudinary.api.resource(id, { resource_type: 'video' });
-      } catch (err) {
-        console.error('[interview] video lookup failed:', { publicId: id, message: err?.message || err?.error?.message });
-        throw new ValidationError('We could not find that video. Please record it again.');
-      }
-      url = resource.secure_url;
-      storedId = resource.public_id;
-    } else {
-      throw new ValidationError('No video received');
-    }
-
+    const { url, publicId: storedId } = await media.resolveVideo({
+      file,
+      publicId,
+      prefix: proctoring.videoPublicIdPrefix('interviews', session.id, question.id),
+      folder: `pathment/interviews/videos/${session.id}`,
+    });
     await this._storeRecording(session, question, { url, publicId: storedId });
     return { videoUrl: url, questionId: question.id };
-  }
-
-  /**
-   * Add events to the end of a session's proctor log in one statement.
-   *
-   * Camera shots, screen shots and the event flush arrive at the same time; a
-   * read-then-write of the whole array let one of them overwrite the others, so
-   * a snapshot could vanish from the log as another landed. `||` on jsonb
-   * appends in the database, where concurrent writers queue on the row instead.
-   */
-  async _appendProctor(sessionId, events) {
-    if (!events.length) return;
-    await sequelize.query(
-      'UPDATE interview_sessions SET proctor_log = COALESCE(proctor_log, \'[]\'::jsonb) || CAST(:events AS jsonb), updated_at = NOW() WHERE id = :id',
-      { replacements: { events: JSON.stringify(events), id: sessionId } },
-    );
   }
 
   /** Append proctor events (focus-loss, fullscreen-exit, paste, snapshot refs). */
   async logProctorEvents(sessionId, menteeId, events = []) {
     const session = await this._openSession(sessionId, menteeId);
     await clanLifecycleService.assertTaskWritable(session.assignedTaskId);
-    if (!Array.isArray(events) || !events.length) return { logged: 0 };
-    const clean = events
-      .slice(0, 500)
-      .filter((e) => e && typeof e.type === 'string' && e.type !== 'snapshot')
-      .map((e) => ({
-        type: e.type.slice(0, 60),
-        at: e.at || new Date().toISOString(),
-        meta: e.meta && typeof e.meta === 'object' && !Array.isArray(e.meta) ? e.meta : {},
-      }));
-    await this._appendProctor(session.id, clean);
+    const clean = media.cleanClientEvents(events);
+    await media.appendProctorEvents('interview_sessions', session.id, clean);
     return { logged: clean.length };
   }
 
@@ -529,14 +460,8 @@ class InterviewSessionService {
   async attachSnapshot(sessionId, menteeId, file, questionId = null, source = 'camera') {
     const session = await this._openSession(sessionId, menteeId);
     await clanLifecycleService.assertTaskWritable(session.assignedTaskId);
-    if (!file || !file.buffer) throw new ValidationError('No snapshot received');
-    if (!String(file.mimetype || '').startsWith('image/')) throw new ValidationError('A snapshot must be an image');
-    const result = await uploadToCloudinary(file.buffer, 'pathment/interviews/snapshots', 'image');
     // Where the picture came from: the webcam, or the candidate's shared screen.
-    const meta = { url: result.secure_url, publicId: result.public_id, source: source === 'screen' ? 'screen' : 'camera' };
-    if (questionId) meta.questionId = String(questionId);
-    await this._appendProctor(session.id, [{ type: 'snapshot', at: new Date().toISOString(), meta }]);
-    return { url: result.secure_url };
+    return media.storeSnapshot('interview_sessions', session.id, file, { questionId, source, folder: 'pathment/interviews/snapshots' });
   }
 
   // ── Mentor review (Phase 4) — mentor is the source of truth ──────────────────
@@ -587,29 +512,9 @@ class InterviewSessionService {
     const answers = session ? [...(session.answers || [])].sort((a, b) => a.position - b.position) : [];
     const answerByQ = new Map(answers.map((a) => [a.questionId, a]));
 
-    const proctorLog = session ? (session.proctorLog || []) : [];
-    // Bucket each snapshot to the question that was active when it was taken:
-    // prefer an explicit questionId captured at snapshot time (newer interviews),
-    // else fall back to the answer whose `startedAt` most recently preceded it —
-    // so older interviews also get per-question images retroactively.
-    const answerStarts = answers
-      .filter((a) => a.startedAt)
-      .map((a) => ({ questionId: a.questionId, t: new Date(a.startedAt).getTime() }))
-      .sort((x, y) => x.t - y.t);
-    const bucketQuestion = (atIso) => {
-      const t = new Date(atIso).getTime();
-      let qid = null;
-      for (const s of answerStarts) { if (s.t <= t) qid = s.questionId; else break; }
-      return qid;
-    };
-    const snapshots = proctorLog.filter((e) => e.type === 'snapshot').map((e) => ({
-      url: e.meta?.url,
-      at: e.at,
-      questionId: e.meta?.questionId || bucketQuestion(e.at),
-      source: e.meta?.source === 'screen' ? 'screen' : 'camera',
-    }));
-    const flags = proctorLog.filter((e) => e.type !== 'snapshot');
-    const flagCounts = flags.reduce((m, e) => { m[e.type] = (m[e.type] || 0) + 1; return m; }, {});
+    // Snapshots are placed under the question on screen when they were taken
+    // (older interviews didn't record it, so they go by when each answer began).
+    const { snapshots, flags, flagCounts } = media.splitProctorLog(session ? (session.proctorLog || []) : [], answers);
 
     const items = questions.map((q) => {
       const a = answerByQ.get(q.id);
@@ -647,7 +552,7 @@ class InterviewSessionService {
         allowRetake: assignment.allowRetake,
         cameraRequired: assignment.cameraRequired,
         // Proctored with screen sharing — the review warns when no screen came through.
-        screenShareRequired: proctoring.requirementsFor({ cameraRequired: assignment.cameraRequired, questions }).screen,
+        screenShareRequired: proctoring.requirementsFor({ proctored: assignment.cameraRequired, questions }).screen,
       },
       session: session ? {
         id: session.id,
@@ -714,18 +619,9 @@ class InterviewSessionService {
     const session = await this._latestSubmittedSession(taskId);
     if (!session) throw new NotFoundError('No interview session found');
 
-    const log = session.proctorLog || [];
-    const snapshots = log.filter((e) => e.type === 'snapshot');
-    const kept = log.filter((e) => e.type !== 'snapshot');
-
-    const { deleteFromCloudinary } = require('../utils/cloudinaryUpload');
-    await Promise.all(snapshots.map(async (e) => {
-      const pid = e.meta?.publicId;
-      if (pid) { try { await deleteFromCloudinary(pid, 'image'); } catch (err) { console.error('[interview] snapshot delete failed:', err?.message); } }
-    }));
-
+    const { kept, deleted } = await media.deleteSnapshotImages(session.proctorLog || []);
     await session.update({ proctorLog: kept });
-    return { deleted: snapshots.length };
+    return { deleted };
   }
 
   /** Flag (or clear the flag on) an interview for follow-up (mentor). Stored on

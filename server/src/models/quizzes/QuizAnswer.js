@@ -31,7 +31,7 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING(20),
       allowNull: false,
       defaultValue: 'single',
-      validate: { isIn: [['single', 'multi', 'boolean', 'short']] }
+      validate: { isIn: [['single', 'multi', 'boolean', 'short', 'video']] }
     },
     promptSnapshot: {
       type: DataTypes.TEXT,
@@ -54,6 +54,21 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.TEXT,
       allowNull: true,
       field: 'answer_text'
+    },
+    // Video answers: the stored recording and the live captions taken with it.
+    recordingUrl: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      field: 'recording_url'
+    },
+    recordingPublicId: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      field: 'recording_public_id'
+    },
+    transcript: {
+      type: DataTypes.TEXT,
+      allowNull: true
     },
     // Auto-grade result + optional mentor override (review mode).
     isCorrect: {

@@ -5,16 +5,20 @@ import { useRouter } from 'next/navigation';
 import { useMenteeScope } from '@/lib/hooks/mentee';
 import { toast } from 'sonner';
 import {
-  Mic, MicOff, Loader2, ArrowRight, CheckCircle2, Video, VideoOff, Volume2,
-  Code2, Type, AlertTriangle, Play, RotateCcw, Maximize2, Eye, ShieldCheck, Monitor, MonitorOff, Laptop,
+  Mic, MicOff, Loader2, ArrowRight, CheckCircle2, Video, Volume2,
+  Code2, Type, AlertTriangle, Play, RotateCcw, Maximize2, Eye, ShieldCheck, Monitor,
 } from 'lucide-react';
 import {
-  interviewApi, type CandidateInterview, type CandidateQuestion,
+  interviewApi, interviewVideoEndpoints, type CandidateInterview, type CandidateQuestion,
 } from '@/lib/services/interview-api';
+import {
+  ScreenShareStep, DeviceProblemNotice, CameraOffOverlay, ScreenOffOverlay, UploadProblemDialog,
+  browserCapabilities, deviceProblemFor,
+} from '@/components/mentee/proctoring/ProctorUI';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import {
   speak, stopSpeaking, createRecognizer, VoiceRecorder, VideoAnswerRecorder,
-  recognitionSupported, recorderSupported, videoRecordingSupported, screenShareSupported, MAX_VIDEO_BYTES,
+  recognitionSupported, recorderSupported, videoRecordingSupported, MAX_VIDEO_BYTES,
 } from '@/lib/utils/interviewMedia';
 import { useProctor } from '@/lib/hooks/mentee/useProctor';
 import { useScreenShare } from '@/lib/hooks/mentee/useScreenShare';
@@ -33,10 +37,6 @@ interface Draft {
   /** This visit's video take, and the one already stored (after a resume). */
   videoBlob: Blob | null; videoUrl: string | null;
 }
-
-/** What this browser can do, sent when the attempt starts (see interviewProctoring). */
-const browserCapabilities = () =>
-  [screenShareSupported() ? 'screen' : null, videoRecordingSupported() ? 'video' : null].filter(Boolean) as string[];
 
 const DEFAULT_NAME = 'Aria';
 const STUDIO = 'bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950';
@@ -122,9 +122,7 @@ export default function InterviewRunnerPage({ params }: { params: Promise<{ task
   const hasVideo = !!data?.options.videoAnswers || questions.some((qq) => qq.kind === 'video');
   // Something this interview needs that this browser can't do (a phone can't
   // share its screen). Said up front, before the lobby, not after the clock.
-  const deviceProblem: 'screen' | 'video' | null =
-    data && screenRequired && !screenShareSupported() ? 'screen'
-      : data && hasVideo && !videoRecordingSupported() ? 'video' : null;
+  const deviceProblem = data ? deviceProblemFor({ screenRequired, hasVideo }) : null;
   const interviewerName = data?.interviewer?.name || DEFAULT_NAME;
   const ttsOpts = { pitch: data?.interviewer?.pitch, rate: data?.interviewer?.rate, voiceName: data?.interviewer?.voiceName };
 
@@ -136,7 +134,7 @@ export default function InterviewRunnerPage({ params }: { params: Promise<{ task
   // The screen share reports into the proctor log, which exists a line later.
   const logRef = useRef<(type: string, meta?: Record<string, unknown>) => void>(() => { });
   const screen = useScreenShare((type, meta) => logRef.current(type, meta));
-  const uploads = useAnswerUploads();
+  const uploads = useAnswerUploads({ video: interviewVideoEndpoints, voice: interviewApi.uploadAnswerAudio });
 
   const proctor = useProctor({
     sessionId,
@@ -724,15 +722,7 @@ export default function InterviewRunnerPage({ params }: { params: Promise<{ task
             </ul>
 
             {deviceProblem && !cannot ? (
-              <div className="mt-6 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-left text-sm text-amber-100 flex items-start gap-2">
-                <Laptop className="w-4 h-4 text-amber-300 shrink-0 mt-0.5" />
-                <span>
-                  {deviceProblem === 'screen'
-                    ? 'This interview is proctored with screen sharing, which this device can’t do.'
-                    : 'This interview has questions you answer on video, which this browser can’t record.'}
-                  {' '}Open it on a laptop or desktop in Chrome, Edge or Firefox to take it.
-                </span>
-              </div>
+              <div className="mt-6"><DeviceProblemNotice problem={deviceProblem} noun="interview" /></div>
             ) : cannot ? (
               <div className="mt-6">
                 <p className="text-sm text-slate-400">{submittedBefore ? 'You’ve already completed this interview.' : 'This interview isn’t available.'}</p>
@@ -770,30 +760,7 @@ export default function InterviewRunnerPage({ params }: { params: Promise<{ task
               : <div className="text-slate-500 text-sm inline-flex items-center gap-2"><Video className="w-4 h-4" />{cameraRequired ? 'Waiting for camera…' : 'Camera off'}</div>}
           </div>
 
-          {screenRequired && (
-            <div className={`mt-4 rounded-xl border p-3 ${screen.live ? 'border-emerald-500/40 bg-emerald-500/5' : 'border-slate-700 bg-slate-900/50'}`}>
-              <div className="flex items-center gap-3">
-                <Monitor className={`w-5 h-5 shrink-0 ${screen.live ? 'text-emerald-400' : 'text-brand-400'}`} />
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-slate-100">{screen.live ? 'Sharing your entire screen' : 'Share your entire screen'}</p>
-                  <p className="text-xs text-slate-400">
-                    {screen.live
-                      ? 'Keep it shared until you finish. Stopping it pauses the interview, and the clock keeps running.'
-                      : 'In the window that opens, choose “Entire screen”. A tab or a single window won’t do.'}
-                  </p>
-                </div>
-                {screen.live
-                  ? <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-400" />
-                  : (
-                    <button type="button" onClick={() => void screen.start()} disabled={screen.busy}
-                      className="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50">
-                      {screen.busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Monitor className="w-3.5 h-3.5" />}Share screen
-                    </button>
-                  )}
-              </div>
-              {!screen.live && screen.problem && <ScreenProblem problem={screen.problem} />}
-            </div>
-          )}
+          {screenRequired && <div className="mt-4"><ScreenShareStep screen={screen} /></div>}
 
           <div className="mt-4 space-y-3">
             <MicCheck level={level} heard={micHeard} />
@@ -1009,83 +976,19 @@ export default function InterviewRunnerPage({ params }: { params: Promise<{ task
       {/* Required-camera block: if the camera is turned off mid-interview, stop the
           candidate here until it's restored (the clock keeps running, and the gap
           is logged for the mentor). */}
-      {cameraRequired && !proctor.cameraLive && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/95 backdrop-blur-sm p-6">
-          <div className="max-w-md w-full text-center rounded-2xl border border-red-500/40 bg-slate-900 p-8">
-            <div className="w-16 h-16 rounded-full bg-red-500/15 flex items-center justify-center mx-auto mb-4">
-              <VideoOff className="w-9 h-9 text-red-400" />
-            </div>
-            <h2 className="text-xl font-semibold text-slate-100">Your camera is off</h2>
-            <p className="text-slate-400 mt-2 text-sm">
-              This interview requires your camera to stay on, and it looks like it was turned off or disconnected.
-              Turn it back on to continue — <span className="text-amber-300 font-medium">the clock is still running</span> and this pause is recorded for your mentor.
-            </p>
-            <button onClick={recoverCamera} className="mt-6 inline-flex items-center gap-2 px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-sm font-medium">
-              <RotateCcw className="w-4 h-4" /> Retry camera
-            </button>
-            <p className="text-xs text-slate-500 mt-3">Nothing happening? Re-enable camera access for this site from your browser&apos;s address bar, then retry.</p>
-          </div>
-        </div>
-      )}
+      {cameraRequired && !proctor.cameraLive && <CameraOffOverlay noun="interview" onRetry={recoverCamera} />}
 
       {/* Required screen share: stopping it stops the interview here until it's
           shared again (the clock keeps running, and the gap is logged). */}
       {screenRequired && !screen.live && (cameraRequired ? proctor.cameraLive : true) && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/95 backdrop-blur-sm p-6">
-          <div className="max-w-md w-full text-center rounded-2xl border border-red-500/40 bg-slate-900 p-8">
-            <div className="w-16 h-16 rounded-full bg-red-500/15 flex items-center justify-center mx-auto mb-4">
-              <MonitorOff className="w-9 h-9 text-red-400" />
-            </div>
-            <h2 className="text-xl font-semibold text-slate-100">Your screen isn&apos;t being shared</h2>
-            <p className="text-slate-400 mt-2 text-sm">
-              This interview requires your entire screen to be shared the whole time. Share it again to continue —{' '}
-              <span className="text-amber-300 font-medium">the clock is still running</span> and this pause is recorded for your mentor.
-            </p>
-            <button onClick={async () => { if (await screen.start()) { proctor.log('screen_share_restored'); void proctor.requestFullscreen(); } }} disabled={screen.busy}
-              className="mt-6 inline-flex items-center gap-2 px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-sm font-medium disabled:opacity-50">
-              {screen.busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Monitor className="w-4 h-4" />} Share entire screen
-            </button>
-            {screen.problem && <ScreenProblem problem={screen.problem} />}
-          </div>
-        </div>
+        <ScreenOffOverlay noun="interview" screen={screen} onShared={() => { proctor.log('screen_share_restored'); void proctor.requestFullscreen(); }} />
       )}
 
       {/* A hand-pressed Finish with a video answer that didn't send. */}
       {uploadProblem !== null && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 backdrop-blur-sm p-6">
-          <div className="max-w-md w-full text-center rounded-2xl border border-amber-500/40 bg-slate-900 p-8">
-            <AlertTriangle className="w-10 h-10 text-amber-400 mx-auto mb-3" />
-            <h2 className="text-lg font-semibold text-slate-100">
-              {uploadProblem === 1 ? 'A video answer didn’t send' : `${uploadProblem} video answers didn’t send`}
-            </h2>
-            <p className="text-slate-400 mt-2 text-sm">
-              Check your connection and try again. If you submit without {uploadProblem === 1 ? 'it' : 'them'}, this page keeps trying for a few minutes — keep it open.
-            </p>
-            <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-2">
-              <button onClick={() => void finish()} className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-sm font-medium">
-                <RotateCcw className="w-4 h-4" />Try again
-              </button>
-              <button onClick={() => void finish({ force: true })} className="w-full sm:w-auto px-5 py-2.5 rounded-xl border border-slate-600 text-slate-200 text-sm hover:bg-slate-800">
-                Submit anyway
-              </button>
-            </div>
-          </div>
-        </div>
+        <UploadProblemDialog count={uploadProblem} onRetry={() => void finish()} onSubmitAnyway={() => void finish({ force: true })} />
       )}
     </div>
-  );
-}
-
-/** Why the screen share didn't take, in words a candidate can act on. */
-function ScreenProblem({ problem }: { problem: 'unsupported' | 'denied' | 'not_entire_screen' }) {
-  return (
-    <p className="mt-2 text-xs text-amber-300 text-left">
-      {problem === 'not_entire_screen'
-        ? 'You shared a tab or a window. Share your entire screen instead — pick “Entire screen” in the window that opens.'
-        : problem === 'unsupported'
-          ? 'This browser can’t share a screen. Use Chrome, Edge or Firefox on a computer.'
-          : 'Screen sharing was cancelled or blocked. It’s required for this interview — press the button and choose “Entire screen”. If nothing opens, allow screen sharing for this site in your browser or system settings.'}
-    </p>
   );
 }
 

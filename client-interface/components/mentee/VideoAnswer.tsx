@@ -5,6 +5,20 @@ import { AlertTriangle, CheckCircle2, Circle, Loader2, RotateCcw, Square, Video 
 import { fmtClock } from '@/lib/utils/interviewMedia';
 import type { UploadStatus } from '@/lib/hooks/mentee/useAnswerUploads';
 
+/** Class names for the dark interview studio and the light quiz page. */
+const TONES = {
+  dark: {
+    box: 'border-slate-700 bg-slate-800/40', hint: 'text-slate-400', progress: 'text-slate-300', track: 'bg-slate-700',
+    saved: 'text-emerald-400', failed: 'text-amber-300', captionsBox: 'border-slate-700/60 bg-slate-900/60 text-slate-300',
+    unsupported: 'border-amber-500/40 bg-amber-500/10 text-amber-100', unsupportedIcon: 'text-amber-300',
+  },
+  light: {
+    box: 'border-slate-200 bg-white', hint: 'text-slate-500', progress: 'text-slate-600', track: 'bg-slate-200',
+    saved: 'text-emerald-600', failed: 'text-amber-700', captionsBox: 'border-slate-200 bg-slate-50 text-slate-600',
+    unsupported: 'border-amber-200 bg-amber-50 text-amber-900', unsupportedIcon: 'text-amber-500',
+  },
+};
+
 /**
  * Answering one interview question on camera.
  *
@@ -16,7 +30,7 @@ import type { UploadStatus } from '@/lib/hooks/mentee/useAnswerUploads';
  */
 export function VideoAnswer({
   supported, recording, elapsed, maxSeconds, liveStream, cameraStream, takeBlob, savedUrl, upload,
-  transcript, disabled, onStart, onStop, onRetry,
+  transcript, disabled, onStart, onStop, onRetry, tone = 'dark',
 }: {
   supported: boolean;
   recording: boolean;
@@ -37,7 +51,9 @@ export function VideoAnswer({
   onStart: () => void;
   onStop: () => void;
   onRetry: () => void;
+  tone?: 'dark' | 'light';
 }) {
+  const t = TONES[tone];
   const liveRef = useRef<HTMLVideoElement | null>(null);
   const takeUrl = useMemo(() => (takeBlob ? URL.createObjectURL(takeBlob) : null), [takeBlob]);
   useEffect(() => () => { if (takeUrl) URL.revokeObjectURL(takeUrl); }, [takeUrl]);
@@ -56,15 +72,15 @@ export function VideoAnswer({
 
   if (!supported) {
     return (
-      <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-6 text-sm text-amber-100 flex items-start gap-2">
-        <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-300" />
-        This browser can&apos;t record video. Open the interview in Chrome, Edge or Firefox on a computer to answer this question.
+      <div className={`rounded-2xl border p-6 text-sm flex items-start gap-2 ${t.unsupported}`}>
+        <AlertTriangle className={`w-4 h-4 shrink-0 mt-0.5 ${t.unsupportedIcon}`} />
+        This browser can&apos;t record video. Open this in Chrome, Edge or Firefox on a computer to answer this question.
       </div>
     );
   }
 
   return (
-    <div className="rounded-2xl border border-slate-700 bg-slate-800/40 p-4 sm:p-6">
+    <div className={`rounded-2xl border p-4 sm:p-6 ${t.box}`}>
       <div className="relative mx-auto aspect-video w-full max-w-xl overflow-hidden rounded-xl border border-slate-700 bg-slate-950">
         {showLive ? (
           stream
@@ -103,7 +119,7 @@ export function VideoAnswer({
             {playback ? 'Record again' : 'Start recording'}
           </button>
         )}
-        <p className="text-xs text-slate-400 text-center">
+        <p className={`text-xs text-center ${t.hint}`}>
           {recording
             ? 'Look at the camera and answer out loud. It stops by itself when the time is up.'
             : playback
@@ -114,32 +130,32 @@ export function VideoAnswer({
         {!recording && upload && (
           upload.state === 'uploading' ? (
             <div className="w-full max-w-xs">
-              <div className="flex items-center justify-between text-xs text-slate-300">
+              <div className={`flex items-center justify-between text-xs ${t.progress}`}>
                 <span className="inline-flex items-center gap-1.5"><Loader2 className="h-3.5 w-3.5 animate-spin" />Sending your video…</span>
                 <span className="tabular-nums">{Math.round(upload.progress * 100)}%</span>
               </div>
-              <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-700">
+              <div className={`mt-1 h-1.5 overflow-hidden rounded-full ${t.track}`}>
                 <div className="h-full bg-brand-500 transition-[width]" style={{ width: `${Math.round(upload.progress * 100)}%` }} />
               </div>
             </div>
           ) : upload.state === 'saved' ? (
-            <p className="inline-flex items-center gap-1.5 text-xs text-emerald-400"><CheckCircle2 className="h-3.5 w-3.5" />Saved</p>
+            <p className={`inline-flex items-center gap-1.5 text-xs ${t.saved}`}><CheckCircle2 className="h-3.5 w-3.5" />Saved</p>
           ) : (
-            <p className="inline-flex items-center gap-2 text-xs text-amber-300">
+            <p className={`inline-flex items-center gap-2 text-xs ${t.failed}`}>
               <AlertTriangle className="h-3.5 w-3.5" />Your video didn&apos;t send.
               <button type="button" onClick={onRetry} className="rounded-md bg-amber-600 px-2 py-0.5 font-medium text-white hover:bg-amber-700">Try again</button>
             </p>
           )
         )}
         {!recording && !upload && savedUrl && (
-          <p className="inline-flex items-center gap-1.5 text-xs text-emerald-400"><CheckCircle2 className="h-3.5 w-3.5" />Saved</p>
+          <p className={`inline-flex items-center gap-1.5 text-xs ${t.saved}`}><CheckCircle2 className="h-3.5 w-3.5" />Saved</p>
         )}
       </div>
 
       {transcript && (
         <details className="mt-4">
-          <summary className="cursor-pointer text-xs font-medium text-slate-400">Live captions</summary>
-          <p className="mt-1.5 whitespace-pre-wrap rounded-lg border border-slate-700/60 bg-slate-900/60 p-3 text-sm text-slate-300">{transcript}</p>
+          <summary className={`cursor-pointer text-xs font-medium ${t.hint}`}>Live captions</summary>
+          <p className={`mt-1.5 whitespace-pre-wrap rounded-lg border p-3 text-sm ${t.captionsBox}`}>{transcript}</p>
         </details>
       )}
     </div>

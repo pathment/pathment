@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { interviewApi, type ProctorEvent } from '@/lib/services/interview-api';
+import { interviewProctorApi, type ProctorApi, type ProctorEvent } from '@/lib/services/interview-api';
 import { grabFrame, randomDelay } from '@/lib/utils/interviewMedia';
 
 /**
@@ -43,6 +43,8 @@ interface Options {
   cameraSnapshots?: boolean;
   /** The shared screen, when the interview is proctored with screen sharing. */
   screenStream?: MediaStream | null;
+  /** Where events and snapshots go: an interview's or a quiz's endpoints. */
+  api?: ProctorApi;
   /** Average gap between snapshots; each one lands at a random point around it. */
   snapshotIntervalMs?: number;
   flushIntervalMs?: number;
@@ -56,6 +58,7 @@ export function useProctor({
   currentQuestionId = null,
   cameraSnapshots,
   screenStream = null,
+  api = interviewProctorApi,
   snapshotIntervalMs = 25000,
   flushIntervalMs = 10000,
 }: Options): ProctorState {
@@ -72,6 +75,8 @@ export function useProctor({
   useEffect(() => { sessionRef.current = sessionId; }, [sessionId]);
   useEffect(() => { activeRef.current = active; }, [active]);
   useEffect(() => { questionRef.current = currentQuestionId; }, [currentQuestionId]);
+  const apiRef = useRef(api);
+  useEffect(() => { apiRef.current = api; }, [api]);
 
   // ── Event buffering + flush ──────────────────────────────────────────────
   const flush = useCallback(async () => {
@@ -80,7 +85,7 @@ export function useProctor({
     const batch = buffer.current;
     buffer.current = [];
     try {
-      await interviewApi.logProctor(sid, batch);
+      await apiRef.current.logProctor(sid, batch);
     } catch {
       // Re-queue on failure so nothing is lost.
       buffer.current = [...batch, ...buffer.current];
@@ -152,9 +157,14 @@ export function useProctor({
   useEffect(() => {
     if (!active || !cameraRequired) { setCameraLive(true); return; }
     let down = false;
+    // The preview is attached a moment after the attempt goes live; until a
+    // stream has been seen there is nothing to judge, not a camera that's off.
+    let seen = false;
     const evaluate = () => {
       const stream = videoRef.current?.srcObject as MediaStream | null;
       const track = stream?.getVideoTracks?.()[0] || null;
+      if (!track && !seen) return;
+      seen = true;
       const live = !!track && track.readyState === 'live' && track.enabled && !track.muted;
       setCameraLive(live);
       if (!live && !down) { down = true; log('camera_off'); }
@@ -188,7 +198,7 @@ export function useProctor({
     const blob = await grabFrame(video, source === 'screen' ? 1600 : 960, source === 'screen' ? 0.7 : 0.6);
     if (!blob) return;
     try {
-      await interviewApi.uploadSnapshot(sid, blob, questionRef.current, source);
+      await apiRef.current.uploadSnapshot(sid, blob, questionRef.current, source);
     } catch {
       log('snapshot_failed', { source, ...(reason ? { reason } : {}) });
     }

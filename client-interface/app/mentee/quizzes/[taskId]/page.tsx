@@ -6,20 +6,35 @@ import { useMenteeScope } from '@/lib/hooks/mentee';
 import { toast } from 'sonner';
 import {
   Loader2, ArrowRight, ArrowLeft, CheckCircle2, AlertTriangle, Play, RotateCcw,
-  Clock, Sparkles, ClipboardCheck, XCircle, ListChecks,
+  Clock, Sparkles, ClipboardCheck, XCircle, ListChecks, Video, Monitor, Eye, Maximize2, ShieldCheck,
 } from 'lucide-react';
 import {
-  quizApi, type CandidateQuiz, type CandidateQuizQuestion, type QuizSubmitResult,
+  quizApi, quizVideoEndpoints, quizProctorApi, type CandidateQuiz, type CandidateQuizQuestion, type QuizSubmitResult,
   type QuizResultItem,
 } from '@/lib/services/quiz-api';
+import { useProctor } from '@/lib/hooks/mentee/useProctor';
+import { useScreenShare } from '@/lib/hooks/mentee/useScreenShare';
+import { useAnswerUploads } from '@/lib/hooks/mentee/useAnswerUploads';
+import { useVideoTake } from '@/lib/hooks/mentee/useVideoTake';
+import { videoRecordingSupported } from '@/lib/utils/interviewMedia';
+import { VideoAnswer } from '@/components/mentee/VideoAnswer';
+import {
+  ScreenShareStep, DeviceProblemNotice, CameraOffOverlay, ScreenOffOverlay, UploadProblemDialog,
+  browserCapabilities, deviceProblemFor,
+} from '@/components/mentee/proctoring/ProctorUI';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { useConfirm } from '@/lib/context/ConfirmContext';
 import { useClan, isHistoricalCohortClan } from '@/lib/context/ClanContext';
 
-type Phase = 'loading' | 'intro' | 'active' | 'submitting' | 'done' | 'error';
-interface Answer { selectedOptionIds: string[]; answerText: string }
+type Phase = 'loading' | 'intro' | 'setup' | 'active' | 'submitting' | 'done' | 'error';
+interface Answer {
+  selectedOptionIds: string[]; answerText: string;
+  /** Video questions: this visit's take, the stored one (after a resume), and its captions. */
+  videoBlob: Blob | null; videoUrl: string | null; transcript: string;
+}
 
-const blank = (): Answer => ({ selectedOptionIds: [], answerText: '' });
+const blank = (): Answer => ({ selectedOptionIds: [], answerText: '', videoBlob: null, videoUrl: null, transcript: '' });
+const VIDEO_UPLOADS = { video: quizVideoEndpoints };
 
 function mmss(total: number): string {
   const s = Math.max(0, total);
@@ -47,6 +62,15 @@ export default function QuizRunnerPage({ params }: { params: Promise<{ taskId: s
   const [answers, setAnswers] = useState<Record<string, Answer>>({});
   const [remaining, setRemaining] = useState<number | null>(null);
   const [result, setResult] = useState<QuizSubmitResult | null>(null);
+  // Setup (camera / screen) and the session camera.
+  const [setupStream, setSetupStream] = useState<MediaStream | null>(null);
+  const [camStream, setCamStream] = useState<MediaStream | null>(null);
+  const camStreamRef = useRef<MediaStream | null>(null);
+  const setupStreamRef = useRef<MediaStream | null>(null);
+  const setupVideoRef = useRef<HTMLVideoElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  // Video answers that didn't send when they pressed Submit (how many).
+  const [uploadProblem, setUploadProblem] = useState<number | null>(null);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clockSkewRef = useRef(0);
@@ -60,6 +84,29 @@ export default function QuizRunnerPage({ params }: { params: Promise<{ taskId: s
   const questions = useMemo(() => data?.questions ?? [], [data]);
   const q: CandidateQuizQuestion | undefined = questions[idx];
   const opts = data?.options;
+
+  // ── Proctoring and video answers ────────────────────────────────────────────
+  // Camera: full proctoring, or any video question. Screen: full proctoring.
+  const cameraRequired = !!opts?.cameraRequired;
+  const screenRequired = !!opts?.screenShareRequired;
+  const hasVideo = !!opts?.videoAnswers || questions.some((qq) => qq.kind === 'video');
+  const deviceProblem = data ? deviceProblemFor({ screenRequired, hasVideo }) : null;
+
+  const logRef = useRef<(type: string, meta?: Record<string, unknown>) => void>(() => { });
+  const screen = useScreenShare((type, meta) => logRef.current(type, meta));
+  const uploads = useAnswerUploads(VIDEO_UPLOADS);
+  const proctor = useProctor({
+    sessionId,
+    // An ordinary quiz isn't watched at all; one with a camera is.
+    active: phase === 'active' && cameraRequired,
+    videoRef,
+    cameraRequired,
+    cameraSnapshots: screenRequired,
+    screenStream: screenRequired ? screen.stream : null,
+    currentQuestionId: q?.id ?? null,
+    api: quizProctorApi,
+  });
+  useEffect(() => { logRef.current = proctor.log; }, [proctor.log]);
 
   /*
    * One runner, two kinds of work.
@@ -77,6 +124,7 @@ export default function QuizRunnerPage({ params }: { params: Promise<{ taskId: s
   const isAnswered = useCallback((question: CandidateQuizQuestion): boolean => {
     const a = answersRef.current[question.id];
     if (!a) return false;
+    if (question.kind === 'video') return !!(a.videoBlob || a.videoUrl);
     if (question.kind === 'short') return !!a.answerText.trim();
     return a.selectedOptionIds.length > 0;
   }, []);
@@ -97,6 +145,9 @@ export default function QuizRunnerPage({ params }: { params: Promise<{ taskId: s
           seed[qq.id] = {
             selectedOptionIds: saved?.selectedOptionIds ? [...saved.selectedOptionIds] : [],
             answerText: saved?.answerText || '',
+            videoBlob: null,
+            videoUrl: saved?.videoUrl || null,
+            transcript: saved?.transcript || '',
           };
         });
         setAnswers(seed);
@@ -114,12 +165,14 @@ export default function QuizRunnerPage({ params }: { params: Promise<{ taskId: s
     if (!sessionId) return;
     const a = answersRef.current[questionId];
     if (!a) return;
+    const isVideo = questions.find((qq) => qq.id === questionId)?.kind === 'video';
     await quizApi.saveAnswer(sessionId, {
       questionId,
       selectedOptionIds: a.selectedOptionIds,
       answerText: a.answerText.trim() ? a.answerText : null,
+      ...(isVideo ? { transcript: a.transcript || null } : {}),
     }).catch(() => { /* autosave is best-effort */ });
-  }, [sessionId]);
+  }, [sessionId, questions]);
 
   const setAnswer = useCallback((questionId: string, patch: Partial<Answer>) => {
     setAnswers((prev) => {
@@ -138,10 +191,93 @@ export default function QuizRunnerPage({ params }: { params: Promise<{ taskId: s
     if (current) await persistAnswer(current.id);
   }, [questions, persistAnswer]);
 
+  // ── Video takes ───────────────────────────────────────────────────────────────
+  const take = useVideoTake({
+    getCameraTrack: () => camStreamRef.current?.getVideoTracks()[0] ?? null,
+    onTake: (questionId, blob) => {
+      setAnswers((prev) => {
+        const next = { ...prev, [questionId]: { ...(prev[questionId] ?? blank()), videoBlob: blob } };
+        answersRef.current = next;
+        return next;
+      });
+      if (sessionId) void uploads.upload(sessionId, questionId, 'video', blob);
+    },
+    onCaptions: (questionId, text) => setAnswer(questionId, { transcript: text }),
+    log: proctor.log,
+    captureNow: proctor.captureNow,
+  });
+
+  // Stopping the screen share mid-take stops the take: the overlay covers its button.
+  useEffect(() => {
+    if (screenRequired && !screen.live && phase === 'active' && take.recording) void take.stop();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screen.live]);
+
+  // ── Setup: camera and screen, before the clock starts ────────────────────────
+  const needsSetup = cameraRequired || screenRequired;
+  const releaseSetup = () => {
+    setupStreamRef.current?.getTracks().forEach((t) => t.stop());
+    setupStreamRef.current = null;
+    setSetupStream(null);
+  };
+  const enterSetup = async () => {
+    setPhase('setup');
+    try {
+      // The mic is asked for now too when there are video answers, so the
+      // permission prompt comes before the clock, not in the middle of it.
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: hasVideo });
+      setupStreamRef.current = stream;
+      setSetupStream(stream);
+    } catch {
+      toast.error(hasVideo ? 'Camera and microphone access are needed. Allow them and try again.' : 'Camera access is needed. Allow it and try again.');
+    }
+  };
+  useEffect(() => {
+    if (phase === 'setup' && setupVideoRef.current && setupStream) {
+      setupVideoRef.current.srcObject = setupStream;
+      setupVideoRef.current.play().catch(() => { });
+    }
+  }, [phase, setupStream]);
+  // The session camera into the corner preview (which the snapshots read).
+  useEffect(() => {
+    if (phase === 'active' && videoRef.current && camStream) {
+      videoRef.current.srcObject = camStream;
+      videoRef.current.play().catch(() => { });
+    }
+  }, [phase, camStream]);
+
+  const startFromSetup = async () => {
+    if (screenRequired && !screen.live) { toast.error('Share your entire screen to start.'); return; }
+    const video = setupStreamRef.current?.getVideoTracks() ?? [];
+    if (cameraRequired && !video.length) { toast.error('Turn your camera on to start.'); return; }
+    // Keep the camera for the quiz; the recorder opens the mic per take.
+    setupStreamRef.current?.getAudioTracks().forEach((t) => t.stop());
+    camStreamRef.current = new MediaStream(video);
+    setCamStream(camStreamRef.current);
+    setupStreamRef.current = null;
+    setSetupStream(null);
+    if (screenRequired) await proctor.requestFullscreen(); // must ride this click
+    await startQuiz();
+  };
+
+  const recoverCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      camStreamRef.current?.getTracks().forEach((t) => t.stop());
+      camStreamRef.current = stream;
+      setCamStream(stream);
+      if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.play().catch(() => { }); }
+    } catch {
+      toast.error('Still no camera access — enable it for this site in your browser, then retry.');
+    }
+  };
+
+  const begin = () => (needsSetup ? void enterSetup() : void startQuiz());
+
   // ── Start / resume ───────────────────────────────────────────────────────────
   const startQuiz = async () => {
     try {
-      const res: { data: { session?: { id: string; startedAt?: string } } } = await quizApi.startQuiz(taskId);
+      const res: { data: { session?: { id: string; startedAt?: string } } } = await quizApi.startQuiz(taskId, browserCapabilities());
       const session = res?.data?.session;
       if (!session?.id) throw new Error('No session returned');
       setSessionId(session.id);
@@ -169,12 +305,12 @@ export default function QuizRunnerPage({ params }: { params: Promise<{ taskId: s
 
     let left = compute();
     setRemaining(left);
-    if (left <= 0) { void submit(true); return; }
+    if (left <= 0) { void submit({ auto: true }); return; }
     const tick = setInterval(() => {
       if (submittingRef.current) { clearInterval(tick); return; }
       left = compute();
       setRemaining(left);
-      if (left <= 0) { clearInterval(tick); void submit(true); }
+      if (left <= 0) { clearInterval(tick); void submit({ auto: true }); }
     }, 1000);
     return () => clearInterval(tick);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -182,6 +318,7 @@ export default function QuizRunnerPage({ params }: { params: Promise<{ taskId: s
 
   // ── Navigation ───────────────────────────────────────────────────────────────
   const goTo = async (next: number) => {
+    if (take.recording) return; // stop the recording first
     await flushCurrent();
     const clamped = Math.min(Math.max(0, next), questions.length - 1);
     setIdx(clamped);
@@ -189,9 +326,15 @@ export default function QuizRunnerPage({ params }: { params: Promise<{ taskId: s
   };
 
   // ── Submit ───────────────────────────────────────────────────────────────────
-  const submit = async (auto = false) => {
+  /**
+   * Every video is sent first. One that still won't send stops a hand-pressed
+   * Submit so they can retry (the video IS that answer); when the clock forces
+   * it (`auto`) or they choose to (`force`), the quiz is submitted and the page
+   * keeps trying, which the server accepts for a short while after submit.
+   */
+  const submit = async ({ auto = false, force = false, confirmed = false }: { auto?: boolean; force?: boolean; confirmed?: boolean } = {}) => {
     if (!sessionId || submittingRef.current) return;
-    if (!auto) {
+    if (!auto && !force && !confirmed) {
       const blanks = questions.filter((qq) => qq.required && !isAnswered(qq)).length;
       if (blanks > 0) {
         const ok = await confirm({
@@ -205,12 +348,26 @@ export default function QuizRunnerPage({ params }: { params: Promise<{ taskId: s
       }
     }
     submittingRef.current = true;
+    setUploadProblem(null);
     setPhase('submitting');
     try {
+      await take.stop();
       await flushCurrent();
+      const unsent = await uploads.flush(sessionId);
+      if (unsent.length && !auto && !force) {
+        submittingRef.current = false;
+        setUploadProblem(unsent.length);
+        setPhase('active');
+        return;
+      }
+      await proctor.flush();
       const res: { data: QuizSubmitResult } = await quizApi.submitQuiz(sessionId);
       setResult(res.data);
+      camStreamRef.current?.getTracks().forEach((t) => t.stop());
+      screen.stop();
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => { });
       setPhase('done');
+      if (unsent.length) void uploads.flush(sessionId);
     } catch (e) {
       toast.error(extractApiErrorMessage(e, 'Could not submit the quiz'));
       submittingRef.current = false;
@@ -218,7 +375,11 @@ export default function QuizRunnerPage({ params }: { params: Promise<{ taskId: s
     }
   };
 
-  useEffect(() => () => { if (saveTimer.current) clearTimeout(saveTimer.current); }, []);
+  useEffect(() => () => {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    camStreamRef.current?.getTracks().forEach((t) => t.stop());
+    setupStreamRef.current?.getTracks().forEach((t) => t.stop());
+  }, []);
 
   // ── Loading / submitting / error ─────────────────────────────────────────────
   if (phase === 'loading') {
@@ -231,7 +392,9 @@ export default function QuizRunnerPage({ params }: { params: Promise<{ taskId: s
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin text-brand-600 mx-auto mb-3" />
           <p className="text-slate-800 font-medium">Submitting your quiz…</p>
-          <p className="text-slate-500 text-sm mt-1">Grading your answers.</p>
+          <p className="text-slate-500 text-sm mt-1">
+            {uploads.unsent > 0 ? `Sending ${uploads.unsent} video${uploads.unsent === 1 ? '' : 's'} — keep this page open.` : 'Grading your answers.'}
+          </p>
         </div>
       </Stage>
     );
@@ -251,7 +414,7 @@ export default function QuizRunnerPage({ params }: { params: Promise<{ taskId: s
 
   // ── Done ─────────────────────────────────────────────────────────────────────
   if (phase === 'done' && result) {
-    return <ResultScreen result={result} onBack={backToTask} />;
+    return <ResultScreen result={result} onBack={backToTask} unsent={uploads.unsent} />;
   }
 
   // ── Intro ────────────────────────────────────────────────────────────────────
@@ -288,7 +451,7 @@ export default function QuizRunnerPage({ params }: { params: Promise<{ taskId: s
 
               <div className="mt-7 flex items-center justify-center gap-2">
                 {canRetake && (
-                  <button onClick={startQuiz} disabled={historical} title={historical ? HISTORICAL_TITLE : undefined} className="px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-sm font-medium inline-flex items-center gap-2 disabled:opacity-50">
+                  <button onClick={begin} disabled={historical || !!deviceProblem} title={historical ? HISTORICAL_TITLE : undefined} className="px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-sm font-medium inline-flex items-center gap-2 disabled:opacity-50">
                     <RotateCcw className="w-4 h-4" /> Retake quiz
                   </button>
                 )}
@@ -328,7 +491,16 @@ export default function QuizRunnerPage({ params }: { params: Promise<{ taskId: s
                 <Badge tone="amber" icon={Clock}>Timed: {Math.round(opts.timeLimitSeconds / 60)} min</Badge>
               ) : null}
               {!opts?.allowRetake && <Badge tone="slate" icon={AlertTriangle}>One attempt</Badge>}
+              {hasVideo && <Badge tone="brand" icon={Video}>Some answers are recorded on camera</Badge>}
+              {screenRequired && <Badge tone="amber" icon={Monitor}>Proctored: camera on and entire screen shared</Badge>}
             </div>
+
+            {screenRequired && (
+              <div className="mt-5 flex items-start gap-2 text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg p-3">
+                <ShieldCheck className="w-4 h-4 text-brand-500 shrink-0 mt-0.5" />
+                Your camera stays on and your entire screen is shared the whole time. Pictures of both are taken at random moments for your mentor, and leaving the page is noted.
+              </div>
+            )}
 
             {opts?.timeLimitSeconds ? (
               <div className="mt-5 flex items-start gap-2 text-xs text-slate-500 bg-amber-50 border border-amber-100 rounded-lg p-3">
@@ -337,8 +509,48 @@ export default function QuizRunnerPage({ params }: { params: Promise<{ taskId: s
               </div>
             ) : null}
 
-            <button onClick={startQuiz} disabled={historical} title={historical ? HISTORICAL_TITLE : undefined} className="mt-7 inline-flex items-center gap-2 px-6 py-3 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-medium disabled:opacity-50">
-              {resuming ? <><RotateCcw className="w-4 h-4" /> Resume quiz</> : <><Play className="w-4 h-4" /> Start quiz</>}
+            {deviceProblem ? (
+              <div className="mt-6"><DeviceProblemNotice problem={deviceProblem} noun="quiz" tone="light" /></div>
+            ) : (
+              <button onClick={begin} disabled={historical} title={historical ? HISTORICAL_TITLE : undefined} className="mt-7 inline-flex items-center gap-2 px-6 py-3 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-medium disabled:opacity-50">
+                {resuming ? <><RotateCcw className="w-4 h-4" /> Resume quiz</> : needsSetup ? <><Play className="w-4 h-4" /> Continue to setup</> : <><Play className="w-4 h-4" /> Start quiz</>}
+              </button>
+            )}
+          </div>
+        </div>
+      </Stage>
+    );
+  }
+
+  // ── Setup (camera / screen) ──────────────────────────────────────────────────
+  if (phase === 'setup') {
+    const camReady = !cameraRequired || !!setupStream?.getVideoTracks().length;
+    const ready = camReady && (!screenRequired || screen.live);
+    return (
+      <Stage>
+        <div className="max-w-md w-full rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h1 className="text-lg font-semibold text-slate-900">Set up for this quiz</h1>
+          <p className="text-sm text-slate-500 mt-1">
+            {screenRequired ? 'Turn on your camera and share your entire screen.' : 'Turn on your camera — some answers are recorded on video.'}
+          </p>
+          <div className="mt-4 rounded-xl overflow-hidden bg-slate-900 aspect-video flex items-center justify-center">
+            {setupStream?.getVideoTracks().length
+              ? <video ref={setupVideoRef} muted playsInline className="w-full h-full object-cover -scale-x-100" />
+              : <span className="text-slate-400 text-sm inline-flex items-center gap-2"><Video className="w-4 h-4" />Waiting for your camera…</span>}
+          </div>
+          {!camReady && (
+            <button type="button" onClick={() => void enterSetup()} className="mt-2 text-xs text-brand-600 hover:text-brand-700">Ask for the camera again</button>
+          )}
+          {screenRequired && <div className="mt-4"><ScreenShareStep screen={screen} tone="light" /></div>}
+          <div className="mt-4 flex items-start gap-2 text-xs text-slate-500 bg-slate-50 rounded-lg p-3 border border-slate-200">
+            <ShieldCheck className="w-4 h-4 text-brand-500 shrink-0 mt-0.5" />
+            Once you start, the clock runs continuously. Turning the camera off{screenRequired ? ' or stopping the screen share' : ''} pauses you until it&apos;s back, and is noted for your mentor.
+          </div>
+          <div className="mt-5 flex items-center justify-between gap-3">
+            <button onClick={() => { releaseSetup(); screen.stop(); setPhase('intro'); }} className="px-4 py-2 text-slate-600 text-sm hover:text-slate-900">Back</button>
+            <button onClick={() => void startFromSetup()} disabled={!ready}
+              className="inline-flex items-center gap-2 px-6 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-medium disabled:opacity-50">
+              Start quiz <ArrowRight className="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -374,11 +586,19 @@ export default function QuizRunnerPage({ params }: { params: Promise<{ taskId: s
                 Question <span className="text-slate-900 font-medium tabular-nums">{idx + 1}</span> of <span className="tabular-nums">{questions.length}</span>
                 <span className="ml-2 text-slate-400">· {q.points} pt{q.points === 1 ? '' : 's'}</span>
               </div>
-              {remaining !== null && (
-                <div className={`inline-flex items-center gap-1.5 text-sm px-2.5 py-1 rounded-lg tabular-nums font-medium ${lowTime ? 'bg-red-50 text-red-600' : 'bg-slate-100 text-slate-600'}`}>
-                  <Clock className="w-3.5 h-3.5" />{mmss(remaining)}
-                </div>
-              )}
+              <div className="flex items-center gap-2">
+                {screenRequired && (
+                  <span title={`Proctored${proctor.focusLosses ? ` · left the page ${proctor.focusLosses}×` : ''}`}
+                    className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg ${proctor.focusLosses ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-500'}`}>
+                    <Eye className="w-3.5 h-3.5" />Proctored{proctor.focusLosses > 0 && <span className="tabular-nums">· {proctor.focusLosses}</span>}
+                  </span>
+                )}
+                {remaining !== null && (
+                  <div className={`inline-flex items-center gap-1.5 text-sm px-2.5 py-1 rounded-lg tabular-nums font-medium ${lowTime ? 'bg-red-50 text-red-600' : 'bg-slate-100 text-slate-600'}`}>
+                    <Clock className="w-3.5 h-3.5" />{mmss(remaining)}
+                  </div>
+                )}
+              </div>
             </div>
             {/* Segmented progress */}
             <div className="flex items-center gap-1.5">
@@ -391,6 +611,17 @@ export default function QuizRunnerPage({ params }: { params: Promise<{ taskId: s
             </div>
           </div>
         </div>
+
+        {screenRequired && !proctor.isFullscreen && (
+          <div className="border-b border-amber-200 bg-amber-50">
+            <div className="max-w-3xl mx-auto px-6 py-2.5 flex items-center justify-between gap-3 text-sm text-amber-800">
+              <span className="inline-flex items-center gap-2"><AlertTriangle className="w-4 h-4" />You left fullscreen. This is noted for your mentor.</span>
+              <button onClick={() => proctor.requestFullscreen()} className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-medium">
+                <Maximize2 className="w-3.5 h-3.5" />Return to fullscreen
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Question */}
         <div className="flex-1 overflow-y-auto">
@@ -421,6 +652,26 @@ export default function QuizRunnerPage({ params }: { params: Promise<{ taskId: s
                 );
               })}
 
+              {q.kind === 'video' && (
+                <VideoAnswer
+                  tone="light"
+                  supported={videoRecordingSupported()}
+                  recording={take.recording && take.questionId === q.id}
+                  elapsed={take.elapsed}
+                  maxSeconds={q.maxRecordingSeconds || 120}
+                  liveStream={take.stream}
+                  cameraStream={camStream}
+                  takeBlob={a.videoBlob}
+                  savedUrl={a.videoUrl}
+                  upload={uploads.status[q.id]}
+                  transcript={a.transcript}
+                  disabled={take.recording || (cameraRequired && !proctor.cameraLive)}
+                  onStart={() => void take.start(q.id, q.maxRecordingSeconds || 120)}
+                  onStop={() => void take.stop()}
+                  onRetry={() => { if (sessionId && a.videoBlob) void uploads.upload(sessionId, q.id, 'video', a.videoBlob); }}
+                />
+              )}
+
               {q.kind === 'short' && (
                 <textarea
                   value={a.answerText}
@@ -439,7 +690,7 @@ export default function QuizRunnerPage({ params }: { params: Promise<{ taskId: s
           <div className="max-w-3xl mx-auto px-6 py-4 flex items-center justify-between gap-3">
             <button
               onClick={() => goTo(idx - 1)}
-              disabled={idx === 0}
+              disabled={idx === 0 || take.recording}
               className="inline-flex items-center gap-1.5 px-4 py-2.5 text-slate-600 rounded-xl text-sm font-medium hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent"
             >
               <ArrowLeft className="w-4 h-4" /> Previous
@@ -447,9 +698,11 @@ export default function QuizRunnerPage({ params }: { params: Promise<{ taskId: s
 
             <span className="text-xs text-slate-400 tabular-nums hidden sm:block">{answeredCount} of {questions.length} answered</span>
 
-            {isLast ? (
+            {take.recording ? (
+              <span className="text-xs text-slate-500">Stop recording before moving on.</span>
+            ) : isLast ? (
               <button
-                onClick={() => submit(false)}
+                onClick={() => submit()}
                 className="inline-flex items-center gap-2 px-6 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-medium text-sm"
               >
                 <CheckCircle2 className="w-4 h-4" /> Submit quiz
@@ -464,6 +717,24 @@ export default function QuizRunnerPage({ params }: { params: Promise<{ taskId: s
             )}
           </div>
         </div>
+
+        {/* Corner camera preview — the snapshots are taken from it. */}
+        {cameraRequired && (
+          <div className="fixed bottom-24 right-6 z-10">
+            <video ref={videoRef} muted playsInline className="w-36 h-24 rounded-xl object-cover bg-slate-900 border border-slate-200 shadow-lg -scale-x-100" />
+            <span className="absolute top-1.5 left-1.5 inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-black/50 text-white">
+              <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />{screenRequired ? 'PROCTORED' : 'CAMERA'}
+            </span>
+          </div>
+        )}
+
+        {cameraRequired && !proctor.cameraLive && <CameraOffOverlay noun="quiz" onRetry={recoverCamera} />}
+        {screenRequired && !screen.live && (cameraRequired ? proctor.cameraLive : true) && (
+          <ScreenOffOverlay noun="quiz" screen={screen} onShared={() => { proctor.log('screen_share_restored'); void proctor.requestFullscreen(); }} />
+        )}
+        {uploadProblem !== null && (
+          <UploadProblemDialog count={uploadProblem} onRetry={() => void submit({ confirmed: true })} onSubmitAnyway={() => void submit({ force: true })} />
+        )}
       </div>
     );
   }
@@ -472,7 +743,7 @@ export default function QuizRunnerPage({ params }: { params: Promise<{ taskId: s
 }
 
 // ── Result screen ─────────────────────────────────────────────────────────────
-function ResultScreen({ result, onBack }: { result: QuizSubmitResult; onBack: () => void }) {
+function ResultScreen({ result, onBack, unsent = 0 }: { result: QuizSubmitResult; onBack: () => void; unsent?: number }) {
   const { finalized, scorePercent, autoScore, maxScore, passed, review } = result;
 
   return (
@@ -498,7 +769,12 @@ function ResultScreen({ result, onBack }: { result: QuizSubmitResult; onBack: ()
               <p className="text-slate-500 mt-2 text-sm">Your mentor will review and confirm your score. You’ll see the result on your task page.</p>
             </>
           )}
-          <button onClick={onBack} className="mt-7 px-6 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-sm font-medium">Back to task</button>
+          {unsent > 0 && (
+            <p className="mt-4 inline-flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              <Loader2 className="w-4 h-4 animate-spin" />Still sending {unsent} video{unsent === 1 ? '' : 's'} — keep this page open a moment.
+            </p>
+          )}
+          <button onClick={onBack} className="mt-7 px-6 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-sm font-medium block mx-auto">Back to task</button>
         </div>
 
         {review && review.length > 0 && (
@@ -513,6 +789,28 @@ function ResultScreen({ result, onBack }: { result: QuizSubmitResult; onBack: ()
 }
 
 function ReviewItem({ item, n }: { item: QuizResultItem; n: number }) {
+  if (item.kind === 'video') {
+    const pending = item.isCorrect === null;
+    return (
+      <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <div className="flex items-start gap-3">
+          <Video className="w-5 h-5 text-brand-500 shrink-0 mt-0.5" />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start justify-between gap-3">
+              <p className="text-sm font-medium text-slate-900">{n}. {item.prompt}</p>
+              <span className="text-xs text-slate-400 tabular-nums shrink-0">
+                {pending ? `– / ${item.points}` : `${item.pointsAwarded ?? 0}/${item.points}`} pt{item.points === 1 ? '' : 's'}
+              </span>
+            </div>
+            {item.videoUrl
+              ? <video controls playsInline preload="metadata" src={item.videoUrl} className="mt-2 w-full max-h-64 rounded-lg bg-black" />
+              : <p className="mt-2 text-sm text-slate-500">No video was recorded.</p>}
+            {pending && <p className="mt-2 text-xs text-slate-500">Your mentor scores this answer.</p>}
+          </div>
+        </div>
+      </div>
+    );
+  }
   const labelFor = (id: string) => item.options.find((o) => o.id === id)?.label ?? id;
   const correctText = item.kind === 'short'
     ? item.acceptedAnswers.join(', ')

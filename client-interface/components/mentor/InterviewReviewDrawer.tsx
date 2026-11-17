@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { toast } from 'sonner';
 import {
   Loader2, Mic, Code2, Type, Volume2, Sparkles, Eye, AlertTriangle, CheckCircle2, Clock, Flag, Trash2, X,
-  ChevronLeft, ChevronRight, RotateCcw, Video, Monitor, Camera,
+  ChevronLeft, ChevronRight, RotateCcw, Video,
 } from 'lucide-react';
 import { Drawer } from '@/components/shared/Drawer';
 import { CodeEditor } from '@/components/shared/CodeEditor';
@@ -12,43 +12,11 @@ import { interviewApi, type InterviewReview, type ReviewItem } from '@/lib/servi
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { useConfirm } from '@/lib/context/ConfirmContext';
 import { fmtClock } from '@/lib/utils/interviewMedia';
-
-const FLAG_LABEL: Record<string, string> = {
-  focus_loss: 'Left the tab',
-  window_blur: 'Window lost focus',
-  fullscreen_exit: 'Exited fullscreen',
-  paste_blocked: 'Paste blocked',
-  copy_blocked: 'Copy blocked',
-  context_menu_blocked: 'Right-click blocked',
-  camera_off: 'Camera turned off',
-  camera_restored: 'Camera restored',
-  // From the phone app — same log, different vocabulary. Without these a mobile
-  // interview showed raw event keys next to the web's readable ones.
-  app_background: 'Left the app',
-  app_foreground: 'Came back to the app',
-  camera_live: 'Camera on',
-  snapshot_failed: 'A photo failed to send',
-  screen_share_stopped: 'Stopped sharing the screen',
-  screen_share_restored: 'Shared the screen again',
-  screen_share_wrong_surface: 'Tried to share a tab/window, not the screen',
-  multiple_monitors: 'More than one monitor connected',
-  video_interrupted: 'Video recording cut off',
-  video_too_large: 'Video too large to send',
-};
+import { FLAG_LABEL, SourceBadge } from '@/components/mentor/ProctorSummary';
 
 /** The icon for a question's kind. */
 const kindIcon = (kind: string) => (kind === 'code' ? Code2 : kind === 'text' ? Type : kind === 'video' ? Video : Mic);
 const recordedKind = (kind: string) => kind === 'voice' || kind === 'video';
-
-/** A thumbnail's corner badge: was this the webcam or the shared screen? */
-function SourceBadge({ source }: { source?: 'camera' | 'screen' }) {
-  const Icon = source === 'screen' ? Monitor : Camera;
-  return (
-    <span className="absolute bottom-0.5 left-0.5 inline-flex items-center rounded bg-black/60 p-0.5 text-white" title={source === 'screen' ? 'Screen' : 'Webcam'}>
-      <Icon className="h-2.5 w-2.5" />
-    </span>
-  );
-}
 
 /**
  * InterviewReviewDrawer — the mentor's review of a completed interview: each

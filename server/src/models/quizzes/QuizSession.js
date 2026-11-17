@@ -73,6 +73,13 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.BOOLEAN,
       allowNull: true
     },
+    // Proctoring: snapshots (camera / screen) and events, appended in the database.
+    proctorLog: {
+      type: DataTypes.JSONB,
+      allowNull: false,
+      defaultValue: [],
+      field: 'proctor_log'
+    },
     meta: {
       type: DataTypes.JSONB,
       allowNull: false,

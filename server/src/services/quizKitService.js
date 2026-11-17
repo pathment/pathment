@@ -3,8 +3,9 @@ const { Op } = require('sequelize');
 const { models, sequelize } = require('../db');
 const { NotFoundError, ForbiddenError, ValidationError, ConflictError } = require('../utils/errors/errorTypes');
 const { snapToDifficultyPoints } = require('../config/points');
+const { maxRecordingSeconds, VIDEO_KIND } = require('./proctoringRules');
 
-const QUESTION_KINDS = ['single', 'multi', 'boolean', 'short'];
+const QUESTION_KINDS = ['single', 'multi', 'boolean', 'short', 'video'];
 const CHOICE_KINDS = ['single', 'multi', 'boolean'];
 const MATCH_MODES = ['exact', 'keyword'];
 const KIT_STATUSES = ['draft', 'published', 'archived'];
@@ -46,8 +47,12 @@ class QuizKitService {
       acceptedAnswers: [],
       matchMode: 'exact',
       explanation: raw?.explanation ? String(raw.explanation).trim() : null,
-      config: (raw?.config && typeof raw.config === 'object') ? raw.config : {},
+      config: (raw?.config && typeof raw.config === 'object' && !Array.isArray(raw.config)) ? { ...raw.config } : {},
     };
+    // Only a video question has a recording cap; stored clamped, so what the
+    // runner enforces is what the kit says.
+    if (kind === VIDEO_KIND) q.config.maxRecordingSeconds = maxRecordingSeconds(raw?.maxRecordingSeconds !== undefined ? { maxRecordingSeconds: raw.maxRecordingSeconds } : q.config);
+    else delete q.config.maxRecordingSeconds;
 
     if (kind === 'boolean') {
       // Fixed True/False options; the correct one is whichever id the author marked
@@ -79,6 +84,8 @@ class QuizKitService {
       if (!correct.length) throw new ValidationError(`Question ${position + 1}: mark the correct answer${kind === 'multi' ? '(s)' : ''}`);
       q.options = opts;
       q.correctOptionIds = correct;
+    } else if (kind === VIDEO_KIND) {
+      // Answered on camera and scored by the mentor: there is no answer key.
     } else { // short
       const accepted = (Array.isArray(raw?.acceptedAnswers) ? raw.acceptedAnswers : [])
         .map((a) => String(a || '').trim()).filter(Boolean);
@@ -120,6 +127,8 @@ class QuizKitService {
       meta.status = data.status;
     }
     if (data.settings !== undefined && data.settings && typeof data.settings === 'object') meta.settings = data.settings;
+    // Full proctoring by default when this quiz is assigned (camera + entire screen).
+    if (data.proctorDefault !== undefined) meta.settings = { ...(meta.settings || {}), proctorDefault: Boolean(data.proctorDefault) };
     return meta;
   }
 
@@ -162,6 +171,9 @@ class QuizKitService {
         passScore: k.passScore,
         evaluationDefault: k.evaluationDefault,
         allowRetakeDefault: k.allowRetakeDefault,
+        proctorDefault: Boolean(k.settings?.proctorDefault),
+        // A quiz with a video question is always reviewed by the mentor.
+        hasVideo: questions.some((q) => q.kind === VIDEO_KIND),
         questionCount: questions.length,
         totalPoints: questions.reduce((s, q) => s + (q.points || 0), 0),
         updatedAt: k.updatedAt,
@@ -197,6 +209,7 @@ class QuizKitService {
       showAnswers: kit.showAnswers,
       allowRetakeDefault: kit.allowRetakeDefault,
       evaluationDefault: kit.evaluationDefault,
+      proctorDefault: Boolean(kit.settings?.proctorDefault),
       settings: kit.settings || {},
       totalPoints: questions.reduce((s, q) => s + (q.points || 0), 0),
       questions: questions.map((q) => ({
@@ -272,9 +285,12 @@ class QuizKitService {
 
     const questionCount = await models.QuizQuestion.count({ where: { kitId }, transaction });
     if (questionCount === 0) throw new ValidationError('This quiz has no questions yet');
+    const videoCount = await models.QuizQuestion.count({ where: { kitId, kind: VIDEO_KIND }, transaction });
 
     const pick = (v, fallback) => (v === undefined || v === null ? fallback : Boolean(v));
-    const evaluationMode = EVAL_MODES.includes(options.evaluationMode) ? options.evaluationMode : kit.evaluationDefault;
+    // Nobody can auto-grade a video: a quiz with one always goes to the mentor.
+    const evaluationMode = videoCount > 0 ? 'review'
+      : (EVAL_MODES.includes(options.evaluationMode) ? options.evaluationMode : kit.evaluationDefault);
     const tlRaw = options.timeLimitSeconds ?? kit.timeLimitSeconds;
     const tlNum = Number.parseInt(tlRaw, 10);
     const passRaw = options.passScore ?? kit.passScore;
@@ -289,6 +305,7 @@ class QuizKitService {
       shuffleQuestions: pick(options.shuffleQuestions, kit.shuffleQuestions),
       showAnswers: pick(options.showAnswers, kit.showAnswers),
       passScore: Number.isFinite(passNum) ? Math.max(0, Math.min(100, passNum)) : null,
+      proctored: pick(options.proctored, Boolean(kit.settings?.proctorDefault)),
     }, { transaction });
   }
 }

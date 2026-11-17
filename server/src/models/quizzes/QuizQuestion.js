@@ -6,6 +6,7 @@ module.exports = (sequelize, DataTypes) => {
    *   - multi    N correct options (checkboxes)      → correctOptionIds = [ids…], exact set
    *   - boolean  true/false                          → options are True/False, correctOptionIds = [one]
    *   - short    typed answer graded against         → acceptedAnswers + matchMode (exact | keyword)
+   *   - video    answered on camera; graded by the mentor (config.maxRecordingSeconds caps it)
    * `correctOptionIds` / `acceptedAnswers` are the answer key — stripped from the
    * candidate view, never sent to the mentee before grading.
    */
@@ -29,7 +30,7 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING(20),
       allowNull: false,
       defaultValue: 'single',
-      validate: { isIn: [['single', 'multi', 'boolean', 'short']] }
+      validate: { isIn: [['single', 'multi', 'boolean', 'short', 'video']] }
     },
     prompt: {
       type: DataTypes.TEXT,

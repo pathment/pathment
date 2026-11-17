@@ -4,6 +4,7 @@ const quizController = require('../controllers/quizController');
 const { authenticate } = require('../middlewares/auth');
 const { requirePermissionAnyScope } = require('../middlewares/authz');
 const { PERMISSIONS } = require('../config/permissions');
+const upload = require('../middlewares/upload');
 
 // Authoring quiz kits is a task-authoring action — any mentor/admin who can assign
 // tasks somewhere may build kits. Ownership is enforced per-kit in the service.
@@ -19,11 +20,17 @@ router.delete('/kits/:id', authenticate, canAuthor, quizController.deleteKit);
 router.get('/assignments/:taskId', authenticate, quizController.getCandidateQuiz);
 router.post('/assignments/:taskId/start', authenticate, quizController.startQuiz);
 router.patch('/sessions/:sessionId/answer', authenticate, quizController.saveAnswer);
+// Video answers (signed direct upload, then attach — or the file itself) and proctoring.
+router.post('/sessions/:sessionId/video/sign', authenticate, quizController.signVideoUpload);
+router.post('/sessions/:sessionId/video', authenticate, upload.singleSafeLarge('video'), quizController.uploadAnswerVideo);
+router.post('/sessions/:sessionId/proctor', authenticate, quizController.logProctor);
+router.post('/sessions/:sessionId/snapshot', authenticate, upload.singleSafe('image'), quizController.uploadSnapshot);
 router.post('/sessions/:sessionId/submit', authenticate, quizController.submitQuiz);
 
 // Mentor review — permission (task.review, co-mentor aware) enforced in the service.
 router.get('/review/:taskId', authenticate, quizController.getQuizReview);
 router.patch('/review/:taskId/answer', authenticate, quizController.gradeQuizAnswer);
 router.post('/review/:taskId/finalize', authenticate, quizController.finalizeQuizReview);
+router.delete('/review/:taskId/snapshots', authenticate, quizController.deleteQuizSnapshots);
 
 module.exports = router;

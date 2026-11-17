@@ -1,5 +1,5 @@
 /**
- * The rules of a proctored interview, in one place.
+ * The rules of a proctored assessment (an interview or a quiz), in one place.
  *
  * Who needs what:
  *   - camera  when the mentor asked for proctoring, or any question is answered
@@ -11,9 +11,9 @@
  * A client says what it can do when it starts an attempt. Anything that cannot
  * share a screen or record video (the phone app, an old cached web bundle) is
  * turned away before the clock starts, with a message that says where to take
- * it instead, rather than letting it limp through an interview it can't run.
+ * it instead, rather than letting it limp through an attempt it can't run.
  *
- * Pure: no database, so the runner, the review and the tests read one truth.
+ * Pure: no database, so the runners, the reviews and the tests read one truth.
  */
 
 const VIDEO_KIND = 'video';
@@ -26,9 +26,10 @@ const LATE_UPLOAD_GRACE_MS = 15 * 60 * 1000;
 
 const CAPABILITIES = ['video', 'screen'];
 
-function requirementsFor({ cameraRequired, questions = [] }) {
+/** `proctored`: the mentor's "full proctoring" switch (interviews call it cameraRequired). */
+function requirementsFor({ proctored, questions = [] }) {
   const video = questions.some((q) => q && q.kind === VIDEO_KIND);
-  return { camera: Boolean(cameraRequired) || video, screen: Boolean(cameraRequired), video };
+  return { camera: Boolean(proctored) || video, screen: Boolean(proctored), video };
 }
 
 /** The capabilities a client declared, cleaned to the ones we know. */
@@ -48,10 +49,10 @@ function missingCapability(requirements, capabilities) {
   return null;
 }
 
-function unsupportedClientMessage(missing) {
+function unsupportedClientMessage(missing, noun = 'interview') {
   const why = missing === 'screen'
-    ? 'This interview is proctored with screen sharing'
-    : 'This interview has questions you answer on video';
+    ? `This ${noun} is proctored with screen sharing`
+    : `This ${noun} has questions you answer on video`;
   return `${why}, which this app can't do. Open it on a laptop or desktop in Chrome, Edge or Firefox to take it.`;
 }
 
@@ -67,8 +68,8 @@ function maxRecordingSeconds(config) {
  * a signed upload can only ever land on the answer it was signed for, and the
  * server can tell by the id alone whether a finished upload is theirs.
  */
-function videoPublicIdPrefix(sessionId, questionId) {
-  return `pathment/interviews/videos/${sessionId}/${questionId}-`;
+function videoPublicIdPrefix(area, sessionId, questionId) {
+  return `pathment/${area}/videos/${sessionId}/${questionId}-`;
 }
 
 /**

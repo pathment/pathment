@@ -56,8 +56,46 @@ exports.getCandidateQuiz = catchAsync(async (req, res) => {
 exports.startQuiz = catchAsync(async (req, res) => {
   const session = await quizSessionService.startOrResume(req.params.taskId, req.user.id, {
     clanId: requestedClanId(req),
+    // What this client can do (screen share, video answers) — see proctoringRules.
+    capabilities: req.body && req.body.capabilities,
   });
   res.status(200).json(successResponse('Quiz session ready', { session }));
+});
+
+// POST /api/quizzes/sessions/:sessionId/video/sign  { questionId }
+exports.signVideoUpload = catchAsync(async (req, res) => {
+  const result = await quizSessionService.signVideoUpload(req.params.sessionId, req.user.id, req.body.questionId);
+  res.status(200).json(successResponse('Upload ready', result));
+});
+
+// POST /api/quizzes/sessions/:sessionId/video
+//   JSON { questionId, publicId } after a direct upload, or multipart video + questionId.
+exports.uploadAnswerVideo = catchAsync(async (req, res) => {
+  const result = await quizSessionService.attachVideo(req.params.sessionId, req.user.id, req.body.questionId, {
+    file: req.file || null,
+    publicId: req.body.publicId || null,
+  });
+  res.status(200).json(successResponse('Video saved', result));
+});
+
+// POST /api/quizzes/sessions/:sessionId/proctor  { events: [] }
+exports.logProctor = catchAsync(async (req, res) => {
+  const result = await quizSessionService.logProctorEvents(req.params.sessionId, req.user.id, req.body.events || []);
+  res.status(200).json(successResponse('Proctor events logged', result));
+});
+
+// POST /api/quizzes/sessions/:sessionId/snapshot  (multipart: image, questionId, source)
+exports.uploadSnapshot = catchAsync(async (req, res) => {
+  const result = await quizSessionService.attachSnapshot(
+    req.params.sessionId, req.user.id, req.file, req.body.questionId || null, req.body.source || 'camera',
+  );
+  res.status(200).json(successResponse('Snapshot saved', result));
+});
+
+// DELETE /api/quizzes/review/:taskId/snapshots
+exports.deleteQuizSnapshots = catchAsync(async (req, res) => {
+  const result = await quizSessionService.deleteSnapshots(req.params.taskId, req.user.id);
+  res.status(200).json(successResponse('Snapshots deleted', result));
 });
 
 // PATCH /api/quizzes/sessions/:sessionId/answer  { questionId, selectedOptionIds?, answerText? }

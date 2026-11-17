@@ -3,7 +3,7 @@ const { models, sequelize } = require('../db');
 const { NotFoundError, ForbiddenError, ValidationError, ConflictError } = require('../utils/errors/errorTypes');
 const { uploadToCloudinary } = require('../utils/cloudinaryUpload');
 const { snapToDifficultyPoints } = require('../config/points');
-const { maxRecordingSeconds } = require('./interviewProctoring');
+const { maxRecordingSeconds } = require('./proctoringRules');
 
 const QUESTION_KINDS = ['voice', 'code', 'text', 'video'];
 const TIMING_MODES = ['per_question', 'total'];

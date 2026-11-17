@@ -226,6 +226,7 @@ export function AssignTaskDrawer({
   const [quizKitId, setQuizKitId] = useState('');
   const [quizEvalMode, setQuizEvalMode] = useState<'auto' | 'review'>('auto');
   const [quizAllowRetake, setQuizAllowRetake] = useState(false);
+  const [quizProctored, setQuizProctored] = useState(false);
   const selectedQuizKit = quizKits.find((k) => k.id === quizKitId) || null;
 
   // Course type (Edorax): offered only while the workspace's connection is
@@ -301,8 +302,9 @@ export function AssignTaskDrawer({
   // When a quiz kit is chosen, seed the option controls from its defaults.
   useEffect(() => {
     if (!selectedQuizKit) return;
-    setQuizEvalMode(selectedQuizKit.evaluationDefault);
+    setQuizEvalMode(selectedQuizKit.hasVideo ? 'review' : selectedQuizKit.evaluationDefault);
     setQuizAllowRetake(selectedQuizKit.allowRetakeDefault);
+    setQuizProctored(!!selectedQuizKit.proctorDefault);
   }, [quizKitId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // bulk targeting
@@ -540,7 +542,7 @@ export function AssignTaskDrawer({
           ? { interview: { kitId, allowRetake, cameraRequired, aiGradingEnabled: aiGrading } }
           : {}),
         ...(type === 'quiz' && quizKitId
-          ? { quiz: { kitId: quizKitId, evaluationMode: quizEvalMode, allowRetake: quizAllowRetake } }
+          ? { quiz: { kitId: quizKitId, evaluationMode: selectedQuizKit?.hasVideo ? 'review' : quizEvalMode, allowRetake: quizAllowRetake, proctored: quizProctored } }
           : {}),
         ...(type === 'open_source' && openSourceOrgs.length > 0
           ? { openSourceOrgIds: openSourceOrgs.map((o) => o.id) }
@@ -844,14 +846,22 @@ export function AssignTaskDrawer({
                               ['auto', 'Auto-grade', 'Score & points post the moment they submit'],
                               ['review', 'Mentor review', 'Auto-scored, but you confirm before points post'],
                             ] as const).map(([val, label, hint]) => (
-                              <button key={val} type="button" onClick={() => setQuizEvalMode(val)}
-                                className={`text-left rounded-lg border p-2.5 ${quizEvalMode === val ? 'border-brand-400 bg-brand-50 dark:bg-brand-500/10' : 'border-slate-200 hover:border-slate-300'}`}>
+                              <button key={val} type="button" onClick={() => setQuizEvalMode(val)} disabled={!!selectedQuizKit?.hasVideo}
+                                className={`text-left rounded-lg border p-2.5 disabled:cursor-not-allowed ${(selectedQuizKit?.hasVideo ? val === 'review' : quizEvalMode === val) ? 'border-brand-400 bg-brand-50 dark:bg-brand-500/10' : 'border-slate-200 hover:border-slate-300 disabled:opacity-50'}`}>
                                 <span className="block text-sm font-medium text-slate-800">{label}</span>
                                 <span className="block text-[11px] text-slate-500 mt-0.5">{hint}</span>
                               </button>
                             ))}
                           </div>
+                          {selectedQuizKit?.hasVideo && (
+                            <p className="mt-1.5 text-[11px] text-slate-500">This quiz has video answers, so you review it: you score the videos, the rest is graded automatically.</p>
+                          )}
                         </div>
+                        <label className="flex items-start gap-2.5 cursor-pointer pt-1">
+                          <input type="checkbox" checked={quizProctored} onChange={(e) => setQuizProctored(e.target.checked)}
+                            className="mt-0.5 w-4 h-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500" />
+                          <span className="text-sm text-slate-700">Full proctoring<span className="block text-[11px] text-slate-400">Camera on and entire screen shared the whole time; random snapshots of both. Needs a computer.</span></span>
+                        </label>
                         <label className="flex items-start gap-2.5 cursor-pointer pt-1">
                           <input type="checkbox" checked={quizAllowRetake} onChange={(e) => setQuizAllowRetake(e.target.checked)}
                             className="mt-0.5 w-4 h-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500" />

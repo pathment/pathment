@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { interviewApi, uploadVideoAnswer } from '@/lib/services/interview-api';
+import { uploadVideoAnswer, type VideoUploadEndpoints } from '@/lib/services/video-upload';
 
 export type RecordingKind = 'voice' | 'video';
 
@@ -20,8 +20,14 @@ const isFinal = (e: unknown) => {
   return !!status && status >= 400 && status < 500 && status !== 408 && status !== 429;
 };
 
+/** Where a recording goes: video through the shared uploader, voice by `voice` (interviews only). */
+export interface AnswerUploadTargets {
+  video: VideoUploadEndpoints;
+  voice?: (sessionId: string, questionId: string, blob: Blob) => Promise<{ data?: { audioUrl?: string } }>;
+}
+
 /**
- * Every recorded answer of an interview on its way to the server.
+ * Every recorded answer of an interview or quiz on its way to the server.
  *
  * - One question's uploads run one after another, so when a candidate records
  *   again the newer take always lands last (the server replaces the older one).
@@ -30,7 +36,9 @@ const isFinal = (e: unknown) => {
  * - While anything is unsent, closing or reloading the tab asks first: the
  *   recording only exists in this page until it is uploaded.
  */
-export function useAnswerUploads() {
+export function useAnswerUploads(targets: AnswerUploadTargets) {
+  const targetsRef = useRef(targets);
+  useEffect(() => { targetsRef.current = targets; }, [targets]);
   const [status, setStatus] = useState<Record<string, UploadStatus>>({});
   const held = useRef(new Map<string, { kind: RecordingKind; blob: Blob }>());
   const chains = useRef(new Map<string, Promise<boolean>>());
@@ -41,10 +49,12 @@ export function useAnswerUploads() {
     setStatus((cur) => ({ ...cur, [questionId]: { ...(cur[questionId] ?? { progress: 0, state: 'uploading' }), ...next } }));
 
   const sendOnce = useCallback(async (sessionId: string, questionId: string, kind: RecordingKind, blob: Blob) => {
+    const { video, voice } = targetsRef.current;
     if (kind === 'video') {
-      return uploadVideoAnswer(sessionId, questionId, blob, (f) => patch(questionId, { kind, state: 'uploading', progress: f }));
+      return uploadVideoAnswer(video, sessionId, questionId, blob, (f) => patch(questionId, { kind, state: 'uploading', progress: f }));
     }
-    const res: { data?: { audioUrl?: string } } = await interviewApi.uploadAnswerAudio(sessionId, questionId, blob);
+    if (!voice) throw new Error('No voice upload here');
+    const res = await voice(sessionId, questionId, blob);
     return res?.data?.audioUrl ?? null;
   }, []);
 
