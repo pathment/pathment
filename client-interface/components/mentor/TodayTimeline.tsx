@@ -11,12 +11,13 @@ import { Drawer } from '@/components/shared/Drawer';
 import { DayPlanner } from '@/components/mentee/DayPlanner';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { taskApi } from '@/lib/services/task-api';
+import { submissionService } from '@/lib/services/submissionService';
 import { useConfirm } from '@/lib/context/ConfirmContext';
 
 type Filter = 'all' | 'review' | 'open' | 'done';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Task = any;
-type Pending = { taskId: string; submissionId: string };
+type Pending = { taskId: string; submissionId: string; title?: string; isLate?: boolean; isExtensionRequest?: boolean };
 
 /**
  * One mentee's day and their work, as one surface on the review screen.
@@ -123,15 +124,37 @@ export function TodayTimeline<P extends Pending>({
     [openTasks, readOnly],
   );
   const selectableIds = useMemo(() => new Set(selectable.map((t) => t.id)), [selectable]);
+  // Submissions can be picked to approve together. An extension request is a
+  // different question (more time, not "is this good"), so it stays one by one.
+  const approvable = useMemo(() => (readOnly ? [] : pending.filter((p) => !p.isExtensionRequest)), [pending, readOnly]);
+  const approvableIds = useMemo(() => new Set(approvable.map((p) => p.submissionId)), [approvable]);
   // What is picked AND still pickable (a task can finish or vanish under us).
   const chosen = useMemo(() => [...picked].filter((id) => selectableIds.has(id)), [picked, selectableIds]);
-  const allChosen = selectable.length > 0 && chosen.length === selectable.length;
+  const chosenSubs = useMemo(() => approvable.filter((p) => picked.has(p.submissionId)), [picked, approvable]);
+  const everything = selectable.length + approvable.length;
+  const allChosen = everything > 0 && chosen.length + chosenSubs.length === everything;
   const pick = (id: string) => setPicked((cur) => {
     const next = new Set(cur);
     if (next.has(id)) next.delete(id); else next.add(id);
     return next;
   });
   const stopSelecting = () => { setSelecting(false); setPicked(new Set()); };
+
+  /** A submission waiting for review, with a tick box while selecting. */
+  const pendingRow = (p: P, index: number, key: string) => {
+    if (!selecting || !approvableIds.has(p.submissionId)) return <div key={key}>{renderPending(p, index)}</div>;
+    const on = picked.has(p.submissionId);
+    return (
+      <div key={key} className="flex items-center gap-2">
+        <input
+          type="checkbox" checked={on} onChange={() => pick(p.submissionId)}
+          aria-label={`Select ${p.title || 'submission'} to approve`}
+          className="h-4 w-4 shrink-0 cursor-pointer rounded border-slate-300 accent-brand-600"
+        />
+        <div className={`min-w-0 flex-1 rounded-xl transition-shadow ${on ? 'ring-2 ring-emerald-500' : ''}`}>{renderPending(p, index)}</div>
+      </div>
+    );
+  };
 
   /** A task row, with a tick box in front of it while selecting. */
   const taskRow = (t: Task, className?: string) => {
@@ -152,7 +175,7 @@ export function TodayTimeline<P extends Pending>({
   /** One item of a block, as the richest row we have for it. */
   const renderItem = (item: PlanItem, index: number) => {
     const p = pendingByTask.get(item.id);
-    if (p) return filter === 'open' || filter === 'done' ? null : <div key={item.id}>{renderPending(p, index)}</div>;
+    if (p) return filter === 'open' || filter === 'done' ? null : pendingRow(p, index, item.id);
     if (filter === 'review') return null;
     const t = byId.get(item.id);
     const done = item.status === 'completed';
@@ -196,13 +219,13 @@ export function TodayTimeline<P extends Pending>({
               </span>
             )}
             <div className="ml-auto flex items-center gap-1">
-              {selectable.length > 0 && (
+              {everything > 0 && (
                 <button type="button" onClick={() => (selecting ? stopSelecting() : setSelecting(true))}
                   aria-pressed={selecting}
                   className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium ${selecting
                     ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/15'
                     : 'text-slate-600 hover:bg-slate-50 hover:text-brand-700 dark:text-slate-300 dark:hover:bg-white/5'}`}
-                  title="Pick several tasks to move, re-date, cancel or remove together">
+                  title="Pick several to approve, move, re-date, cancel or remove together">
                   <CheckSquare className="h-3.5 w-3.5" />{selecting ? 'Done' : 'Select'}
                 </button>
               )}
@@ -249,10 +272,13 @@ export function TodayTimeline<P extends Pending>({
           {selecting && (
             <BulkBar
               count={chosen.length}
-              total={selectable.length}
+              total={everything}
               allChosen={allChosen}
-              onToggleAll={() => setPicked(allChosen ? new Set() : new Set(selectable.map((t) => t.id)))}
+              onToggleAll={() => setPicked(allChosen ? new Set() : new Set([
+                ...selectable.map((t) => t.id), ...approvable.map((p) => p.submissionId),
+              ]))}
               ids={chosen}
+              subs={chosenSubs}
               titleOf={(id) => { const t = byId.get(id); return t?.roadmapTask?.title || t?.title || 'Task'; }}
               slots={slots}
               clanId={clanId}
@@ -275,7 +301,7 @@ export function TodayTimeline<P extends Pending>({
               {/* Waiting for review and not tied to a block: first, it is the job. */}
               {filter !== 'open' && filter !== 'done' && loosePending.length > 0 && (
                 <Group title="Waiting for your review" icon={<ClipboardCheck className="h-3.5 w-3.5 text-brand-600" />}>
-                  {loosePending.map((p, i) => <div key={p.submissionId}>{renderPending(p, i)}</div>)}
+                  {loosePending.map((p, i) => pendingRow(p, i, p.submissionId))}
                 </Group>
               )}
 
@@ -431,9 +457,9 @@ const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
  * endpoint the row's own buttons use, so the rules (who may, which statuses)
  * stay the server's, and a task that refuses is counted, never hidden.
  */
-function BulkBar({ count, total, allChosen, onToggleAll, ids, titleOf, slots, clanId, menteeFirst, onDone, onClose }: {
+function BulkBar({ count, total, allChosen, onToggleAll, ids, subs, titleOf, slots, clanId, menteeFirst, onDone, onClose }: {
   count: number; total: number; allChosen: boolean; onToggleAll: () => void;
-  ids: string[]; titleOf: (id: string) => string;
+  ids: string[]; subs: Pending[]; titleOf: (id: string) => string;
   slots: PlanSlot[]; clanId: string | null; menteeFirst: string;
   onDone: () => Promise<void>; onClose: () => void;
 }) {
@@ -441,16 +467,44 @@ function BulkBar({ count, total, allChosen, onToggleAll, ids, titleOf, slots, cl
   const [busy, setBusy] = useState<string | null>(null);
   const [dateOpen, setDateOpen] = useState(false);
   const [date, setDate] = useState('');
+  const [note, setNote] = useState('');
   const none = count === 0;
+  const picked = count + subs.length;
 
-  const run = async (key: string, verb: string, call: (id: string) => Promise<unknown>) => {
+  const run = async (key: string, verb: string, call: (id: string) => Promise<unknown>, list: string[] = ids, noun = 'task') => {
     setBusy(key);
     try {
-      const { ok, failed, firstError } = await eachTask(ids, call);
-      if (ok) toast.success(`${verb} ${plural(ok, 'task')}`);
-      if (failed) toast.error(`${plural(failed, 'task')} could not be changed${firstError ? `: ${firstError}` : ''}`);
+      const { ok, failed, firstError } = await eachTask(list, call);
+      if (ok) toast.success(`${verb} ${plural(ok, noun)}`);
+      if (failed) toast.error(`${plural(failed, noun)} could not be changed${firstError ? `: ${firstError}` : ''}`);
       await onDone();
-    } finally { setBusy(null); setDateOpen(false); setDate(''); }
+    } finally { setBusy(null); setDateOpen(false); setDate(''); setNote(''); }
+  };
+
+  /**
+   * Approve every picked submission as it stands: full rating, the task's
+   * full points (the server's default when none are sent), one shared note.
+   * Anything that needs a criterion ticked, points changed or changes asked
+   * for is a one-by-one review, so the confirm says that plainly.
+   */
+  const approve = async () => {
+    const late = subs.filter((s) => s.isLate).length;
+    const list = subs.slice(0, 5).map((s) => `• ${s.title || 'Submission'}${s.isLate ? ' (late)' : ''}`).join('\n');
+    const ok = await confirm({
+      title: `Approve ${plural(subs.length, 'submission')}?`,
+      description: `${list}${subs.length > 5 ? `\n…and ${subs.length - 5} more` : ''}\n\n`
+        + `Each is marked complete with full points${late ? `, including the ${late} late one${late === 1 ? '' : 's'}: to take points off for lateness, review ${late === 1 ? 'it' : 'those'} one by one instead` : ''}. `
+        + `${note.trim() ? `${menteeFirst} sees your note on each.` : `${menteeFirst} sees "Approved."`} To ask for changes, use Review & decide.`,
+      confirmLabel: `Approve ${plural(subs.length, 'submission')}`, cancelLabel: 'Not yet',
+    });
+    if (!ok) return;
+    const text = note.trim();
+    await run('approve', 'Approved', (id) => submissionService.reviewSubmission(id, {
+      rating: 5,
+      feedbackText: text || 'Approved.',
+      isApproved: true,
+      decision: text ? 'approved_notes' : 'approved',
+    }), subs.map((s) => s.submissionId), 'submission');
   };
 
   const names = () => {
@@ -484,10 +538,20 @@ function BulkBar({ count, total, allChosen, onToggleAll, ids, titleOf, slots, cl
         <input type="checkbox" checked={allChosen} onChange={onToggleAll}
           ref={(el) => { if (el) el.indeterminate = !allChosen && count > 0; }}
           className="h-4 w-4 rounded border-slate-300 accent-brand-600" />
-        {none ? `Select all ${total} open` : `${count} of ${total} selected`}
+        {picked === 0 ? `Select all ${total}` : `${picked} of ${total} selected`}
       </label>
 
       <div className="ml-auto flex flex-wrap items-center gap-1.5">
+        {subs.length > 0 && (
+          <form className="inline-flex items-center gap-1" onSubmit={(e) => { e.preventDefault(); void approve(); }}>
+            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note for all (optional)" aria-label="Note sent with each approval"
+              className="w-44 rounded-lg border border-slate-200 bg-card px-2 py-1.5 text-xs placeholder:text-slate-400 dark:border-slate-700" />
+            <button type="submit" disabled={!!busy} className={`${btn} bg-emerald-600 text-white hover:bg-emerald-700`}>
+              {busy === 'approve' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+              Approve {subs.length}
+            </button>
+          </form>
+        )}
         {slots.length > 0 && (
           <select
             aria-label="Move the selected tasks to a block"
