@@ -1485,6 +1485,7 @@ export default function CohortReview() {
             reloadKey={tasks}
             onProgress={(p) => setLiveProgress((cur) => ({ ...cur, [mentee!.id]: p }))}
             onAssign={() => setAssigning(true)}
+            onChanged={refresh}
             renderTaskRow={renderTaskRow}
             renderPending={(item) => {
               const i = pending.indexOf(item);

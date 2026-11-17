@@ -3,13 +3,15 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import {
-  CalendarClock, CheckCircle2, ChevronDown, ChevronRight, ClipboardCheck, Loader2, Lock, Pencil, Plus,
+  CalendarClock, CheckCircle2, CheckSquare, ChevronDown, ChevronRight, ClipboardCheck, Loader2, Lock, Pencil, Plus, X,
 } from 'lucide-react';
 import { scheduleApi, type PlanBoard, type PlanItem, type PlanSlot } from '@/lib/services/schedule-api';
 import { qk, useApiQuery } from '@/lib/query';
 import { Drawer } from '@/components/shared/Drawer';
 import { DayPlanner } from '@/components/mentee/DayPlanner';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
+import { taskApi } from '@/lib/services/task-api';
+import { useConfirm } from '@/lib/context/ConfirmContext';
 
 type Filter = 'all' | 'review' | 'open' | 'done';
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -36,7 +38,7 @@ type Pending = { taskId: string; submissionId: string };
  */
 export function TodayTimeline<P extends Pending>({
   menteeId, menteeName, clanId, readOnly, tasks, completedTasks, tasksLoading,
-  pending, renderPending, renderTaskRow, onAssign, reloadKey, onProgress,
+  pending, renderPending, renderTaskRow, onAssign, reloadKey, onProgress, onChanged,
 }: {
   menteeId: string;
   menteeName: string;
@@ -55,6 +57,8 @@ export function TodayTimeline<P extends Pending>({
   reloadKey: unknown;
   /** The day's progress as this card reads it, so the face in the row agrees. */
   onProgress?: (p: { hasPlan: boolean; total: number; done: number }) => void;
+  /** After a bulk change, so the review reloads their work. */
+  onChanged?: () => unknown;
 }) {
   const [planOpen, setPlanOpen] = useState(false);
   const [filter, setFilter] = useState<Filter>('all');
@@ -109,6 +113,42 @@ export function TodayTimeline<P extends Pending>({
 
   const counts = { all: null, review: pending.length, open: openTasks.length, done: completedTasks.length };
 
+  // ── Selecting several tasks at once ──────────────────────────────────────
+  // Only open, mentor-given work can be picked: a submission waits for its
+  // review, finished work is history, and their own to-dos are theirs.
+  const [selecting, setSelecting] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const selectable = useMemo(
+    () => (readOnly ? [] : openTasks.filter((t) => t.status !== 'cancelled' && !t.selfAssigned)),
+    [openTasks, readOnly],
+  );
+  const selectableIds = useMemo(() => new Set(selectable.map((t) => t.id)), [selectable]);
+  // What is picked AND still pickable (a task can finish or vanish under us).
+  const chosen = useMemo(() => [...picked].filter((id) => selectableIds.has(id)), [picked, selectableIds]);
+  const allChosen = selectable.length > 0 && chosen.length === selectable.length;
+  const pick = (id: string) => setPicked((cur) => {
+    const next = new Set(cur);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const stopSelecting = () => { setSelecting(false); setPicked(new Set()); };
+
+  /** A task row, with a tick box in front of it while selecting. */
+  const taskRow = (t: Task, className?: string) => {
+    if (!selecting || !selectableIds.has(t.id)) return <div key={t.id} className={className}>{renderTaskRow(t)}</div>;
+    const on = picked.has(t.id);
+    return (
+      <div key={t.id} className={`flex items-center gap-2 ${className ?? ''}`}>
+        <input
+          type="checkbox" checked={on} onChange={() => pick(t.id)}
+          aria-label={`Select ${t.roadmapTask?.title || t.title || 'task'}`}
+          className="h-4 w-4 shrink-0 cursor-pointer rounded border-slate-300 accent-brand-600"
+        />
+        <div className={`min-w-0 flex-1 rounded-xl transition-shadow ${on ? 'ring-2 ring-brand-500' : ''}`}>{renderTaskRow(t)}</div>
+      </div>
+    );
+  };
+
   /** One item of a block, as the richest row we have for it. */
   const renderItem = (item: PlanItem, index: number) => {
     const p = pendingByTask.get(item.id);
@@ -118,7 +158,7 @@ export function TodayTimeline<P extends Pending>({
     const done = item.status === 'completed';
     if (filter === 'open' && done) return null;
     if (filter === 'done' && !done) return null;
-    if (t) return <div key={item.id} className={done ? 'opacity-70' : undefined}>{renderTaskRow(t)}</div>;
+    if (t) return taskRow(t, done ? 'opacity-70' : undefined);
     // A plan item the review list does not carry (a personal to-do, or work
     // from another clan): a quiet row, enough to talk about it.
     return (
@@ -156,6 +196,16 @@ export function TodayTimeline<P extends Pending>({
               </span>
             )}
             <div className="ml-auto flex items-center gap-1">
+              {selectable.length > 0 && (
+                <button type="button" onClick={() => (selecting ? stopSelecting() : setSelecting(true))}
+                  aria-pressed={selecting}
+                  className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium ${selecting
+                    ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/15'
+                    : 'text-slate-600 hover:bg-slate-50 hover:text-brand-700 dark:text-slate-300 dark:hover:bg-white/5'}`}
+                  title="Pick several tasks to move, re-date, cancel or remove together">
+                  <CheckSquare className="h-3.5 w-3.5" />{selecting ? 'Done' : 'Select'}
+                </button>
+              )}
               {!readOnly && (
                 <button type="button" onClick={() => setPlanOpen(true)}
                   className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-brand-700 dark:text-slate-300 dark:hover:bg-white/5"
@@ -196,6 +246,21 @@ export function TodayTimeline<P extends Pending>({
               );
             })}
           </div>
+          {selecting && (
+            <BulkBar
+              count={chosen.length}
+              total={selectable.length}
+              allChosen={allChosen}
+              onToggleAll={() => setPicked(allChosen ? new Set() : new Set(selectable.map((t) => t.id)))}
+              ids={chosen}
+              titleOf={(id) => { const t = byId.get(id); return t?.roadmapTask?.title || t?.title || 'Task'; }}
+              slots={slots}
+              clanId={clanId}
+              menteeFirst={first_}
+              onDone={async () => { stopSelecting(); await onChanged?.(); void refetch(); }}
+              onClose={stopSelecting}
+            />
+          )}
         </div>
 
         <div className="space-y-4 p-4">
@@ -203,7 +268,7 @@ export function TodayTimeline<P extends Pending>({
             <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-brand-600" /></div>
           ) : filter === 'done' && !hasPlan ? (
             completedTasks.length
-              ? <div className="space-y-1.5">{completedTasks.map((t) => <div key={t.id} className="opacity-80">{renderTaskRow(t)}</div>)}</div>
+              ? <div className="space-y-1.5">{completedTasks.map((t) => taskRow(t, 'opacity-80'))}</div>
               : <Empty>Nothing finished in this clan yet.</Empty>
           ) : (
             <>
@@ -251,7 +316,7 @@ export function TodayTimeline<P extends Pending>({
               {/* Work the day does not place. */}
               {(filter === 'all' || filter === 'open') && looseOpen.length > 0 && (
                 <Group title={hasPlan ? 'Not in a block' : 'Their work'}>
-                  {looseOpen.map((t) => <div key={t.id}>{renderTaskRow(t)}</div>)}
+                  {looseOpen.map((t) => taskRow(t))}
                 </Group>
               )}
 
@@ -259,7 +324,7 @@ export function TodayTimeline<P extends Pending>({
                 const earlier = completedTasks.filter((t) => !placed.has(t.id));
                 return earlier.length > 0 && (
                   <Group title={hasPlan ? 'Finished before today' : 'Finished'}>
-                    {earlier.map((t) => <div key={t.id} className="opacity-80">{renderTaskRow(t)}</div>)}
+                    {earlier.map((t) => taskRow(t, 'opacity-80'))}
                   </Group>
                 );
               })()}
@@ -343,6 +408,136 @@ function Group({ title, icon, children }: { title: string; icon?: ReactNode; chi
 
 function Empty({ children }: { children: ReactNode }) {
   return <p className="flex items-center gap-2 px-1 py-2 text-sm text-slate-500">{children}</p>;
+}
+
+/** Runs one call per task, a few at a time, and says how many worked. */
+async function eachTask(ids: string[], call: (id: string) => Promise<unknown>) {
+  let ok = 0;
+  const errors: string[] = [];
+  const queue = [...ids];
+  const worker = async () => {
+    for (let id = queue.shift(); id; id = queue.shift()) {
+      try { await call(id); ok += 1; } catch (e) { errors.push(extractApiErrorMessage(e, 'failed')); }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(4, ids.length) }, worker));
+  return { ok, failed: errors.length, firstError: errors[0] };
+}
+
+const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
+
+/**
+ * The actions for the picked tasks. Each goes through the same per-task
+ * endpoint the row's own buttons use, so the rules (who may, which statuses)
+ * stay the server's, and a task that refuses is counted, never hidden.
+ */
+function BulkBar({ count, total, allChosen, onToggleAll, ids, titleOf, slots, clanId, menteeFirst, onDone, onClose }: {
+  count: number; total: number; allChosen: boolean; onToggleAll: () => void;
+  ids: string[]; titleOf: (id: string) => string;
+  slots: PlanSlot[]; clanId: string | null; menteeFirst: string;
+  onDone: () => Promise<void>; onClose: () => void;
+}) {
+  const confirm = useConfirm();
+  const [busy, setBusy] = useState<string | null>(null);
+  const [dateOpen, setDateOpen] = useState(false);
+  const [date, setDate] = useState('');
+  const none = count === 0;
+
+  const run = async (key: string, verb: string, call: (id: string) => Promise<unknown>) => {
+    setBusy(key);
+    try {
+      const { ok, failed, firstError } = await eachTask(ids, call);
+      if (ok) toast.success(`${verb} ${plural(ok, 'task')}`);
+      if (failed) toast.error(`${plural(failed, 'task')} could not be changed${firstError ? `: ${firstError}` : ''}`);
+      await onDone();
+    } finally { setBusy(null); setDateOpen(false); setDate(''); }
+  };
+
+  const names = () => {
+    const list = ids.slice(0, 5).map((id) => `• ${titleOf(id)}`).join('\n');
+    return ids.length > 5 ? `${list}\n…and ${ids.length - 5} more` : list;
+  };
+
+  const remove = async () => {
+    const ok = await confirm({
+      title: `Remove ${plural(count, 'task')} from ${menteeFirst}?`,
+      description: `${names()}\n\nThey come off ${menteeFirst}’s list for good. To keep a record instead, cancel them.`,
+      variant: 'danger', confirmLabel: `Remove ${plural(count, 'task')}`, cancelLabel: 'Keep them',
+    });
+    if (ok) await run('remove', 'Removed', (id) => taskApi.unassignTask(id));
+  };
+  const cancel = async () => {
+    const ok = await confirm({
+      title: `Cancel ${plural(count, 'task')}?`,
+      description: `${names()}\n\nThey stay in ${menteeFirst}’s history as cancelled, and you can reassign them later.`,
+      variant: 'danger', confirmLabel: `Cancel ${plural(count, 'task')}`, cancelLabel: 'Keep them',
+    });
+    if (ok) await run('cancel', 'Cancelled', (id) => taskApi.cancelTask(id, 'Cancelled from clan review'));
+  };
+
+  const btn = 'inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium disabled:opacity-40';
+  const quiet = `${btn} border border-slate-200 bg-card text-slate-700 dark:border-slate-700 dark:text-slate-200`;
+
+  return (
+    <div className="mt-2.5 flex flex-wrap items-center gap-2 rounded-xl border border-brand-200 bg-brand-50/60 px-3 py-2 dark:border-brand-500/30 dark:bg-brand-500/10">
+      <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-200">
+        <input type="checkbox" checked={allChosen} onChange={onToggleAll}
+          ref={(el) => { if (el) el.indeterminate = !allChosen && count > 0; }}
+          className="h-4 w-4 rounded border-slate-300 accent-brand-600" />
+        {none ? `Select all ${total} open` : `${count} of ${total} selected`}
+      </label>
+
+      <div className="ml-auto flex flex-wrap items-center gap-1.5">
+        {slots.length > 0 && (
+          <select
+            aria-label="Move the selected tasks to a block"
+            disabled={none || !!busy}
+            value=""
+            onChange={(e) => {
+              const v = e.target.value;
+              if (!v) return;
+              const slotId = v === '__none' ? null : v;
+              const label = slotId ? slots.find((x) => x.id === slotId)?.label ?? 'the block' : 'out of the day';
+              void run('move', slotId ? `Moved to ${label}:` : 'Took out of the day:', (id) => scheduleApi.movePlanItem(id, slotId, clanId));
+            }}
+            className="rounded-lg border border-slate-200 bg-card px-2 py-1.5 text-xs text-slate-700 disabled:opacity-40 dark:border-slate-700 dark:text-slate-200"
+          >
+            <option value="">{busy === 'move' ? 'Moving…' : 'Move to block…'}</option>
+            {slots.map((sl) => <option key={sl.id} value={sl.id}>{sl.time} · {sl.label}</option>)}
+            <option value="__none">Take out of the day</option>
+          </select>
+        )}
+
+        {dateOpen ? (
+          <form className="inline-flex items-center gap-1"
+            onSubmit={(e) => { e.preventDefault(); if (date) void run('date', 'New deadline for', (id) => taskApi.updateTaskDueDate(id, date)); }}>
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} autoFocus aria-label="New deadline"
+              className="rounded-lg border border-slate-200 bg-card px-2 py-1 text-xs dark:border-slate-700" />
+            <button type="submit" disabled={!date || !!busy} className={`${btn} bg-brand-600 text-white hover:bg-brand-700`}>
+              {busy === 'date' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Set'}
+            </button>
+            <button type="button" onClick={() => { setDateOpen(false); setDate(''); }} className="px-1 text-xs text-muted-foreground hover:text-slate-700">Back</button>
+          </form>
+        ) : (
+          <button type="button" disabled={none || !!busy} onClick={() => setDateOpen(true)}
+            className={`${quiet} hover:border-brand-300 hover:text-brand-700`}>
+            <CalendarClock className="h-3.5 w-3.5" />Deadline
+          </button>
+        )}
+
+        <button type="button" disabled={none || !!busy} onClick={cancel} className={`${quiet} hover:border-amber-300 hover:text-amber-700`}>
+          {busy === 'cancel' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}Cancel tasks
+        </button>
+        <button type="button" disabled={none || !!busy} onClick={remove} className={`${btn} bg-rose-600 text-white hover:bg-rose-700`}>
+          {busy === 'remove' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}Remove
+        </button>
+        <button type="button" onClick={onClose} aria-label="Stop selecting" title="Stop selecting"
+          className="rounded-lg p-1.5 text-slate-400 hover:bg-white hover:text-slate-700 dark:hover:bg-white/10">
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    </div>
+  );
 }
 
 /** Add one item straight into a block, without leaving the review. */

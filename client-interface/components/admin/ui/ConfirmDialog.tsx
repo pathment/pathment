@@ -62,7 +62,7 @@ export function ConfirmDialog({
           <div className="flex-1">
             <h3 id="confirm-dialog-title" className="text-lg font-semibold text-slate-900 mb-1">{title}</h3>
             {description && (
-              <p id="confirm-dialog-description" className="text-sm text-slate-500">{description}</p>
+              <p id="confirm-dialog-description" className="whitespace-pre-line text-sm text-slate-500">{description}</p>
             )}
           </div>
         </div>
