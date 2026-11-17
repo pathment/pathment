@@ -84,6 +84,13 @@ class NotificationScheduler {
     } catch (error) {
       console.error('[scheduler] review schedule tick failed:', error.message);
     }
+    // Yesterday's reviews nobody pressed Finish on.
+    try {
+      const closed = await require('./cohortReviewService').closeStaleSessions();
+      if (closed) console.log(`[scheduler] closed ${closed} unfinished review(s) from earlier days`);
+    } catch (error) {
+      console.error('[scheduler] closing stale reviews failed:', error.message);
+    }
   }
 
   /** Admin-hosted meetings: send 24h/1h reminders + auto-end stale meetings. */

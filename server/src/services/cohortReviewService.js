@@ -336,6 +336,40 @@ class CohortReviewService {
     return this._withEntries(session);
   }
 
+  /**
+   * Close reviews nobody pressed Finish on, once their day is over.
+   *
+   * Most mentors run the review and simply leave: the session stayed
+   * "in progress" for ever, and everything that reads finished reviews only
+   * (certificates' attendance among them) never counted it. A day is over
+   * everywhere 36 hours after it starts in UTC (UTC-12 is the last to end),
+   * so anything dated on or before that is safe to close.
+   *
+   * Only sessions where something was recorded are closed: an untouched
+   * session (a scheduled occurrence nobody ran) would otherwise turn into a
+   * "held" review that every mentee missed. A live call is left alone, and
+   * nobody is emailed: "we missed you today" a day late helps no one.
+   */
+  async closeStaleSessions(now = new Date()) {
+    const cutoff = new Date(now.getTime() - 36 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const stale = await models.CohortReviewSession.findAll({
+      where: {
+        ...REVIEW,
+        status: 'in_progress',
+        sessionDate: { [Op.lte]: cutoff },
+        [Op.not]: { meetingStartedAt: { [Op.ne]: null }, meetingEndedAt: null },
+      },
+      include: [{ model: models.CohortReviewEntry, as: 'entries', attributes: ['attendance', 'status'] }],
+    });
+    const worked = stale.filter((s) => (s.entries || []).some((e) => e.attendance || (e.status && e.status !== 'pending')));
+    if (!worked.length) return 0;
+    const [closed] = await models.CohortReviewSession.update(
+      { status: 'finished', finishedAt: now },
+      { where: { id: { [Op.in]: worked.map((s) => s.id) }, status: 'in_progress' } },
+    );
+    return closed;
+  }
+
   async reopenSession(mentorId, sessionId) {
     // The session is resolved FIRST so the lock can be asked about the clan
     // it belongs to — the lock is per programme or clan now, not one flag for

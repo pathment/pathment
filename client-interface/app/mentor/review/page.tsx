@@ -618,12 +618,20 @@ export default function CohortReview() {
 
   // Refresh the queue + the CURRENT mentee's tasks. Keyed on the live mentee so
   // actions never refetch a stale/previous mentee (the old bug).
+  //
+  // Every change to a mentee's work lands here (assign, approve, changes,
+  // extension, bulk actions, edits), so this is also where that work STARTS
+  // today's review. A mentor who only assigned and approved, and never marked
+  // attendance, used to leave no review on the date at all.
   const refresh = useCallback(async () => {
+    if (isDraft && !sessionParam && !historical) {
+      try { await ensureSession(); } catch { /* the work itself already saved */ }
+    }
     await refetchQueue();
     if (menteeId) {
       try { const r: any = await taskApi.getMenteeTasks(menteeId); setTasks(r?.data?.tasks ?? []); } catch { /* keep prior */ } // eslint-disable-line @typescript-eslint/no-explicit-any
     }
-  }, [refetchQueue, menteeId]);
+  }, [refetchQueue, menteeId, isDraft, sessionParam, historical, ensureSession]);
 
 
   /**
