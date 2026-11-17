@@ -6,8 +6,9 @@ import { useMenteeScope } from '@/lib/hooks/mentee';
 import { toast } from 'sonner';
 import {
   Loader2, ArrowRight, ArrowLeft, CheckCircle2, AlertTriangle, Play, RotateCcw,
-  Clock, Sparkles, ClipboardCheck, XCircle, ListChecks, Video, Monitor, Eye, Maximize2, ShieldCheck,
+  Clock, Sparkles, ClipboardCheck, XCircle, ListChecks, Video, Monitor, Eye, Maximize2, ShieldCheck, Code2,
 } from 'lucide-react';
+import { CodeEditor } from '@/components/shared/CodeEditor';
 import {
   quizApi, quizVideoEndpoints, quizProctorApi, type CandidateQuiz, type CandidateQuizQuestion, type QuizSubmitResult,
   type QuizResultItem,
@@ -125,6 +126,8 @@ export default function QuizRunnerPage({ params }: { params: Promise<{ taskId: s
     const a = answersRef.current[question.id];
     if (!a) return false;
     if (question.kind === 'video') return !!(a.videoBlob || a.videoUrl);
+    // Code counts once it's more than the starting code they were given.
+    if (question.kind === 'code') return !!a.answerText.trim() && a.answerText.trim() !== (question.starterCode || '').trim();
     if (question.kind === 'short') return !!a.answerText.trim();
     return a.selectedOptionIds.length > 0;
   }, []);
@@ -144,7 +147,8 @@ export default function QuizRunnerPage({ params }: { params: Promise<{ taskId: s
           const saved = d.state.savedAnswers.find((a) => a.questionId === qq.id);
           seed[qq.id] = {
             selectedOptionIds: saved?.selectedOptionIds ? [...saved.selectedOptionIds] : [],
-            answerText: saved?.answerText || '',
+            // A code question opens on its starting code until they've written something.
+            answerText: saved?.answerText || (qq.kind === 'code' ? (qq.starterCode || '') : ''),
             videoBlob: null,
             videoUrl: saved?.videoUrl || null,
             transcript: saved?.transcript || '',
@@ -672,6 +676,23 @@ export default function QuizRunnerPage({ params }: { params: Promise<{ taskId: s
                 />
               )}
 
+              {q.kind === 'code' && (
+                <div className="rounded-xl border border-slate-200 overflow-hidden">
+                  <div className="flex items-center justify-between px-4 py-2 bg-slate-900 text-slate-300 text-xs">
+                    <span className="inline-flex items-center gap-1.5"><Code2 className="w-3.5 h-3.5" />{q.codeLanguage || 'code'}</span>
+                    <span className="text-slate-500">Autosaved{screenRequired ? ' · paste disabled' : ''} · your mentor scores this</span>
+                  </div>
+                  <CodeEditor
+                    value={a.answerText}
+                    language={q.codeLanguage}
+                    onChange={(v) => setAnswer(q.id, { answerText: v })}
+                    allowPaste={!screenRequired}
+                    onPasteBlocked={() => { proctor.log('paste_blocked', { field: 'code' }); toast.message('Pasting is disabled in this quiz.'); }}
+                    minHeight="320px"
+                  />
+                </div>
+              )}
+
               {q.kind === 'short' && (
                 <textarea
                   value={a.answerText}
@@ -789,6 +810,28 @@ function ResultScreen({ result, onBack, unsent = 0 }: { result: QuizSubmitResult
 }
 
 function ReviewItem({ item, n }: { item: QuizResultItem; n: number }) {
+  if (item.kind === 'code') {
+    const pending = item.isCorrect === null;
+    return (
+      <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <div className="flex items-start gap-3">
+          <Code2 className="w-5 h-5 text-brand-500 shrink-0 mt-0.5" />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start justify-between gap-3">
+              <p className="text-sm font-medium text-slate-900">{n}. {item.prompt}</p>
+              <span className="text-xs text-slate-400 tabular-nums shrink-0">
+                {pending ? `– / ${item.points}` : `${item.pointsAwarded ?? 0}/${item.points}`} pt{item.points === 1 ? '' : 's'}
+              </span>
+            </div>
+            {item.answerText
+              ? <pre className="mt-2 max-h-64 overflow-auto rounded-lg bg-slate-900 p-3 text-xs text-slate-100 whitespace-pre">{item.answerText}</pre>
+              : <p className="mt-2 text-sm text-slate-500">No code was written.</p>}
+            {pending && <p className="mt-2 text-xs text-slate-500">Your mentor scores this answer.</p>}
+          </div>
+        </div>
+      </div>
+    );
+  }
   if (item.kind === 'video') {
     const pending = item.isCorrect === null;
     return (

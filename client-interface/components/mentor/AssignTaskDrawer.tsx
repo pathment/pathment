@@ -228,6 +228,8 @@ export function AssignTaskDrawer({
   const [quizAllowRetake, setQuizAllowRetake] = useState(false);
   const [quizProctored, setQuizProctored] = useState(false);
   const selectedQuizKit = quizKits.find((k) => k.id === quizKitId) || null;
+  // Video and code answers are scored by a person: such a quiz is always reviewed.
+  const quizMentorGraded = !!(selectedQuizKit?.mentorGraded || selectedQuizKit?.hasVideo);
 
   // Course type (Edorax): offered only while the workspace's connection is
   // live. A course is always "assign now", and it is one action: the server
@@ -302,7 +304,7 @@ export function AssignTaskDrawer({
   // When a quiz kit is chosen, seed the option controls from its defaults.
   useEffect(() => {
     if (!selectedQuizKit) return;
-    setQuizEvalMode(selectedQuizKit.hasVideo ? 'review' : selectedQuizKit.evaluationDefault);
+    setQuizEvalMode(selectedQuizKit.mentorGraded || selectedQuizKit.hasVideo ? 'review' : selectedQuizKit.evaluationDefault);
     setQuizAllowRetake(selectedQuizKit.allowRetakeDefault);
     setQuizProctored(!!selectedQuizKit.proctorDefault);
   }, [quizKitId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -542,7 +544,7 @@ export function AssignTaskDrawer({
           ? { interview: { kitId, allowRetake, cameraRequired, aiGradingEnabled: aiGrading } }
           : {}),
         ...(type === 'quiz' && quizKitId
-          ? { quiz: { kitId: quizKitId, evaluationMode: selectedQuizKit?.hasVideo ? 'review' : quizEvalMode, allowRetake: quizAllowRetake, proctored: quizProctored } }
+          ? { quiz: { kitId: quizKitId, evaluationMode: quizMentorGraded ? 'review' : quizEvalMode, allowRetake: quizAllowRetake, proctored: quizProctored } }
           : {}),
         ...(type === 'open_source' && openSourceOrgs.length > 0
           ? { openSourceOrgIds: openSourceOrgs.map((o) => o.id) }
@@ -846,15 +848,15 @@ export function AssignTaskDrawer({
                               ['auto', 'Auto-grade', 'Score & points post the moment they submit'],
                               ['review', 'Mentor review', 'Auto-scored, but you confirm before points post'],
                             ] as const).map(([val, label, hint]) => (
-                              <button key={val} type="button" onClick={() => setQuizEvalMode(val)} disabled={!!selectedQuizKit?.hasVideo}
-                                className={`text-left rounded-lg border p-2.5 disabled:cursor-not-allowed ${(selectedQuizKit?.hasVideo ? val === 'review' : quizEvalMode === val) ? 'border-brand-400 bg-brand-50 dark:bg-brand-500/10' : 'border-slate-200 hover:border-slate-300 disabled:opacity-50'}`}>
+                              <button key={val} type="button" onClick={() => setQuizEvalMode(val)} disabled={quizMentorGraded}
+                                className={`text-left rounded-lg border p-2.5 disabled:cursor-not-allowed ${(quizMentorGraded ? val === 'review' : quizEvalMode === val) ? 'border-brand-400 bg-brand-50 dark:bg-brand-500/10' : 'border-slate-200 hover:border-slate-300 disabled:opacity-50'}`}>
                                 <span className="block text-sm font-medium text-slate-800">{label}</span>
                                 <span className="block text-[11px] text-slate-500 mt-0.5">{hint}</span>
                               </button>
                             ))}
                           </div>
-                          {selectedQuizKit?.hasVideo && (
-                            <p className="mt-1.5 text-[11px] text-slate-500">This quiz has video answers, so you review it: you score the videos, the rest is graded automatically.</p>
+                          {quizMentorGraded && (
+                            <p className="mt-1.5 text-[11px] text-slate-500">This quiz has video or code answers, so you review it: you score those, the rest is graded automatically.</p>
                           )}
                         </div>
                         <label className="flex items-start gap-2.5 cursor-pointer pt-1">

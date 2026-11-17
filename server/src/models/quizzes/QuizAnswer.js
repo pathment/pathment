@@ -31,7 +31,7 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING(20),
       allowNull: false,
       defaultValue: 'single',
-      validate: { isIn: [['single', 'multi', 'boolean', 'short', 'video']] }
+      validate: { isIn: [['single', 'multi', 'boolean', 'short', 'video', 'code']] }
     },
     promptSnapshot: {
       type: DataTypes.TEXT,

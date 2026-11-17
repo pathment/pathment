@@ -133,7 +133,7 @@ describe('quiz video answers and proctoring', () => {
       await session.reload();
       expect(session.scorePercent).toBeNull();
       const sub = await models.TaskSubmission.findOne({ where: { assignedTaskId: task.id } });
-      expect(sub.submissionText).toMatch(/1 video answer to score/);
+      expect(sub.submissionText).toMatch(/1 answer to score/);
     });
 
     it('won\'t finish the review until every video is scored, then records the final score', async () => {
@@ -141,9 +141,9 @@ describe('quiz video answers and proctoring', () => {
       await quizSessionService.submit(session.id, mentee.id);
 
       const review = await quizSessionService.getForReview(task.id, mentor.id);
-      expect(review.videosToGrade).toBe(1);
+      expect(review.toGrade).toBe(1);
       expect(review.items.find((i) => i.questionId === videoQ.id).answer.videoUrl).toMatch(/^https:/);
-      await expect(quizSessionService.finalizeReview(task.id, mentor.id)).rejects.toThrow(/Score the video answer/);
+      await expect(quizSessionService.finalizeReview(task.id, mentor.id)).rejects.toThrow(/Score the video or code answer/);
 
       await quizSessionService.gradeAnswer(task.id, mentor.id, videoQ.id, { pointsAwarded: 8 });
       const out = await quizSessionService.finalizeReview(task.id, mentor.id);
@@ -186,6 +186,62 @@ describe('quiz video answers and proctoring', () => {
       const del = await quizSessionService.deleteSnapshots(task.id, mentor.id);
       expect(del.deleted).toBe(3);
       expect((await quizSessionService.getForReview(task.id, mentor.id)).proctor.snapshots).toHaveLength(0);
+    });
+  });
+
+  describe('code questions', () => {
+    const STARTER = ['def sum(a, b):', '    pass'].join('\n');
+    let codeQ;
+    beforeEach(async () => {
+      await videoQ.destroy();
+      await videoQ2.destroy();
+      await kit.update({ settings: {} });
+      codeQ = await models.QuizQuestion.create({
+        kitId: kit.id, position: 1, kind: 'code', prompt: 'Write sum(a, b)', points: 10,
+        config: { codeLanguage: 'python', starterCode: STARTER, referenceSolution: 'return a + b' },
+      });
+    });
+
+    it('stores language, starter and a mentor-only solution, and forces review', async () => {
+      const q = quizKitService._normalizeQuestion({ kind: 'code', prompt: 'x', codeLanguage: 'go', starterCode: 'package main', referenceSolution: 'ok' }, 0);
+      expect(q.config).toMatchObject({ codeLanguage: 'go', starterCode: 'package main', referenceSolution: 'ok' });
+      expect(q.config.maxRecordingSeconds).toBeUndefined();
+      const a = await assign({ evaluationMode: 'auto' });
+      expect(a).toMatchObject({ evaluationMode: 'review', proctored: false });
+
+      const view = await quizSessionService.getForCandidate(task.id, mentee.id);
+      const pub = view.questions.find((x) => x.id === codeQ.id);
+      expect(pub).toMatchObject({ codeLanguage: 'python', starterCode: STARTER });
+      expect(JSON.stringify(view)).not.toContain('return a + b');
+    });
+
+    it('leaves written code for the mentor, scores untouched starter code 0, and blocks finishing until scored', async () => {
+      await assign();
+      const s = await start(undefined); // no camera or screen needed: code alone isn't proctored
+      await quizSessionService.saveAnswer(s.id, mentee.id, choiceQ.id, { selectedOptionIds: ['a'] });
+      await quizSessionService.saveAnswer(s.id, mentee.id, codeQ.id, { answerText: `${STARTER.replace('pass', 'return a + b')}` });
+      const res = await quizSessionService.submit(s.id, mentee.id);
+      expect(res).toMatchObject({ autoScore: 5, finalized: false, passed: null });
+
+      const review = await quizSessionService.getForReview(task.id, mentor.id);
+      expect(review.toGrade).toBe(1);
+      const item = review.items.find((i) => i.questionId === codeQ.id);
+      expect(item).toMatchObject({ codeLanguage: 'python', referenceSolution: 'return a + b' });
+      expect((await quizSessionService.getForReview(task.id, mentee.id)).items.find((i) => i.questionId === codeQ.id).referenceSolution).toBeNull();
+
+      await expect(quizSessionService.finalizeReview(task.id, mentor.id)).rejects.toThrow(/Score the video or code answer/);
+      await quizSessionService.gradeAnswer(task.id, mentor.id, codeQ.id, { pointsAwarded: 10 });
+      await expect(quizSessionService.finalizeReview(task.id, mentor.id)).resolves.toMatchObject({ totalAwarded: 15, totalPossible: 15 });
+    });
+
+    it('scores code left exactly as the starter 0, with nothing to review', async () => {
+      await assign();
+      const s = await start(undefined);
+      await quizSessionService.saveAnswer(s.id, mentee.id, codeQ.id, { answerText: STARTER });
+      await quizSessionService.submit(s.id, mentee.id);
+      const row = await models.QuizAnswer.findOne({ where: { sessionId: s.id, questionId: codeQ.id } });
+      expect(row).toMatchObject({ pointsAwarded: 0, isCorrect: false });
+      expect((await quizSessionService.getForReview(task.id, mentor.id)).toGrade).toBe(0);
     });
   });
 

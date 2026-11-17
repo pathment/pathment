@@ -11,6 +11,12 @@ const proctoring = require('./proctoringRules');
 const media = require('./proctoredMedia');
 
 const { VIDEO_KIND } = proctoring;
+const CODE_KIND = 'code';
+/** Kinds a person scores: a quiz with one always goes to mentor review. */
+const MENTOR_GRADED = [VIDEO_KIND, CODE_KIND];
+/** Did the mentee give something to score? (a recording, or code) */
+const hasContent = (kind, a) => (kind === VIDEO_KIND ? !!a?.recordingUrl : !!(a?.answerText && String(a.answerText).trim()));
+const gradedNoun = (n) => `${n} answer${n === 1 ? '' : 's'}`;
 
 /**
  * QuizSessionService — the candidate runner + auto-grading + mentor review for
@@ -35,10 +41,13 @@ class QuizSessionService {
   _grade(question, answer = {}) {
     const kind = question.kind;
     const points = question.points || 0;
-    // A video is scored by the mentor: ungraded (null) when there's a recording,
-    // nothing to grade (0) when there isn't.
-    if (kind === VIDEO_KIND) {
-      return answer.recordingUrl ? { isCorrect: null, points: null } : { isCorrect: false, points: 0 };
+    // Video and code are scored by the mentor: ungraded (null) when there's
+    // something to look at, nothing to grade (0) when there isn't. Code left
+    // exactly as the starter is nothing.
+    if (MENTOR_GRADED.includes(kind)) {
+      const starter = kind === CODE_KIND ? String(question.config?.starterCode || '').trim() : null;
+      const given = hasContent(kind, answer) && !(kind === CODE_KIND && String(answer.answerText).trim() === starter);
+      return given ? { isCorrect: null, points: null } : { isCorrect: false, points: 0 };
     }
     if (kind === 'single' || kind === 'boolean') {
       const picked = (answer.selectedOptionIds || []).map(String);
@@ -112,6 +121,9 @@ class QuizSessionService {
       options: (q.options || []).map((o) => ({ id: o.id, label: o.label })),
       multiple: q.kind === 'multi',
       maxRecordingSeconds: q.kind === VIDEO_KIND ? proctoring.maxRecordingSeconds(q.config) : null,
+      // Code questions: the editor's language and starting code (never the reference solution).
+      codeLanguage: q.kind === CODE_KIND ? (q.config?.codeLanguage || 'javascript') : null,
+      starterCode: q.kind === CODE_KIND ? (q.config?.starterCode || null) : null,
     };
   }
 
@@ -120,9 +132,9 @@ class QuizSessionService {
     return proctoring.requirementsFor({ proctored: assignment.proctored, questions });
   }
 
-  /** A quiz with a video question is reviewed by the mentor, whatever the setting. */
+  /** A quiz with a video or code question is reviewed by the mentor, whatever the setting. */
   _evaluationMode(assignment, questions) {
-    return questions.some((q) => q.kind === VIDEO_KIND) ? 'review' : assignment.evaluationMode;
+    return questions.some((q) => MENTOR_GRADED.includes(q.kind)) ? 'review' : assignment.evaluationMode;
   }
 
   async getForCandidate(taskId, menteeId, { clanId = null } = {}) {
@@ -407,7 +419,7 @@ class QuizSessionService {
 
     let autoScore = 0;
     let maxScore = 0;
-    let videosToGrade = 0;
+    let toGrade = 0;
     const graded = [];
     for (const q of questions) {
       maxScore += q.points || 0;
@@ -417,7 +429,7 @@ class QuizSessionService {
         answerText: a ? a.answerText : null,
         recordingUrl: a ? a.recordingUrl : null,
       });
-      if (points === null) videosToGrade += 1;
+      if (points === null) toGrade += 1;
       autoScore += points || 0;
       graded.push({ question: q, existing: a, isCorrect, points });
     }
@@ -425,7 +437,7 @@ class QuizSessionService {
     const evaluationMode = this._evaluationMode(assignment, questions);
     // With videos still to score, any percentage now would be wrong: the
     // mentor's review sets it.
-    const scored = videosToGrade === 0;
+    const scored = toGrade === 0;
     const passed = scored && assignment.passScore != null ? pct >= assignment.passScore : null;
 
     const out = await sequelize.transaction(async (transaction) => {
@@ -464,7 +476,7 @@ class QuizSessionService {
         version,
         submissionText: scored
           ? `Quiz completed — ${autoScore}/${maxScore} points (${Math.round(pct)}%).`
-          : `Quiz completed — ${autoScore}/${maxScore} points so far; ${videosToGrade} video answer${videosToGrade === 1 ? '' : 's'} to score.`,
+          : `Quiz completed — ${autoScore}/${maxScore} points so far; ${gradedNoun(toGrade)} to score.`,
         submissionUrls: [],
         status: 'pending',
         submittedAt: new Date(),
@@ -506,7 +518,7 @@ class QuizSessionService {
             title: `${name} completed a quiz`,
             message: scored
               ? `${name} scored ${Math.round(pct)}% on a quiz. Confirm the result when you can.`
-              : `${name} finished a quiz with ${videosToGrade} video answer${videosToGrade === 1 ? '' : 's'} for you to score.`,
+              : `${name} finished a quiz with ${gradedNoun(toGrade)} for you to score.`,
             actionUrl: `/mentor/approvals?task=${task.id}`,
             actionLabel: 'Review quiz',
             relatedEntityType: 'task_submission',
@@ -617,6 +629,9 @@ class QuizSessionService {
         matchMode: q.matchMode,
         explanation: q.explanation || null,
         maxRecordingSeconds: q.kind === VIDEO_KIND ? proctoring.maxRecordingSeconds(q.config) : null,
+        codeLanguage: q.kind === CODE_KIND ? (q.config?.codeLanguage || 'javascript') : null,
+        // The model solution is the mentor's, like the answer key.
+        referenceSolution: q.kind === CODE_KIND && !isOwnerMentee ? (q.config?.referenceSolution || null) : null,
         snapshots: isOwnerMentee ? [] : proctor.snapshots.filter((sn) => sn.questionId === q.id),
         answer: a ? {
           selectedOptionIds: a.selectedOptionIds || [],
@@ -645,8 +660,9 @@ class QuizSessionService {
         screenShareRequired: this._requirements(assignment, questions).screen,
       },
       proctor,
-      // Video answers the mentor still has to score before finishing.
-      videosToGrade: items.filter((it) => it.kind === VIDEO_KIND && it.answer?.videoUrl && it.answer.pointsAwarded == null).length,
+      // Video and code answers the mentor still has to score before finishing.
+      toGrade: items.filter((it) => MENTOR_GRADED.includes(it.kind) && it.answer && it.answer.pointsAwarded == null
+        && (it.kind === VIDEO_KIND ? !!it.answer.videoUrl : !!(it.answer.answerText || '').trim())).length,
       session: session ? {
         id: session.id,
         status: session.status,
@@ -714,9 +730,9 @@ class QuizSessionService {
     if (!submissionId) throw new ValidationError('This quiz has no submission to review');
 
     const answers = await models.QuizAnswer.findAll({ where: { sessionId: session.id } });
-    const unscored = answers.filter((a) => a.kind === VIDEO_KIND && a.recordingUrl && a.pointsAwarded == null).length;
+    const unscored = answers.filter((a) => MENTOR_GRADED.includes(a.kind) && hasContent(a.kind, a) && a.pointsAwarded == null).length;
     if (unscored) {
-      throw new ValidationError(`Score the ${unscored === 1 ? 'video answer' : `${unscored} video answers`} before finishing the review.`);
+      throw new ValidationError(`Score the ${unscored === 1 ? 'video or code answer' : `${unscored} video and code answers`} before finishing the review.`);
     }
     const totalPossible = answers.reduce((s, a) => s + (a.pointsPossible || 0), 0);
     const totalAwarded = answers.reduce((s, a) => s + (Number(a.pointsAwarded) || 0), 0);

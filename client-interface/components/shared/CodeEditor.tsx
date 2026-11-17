@@ -36,6 +36,7 @@ export function CodeEditor({
   language,
   onChange,
   onPasteBlocked,
+  allowPaste = false,
   readOnly = false,
   minHeight = '360px',
   maxHeight,
@@ -44,12 +45,14 @@ export function CodeEditor({
   language?: string | null;
   onChange?: (value: string) => void;
   onPasteBlocked?: () => void;
+  /** Let them paste and drop text (off by default: interviews and proctored quizzes block it). */
+  allowPaste?: boolean;
   readOnly?: boolean;
   minHeight?: string;
   maxHeight?: string;
 }) {
-  // Block paste + drop (anti-cheat) unless read-only.
-  const guards = readOnly
+  // Block paste + drop (anti-cheat) unless read-only or allowed.
+  const guards = readOnly || allowPaste
     ? []
     : [
         EditorView.domEventHandlers({

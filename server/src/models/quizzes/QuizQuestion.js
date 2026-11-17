@@ -7,6 +7,8 @@ module.exports = (sequelize, DataTypes) => {
    *   - boolean  true/false                          → options are True/False, correctOptionIds = [one]
    *   - short    typed answer graded against         → acceptedAnswers + matchMode (exact | keyword)
    *   - video    answered on camera; graded by the mentor (config.maxRecordingSeconds caps it)
+   *   - code     written in the code editor; graded by the mentor (config.codeLanguage,
+   *              config.starterCode; config.referenceSolution is mentor-only)
    * `correctOptionIds` / `acceptedAnswers` are the answer key — stripped from the
    * candidate view, never sent to the mentee before grading.
    */
@@ -30,7 +32,7 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING(20),
       allowNull: false,
       defaultValue: 'single',
-      validate: { isIn: [['single', 'multi', 'boolean', 'short', 'video']] }
+      validate: { isIn: [['single', 'multi', 'boolean', 'short', 'video', 'code']] }
     },
     prompt: {
       type: DataTypes.TEXT,

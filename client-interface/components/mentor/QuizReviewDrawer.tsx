@@ -3,8 +3,9 @@
 import { useEffect, useState, useCallback } from 'react';
 import { toast } from 'sonner';
 import {
-  Loader2, CheckCircle2, XCircle, Check, X, ListChecks, Type, ToggleLeft, MessageSquare, Video, Eye, AlertTriangle,
+  Loader2, CheckCircle2, XCircle, Check, X, ListChecks, Type, ToggleLeft, MessageSquare, Video, Eye, AlertTriangle, Code2,
 } from 'lucide-react';
+import { CodeEditor } from '@/components/shared/CodeEditor';
 import { Drawer } from '@/components/shared/Drawer';
 import { quizApi, type QuizReview, type QuizReviewItem } from '@/lib/services/quiz-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
@@ -18,6 +19,7 @@ const KIND_ICON = {
   boolean: ToggleLeft,
   short: Type,
   video: Video,
+  code: Code2,
 } as const;
 
 const KIND_LABEL: Record<string, string> = {
@@ -26,7 +28,14 @@ const KIND_LABEL: Record<string, string> = {
   boolean: 'True / false',
   short: 'Short answer',
   video: 'Video answer',
+  code: 'Code',
 };
+
+/** Kinds the mentor scores by hand. */
+const MENTOR_GRADED = new Set(['video', 'code']);
+/** Is there something for the mentor to score? (a recording, or code) */
+const gaveAnswer = (it: QuizReviewItem) =>
+  it.kind === 'video' ? !!it.answer?.videoUrl : !!(it.answer?.answerText || '').trim();
 
 /**
  * QuizReviewDrawer — the mentor's review of an already auto-graded quiz assigned
@@ -129,8 +138,8 @@ export function QuizReviewDrawer({
     }
   };
 
-  // Video answers are the mentor's to score: finishing waits for every one.
-  const unscoredVideos = review?.items.filter((it) => it.kind === 'video' && it.answer?.videoUrl && (scores[it.questionId]?.points ?? '') === '').length ?? 0;
+  // Video and code answers are the mentor's to score: finishing waits for every one.
+  const unscoredVideos = review?.items.filter((it) => MENTOR_GRADED.has(it.kind) && gaveAnswer(it) && (scores[it.questionId]?.points ?? '') === '').length ?? 0;
 
   const session = review?.session ?? null;
   const totalAwarded = review?.items.reduce((s, it) => s + (Number(scores[it.questionId]?.points) || 0), 0) ?? 0;
@@ -148,7 +157,7 @@ export function QuizReviewDrawer({
         <>
           <button onClick={onClose} className="px-4 py-2 border border-slate-200 text-slate-700 rounded-xl text-sm hover:bg-slate-50">Close</button>
           <button onClick={finalize} disabled={finalizing || unscoredVideos > 0}
-            title={unscoredVideos ? `Score the ${unscoredVideos === 1 ? 'video answer' : `${unscoredVideos} video answers`} first` : undefined}
+            title={unscoredVideos ? `Score the ${unscoredVideos === 1 ? 'video or code answer' : `${unscoredVideos} video and code answers`} first` : undefined}
             className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-sm inline-flex items-center gap-2 disabled:opacity-50">
             {finalizing ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
             Finalize · {totalAwarded}/{totalPossible} pts ({livePercent}%)
@@ -188,7 +197,7 @@ export function QuizReviewDrawer({
                   {totalAwarded}<span className="text-slate-400"> / {totalPossible} pts</span>
                 </div>
                 <div className="text-[11px] text-slate-400">
-                  {review.totals.questionCount} question{review.totals.questionCount === 1 ? '' : 's'} · {review.items.some((it) => it.kind === 'video') ? 'videos scored by you' : 'Auto-graded'}
+                  {review.totals.questionCount} question{review.totals.questionCount === 1 ? '' : 's'} · {review.items.some((it) => MENTOR_GRADED.has(it.kind)) ? 'video & code scored by you' : 'Auto-graded'}
                 </div>
               </div>
               {session?.passed != null && (
@@ -204,7 +213,7 @@ export function QuizReviewDrawer({
             {canReview && (
               <p className="text-[11px] text-slate-400">
                 {unscoredVideos > 0
-                  ? `Watch and score the ${unscoredVideos === 1 ? 'video answer' : `${unscoredVideos} video answers`}; the rest was auto-graded. Then finalize to post the score.`
+                  ? `Score the ${unscoredVideos === 1 ? 'video or code answer' : `${unscoredVideos} video and code answers`}; the rest was auto-graded. Then finalize to post the score.`
                   : 'This quiz was auto-graded. Confirm or adjust the points below, then finalize to post the score.'}
               </p>
             )}
@@ -227,8 +236,8 @@ export function QuizReviewDrawer({
             const KindIcon = KIND_ICON[it.kind] ?? Type;
             const a = it.answer;
             const sc = scores[it.questionId] || { points: '', note: '' };
-            const isChoice = it.kind !== 'short' && it.kind !== 'video';
-            const needsScore = canReview && it.kind === 'video' && !!a?.videoUrl && sc.points === '';
+            const isChoice = it.kind !== 'short' && !MENTOR_GRADED.has(it.kind);
+            const needsScore = canReview && MENTOR_GRADED.has(it.kind) && gaveAnswer(it) && sc.points === '';
             const selected = a?.selectedOptionIds ?? [];
             const correctIds = it.correctOptionIds ?? [];
             return (
@@ -241,7 +250,7 @@ export function QuizReviewDrawer({
                       <span className="ml-auto inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
                         <Check className="w-3 h-3" /> Correct
                       </span>
-                    ) : a.isCorrect === false && it.kind !== 'video' ? (
+                    ) : a.isCorrect === false && !MENTOR_GRADED.has(it.kind) ? (
                       <span className="ml-auto inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-red-50 text-red-700">
                         <X className="w-3 h-3" /> Incorrect
                       </span>
@@ -255,7 +264,25 @@ export function QuizReviewDrawer({
                 <p className="text-sm text-slate-900 mb-3">{it.prompt}</p>
 
                 {/* Mentee answer */}
-                {it.kind === 'video' ? (
+                {it.kind === 'code' ? (
+                  gaveAnswer(it) ? (
+                    <div className="space-y-2">
+                      <div className="rounded-lg overflow-hidden border border-slate-800">
+                        <CodeEditor value={a?.answerText || ''} language={it.codeLanguage} readOnly minHeight="80px" maxHeight="360px" />
+                      </div>
+                      {it.referenceSolution && (
+                        <details>
+                          <summary className="text-xs font-medium text-brand-600 cursor-pointer">Model solution</summary>
+                          <pre className="mt-1.5 max-h-64 overflow-auto rounded-lg bg-amber-50/60 p-3 text-xs text-slate-700 whitespace-pre">{it.referenceSolution}</pre>
+                        </details>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-amber-700 bg-amber-50 rounded-lg p-3 inline-flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 shrink-0" /> No code was written — scored 0.
+                    </p>
+                  )
+                ) : it.kind === 'video' ? (
                   a?.videoUrl ? (
                     <div className="space-y-2">
                       <video controls playsInline preload="metadata" src={a.videoUrl} className="w-full max-h-80 rounded-lg bg-black">
@@ -351,7 +378,7 @@ export function QuizReviewDrawer({
                           className="w-16 border border-slate-300 rounded-lg px-2 py-1 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-brand-500" />
                         <span className="text-slate-400">/ {it.points}</span>
                       </label>
-                      {a?.autoPoints != null && it.kind !== 'video' && (
+                      {a?.autoPoints != null && !MENTOR_GRADED.has(it.kind) && (
                         <span className="text-[11px] text-slate-400">Auto: {a.autoPoints}</span>
                       )}
                     </div>

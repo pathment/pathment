@@ -3,7 +3,7 @@ import { videoFormData, type VideoUploadEndpoints } from './video-upload';
 import type { ProctorApi, ProctorEvent, ProctorSnapshot } from './interview-api';
 
 // ── Types ──────────────────────────────────────────────────────────────────
-export type QuizQuestionKind = 'single' | 'multi' | 'boolean' | 'short' | 'video';
+export type QuizQuestionKind = 'single' | 'multi' | 'boolean' | 'short' | 'video' | 'code';
 export type QuizMatchMode = 'exact' | 'keyword';
 export type QuizKitStatus = 'draft' | 'published' | 'archived';
 export type QuizEvaluationMode = 'auto' | 'review';
@@ -26,6 +26,10 @@ export interface QuizQuestionInput {
   explanation?: string | null;
   /** Video questions: the longest one recording may run (seconds, 15–300). */
   maxRecordingSeconds?: number;
+  /** Code questions: editor language, starting code, and the mentor-only model solution. */
+  codeLanguage?: string;
+  starterCode?: string | null;
+  referenceSolution?: string | null;
   config?: Record<string, unknown>;
 }
 
@@ -56,6 +60,9 @@ export interface QuizKitSummary {
   proctorDefault?: boolean;
   /** Has a video question — always reviewed by the mentor. */
   hasVideo?: boolean;
+  hasCode?: boolean;
+  /** Has a video or code question: the mentor scores those, so it's always reviewed. */
+  mentorGraded?: boolean;
   questionCount: number;
   totalPoints: number;
   updatedAt: string;
@@ -95,6 +102,8 @@ export interface CandidateQuizQuestion {
   options: QuizOption[];
   multiple: boolean;
   maxRecordingSeconds?: number | null;
+  codeLanguage?: string | null;
+  starterCode?: string | null;
 }
 
 export interface QuizSavedAnswer {
@@ -196,6 +205,9 @@ export interface QuizReviewItem {
   matchMode: QuizMatchMode;
   explanation: string | null;
   maxRecordingSeconds?: number | null;
+  codeLanguage?: string | null;
+  /** Mentor only. */
+  referenceSolution?: string | null;
   snapshots?: ProctorSnapshot[];
   answer: QuizReviewAnswer | null;
 }
@@ -208,8 +220,8 @@ export interface QuizReview {
     flags: { type: string; at: string; meta: Record<string, unknown> }[];
     flagCounts: Record<string, number>;
   };
-  /** Video answers still to score before the review can finish. */
-  videosToGrade?: number;
+  /** Video and code answers still to score before the review can finish. */
+  toGrade?: number;
   session: {
     id: string; status: string; attemptNumber: number; submittedAt: string | null;
     autoScore: number | null; maxScore: number | null; scorePercent: number | null; passed: boolean | null;

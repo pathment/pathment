@@ -5,7 +5,9 @@ const { NotFoundError, ForbiddenError, ValidationError, ConflictError } = requir
 const { snapToDifficultyPoints } = require('../config/points');
 const { maxRecordingSeconds, VIDEO_KIND } = require('./proctoringRules');
 
-const QUESTION_KINDS = ['single', 'multi', 'boolean', 'short', 'video'];
+const QUESTION_KINDS = ['single', 'multi', 'boolean', 'short', 'video', 'code'];
+// Kinds a person scores: a quiz with one always goes to mentor review.
+const MENTOR_GRADED = ['video', 'code'];
 const CHOICE_KINDS = ['single', 'multi', 'boolean'];
 const MATCH_MODES = ['exact', 'keyword'];
 const KIT_STATUSES = ['draft', 'published', 'archived'];
@@ -51,6 +53,7 @@ class QuizKitService {
     };
     // Only a video question has a recording cap; stored clamped, so what the
     // runner enforces is what the kit says.
+    if (kind !== 'code') { delete q.config.codeLanguage; delete q.config.starterCode; delete q.config.referenceSolution; }
     if (kind === VIDEO_KIND) q.config.maxRecordingSeconds = maxRecordingSeconds(raw?.maxRecordingSeconds !== undefined ? { maxRecordingSeconds: raw.maxRecordingSeconds } : q.config);
     else delete q.config.maxRecordingSeconds;
 
@@ -86,6 +89,15 @@ class QuizKitService {
       q.correctOptionIds = correct;
     } else if (kind === VIDEO_KIND) {
       // Answered on camera and scored by the mentor: there is no answer key.
+    } else if (kind === 'code') {
+      // Written in the code editor and scored by the mentor. The reference
+      // solution is for the mentor only (config is never sent to the mentee).
+      const lang = String(raw?.codeLanguage ?? q.config.codeLanguage ?? 'javascript').trim().slice(0, 30) || 'javascript';
+      const starter = raw?.starterCode ?? q.config.starterCode;
+      const reference = raw?.referenceSolution ?? q.config.referenceSolution;
+      q.config.codeLanguage = lang;
+      q.config.starterCode = starter ? String(starter) : null;
+      q.config.referenceSolution = reference ? String(reference) : null;
     } else { // short
       const accepted = (Array.isArray(raw?.acceptedAnswers) ? raw.acceptedAnswers : [])
         .map((a) => String(a || '').trim()).filter(Boolean);
@@ -174,6 +186,8 @@ class QuizKitService {
         proctorDefault: Boolean(k.settings?.proctorDefault),
         // A quiz with a video question is always reviewed by the mentor.
         hasVideo: questions.some((q) => q.kind === VIDEO_KIND),
+        hasCode: questions.some((q) => q.kind === 'code'),
+        mentorGraded: questions.some((q) => MENTOR_GRADED.includes(q.kind)),
         questionCount: questions.length,
         totalPoints: questions.reduce((s, q) => s + (q.points || 0), 0),
         updatedAt: k.updatedAt,
@@ -285,11 +299,11 @@ class QuizKitService {
 
     const questionCount = await models.QuizQuestion.count({ where: { kitId }, transaction });
     if (questionCount === 0) throw new ValidationError('This quiz has no questions yet');
-    const videoCount = await models.QuizQuestion.count({ where: { kitId, kind: VIDEO_KIND }, transaction });
+    const mentorGradedCount = await models.QuizQuestion.count({ where: { kitId, kind: { [Op.in]: MENTOR_GRADED } }, transaction });
 
     const pick = (v, fallback) => (v === undefined || v === null ? fallback : Boolean(v));
-    // Nobody can auto-grade a video: a quiz with one always goes to the mentor.
-    const evaluationMode = videoCount > 0 ? 'review'
+    // Nobody can auto-grade a video or code: a quiz with either goes to the mentor.
+    const evaluationMode = mentorGradedCount > 0 ? 'review'
       : (EVAL_MODES.includes(options.evaluationMode) ? options.evaluationMode : kit.evaluationDefault);
     const tlRaw = options.timeLimitSeconds ?? kit.timeLimitSeconds;
     const tlNum = Number.parseInt(tlRaw, 10);

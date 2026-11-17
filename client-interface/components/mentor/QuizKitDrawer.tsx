@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import {
   Loader2, Plus, Trash2, GripVertical, ChevronUp, ChevronDown,
-  FileJson, Copy, Download, Upload, CircleDot, ListChecks, ToggleLeft, Type, Video,
+  FileJson, Copy, Download, Upload, CircleDot, ListChecks, ToggleLeft, Type, Video, Code2,
 } from 'lucide-react';
 import { Drawer } from '@/components/shared/Drawer';
 import {
@@ -24,6 +24,7 @@ const KIND_META: { kind: QuizQuestionKind; label: string; icon: typeof CircleDot
   { kind: 'boolean', label: 'True / False', icon: ToggleLeft },
   { kind: 'short', label: 'Short answer', icon: Type },
   { kind: 'video', label: 'Video answer', icon: Video },
+  { kind: 'code', label: 'Code', icon: Code2 },
 ];
 
 // Forgiving aliases so JSON prepared by hand (or by Claude) still maps to a kind.
@@ -33,6 +34,7 @@ const KIND_ALIAS: Record<string, QuizQuestionKind> = {
   boolean: 'boolean', truefalse: 'boolean', 'true_false': 'boolean', bool: 'boolean', tf: 'boolean', yesno: 'boolean',
   short: 'short', text: 'short', shortanswer: 'short', 'short_answer': 'short', written: 'short', open: 'short',
   video: 'video', camera: 'video', video_answer: 'video', 'on-camera': 'video', recorded: 'video',
+  code: 'code', coding: 'code', programming: 'code', program: 'code',
 };
 
 /** How long one video answer may run (the server caps it at 5 minutes so it always uploads). */
@@ -46,7 +48,8 @@ const fmtRecording = (s: number) => (s % 60 ? `${Math.floor(s / 60)}:${String(s 
 
 // Copy-paste starter for the JSON import — hand this shape to Claude to generate a
 // full quiz and paste it back in. kind ∈ single | multi | boolean | short | video
-// (video: answered on camera and scored by the mentor; "maxRecordingSeconds" 15–300).
+// (video: answered on camera and scored by the mentor; "maxRecordingSeconds" 15–300)
+// | code ("codeLanguage", "starterCode", "referenceSolution" — scored by the mentor).
 const JSON_TEMPLATE = `{
   "title": "React fundamentals check",
   "description": "A quick knowledge check on React basics (optional).",
@@ -111,6 +114,10 @@ interface EditorQuestion {
   explanation: string;
   /** Video questions: the longest one recording may run. */
   maxRecordingSeconds: number;
+  /** Code questions: editor language, starting code, and the mentor-only model solution. */
+  codeLanguage: string;
+  starterCode: string;
+  referenceSolution: string;
 }
 
 const blankQuestion = (kind: QuizQuestionKind = 'single'): EditorQuestion => ({
@@ -124,6 +131,9 @@ const blankQuestion = (kind: QuizQuestionKind = 'single'): EditorQuestion => ({
   matchMode: 'exact',
   explanation: '',
   maxRecordingSeconds: DEFAULT_RECORDING,
+  codeLanguage: 'javascript',
+  starterCode: '',
+  referenceSolution: '',
 });
 
 const isChoice = (k: QuizQuestionKind) => k === 'single' || k === 'multi';
@@ -161,8 +171,8 @@ export function QuizKitDrawer({
   // New quizzes are fully proctored unless the mentor turns it off.
   const [proctorDefault, setProctorDefault] = useState(true);
   const [questions, setQuestions] = useState<EditorQuestion[]>([blankQuestion()]);
-  // A video answer needs a person to score it: the quiz goes to review.
-  const hasVideo = questions.some((q) => q.kind === 'video');
+  // A video or code answer needs a person to score it: the quiz goes to review.
+  const hasVideo = questions.some((q) => q.kind === 'video' || q.kind === 'code');
 
   // Load an existing kit for editing.
   useEffect(() => {
@@ -204,6 +214,9 @@ export function QuizKitDrawer({
             matchMode: q.matchMode === 'keyword' ? 'keyword' : 'exact',
             explanation: q.explanation || '',
             maxRecordingSeconds: clampRecording(q.config?.maxRecordingSeconds),
+            codeLanguage: q.config?.codeLanguage || 'javascript',
+            starterCode: q.config?.starterCode || '',
+            referenceSolution: q.config?.referenceSolution || '',
           };
         });
         setQuestions(loaded.length ? loaded : [blankQuestion()]);
@@ -231,6 +244,7 @@ export function QuizKitDrawer({
         return { ...q, kind, options: booleanOptions(), correctOptionIds: keep };
       }
       if (kind === 'video') return { ...q, kind, maxRecordingSeconds: q.maxRecordingSeconds || DEFAULT_RECORDING };
+      if (kind === 'code') return { ...q, kind, codeLanguage: q.codeLanguage || 'javascript' };
       // short
       return { ...q, kind, acceptedAnswers: q.acceptedAnswers.length ? q.acceptedAnswers : [''] };
     }));
@@ -367,7 +381,7 @@ export function QuizKitDrawer({
           kind, prompt, points, required,
           options: options.length ? options : [blankOption(), blankOption()],
           correctOptionIds: finalCorrect,
-          acceptedAnswers: [], matchMode: 'exact', explanation, maxRecordingSeconds: DEFAULT_RECORDING,
+          acceptedAnswers: [], matchMode: 'exact', explanation, maxRecordingSeconds: DEFAULT_RECORDING, codeLanguage: 'javascript', starterCode: '', referenceSolution: '',
         });
         return;
       }
@@ -386,7 +400,7 @@ export function QuizKitDrawer({
         drafts.push({
           kind, prompt, points, required,
           options: booleanOptions(), correctOptionIds: correct,
-          acceptedAnswers: [], matchMode: 'exact', explanation, maxRecordingSeconds: DEFAULT_RECORDING,
+          acceptedAnswers: [], matchMode: 'exact', explanation, maxRecordingSeconds: DEFAULT_RECORDING, codeLanguage: 'javascript', starterCode: '', referenceSolution: '',
         });
         return;
       }
@@ -396,6 +410,19 @@ export function QuizKitDrawer({
           kind, prompt, points, required,
           options: [], correctOptionIds: [], acceptedAnswers: [], matchMode: 'exact', explanation,
           maxRecordingSeconds: clampRecording(raw.maxRecordingSeconds ?? raw.maxRecording ?? DEFAULT_RECORDING),
+          codeLanguage: 'javascript', starterCode: '', referenceSolution: '',
+        });
+        return;
+      }
+
+      if (kind === 'code') {
+        drafts.push({
+          kind, prompt, points, required,
+          options: [], correctOptionIds: [], acceptedAnswers: [], matchMode: 'exact', explanation,
+          maxRecordingSeconds: DEFAULT_RECORDING,
+          codeLanguage: typeof raw.codeLanguage === 'string' && raw.codeLanguage.trim() ? raw.codeLanguage.trim() : 'javascript',
+          starterCode: typeof raw.starterCode === 'string' ? raw.starterCode : '',
+          referenceSolution: typeof raw.referenceSolution === 'string' ? raw.referenceSolution : (typeof raw.solution === 'string' ? raw.solution : ''),
         });
         return;
       }
@@ -410,7 +437,7 @@ export function QuizKitDrawer({
         kind, prompt, points, required,
         options: [], correctOptionIds: [],
         acceptedAnswers: accepted.length ? accepted : [''],
-        matchMode, explanation, maxRecordingSeconds: DEFAULT_RECORDING,
+        matchMode, explanation, maxRecordingSeconds: DEFAULT_RECORDING, codeLanguage: 'javascript', starterCode: '', referenceSolution: '',
       });
     });
 
@@ -450,6 +477,10 @@ export function QuizKitDrawer({
         base.correctBool = q.correctOptionIds[0] === 'true' ? true : (q.correctOptionIds[0] === 'false' ? false : undefined);
       } else if (q.kind === 'video') {
         base.maxRecordingSeconds = clampRecording(q.maxRecordingSeconds);
+      } else if (q.kind === 'code') {
+        base.codeLanguage = q.codeLanguage || 'javascript';
+        base.starterCode = q.starterCode || undefined;
+        base.referenceSolution = q.referenceSolution.trim() || undefined;
       } else {
         base.acceptedAnswers = q.acceptedAnswers.map((a) => a.trim()).filter(Boolean);
         base.matchMode = q.matchMode;
@@ -504,8 +535,8 @@ export function QuizKitDrawer({
         if (correct.length < 1) { toast.error(`Question ${n}: mark at least one correct option.`); return; }
       } else if (q.kind === 'boolean') {
         if (q.correctOptionIds[0] !== 'true' && q.correctOptionIds[0] !== 'false') { toast.error(`Question ${n}: pick True or False as the answer.`); return; }
-      } else if (q.kind === 'video') {
-        // Nothing to check: there's no answer key for a video.
+      } else if (q.kind === 'video' || q.kind === 'code') {
+        // Nothing to check: the mentor scores these, there's no answer key.
       } else {
         if (q.acceptedAnswers.filter((a) => a.trim()).length < 1) { toast.error(`Question ${n}: add at least one accepted answer.`); return; }
       }
@@ -543,6 +574,18 @@ export function QuizKitDrawer({
           points: Number(q.points) || 5,
           required: q.required !== false,
           maxRecordingSeconds: clampRecording(q.maxRecordingSeconds),
+          explanation: q.explanation.trim() || null,
+        };
+      }
+      if (q.kind === 'code') {
+        return {
+          kind: q.kind,
+          prompt: q.prompt,
+          points: Number(q.points) || 5,
+          required: q.required !== false,
+          codeLanguage: q.codeLanguage.trim() || 'javascript',
+          starterCode: q.starterCode || null,
+          referenceSolution: q.referenceSolution.trim() || null,
           explanation: q.explanation.trim() || null,
         };
       }
@@ -651,7 +694,7 @@ export function QuizKitDrawer({
                   })}
                 </div>
                 {hasVideo && (
-                  <p className="mt-1.5 text-[11px] text-slate-500">This quiz has video answers, so you review it: you score the videos, the rest is graded automatically.</p>
+                  <p className="mt-1.5 text-[11px] text-slate-500">This quiz has video or code answers, so you review it: you score those, the rest is graded automatically.</p>
                 )}
               </div>
 
@@ -815,6 +858,19 @@ export function QuizKitDrawer({
                       </select>
                       <span className="text-slate-400">They answer on camera; it stops by itself at this length. You score it in review.</span>
                     </label>
+                  )}
+
+                  {/* Code */}
+                  {q.kind === 'code' && (
+                    <div className="space-y-2 mb-2.5">
+                      <input value={q.codeLanguage} onChange={(e) => patchQuestion(i, { codeLanguage: e.target.value })}
+                        placeholder="Language (e.g. javascript, python)" className={field} />
+                      <textarea value={q.starterCode} onChange={(e) => patchQuestion(i, { starterCode: e.target.value })} rows={3}
+                        placeholder="Starting code they see in the editor (optional)" className={`${field} font-mono text-xs`} />
+                      <textarea value={q.referenceSolution} onChange={(e) => patchQuestion(i, { referenceSolution: e.target.value })} rows={3}
+                        placeholder="Model solution — only you see this while scoring (optional)" className={`${field} font-mono text-xs bg-amber-50/40`} />
+                      <p className="text-[11px] text-slate-400">They write the answer in a code editor. You score it in review.</p>
+                    </div>
                   )}
 
                   {/* Short answer */}
