@@ -52,26 +52,30 @@ const fmtRecording = (s: number) => (s % 60 ? `${Math.floor(s / 60)}:${String(s 
 // | code ("codeLanguage", "starterCode", "referenceSolution" — scored by the mentor).
 const JSON_TEMPLATE = `{
   "title": "React fundamentals check",
-  "description": "A quick knowledge check on React basics (optional).",
+  "description": "What this quiz covers (optional).",
   "evaluationDefault": "auto",
+  "timeLimitSeconds": 900,
   "passScore": 70,
   "shuffleQuestions": false,
   "showAnswers": true,
+  "allowRetake": false,
+  "proctored": false,
   "questions": [
     {
       "kind": "single",
-      "prompt": "Which hook manages state?",
+      "prompt": "Which hook manages local state?",
       "points": 5,
       "options": [
         { "label": "useState", "correct": true },
         { "label": "useRef" },
         { "label": "useMemo" }
-      ]
+      ],
+      "explanation": "useState returns a value and a setter."
     },
     {
       "kind": "multi",
-      "prompt": "Which are React hooks?",
-      "points": 5,
+      "prompt": "Which of these are React hooks?",
+      "points": 10,
       "options": [
         { "label": "useEffect", "correct": true },
         { "label": "useThing" },
@@ -81,16 +85,30 @@ const JSON_TEMPLATE = `{
     {
       "kind": "boolean",
       "prompt": "JSX is required to use React.",
-      "points": 2,
+      "points": 5,
       "correctBool": false
     },
     {
       "kind": "short",
-      "prompt": "Name the CLI to bootstrap a Vite app.",
-      "points": 3,
+      "prompt": "Name the command that creates a new Vite app.",
+      "points": 5,
       "matchMode": "keyword",
-      "acceptedAnswers": ["create vite", "npm create vite"],
+      "acceptedAnswers": ["create vite"],
       "explanation": "npm create vite@latest"
+    },
+    {
+      "kind": "code",
+      "prompt": "Write a function debounce(fn, wait).",
+      "points": 20,
+      "codeLanguage": "javascript",
+      "starterCode": "function debounce(fn, wait) {\\n  // your code\\n}",
+      "referenceSolution": "function debounce(fn, wait) {\\n  let t;\\n  return (...args) => {\\n    clearTimeout(t);\\n    t = setTimeout(() => fn(...args), wait);\\n  };\\n}"
+    },
+    {
+      "kind": "video",
+      "prompt": "In under two minutes, explain how the virtual DOM works.",
+      "points": 10,
+      "maxRecordingSeconds": 120
     }
   ]
 }`;
