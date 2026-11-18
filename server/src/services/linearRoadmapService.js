@@ -1162,8 +1162,11 @@ class LinearRoadmapService {
    * per-mentee schedule-slot chain. Returns the auto-assigned next id, or null.
    */
   async _advanceChain(menteeId, completedRoadmapId, prevAssignment) {
-    // 1) Reusable roadmap-level links take precedence.
-    const links = await models.RoadmapLink.findAll({ where: { fromRoadmapId: completedRoadmapId }, order: [['position', 'ASC']] });
+    // 1) Reusable roadmap-level links take precedence: the roadmap's own, or,
+    //    for a mentor's imported copy with none of its own, the chain the admin
+    //    set on the org roadmap it came from.
+    let links = await models.RoadmapLink.findAll({ where: { fromRoadmapId: completedRoadmapId }, order: [['position', 'ASC']] });
+    if (!links.length) links = await this._inheritedLinks(completedRoadmapId, prevAssignment?.mentorId);
     if (links.length) {
       const enrollment = prevAssignment?.clanId
         ? (prevAssignment.enrollmentId ? await models.Enrollment.findByPk(prevAssignment.enrollmentId) : null)
@@ -1191,6 +1194,44 @@ class LinearRoadmapService {
     if (!nextId) return null;
     const started = await this._startNextRoadmap(menteeId, nextId, prevAssignment, slot.id);
     return started ? nextId : null;
+  }
+
+  /**
+   * The chain of the org roadmap a mentor's copy was imported from, pointed at
+   * that mentor's own copies.
+   *
+   * An admin chains org roadmaps once (Month 1 -> Month 2 -> ...), but mentors
+   * assign the copies they import, and an import does not copy links. Without
+   * this, a mentee finishing a copy of Month 1 would get nothing next. Each next
+   * org roadmap resolves to the copy the mentor (or their clan team) imported,
+   * newest first, so the mentee stays on the copies their mentor tends; if no one
+   * has imported it, the org roadmap itself is assigned.
+   *
+   * Returns link-shaped objects ({ toRoadmapId }) in the org chain's order, or []
+   * when the roadmap is not an import or its org roadmap has no chain.
+   */
+  async _inheritedLinks(roadmapId, mentorId = null) {
+    const roadmap = await models.Roadmap.findByPk(roadmapId, { attributes: ['id', 'source', 'importedFrom'] });
+    if (!roadmap || roadmap.source !== 'local' || !roadmap.importedFrom) return [];
+    const orgLinks = await models.RoadmapLink.findAll({ where: { fromRoadmapId: roadmap.importedFrom }, order: [['position', 'ASC']] });
+    if (!orgLinks.length) return [];
+
+    const ownerIds = mentorId ? await this._clanTeamMentorIds(mentorId).catch(() => [mentorId]) : [];
+    const resolved = [];
+    for (const link of orgLinks) {
+      const copy = ownerIds.length
+        ? await models.Roadmap.findOne({
+          where: { source: 'local', importedFrom: link.toRoadmapId, ownerMentorId: { [Op.in]: ownerIds } },
+          attributes: ['id'],
+          order: [['created_at', 'DESC']],
+        })
+        : null;
+      const toRoadmapId = copy ? copy.id : link.toRoadmapId;
+      if (toRoadmapId !== roadmapId && !resolved.some((r) => r.toRoadmapId === toRoadmapId)) {
+        resolved.push({ toRoadmapId, position: link.position });
+      }
+    }
+    return resolved;
   }
 
   /** Start the head roadmap of a slot's chain (used when a roadmap slot is filled). */
