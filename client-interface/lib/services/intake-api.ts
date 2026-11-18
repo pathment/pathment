@@ -87,6 +87,9 @@ export const applicationApi = {
     apiClient.post(`/intake/applications/${id}/accept`, { clanId }),
   reject: (id: string, reason?: string) =>
     apiClient.post(`/intake/applications/${id}/reject`, { reason }),
+  /** Email each chosen applicant their level's assessment, with a fresh private link. */
+  sendAssessment: (cohortId: string, applicationIds: string[]) =>
+    apiClient.post(`/intake/cohorts/${cohortId}/applications/send-assessment`, { applicationIds }),
   /** What removing this applicant would undo (no changes). */
   removalPreview: (id: string) => apiClient.get(`/intake/applications/${id}/removal`),
   /** Take them out of the intake at any stage; `reason` is kept with who did it. */

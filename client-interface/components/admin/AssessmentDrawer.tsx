@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { ChevronDown, ChevronUp, GripVertical, Loader2, Plus, Save, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Code2, Eye, GripVertical, Loader2, Plus, Save, Timer, Trash2, Video } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { assessmentApi, type Assessment, type AssessmentQuestionType } from '@/lib/services/assessment-api';
@@ -31,10 +31,16 @@ const TYPE_LABELS: Record<AssessmentQuestionType, string> = {
   long_text: 'Long text',
   file_upload: 'File upload',
   external_link: 'External link',
+  true_false: 'True / false',
+  code: 'Code',
+  video: 'Video answer',
 };
-const AUTO_GRADED: AssessmentQuestionType[] = ['mcq', 'multi_select'];
-// Types the AI can read + score from text — these get a rubric box.
-const AI_GRADABLE: AssessmentQuestionType[] = ['short_text', 'long_text'];
+const AUTO_GRADED: AssessmentQuestionType[] = ['mcq', 'multi_select', 'true_false'];
+// Types the AI can read + score — these get a rubric box (a video is read from its captions).
+const AI_GRADABLE: AssessmentQuestionType[] = ['short_text', 'long_text', 'code', 'video'];
+const TRUE_FALSE = [{ id: 'true', label: 'True' }, { id: 'false', label: 'False' }];
+/** How long one video answer may run (the server caps it at 5 minutes). */
+const RECORDING_CHOICES = [60, 120, 180, 300];
 
 const newId = () =>
   (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
@@ -64,11 +70,11 @@ export function AssessmentDrawer({
   const confirm = useConfirm();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [meta, setMeta] = useState({ title: '', description: '', instructions: '', status: 'draft', passingScore: '' as string | number, timeLimitMins: '' as string | number, aiRubric: '' });
+  const [meta, setMeta] = useState({ title: '', description: '', instructions: '', status: 'draft', passingScore: '' as string | number, timeLimitMins: '' as string | number, aiRubric: '', enforceTimeLimit: false, proctored: false });
   const [questions, setQuestions] = useState<QuestionDraft[]>([]);
 
   const reset = useCallback(() => {
-    setMeta({ title: '', description: '', instructions: '', status: 'draft', passingScore: '', timeLimitMins: '', aiRubric: '' });
+    setMeta({ title: '', description: '', instructions: '', status: 'draft', passingScore: '', timeLimitMins: '', aiRubric: '', enforceTimeLimit: false, proctored: false });
     setQuestions([]);
   }, []);
 
@@ -83,6 +89,7 @@ export function AssessmentDrawer({
           title: a.title || '', description: a.description || '', instructions: a.instructions || '',
           status: a.status || 'draft', passingScore: a.passingScore ?? '', timeLimitMins: a.timeLimitMins ?? '',
           aiRubric: a.aiRubric ?? '',
+          enforceTimeLimit: !!a.enforceTimeLimit, proctored: !!a.proctored,
         });
         setQuestions((a.questions || []).map((q) => ({
           id: q.id || newId(), type: q.type, prompt: q.prompt, required: q.required !== false,
@@ -96,7 +103,10 @@ export function AssessmentDrawer({
 
   const addQuestion = (type: AssessmentQuestionType) => {
     const base: QuestionDraft = { id: newId(), type, prompt: '', required: true, points: AUTO_GRADED.includes(type) ? 10 : 0, options: [], correctOptionIds: [], rubric: '', config: {} };
-    if (AUTO_GRADED.includes(type)) base.options = [{ id: newId(), label: '' }, { id: newId(), label: '' }];
+    if (type === 'true_false') base.options = TRUE_FALSE;
+    else if (AUTO_GRADED.includes(type)) base.options = [{ id: newId(), label: '' }, { id: newId(), label: '' }];
+    if (type === 'video') { base.config = { maxRecordingSeconds: 120 }; base.points = 10; }
+    if (type === 'code') { base.config = { codeLanguage: 'javascript', starterCode: '' }; base.points = 10; }
     setQuestions((prev) => [...prev, base]);
   };
   const patchQuestion = (qid: string, patch: Partial<QuestionDraft>) =>
@@ -113,11 +123,12 @@ export function AssessmentDrawer({
     if (meta.status === 'published' && questions.length === 0) { toast.error('Add at least one question before publishing'); return false; }
     if (meta.passingScore !== '' && (!Number.isFinite(Number(meta.passingScore)) || Number(meta.passingScore) < 0)) { toast.error('Passing score must be a number ≥ 0'); return false; }
     if (meta.timeLimitMins !== '' && (!Number.isInteger(Number(meta.timeLimitMins)) || Number(meta.timeLimitMins) < 1)) { toast.error('Time limit must be a whole number of minutes ≥ 1'); return false; }
+    if (meta.enforceTimeLimit && meta.timeLimitMins === '') { toast.error('Set a time limit to enforce it'); return false; }
     for (const q of questions) {
       if (!q.prompt.trim()) { toast.error('Every question needs a prompt'); return false; }
       if (!Number.isFinite(Number(q.points)) || Number(q.points) < 0) { toast.error('Question points must be a number ≥ 0'); return false; }
       if (AUTO_GRADED.includes(q.type)) {
-        if (q.options.filter((o) => o.label.trim()).length < 2) { toast.error('Choice questions need at least 2 options'); return false; }
+        if (q.type !== 'true_false' && q.options.filter((o) => o.label.trim()).length < 2) { toast.error('Choice questions need at least 2 options'); return false; }
         if (q.correctOptionIds.length === 0) { toast.error('Mark the correct answer for each choice question'); return false; }
       }
     }
@@ -136,6 +147,8 @@ export function AssessmentDrawer({
         passingScore: meta.passingScore === '' ? null : Number(meta.passingScore),
         timeLimitMins: meta.timeLimitMins === '' ? null : Number(meta.timeLimitMins),
         aiRubric: meta.aiRubric.trim() || null,
+        enforceTimeLimit: meta.enforceTimeLimit,
+        proctored: meta.proctored,
       };
       if (!targetId) {
         const created = await assessmentApi.create(metaPayload); // server forces draft
@@ -144,7 +157,7 @@ export function AssessmentDrawer({
       // Questions first, so flipping status to 'published' isn't rejected as empty.
       await assessmentApi.setQuestions(targetId, questions.map((q) => ({
         type: q.type, prompt: q.prompt.trim(), required: q.required, points: q.points,
-        options: AUTO_GRADED.includes(q.type) ? q.options.filter((o) => o.label.trim()) : [],
+        options: q.type === 'true_false' ? TRUE_FALSE : AUTO_GRADED.includes(q.type) ? q.options.filter((o) => o.label.trim()) : [],
         correctOptionIds: q.correctOptionIds,
         rubric: AI_GRADABLE.includes(q.type) ? q.rubric.trim() || null : null,
         config: q.config,
@@ -220,6 +233,20 @@ export function AssessmentDrawer({
                 <input type="number" min={1} value={meta.timeLimitMins} onChange={(e) => setMeta({ ...meta, timeLimitMins: e.target.value.replace(/^0+(?=\d)/, '') })} placeholder="-" className="w-full border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500" />
               </div>
             </div>
+            <div className="space-y-2 rounded-xl border border-slate-200 dark:border-slate-700 p-3">
+              <label className="flex items-start gap-2.5 cursor-pointer">
+                <input type="checkbox" checked={meta.enforceTimeLimit} onChange={(e) => setMeta({ ...meta, enforceTimeLimit: e.target.checked })} className="mt-0.5 accent-brand-600" />
+                <span className="text-sm text-slate-700"><Timer className="inline w-3.5 h-3.5 mr-1 text-brand-600" />Enforce the time limit
+                  <span className="block text-xs text-slate-400">The clock starts when they begin, keeps running if they leave, and submits what they have at zero. One sitting.</span>
+                </span>
+              </label>
+              <label className="flex items-start gap-2.5 cursor-pointer">
+                <input type="checkbox" checked={meta.proctored} onChange={(e) => setMeta({ ...meta, proctored: e.target.checked })} className="mt-0.5 accent-brand-600" />
+                <span className="text-sm text-slate-700"><Eye className="inline w-3.5 h-3.5 mr-1 text-brand-600" />Full proctoring
+                  <span className="block text-xs text-slate-400">Camera on and entire screen shared the whole time; random snapshots of both; leaving the page is noted. Needs a laptop or desktop. One sitting.</span>
+                </span>
+              </label>
+            </div>
             <div>
               <label className="block text-xs font-medium text-slate-500 mb-1">
                 AI scoring guide <span className="text-slate-400 font-normal">— what a strong candidate looks like</span>
@@ -266,38 +293,95 @@ function QuestionCard({
   onPatch: (patch: Partial<QuestionDraft>) => void; onRemove: () => void; onMove: (dir: -1 | 1) => void; newId: () => string;
 }) {
   const isChoice = q.type === 'mcq' || q.type === 'multi_select';
-  const setOptionLabel = (oid: string, label: string) => onPatch({ options: q.options.map((o) => (o.id === oid ? { ...o, label } : o)) });
+  const setConfig = (patch: Record<string, unknown>) => onPatch({ config: { ...q.config, ...patch } });
+
+  const setOptionLabel = (oid: string, label: string) =>
+    onPatch({ options: q.options.map((o) => (o.id === oid ? { ...o, label } : o)) });
   const addOption = () => onPatch({ options: [...q.options, { id: newId(), label: '' }] });
-  const removeOption = (oid: string) => onPatch({ options: q.options.filter((o) => o.id !== oid), correctOptionIds: q.correctOptionIds.filter((c) => c !== oid) });
+  const removeOption = (oid: string) =>
+    onPatch({ options: q.options.filter((o) => o.id !== oid), correctOptionIds: q.correctOptionIds.filter((c) => c !== oid) });
   const toggleCorrect = (oid: string) => {
     if (q.type === 'mcq') onPatch({ correctOptionIds: [oid] });
     else onPatch({ correctOptionIds: q.correctOptionIds.includes(oid) ? q.correctOptionIds.filter((c) => c !== oid) : [...q.correctOptionIds, oid] });
   };
 
   return (
-    <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-4">
-      <div className="flex items-start gap-2">
-        <div className="pt-1 text-slate-300"><GripVertical className="w-4 h-4" /></div>
+    <div className="rounded-2xl border border-slate-200 bg-card p-5">
+      <div className="flex items-start gap-3">
+        <div className="flex flex-col items-center pt-1 text-slate-300">
+          <GripVertical className="w-4 h-4" />
+        </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] font-medium uppercase tracking-wide text-brand-700 bg-brand-50 dark:bg-brand-500/15 rounded-full px-2.5 py-1">{TYPE_LABELS[q.type]}</span>
+            <span className="text-xs font-medium uppercase tracking-wide text-brand-700 bg-brand-50 dark:bg-brand-500/15 rounded-full px-2.5 py-1">
+              {TYPE_LABELS[q.type]}
+            </span>
             <div className="flex items-center gap-1">
-              <button onClick={() => onMove(-1)} disabled={isFirst} className="p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30"><ChevronUp className="w-4 h-4" /></button>
-              <button onClick={() => onMove(1)} disabled={isLast} className="p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30"><ChevronDown className="w-4 h-4" /></button>
+              <button onClick={() => onMove(-1)} disabled={isFirst} className="p-1.5 rounded-md hover:bg-slate-100 disabled:opacity-30"><ChevronUp className="w-4 h-4" /></button>
+              <button onClick={() => onMove(1)} disabled={isLast} className="p-1.5 rounded-md hover:bg-slate-100 disabled:opacity-30"><ChevronDown className="w-4 h-4" /></button>
               <button onClick={onRemove} className="p-1.5 rounded-md hover:bg-rose-50 text-rose-500"><Trash2 className="w-4 h-4" /></button>
             </div>
           </div>
-          <textarea rows={2} value={q.prompt} onChange={(e) => onPatch({ prompt: e.target.value })} placeholder={`Question ${idx + 1} prompt`} className="mt-3 w-full border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-card" />
+
+          <textarea
+            rows={2}
+            value={q.prompt}
+            onChange={(e) => onPatch({ prompt: e.target.value })}
+            placeholder={`Question ${idx + 1} prompt`}
+            className="mt-3 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-card"
+          />
+
+          {q.type === 'true_false' && (
+            <div className="mt-3">
+              <p className="text-xs text-slate-500 mb-1.5">The correct answer:</p>
+              <div className="flex gap-2">
+                {TRUE_FALSE.map((o) => (
+                  <button key={o.id} type="button" onClick={() => onPatch({ correctOptionIds: [o.id], options: TRUE_FALSE })}
+                    className={`px-4 py-1.5 rounded-lg border text-sm font-medium ${q.correctOptionIds.includes(o.id) ? 'border-emerald-400 bg-emerald-50 text-emerald-700' : 'border-slate-200 text-slate-600 hover:border-slate-300'}`}>
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {q.type === 'video' && (
+            <label className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+              <Video className="w-3.5 h-3.5 text-brand-600" />Longest recording
+              <select value={Number(q.config.maxRecordingSeconds) || 120} onChange={(e) => setConfig({ maxRecordingSeconds: Number(e.target.value) })}
+                className="rounded-lg border border-slate-200 bg-card px-2 py-1 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-500">
+                {RECORDING_CHOICES.map((sec) => <option key={sec} value={sec}>{sec / 60} min</option>)}
+              </select>
+              <span className="text-slate-400">They answer on camera; you watch it and score it. Needs a laptop or desktop.</span>
+            </label>
+          )}
+
+          {q.type === 'code' && (
+            <div className="mt-3 space-y-2">
+              <label className="flex items-center gap-2 text-xs text-slate-500">
+                <Code2 className="w-3.5 h-3.5 text-brand-600" />Language
+                <input value={String(q.config.codeLanguage || '')} onChange={(e) => setConfig({ codeLanguage: e.target.value })} placeholder="javascript"
+                  className="w-40 border border-slate-200 rounded-lg px-2 py-1 text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500" />
+              </label>
+              <textarea rows={3} value={String(q.config.starterCode || '')} onChange={(e) => setConfig({ starterCode: e.target.value })}
+                placeholder="Starting code they see in the editor (optional)"
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-brand-500 bg-card" />
+            </div>
+          )}
+
           {AI_GRADABLE.includes(q.type) && (
             <div className="mt-3 rounded-lg border border-violet-200 bg-violet-50/60 dark:bg-violet-500/10 p-3">
-              <label className="block text-[11px] font-medium text-violet-800 mb-1">
-                Grading rubric <span className="font-normal text-violet-600">— how the AI should score this answer</span>
+              <label className="block text-xs font-medium text-violet-800 mb-1">
+                {q.type === 'code' ? 'Model solution / rubric' : 'Grading rubric'} <span className="font-normal text-violet-600">— {q.type === 'video' ? 'how to score the video (the AI reads its captions)' : 'how the AI should score this answer'}</span>
               </label>
               <RubricField
                 value={q.rubric}
                 onChange={(v) => onPatch({ rubric: v })}
-                placeholder="e.g. Full marks: names a specific project AND their own role. Partial: vague. Zero: no real project."
+                placeholder="e.g. Full marks: names a specific project AND their own role. Partial: vague or team-only. Zero: no real project."
               />
+              <p className="mt-1 text-[11px] text-violet-600">
+                Scored out of this question&apos;s points. Leave blank to judge on relevance and clarity. Never shown to applicants.
+              </p>
             </div>
           )}
 
@@ -306,21 +390,40 @@ function QuestionCard({
               <p className="text-xs text-slate-500">Options - mark the correct one{q.type === 'multi_select' ? '(s)' : ''}.</p>
               {q.options.map((o) => (
                 <div key={o.id} className="flex items-center gap-2">
-                  <input type={q.type === 'mcq' ? 'radio' : 'checkbox'} checked={q.correctOptionIds.includes(o.id)} onChange={() => toggleCorrect(o.id)} className="accent-brand-600" aria-label="Mark correct" />
-                  <input value={o.label} onChange={(e) => setOptionLabel(o.id, e.target.value)} placeholder="Option label" className="flex-1 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-card" />
+                  <input
+                    type={q.type === 'mcq' ? 'radio' : 'checkbox'}
+                    checked={q.correctOptionIds.includes(o.id)}
+                    onChange={() => toggleCorrect(o.id)}
+                    className="accent-brand-600"
+                    aria-label="Mark correct"
+                  />
+                  <input
+                    value={o.label}
+                    onChange={(e) => setOptionLabel(o.id, e.target.value)}
+                    placeholder="Option label"
+                    className="flex-1 border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-card"
+                  />
                   <button onClick={() => removeOption(o.id)} className="p-1.5 rounded-md hover:bg-rose-50 text-rose-400"><Trash2 className="w-3.5 h-3.5" /></button>
                 </div>
               ))}
               <button onClick={addOption} className="text-sm text-brand-700 hover:text-brand-800 inline-flex items-center gap-1"><Plus className="w-3.5 h-3.5" /> Add option</button>
             </div>
           )}
+
           <div className="mt-4 flex items-center gap-4 text-sm">
-            <label className="inline-flex items-center gap-2 text-slate-600 dark:text-slate-500">
-              <input type="checkbox" checked={q.required} onChange={(e) => onPatch({ required: e.target.checked })} className="accent-brand-600" /> Required
+            <label className="inline-flex items-center gap-2 text-slate-600">
+              <input type="checkbox" checked={q.required} onChange={(e) => onPatch({ required: e.target.checked })} className="accent-brand-600" />
+              Required
             </label>
-            <label className="inline-flex items-center gap-2 text-slate-600 dark:text-slate-500">
+            <label className="inline-flex items-center gap-2 text-slate-600">
               Points
-              <input type="number" min={0} value={q.points} onChange={(e) => onPatch({ points: e.target.value === '' ? 0 : Math.max(0, parseInt(e.target.value, 10) || 0) })} className="w-20 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-sm bg-card dark:text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-500" />
+              <input
+                type="number"
+                min={0}
+                value={q.points}
+                onChange={(e) => onPatch({ points: e.target.value === '' ? 0 : Math.max(0, parseInt(e.target.value, 10) || 0) })}
+                className="w-20 border border-slate-200 rounded-lg px-2 py-1 text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500"
+              />
             </label>
             {!AUTO_GRADED.includes(q.type) && <span className="text-xs text-slate-400">graded manually</span>}
           </div>

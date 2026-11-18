@@ -1,6 +1,6 @@
 import { apiClient } from './api-client';
 
-export type AssessmentQuestionType = 'mcq' | 'multi_select' | 'short_text' | 'long_text' | 'file_upload' | 'external_link';
+export type AssessmentQuestionType = 'mcq' | 'multi_select' | 'true_false' | 'short_text' | 'long_text' | 'file_upload' | 'external_link' | 'video' | 'code';
 
 export interface AssessmentQuestionInput {
   id?: string;
@@ -25,6 +25,10 @@ export interface Assessment {
   /** Holistic "what a strong candidate looks like" guidance for the AI's overall score. */
   aiRubric?: string | null;
   timeLimitMins?: number | null;
+  /** The time limit is a real deadline from when they start (auto-submits). */
+  enforceTimeLimit?: boolean;
+  /** Camera on and entire screen shared; snapshots of both. */
+  proctored?: boolean;
   status: 'draft' | 'published' | 'archived';
   questionCount?: number;
   totalPoints?: number;

@@ -11,6 +11,20 @@ const { uploadToCloudinary } = require('../utils/cloudinaryUpload');
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ACCESS_TOKEN_TTL_DAYS = 60;
+// A timed attempt's answers still land this long after the clock runs out (the
+// browser auto-submits at zero; this absorbs a slow network).
+const TIMED_GRACE_MS = 90 * 1000;
+const proctoring = require('./proctoringRules');
+const media = require('./proctoredMedia');
+
+/** Proctored or strictly timed: one sitting, no revising after submit. */
+const oneShot = (assessment) => Boolean(assessment?.proctored || (assessment?.enforceTimeLimit && assessment?.timeLimitMins));
+/** When a timed attempt ends, or null when it isn't timed or hasn't started. */
+const attemptDeadline = (assessment, submission) => (
+  assessment?.enforceTimeLimit && assessment?.timeLimitMins && submission?.startedAt
+    ? new Date(new Date(submission.startedAt).getTime() + assessment.timeLimitMins * 60 * 1000)
+    : null
+);
 
 /**
  * The public, unauthenticated intake surface: a program catalog anyone can
@@ -183,13 +197,15 @@ class PublicIntakeService {
     // Assign this applicant's assessment (level-aware, random from the pool) and
     // gate the status on it only when the cohort marks the assessment required.
     const assignedAssessmentId = await assessmentService.ensureAssignedAssessment(application, cohort);
-    const requiresAssessment = Boolean(assignedAssessmentId && cohort.assessmentRequired);
+    // 'on_invite': the assessment comes later, by email, when an admin sends it.
+    const onInvite = cohort.assessmentMode === 'on_invite';
+    const requiresAssessment = Boolean(assignedAssessmentId && cohort.assessmentRequired && !onInvite);
     if (requiresAssessment && application.status === 'pending') {
       await application.update({ status: 'assessment_sent' });
     }
 
     const statusUrl = this.buildStatusUrl(rawToken);
-    await this._sendApplicationEmail(email, cohort, statusUrl, requiresAssessment, !!assignedAssessmentId).catch(() => {});
+    await this._sendApplicationEmail(email, cohort, statusUrl, requiresAssessment, !!assignedAssessmentId && !onInvite).catch(() => {});
 
     // Hands-off pipeline, after the response is settled: straight into any
     // selection pool that takes this intake, and — when there is no assessment
@@ -237,6 +253,12 @@ class PublicIntakeService {
   async getApplicationStatus(rawToken) {
     const application = await this._findByAccessToken(rawToken);
     const cohort = application.cohort;
+    // "Opened": the first time they follow their link (a pipeline step).
+    if (!application.linkOpenedAt || (application.assessmentInvitedAt && new Date(application.linkOpenedAt) < new Date(application.assessmentInvitedAt))) {
+      await application.update({ linkOpenedAt: new Date() });
+    }
+    // An "invite first" intake keeps the assessment back until it's sent.
+    const awaitingInvite = cohort?.assessmentMode === 'on_invite' && !application.assessmentInvitedAt;
 
     const now = new Date();
     // Editing info closes with the apply window; the assessment can have its OWN
@@ -253,19 +275,26 @@ class PublicIntakeService {
     // older application predates assignment.
     let assessment = null;
     let submission = null;
-    const assignedId = cohort ? await assessmentService.ensureAssignedAssessment(application, cohort) : application.assignedAssessmentId;
+    let full = null;
+    const assignedId = awaitingInvite ? null
+      : cohort ? await assessmentService.ensureAssignedAssessment(application, cohort) : application.assignedAssessmentId;
     if (assignedId) {
-      const full = await assessmentService.getAssessment(assignedId);
+      full = await assessmentService.getAssessment(assignedId);
       assessment = { ...assessmentService.sanitizeForApplicant(full), required: cohort?.assessmentRequired };
-      const existing = await models.AssessmentSubmission.findOne({
+      let existing = await models.AssessmentSubmission.findOne({
         where: { assessmentId: assignedId, applicationId: application.id }
       });
+      // A timed attempt whose clock ran out is finished with what was saved.
+      if (existing) existing = await this._finalizeIfExpired(existing, full, application);
       if (existing) {
+        const deadlineAt = attemptDeadline(full, existing);
         submission = {
           status: existing.status,
           submittedAt: existing.submittedAt,
           updatedAt: existing.updatedAt,
           submissionCount: existing.submissionCount || 1,
+          startedAt: existing.startedAt || null,
+          deadlineAt,
           // The applicant's own answers, so the form can pre-fill for editing.
           answers: existing.answers || {}
         };
@@ -274,7 +303,9 @@ class PublicIntakeService {
 
     const withdrawn = application.status === 'withdrawn';
     // Whether they can still take/revise the assessment, edit their info, or withdraw.
-    const canEditAssessment = !!assignedId && !decided && !withdrawn && !pastAssessmentDeadline && (!submission || submission.status !== 'graded');
+    const canEditAssessment = !!assignedId && !decided && !withdrawn && !pastAssessmentDeadline && (!submission || submission.status !== 'graded')
+      // Proctored or strictly timed: one sitting, no revising after submit.
+      && !(oneShot(full) && submission && submission.status !== 'in_progress');
     const canEditInfo = !decided && !withdrawn && !pastInfoDeadline;
     const canWithdraw = !decided && !withdrawn;
     // Level can only be changed while it's safe (no assessment submitted yet) —
@@ -305,6 +336,9 @@ class PublicIntakeService {
       formSchema: Array.isArray(cohort?.intakeFormSchema) ? cohort.intakeFormSchema : [],
       assessment,
       submission,
+      // Invite-first intake, not invited yet: "we'll email you".
+      awaitingInvite,
+      serverNow: new Date().toISOString(),
       deadline: infoDeadline,
       assessmentDeadline,
       canEditAssessment,
@@ -416,23 +450,35 @@ class PublicIntakeService {
     const assignedId = await assessmentService.ensureAssignedAssessment(application, cohort);
     if (!assignedId) throw new ValidationError('No assessment is attached to this application');
 
+    if (cohort?.assessmentMode === 'on_invite' && !application.assessmentInvitedAt) {
+      throw new ConflictError("Your assessment hasn't been sent yet — we'll email you when it is.");
+    }
+
     const full = await assessmentService.getAssessment(assignedId);
     const questions = full.questions || [];
-    const clean = answers && typeof answers === 'object' ? answers : {};
-
-    assessmentService.validateAnswers(questions, clean);
-    const { autoScore, maxScore, hasManual } = assessmentService.gradeAuto(questions, clean);
 
     const now = new Date();
-    const existing = await models.AssessmentSubmission.findOne({
+    let existing = await models.AssessmentSubmission.findOne({
       where: { assessmentId: assignedId, applicationId: application.id }
     });
     // Once an admin has graded it, the applicant can't overwrite their work.
     if (existing && existing.status === 'graded') {
       throw new ConflictError('This assessment has already been graded and can no longer be changed.');
     }
+    if (oneShot(full)) {
+      if (!existing || !existing.startedAt) throw new ValidationError('Start the assessment first.');
+      if (existing.status !== 'in_progress') throw new ConflictError('You have already submitted this assessment.');
+      existing = await this._finalizeIfExpired(existing, full, application);
+      if (existing.status !== 'in_progress') throw new ConflictError('Time is up — your saved answers were submitted.');
+    }
+    // Videos are whatever the server stored, never what the browser claims.
+    const clean = this._withServerVideos(questions, answers && typeof answers === 'object' ? answers : {}, existing?.answers);
+    // The clock ran out: what they had is submitted even if it's incomplete.
+    const timedOut = Boolean(attemptDeadline(full, existing) && now > attemptDeadline(full, existing));
+    if (!timedOut) assessmentService.validateAnswers(questions, clean);
+    const { autoScore, maxScore, hasManual } = assessmentService.gradeAuto(questions, clean);
 
-    const submissionCount = existing ? (existing.submissionCount || 0) + 1 : 1;
+    const submissionCount = existing && existing.status !== 'in_progress' ? (existing.submissionCount || 0) + 1 : 1;
     const payload = {
       assessmentId: assignedId,
       applicationId: application.id,
@@ -460,6 +506,151 @@ class PublicIntakeService {
     automation.safely('process assessed application', () => automation.processApplication(application.id, { review: true }));
 
     return { autoScore, maxScore, pendingManualGrading: hasManual, submissionCount };
+  }
+
+  /**
+   * The applicant's assessment attempt, checked for being open: not decided or
+   * withdrawn, invited when the intake needs that, before the intake deadline.
+   * `submission` is their attempt row (created by `start`), or null.
+   */
+  async _attempt(rawToken, { forRecording = false } = {}) {
+    const application = await this._findByAccessToken(rawToken);
+    const cohort = application.cohort;
+    if (['accepted', 'rejected', 'removed', 'withdrawn'].includes(application.status)) {
+      throw new ConflictError('Your application has already been decided — the assessment can no longer be changed.');
+    }
+    if (cohort?.assessmentMode === 'on_invite' && !application.assessmentInvitedAt) {
+      throw new ConflictError("Your assessment hasn't been sent yet — we'll email you when it is.");
+    }
+    const assessmentDeadline = cohort?.assessmentDeadline || cohort?.applyClosesAt;
+    if (!forRecording && assessmentDeadline && new Date() > new Date(assessmentDeadline)) {
+      throw new ValidationError('The deadline to submit or update this assessment has passed.');
+    }
+    const assignedId = await assessmentService.ensureAssignedAssessment(application, cohort);
+    if (!assignedId) throw new ValidationError('No assessment is attached to this application');
+    const assessment = await assessmentService.getAssessment(assignedId);
+    const submission = await models.AssessmentSubmission.findOne({ where: { assessmentId: assignedId, applicationId: application.id } });
+    return { application, cohort, assessment, submission };
+  }
+
+  /** A timed attempt past its deadline (and grace) is submitted as it stands. */
+  async _finalizeIfExpired(submission, assessment, application) {
+    const deadlineAt = attemptDeadline(assessment, submission);
+    if (submission.status !== 'in_progress' || !deadlineAt || Date.now() <= deadlineAt.getTime() + TIMED_GRACE_MS) return submission;
+    const { autoScore, maxScore, hasManual } = assessmentService.gradeAuto(assessment.questions || [], submission.answers || {});
+    await submission.update({
+      status: 'submitted', submittedAt: deadlineAt, autoScore, maxScore, totalScore: hasManual ? null : autoScore,
+      submissionCount: Math.max(1, submission.submissionCount || 1),
+    });
+    await media.appendProctorEvents('assessment_submissions', submission.id, [{ type: 'time_expired', at: new Date().toISOString(), meta: {} }]);
+    await application.update({
+      assessmentSubmittedAt: deadlineAt,
+      status: ['accepted', 'rejected'].includes(application.status) ? application.status : 'under_review',
+      assessmentScore: hasManual ? application.assessmentScore : autoScore,
+    });
+    return submission.reload();
+  }
+
+  /**
+   * Begin the assessment: the attempt row exists from here, the clock (if it's
+   * timed) starts now and survives a refresh, and a client that can't run a
+   * proctored / video assessment is turned away before anything starts.
+   */
+  async startAssessment(rawToken, { capabilities } = {}) {
+    const { application, assessment, submission } = await this._attempt(rawToken);
+    const requirements = proctoring.requirementsFor({ proctored: assessment.proctored, questions: (assessment.questions || []).map((q) => ({ kind: q.type })) });
+    const missing = proctoring.missingCapability(requirements, proctoring.parseCapabilities(capabilities));
+    if (missing) throw new ConflictError(proctoring.unsupportedClientMessage(missing, 'assessment'));
+    if (submission && submission.status !== 'in_progress' && oneShot(assessment)) {
+      throw new ConflictError('You have already submitted this assessment.');
+    }
+    let row = submission;
+    if (!row) {
+      row = await models.AssessmentSubmission.create({
+        assessmentId: assessment.id, applicationId: application.id, answers: {}, status: 'in_progress', startedAt: new Date(),
+      });
+    } else if (!row.startedAt) {
+      await row.update({ startedAt: new Date() });
+    }
+    if (!application.assessmentStartedAt) await application.update({ assessmentStartedAt: row.startedAt || new Date() });
+    row = await this._finalizeIfExpired(row, assessment, application);
+    return { status: row.status, startedAt: row.startedAt, deadlineAt: attemptDeadline(assessment, row), serverNow: new Date().toISOString() };
+  }
+
+  /** Answers the server holds that the browser must not overwrite: stored videos. */
+  _withServerVideos(questions, incoming, stored) {
+    const out = { ...(incoming || {}) };
+    for (const q of questions) {
+      if (q.type !== 'video') continue;
+      const keep = stored?.[q.id] || {};
+      out[q.id] = { ...(out[q.id] || {}), videoUrl: keep.videoUrl || null, publicId: keep.publicId || null };
+      if (!keep.videoUrl) { delete out[q.id].videoUrl; delete out[q.id].publicId; }
+    }
+    return out;
+  }
+
+  /** Autosave while answering, so a refresh (or a dropped connection) loses nothing. */
+  async saveAssessmentDraft(rawToken, answers) {
+    const { application, assessment, submission } = await this._attempt(rawToken);
+    if (!submission || submission.status !== 'in_progress') {
+      if (submission && oneShot(assessment)) throw new ConflictError('You have already submitted this assessment.');
+      // Not started (an untimed, unproctored assessment) — nothing to save into yet.
+      if (!submission) return { saved: false };
+      return { saved: false };
+    }
+    const done = await this._finalizeIfExpired(submission, assessment, application);
+    if (done.status !== 'in_progress') throw new ConflictError('Time is up — your saved answers were submitted.');
+    const clean = answers && typeof answers === 'object' && !Array.isArray(answers) ? answers : {};
+    await submission.update({ answers: this._withServerVideos(assessment.questions || [], clean, submission.answers) });
+    return { saved: true };
+  }
+
+  /** Proctor events from the applicant's browser (focus loss, fullscreen exit…). */
+  async logAssessmentProctor(rawToken, events) {
+    const { submission } = await this._attempt(rawToken, { forRecording: true });
+    if (!submission || submission.status !== 'in_progress') return { logged: 0 };
+    const clean = media.cleanClientEvents(events);
+    await media.appendProctorEvents('assessment_submissions', submission.id, clean);
+    return { logged: clean.length };
+  }
+
+  async uploadAssessmentSnapshot(rawToken, file, { questionId = null, source = 'camera' } = {}) {
+    const { submission } = await this._attempt(rawToken, { forRecording: true });
+    if (!submission || submission.status !== 'in_progress') throw new ConflictError('This assessment is not in progress.');
+    return media.storeSnapshot('assessment_submissions', submission.id, file, { questionId, source, folder: 'pathment/assessments/snapshots' });
+  }
+
+  /** The submission a video answer may land on: in progress, or submitted a moment ago. */
+  async _videoTarget(rawToken, questionId) {
+    const { application, assessment, submission } = await this._attempt(rawToken, { forRecording: true });
+    if (!submission) throw new ConflictError('Start the assessment first.');
+    if (submission.status === 'graded') throw new ConflictError('This assessment has already been reviewed.');
+    if (submission.status !== 'in_progress' && !media.recordingStillAccepted(
+      { status: 'submitted', submittedAt: submission.submittedAt }, application.status,
+    )) throw new ConflictError('This assessment has already been submitted.');
+    const question = (assessment.questions || []).find((q) => q.id === questionId);
+    if (!question || question.type !== 'video') throw new ValidationError('Video can only be attached to a video question');
+    return { submission, question };
+  }
+
+  async signAssessmentVideo(rawToken, questionId) {
+    const { submission, question } = await this._videoTarget(rawToken, questionId);
+    return media.signDirectVideo(`${proctoring.videoPublicIdPrefix('assessments', submission.id, question.id)}${Math.floor(Date.now() / 1000)}`);
+  }
+
+  async attachAssessmentVideo(rawToken, questionId, { file = null, publicId = null } = {}) {
+    const { submission, question } = await this._videoTarget(rawToken, questionId);
+    const { url, publicId: storedId } = await media.resolveVideo({
+      file, publicId,
+      prefix: proctoring.videoPublicIdPrefix('assessments', submission.id, question.id),
+      folder: `pathment/assessments/videos/${submission.id}`,
+    });
+    const answers = { ...(submission.answers || {}) };
+    const replaced = answers[question.id]?.publicId && answers[question.id].publicId !== storedId ? answers[question.id].publicId : null;
+    answers[question.id] = { ...(answers[question.id] || {}), videoUrl: url, publicId: storedId };
+    await submission.update({ answers });
+    media.removeRecording(replaced);
+    return { videoUrl: url, questionId: question.id };
   }
 
   /** Upload a file for a file_upload answer (gated by the applicant's token). */

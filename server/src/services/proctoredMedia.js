@@ -14,7 +14,7 @@ const { uploadToCloudinary } = require('../utils/cloudinaryUpload');
 const rules = require('./proctoringRules');
 
 // Only these tables carry a proctor log; the name is never taken from a request.
-const LOG_TABLES = new Set(['interview_sessions', 'quiz_sessions']);
+const LOG_TABLES = new Set(['interview_sessions', 'quiz_sessions', 'assessment_submissions']);
 
 /**
  * Add events to the end of a session's proctor log in one statement.

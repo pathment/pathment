@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, CheckCircle2, Clock, FileUp, Loader2, Upload, Timer, CalendarClock, Pencil, Check, Lock } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Loader2, Pencil, Check, Lock, MailCheck } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { publicApi, type AssessmentAnswer, type PublicAssessmentQuestion } from '@/lib/services/public-api';
+import { publicApi } from '@/lib/services/public-api';
+import { AssessmentRunner, type RunnerAssessment, type RunnerSubmission } from '@/components/apply/AssessmentRunner';
 import { IntakeFormFields } from '@/components/shared/IntakeFormFields';
 import type { IntakeFormField } from '@/lib/config/intakeFields';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
@@ -23,8 +24,11 @@ interface StatusData {
   cohort: { id: string; name: string } | null;
   levels?: { key: string; label: string }[];
   formSchema?: IntakeFormField[];
-  assessment: { id: string; title: string; description?: string; instructions?: string; timeLimitMins?: number | null; required: boolean; questions: PublicAssessmentQuestion[] } | null;
-  submission: { status: string; submittedAt?: string; updatedAt?: string; submissionCount?: number; answers?: Record<string, AssessmentAnswer> } | null;
+  assessment: RunnerAssessment | null;
+  submission: (RunnerSubmission & { updatedAt?: string }) | null;
+  /** An "invite first" intake that hasn't sent them the assessment yet. */
+  awaitingInvite?: boolean;
+  serverNow?: string;
   deadline?: string | null;
   assessmentDeadline?: string | null;
   canEditAssessment?: boolean;
@@ -86,10 +90,6 @@ export default function ApplicationStatusPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [answers, setAnswers] = useState<Record<string, AssessmentAnswer>>({});
-  const [editing, setEditing] = useState(false);            // editing the assessment
-  const [submitting, setSubmitting] = useState(false);
-  const [uploadingId, setUploadingId] = useState<string | null>(null);
 
   const [editingInfo, setEditingInfo] = useState(false);     // editing profile info
   const [form, setForm] = useState<Record<string, string>>({});
@@ -107,7 +107,6 @@ export default function ApplicationStatusPage() {
   }, [token]);
 
   useEffect(() => { if (token) load(); }, [token, load]);
-  useEffect(() => { setAnswers((data?.submission?.answers as Record<string, AssessmentAnswer>) || {}); }, [data?.submission]);
 
   const setField = (k: string, v: string) => setForm((p) => ({ ...p, [k]: v }));
   const startEditInfo = () => {
@@ -155,32 +154,6 @@ export default function ApplicationStatusPage() {
     }
   };
 
-  const setAnswer = (qId: string, patch: AssessmentAnswer) => setAnswers((prev) => ({ ...prev, [qId]: { ...prev[qId], ...patch } }));
-  const toggleOption = (q: PublicAssessmentQuestion, optId: string) => {
-    setAnswers((prev) => {
-      const current = prev[q.id]?.optionIds || [];
-      if (q.type === 'mcq') return { ...prev, [q.id]: { optionIds: [optId] } };
-      const next = current.includes(optId) ? current.filter((x) => x !== optId) : [...current, optId];
-      return { ...prev, [q.id]: { optionIds: next } };
-    });
-  };
-  const handleUpload = async (qId: string, file: File) => {
-    setUploadingId(qId);
-    try {
-      const res = await publicApi.uploadFile(token, file);
-      setAnswer(qId, { fileUrl: res.url, fileName: res.fileName });
-      toast.success('File uploaded');
-    } catch (e) { toast.error(extractApiErrorMessage(e, 'Upload failed')); } finally { setUploadingId(null); }
-  };
-  const handleSubmitAssessment = async () => {
-    setSubmitting(true);
-    try {
-      const res = await publicApi.submitAssessment(token, answers);
-      toast.success(res?.submissionCount > 1 ? 'Answers updated' : 'Assessment submitted');
-      setEditing(false);
-      load();
-    } catch (e) { toast.error(extractApiErrorMessage(e, 'Could not save your assessment')); } finally { setSubmitting(false); }
-  };
 
   const levelLabel = useMemo(
     () => (data?.levels || []).find((l) => l.key === data?.application.level)?.label || data?.application.level || null,
@@ -202,7 +175,6 @@ export default function ApplicationStatusPage() {
   const assessDeadline = data.assessmentDeadline ?? deadline; // the assessment's own deadline
   const meta = STATUS_META[application.status] || STATUS_META.pending;
   const submitted = Boolean(submission && submission.status !== 'in_progress');
-  const showRunner = Boolean(assessment && data.canEditAssessment && (!submitted || editing));
   // Closed by the programme team: nothing left for the applicant to do here.
   const withdrawn = application.status === 'withdrawn' || application.status === 'removed';
   const removedByTeam = application.status === 'removed';
@@ -311,76 +283,27 @@ export default function ApplicationStatusPage() {
       )}
 
       {/* ── Assessment ──────────────────────────────────────── */}
-      {assessment && !withdrawn && (
-        <div className="mt-6 rounded-2xl border border-slate-200 bg-card p-6">
-          <div className="flex items-center gap-2">
-            <Clock className="w-4 h-4 text-brand-600" />
-            <h2 className="font-semibold text-slate-900">{assessment.title}</h2>
-            {assessment.required && <span className="text-xs rounded-full bg-amber-100 text-amber-800 px-2 py-0.5">Required</span>}
+      {data.awaitingInvite && !withdrawn && (
+        <div className="mt-6 rounded-2xl border border-slate-200 bg-card p-6 flex items-start gap-3">
+          <MailCheck className="w-5 h-5 text-brand-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-medium text-slate-900">Your assessment comes by email</p>
+            <p className="mt-1 text-sm text-slate-600">We&apos;ll email you a link to your assessment when it&apos;s ready for you. Keep an eye on your inbox (and spam folder).</p>
           </div>
-          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
-            {assessDeadline && <span className="inline-flex items-center gap-1"><CalendarClock className="w-3.5 h-3.5" />Due {fmt(assessDeadline)}</span>}
-            {assessment.timeLimitMins ? <span className="inline-flex items-center gap-1"><Timer className="w-3.5 h-3.5" />Suggested time {assessment.timeLimitMins} min</span> : null}
-          </div>
-
-          {!showRunner ? (
-            <div className="mt-4">
-              {submitted ? (
-                <p className="text-sm text-slate-600">We&apos;ll review your <span className="font-medium">latest</span> answers{(submission?.submissionCount || 1) > 1 ? ` (updated ${submission!.submissionCount} times)` : ''}.</p>
-              ) : (
-                <p className="text-sm text-slate-600">This assessment is closed.</p>
-              )}
-              {data.canEditAssessment && submitted && (
-                <button onClick={() => setEditing(true)} className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm font-medium hover:border-brand-300 hover:text-brand-700"><Pencil className="w-4 h-4" /> Update my answers</button>
-              )}
-            </div>
-          ) : (
-            <>
-              {assessment.description && <p className="mt-3 text-sm text-slate-600">{assessment.description}</p>}
-              {assessment.instructions && <p className="mt-2 text-sm text-slate-500 whitespace-pre-wrap rounded-lg bg-slate-50 p-3">{assessment.instructions}</p>}
-
-              <div className="mt-6 space-y-6">
-                {assessment.questions.map((q, idx) => (
-                  <div key={q.id}>
-                    <p className="font-medium text-slate-800"><span className="text-slate-400 mr-1">{idx + 1}.</span>{q.prompt}{q.required && <span className="text-rose-500"> *</span>}</p>
-                    <div className="mt-2">
-                      {(q.type === 'mcq' || q.type === 'multi_select') && (
-                        <div className="space-y-2">
-                          {q.options.map((opt) => {
-                            const checked = (answers[q.id]?.optionIds || []).includes(opt.id);
-                            return (
-                              <label key={opt.id} className={`flex items-center gap-2 rounded-lg border px-3 py-2 cursor-pointer text-sm ${checked ? 'border-brand-400 bg-brand-50 dark:bg-brand-500/15' : 'border-slate-200 hover:bg-slate-50'}`}>
-                                <input type={q.type === 'mcq' ? 'radio' : 'checkbox'} name={q.id} checked={checked} onChange={() => toggleOption(q, opt.id)} className="accent-brand-600" />{opt.label}
-                              </label>
-                            );
-                          })}
-                        </div>
-                      )}
-                      {q.type === 'short_text' && <input value={answers[q.id]?.text || ''} onChange={(e) => setAnswer(q.id, { text: e.target.value })} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-card" />}
-                      {q.type === 'long_text' && <textarea rows={4} value={answers[q.id]?.text || ''} onChange={(e) => setAnswer(q.id, { text: e.target.value })} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-card" />}
-                      {q.type === 'external_link' && <input type="url" placeholder="https://…" value={answers[q.id]?.link || ''} onChange={(e) => setAnswer(q.id, { link: e.target.value })} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-card" />}
-                      {q.type === 'file_upload' && (
-                        <div>
-                          <label className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm cursor-pointer hover:bg-slate-50">
-                            {uploadingId === q.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}{answers[q.id]?.fileName ? 'Replace file' : 'Upload file'}
-                            <input type="file" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUpload(q.id, f); }} />
-                          </label>
-                          {answers[q.id]?.fileName && <p className="mt-2 inline-flex items-center gap-1.5 text-sm text-slate-600"><FileUp className="w-4 h-4 text-brand-600" /> {answers[q.id]?.fileName}</p>}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="mt-8 flex gap-2">
-                <button onClick={handleSubmitAssessment} disabled={submitting} className="flex-1 h-11 bg-brand-600 hover:bg-brand-700 text-white rounded-lg font-medium disabled:opacity-50 inline-flex items-center justify-center gap-2">{submitting && <Loader2 className="w-4 h-4 animate-spin" />}{submitted ? 'Save changes' : 'Submit assessment'}</button>
-                {submitted && <button onClick={() => { setEditing(false); load(); }} className="px-4 h-11 rounded-lg border border-slate-200 text-slate-600 text-sm hover:bg-slate-50">Cancel</button>}
-              </div>
-              <p className="mt-2 text-center text-xs text-slate-400">{assessDeadline ? <>You can update your answers as many times as you like until <span className="font-medium">{fmt(assessDeadline)}</span>. We review your latest version.</> : 'You can update your answers until applications close. We review your latest version.'}</p>
-            </>
-          )}
         </div>
+      )}
+      {assessment && !withdrawn && (
+        <AssessmentRunner
+          // A new assessment (level changed) or a fresh load starts the runner over.
+          key={`${assessment.id}:${submission?.status || 'none'}:${submission?.submissionCount || 0}`}
+          token={token}
+          assessment={assessment}
+          submission={submission}
+          canEdit={!!data.canEditAssessment}
+          assessmentDeadline={assessDeadline}
+          serverNow={data.serverNow}
+          onChanged={load}
+        />
       )}
 
       {/* ── What's next ─────────────────────────────────────── */}

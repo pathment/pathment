@@ -43,6 +43,41 @@ const submitAssessment = catchAsync(async (req, res) => {
 });
 
 // Applicant self-serve: edit submitted info, or withdraw — both before the deadline.
+// ── Taking the assessment (by private link) ──────────────────────────────────
+const startAssessment = catchAsync(async (req, res) => {
+  const result = await publicIntakeService.startAssessment(req.params.token, { capabilities: req.body?.capabilities });
+  res.status(200).json(successResponse('Assessment started', result));
+});
+
+const saveAssessmentDraft = catchAsync(async (req, res) => {
+  const result = await publicIntakeService.saveAssessmentDraft(req.params.token, req.body?.answers || {});
+  res.status(200).json(successResponse('Saved', result));
+});
+
+const logAssessmentProctor = catchAsync(async (req, res) => {
+  const result = await publicIntakeService.logAssessmentProctor(req.params.token, req.body?.events || []);
+  res.status(200).json(successResponse('Logged', result));
+});
+
+const uploadAssessmentSnapshot = catchAsync(async (req, res) => {
+  const result = await publicIntakeService.uploadAssessmentSnapshot(req.params.token, req.file, {
+    questionId: req.body?.questionId || null, source: req.body?.source || 'camera',
+  });
+  res.status(200).json(successResponse('Snapshot saved', result));
+});
+
+const signAssessmentVideo = catchAsync(async (req, res) => {
+  const result = await publicIntakeService.signAssessmentVideo(req.params.token, req.body?.questionId);
+  res.status(200).json(successResponse('Upload ready', result));
+});
+
+const attachAssessmentVideo = catchAsync(async (req, res) => {
+  const result = await publicIntakeService.attachAssessmentVideo(req.params.token, req.body?.questionId, {
+    file: req.file || null, publicId: req.body?.publicId || null,
+  });
+  res.status(200).json(successResponse('Video saved', result));
+});
+
 const updateInfo = catchAsync(async (req, res) => {
   const result = await publicIntakeService.updateApplicationInfo(req.params.token, req.body || {});
   res.status(200).json(successResponse('Application updated', result));
@@ -83,6 +118,12 @@ module.exports = {
   resume,
   getStatus,
   submitAssessment,
+  startAssessment,
+  saveAssessmentDraft,
+  logAssessmentProctor,
+  uploadAssessmentSnapshot,
+  signAssessmentVideo,
+  attachAssessmentVideo,
   updateInfo,
   withdraw,
   uploadFile,

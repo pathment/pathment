@@ -7,8 +7,9 @@ import {
   ArrowLeft, Upload, Loader2, X, CheckCircle2, XCircle,
   Mail, Phone, Check, Link2, Copy, Power, ClipboardCheck, Pencil, Eye, CopyPlus, FormInput, Plus, Bot,
   Trash2, CalendarRange, Layers, RefreshCw, CheckSquare, Square, Sparkles, Search, Settings, ChevronDown, Columns3,
-  FileText, type LucideIcon,
+  FileText, Send, type LucideIcon,
 } from 'lucide-react';
+import { useConfirm } from '@/lib/context/ConfirmContext';
 import {
   useCohortApplications,
   type Application,
@@ -24,6 +25,8 @@ import { LevelCriteriaEditor } from '@/components/admin/LevelCriteriaEditor';
 import { IntakeAutomationPanel } from '@/components/admin/IntakeAutomationPanel';
 import { Drawer } from '@/components/shared/Drawer';
 import { RemoveFromIntakePanel } from '@/components/admin/RemoveFromIntakePanel';
+import { CodeEditor } from '@/components/shared/CodeEditor';
+import { ProctorSummary } from '@/components/mentor/ProctorSummary';
 import RichTextEditor from '@/components/shared/RichTextEditor';
 import { RichContent } from '@/components/shared/RichContent';
 import { getBrowserTimeZone, splitLocal } from '@/lib/utils/datetime';
@@ -73,6 +76,46 @@ const STATUS_CHIP: Record<ApplicationStatus, string> = {
   removed:         'bg-slate-200 text-slate-500 line-through',
 };
 
+/** The assessment pipeline's steps, as the server names them (assessmentPipelineService). */
+const STAGE_META: Record<string, { label: string; cls: string }> = {
+  added: { label: 'Added', cls: 'bg-slate-100 text-slate-600' },
+  assessment_sent: { label: 'Assessment sent', cls: 'bg-blue-50 text-blue-700' },
+  opened: { label: 'Opened', cls: 'bg-sky-50 text-sky-700' },
+  in_progress: { label: 'In progress', cls: 'bg-amber-50 text-amber-700' },
+  submitted: { label: 'Submitted', cls: 'bg-violet-50 text-violet-700' },
+  reviewed: { label: 'Reviewed', cls: 'bg-indigo-50 text-indigo-700' },
+  accepted: { label: 'Accepted', cls: 'bg-emerald-50 text-emerald-700' },
+  programme_invited: { label: 'Invited to programme', cls: 'bg-emerald-50 text-emerald-700' },
+  joined: { label: 'Joined', cls: 'bg-emerald-100 text-emerald-800' },
+  rejected: { label: 'Rejected', cls: 'bg-rose-50 text-rose-700' },
+  withdrawn: { label: 'Withdrawn', cls: 'bg-slate-200 text-slate-500' },
+  removed: { label: 'Removed', cls: 'bg-slate-200 text-slate-500 line-through' },
+};
+
+function StageChip({ stage }: { stage?: string }) {
+  const meta = STAGE_META[stage || 'added'] || STAGE_META.added;
+  return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${meta.cls}`}>{meta.label}</span>;
+}
+
+/** The pipeline, step by step with dates — the steps not reached yet are dimmed. */
+function PipelineTimeline({ timeline }: { timeline: { key: string; label: string; at: string | null; count?: number }[] }) {
+  const lastReached = timeline.reduce((n, step, i) => (step.at ? i : n), 0);
+  return (
+    <ol className="space-y-1.5">
+      {timeline.map((step, i) => {
+        const reached = !!step.at;
+        return (
+          <li key={step.key} className={`flex items-center gap-2.5 text-xs ${reached ? 'text-slate-700' : 'text-slate-300'}`}>
+            <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${reached ? (i === lastReached ? 'bg-brand-600 ring-4 ring-brand-100 dark:ring-brand-500/20' : 'bg-emerald-500') : 'bg-slate-200'}`} />
+            <span className="w-36 shrink-0 font-medium">{step.label}{step.key === 'assessment_sent' && (step.count || 0) > 1 ? ` (${step.count}×)` : ''}</span>
+            <span className="tabular-nums">{step.at ? new Date(step.at).toLocaleString() : '—'}</span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 /** Minimal CSV → array of header→value objects (parses every column). */
 function parseCsvToRows(text: string): Record<string, string>[] {
   const lines = text.split(/\r?\n/).filter((l) => l.trim());
@@ -110,10 +153,12 @@ function fullName(a: Application) {
 }
 
 function ApplicationDrawer({
-  app, onClose, onUpdate, onAccept, onReject, levelLabel, onRemoved,
+  app, onClose, onUpdate, onAccept, onReject, levelLabel, onRemoved, onUpdated,
 }: {
   app: Application;
   onClose: () => void;
+  /** After a change made here (e.g. the assessment was sent), so the list reloads. */
+  onUpdated?: () => void;
   /** After the applicant was taken out of the intake. */
   onRemoved: () => void;
   /** Level key → the admin's own label, for the placement panel. */
@@ -154,6 +199,28 @@ function ApplicationDrawer({
 
   const responses = app.responses ?? {};
   const entries = Object.entries(responses).filter(([k]) => !['email', 'role'].includes(k.toLowerCase()));
+
+  const [sending, setSending] = useState(false);
+  const sendAssessment = async () => {
+    setSending(true);
+    try {
+      const res: { data?: { sent: { email: string; warning?: string }[]; skipped: { email?: string; reason: string }[] } } = await applicationApi.sendAssessment(app.cohortId, [app.id]);
+      const out = res?.data;
+      const warning = out?.sent[0]?.warning;
+      if (out?.sent.length) {
+        if (warning) toast.message(`The email to ${app.email} wasn't delivered — check the address and resend. ${warning.replace(/^Email not delivered /, '')}`);
+        else toast.success(`Assessment sent to ${app.email}`);
+      } else toast.error(out?.skipped[0]?.reason || 'Not sent');
+      reloadDetail();
+      onUpdated?.();
+    } catch (e) {
+      toast.error(extractApiErrorMessage(e, 'Could not send the assessment'));
+    } finally {
+      setSending(false);
+    }
+  };
+  const closedForPipeline = ['removed', 'rejected', 'withdrawn', 'accepted'].includes(app.status);
+  const submittedAlready = !!detail?.submission && detail.submission.status !== 'in_progress';
 
   return (
     <Drawer
@@ -205,6 +272,29 @@ function ApplicationDrawer({
             {app.programPreference && <span className="text-xs text-slate-500">wants: {app.programPreference}</span>}
             {app.user && <span className="text-xs text-emerald-600">· registered</span>}
           </div>
+
+          {/* The assessment pipeline: where they are, when each step happened, send / resend. */}
+          {detail?.timeline && (
+            <div className="rounded-xl border border-slate-200 p-4">
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium text-slate-700">Progress</p>
+                  <StageChip stage={detail.stage} />
+                </div>
+                {!closedForPipeline && !submittedAlready && (
+                  <button onClick={sendAssessment} disabled={sending}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-xs font-medium disabled:opacity-50">
+                    {sending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                    {app.assessmentInvitedAt ? 'Resend assessment' : 'Send assessment'}
+                  </button>
+                )}
+              </div>
+              <PipelineTimeline timeline={detail.timeline} />
+              {app.assessmentInvitedAt && !submittedAlready && !closedForPipeline && (
+                <p className="mt-2 text-[11px] text-slate-400">Resending emails a new link; the previous one stops working.</p>
+              )}
+            </div>
+          )}
 
           {/* Removed: who, when, why, and what it undid. */}
           {removed && (
@@ -340,6 +430,8 @@ function IntakePanel({ cohortId, cohort, onChange, onBusyChange }, ref) {
   const [assessments, setAssessments] = useState<Assessment[]>([]);
   const [otherCohorts, setOtherCohorts] = useState<{ id: string; name: string }[]>([]);
   const [required, setRequired] = useState<boolean>(Boolean(cohort?.assessmentRequired));
+  // When applicants meet the assessment: right after the form, or only once we send it.
+  const [assessmentMode, setAssessmentMode] = useState<'after_form' | 'on_invite'>(cohort?.assessmentMode === 'on_invite' ? 'on_invite' : 'after_form');
   // Applicant-facing intro, shown at the top of the public apply form.
   const [description, setDescription] = useState<string>(cohort?.description || '');
   const [seats, setSeats] = useState<string>(cohort?.capacity != null ? String(cohort.capacity) : '');
@@ -388,6 +480,7 @@ function IntakePanel({ cohortId, cohort, onChange, onBusyChange }, ref) {
   }, [cohortId]);
   useEffect(() => {
     setRequired(Boolean(cohort?.assessmentRequired));
+    setAssessmentMode(cohort?.assessmentMode === 'on_invite' ? 'on_invite' : 'after_form');
     setDescription(cohort?.description || '');
     setSeats(cohort?.capacity != null ? String(cohort.capacity) : '');
     setMaxApps(cohort?.maxApplications != null ? String(cohort.maxApplications) : '');
@@ -396,7 +489,7 @@ function IntakePanel({ cohortId, cohort, onChange, onBusyChange }, ref) {
     setAssessDeadlineDate(splitLocal(cohort?.assessmentDeadline).date); setAssessDeadlineTime(splitLocal(cohort?.assessmentDeadline).time);
     setLevelLabels((cohort?.levels || []).map((l: any) => l.label));
     setFormFields(cohort?.intakeFormSchema || []);
-  }, [cohort?.assessmentRequired, cohort?.description, cohort?.capacity, cohort?.maxApplications, cohort?.applyOpensAt, cohort?.applyClosesAt, cohort?.assessmentDeadline, cohort?.levels, cohort?.intakeFormSchema]);
+  }, [cohort?.assessmentRequired, cohort?.assessmentMode, cohort?.description, cohort?.capacity, cohort?.maxApplications, cohort?.applyOpensAt, cohort?.applyClosesAt, cohort?.assessmentDeadline, cohort?.levels, cohort?.intakeFormSchema]);
 
   const enabled = Boolean(cohort?.publicEnabled && cohort?.publicSlug);
   const applyUrl = cohort?.publicSlug && typeof window !== 'undefined' ? shareableUrl(`/apply/${cohort.publicSlug}`) : '';
@@ -442,6 +535,7 @@ function IntakePanel({ cohortId, cohort, onChange, onBusyChange }, ref) {
         assessmentDeadlineDate: assessDeadlineDate || null,
         assessmentDeadlineTime: assessDeadlineTime || null,
         assessmentRequired: required,
+        assessmentMode,
         levels: levelLabels.map((l) => ({ label: l })).filter((l) => l.label.trim()),
         // Drop blank options so empty choices never reach the apply form.
         intakeFormSchema: formFields.map((f) => (
@@ -669,6 +763,23 @@ function IntakePanel({ cohortId, cohort, onChange, onBusyChange }, ref) {
           Required before review
         </label>
 
+        {/* When they take it: straight after applying, or when we email it to them. */}
+        <div className="mt-3">
+          <span className="block text-xs font-medium text-slate-500 mb-1.5">When applicants take it</span>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {([
+              ['after_form', 'Right after the form', 'They see the assessment as soon as they apply.'],
+              ['on_invite', 'Only when we send it', 'Nothing until you press "Send assessment" — for imported lists, or to shortlist first. Each gets their level\'s assessment by email.'],
+            ] as const).map(([val, label, hint]) => (
+              <button key={val} type="button" onClick={() => setAssessmentMode(val)} disabled={pool.length === 0}
+                className={`text-left rounded-lg border p-2.5 disabled:opacity-50 ${assessmentMode === val ? 'border-brand-400 bg-brand-50 dark:bg-brand-500/10' : 'border-slate-200 hover:border-slate-300'}`}>
+                <span className="block text-sm font-medium text-slate-800">{label}</span>
+                <span className="block text-[11px] text-slate-500 mt-0.5">{hint}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Optional separate assessment deadline (defaults to the apply-closes date). */}
         <div className="mt-3 max-w-md">
           <label className="block text-xs font-medium text-slate-500 mb-1">Assessment deadline <span className="text-slate-400 font-normal">(optional — defaults to Apply closes)</span></label>
@@ -708,6 +819,7 @@ function IntakePanel({ cohortId, cohort, onChange, onBusyChange }, ref) {
           levels={levelOptions}
           hasAssessment={pool.some((p) => p.assessmentId)}
           required={required}
+          assessmentMode={assessmentMode}
         />
       </Drawer>
     </div>
@@ -716,7 +828,7 @@ function IntakePanel({ cohortId, cohort, onChange, onBusyChange }, ref) {
 IntakePanel.displayName = 'IntakePanel';
 
 /** Read-only mock of exactly what an applicant will see on the apply page. */
-function ApplyFormPreview({ description, fields, levels, hasAssessment, required }: { description?: string; fields: IntakeFormField[]; levels: { key: string; label: string }[]; hasAssessment: boolean; required: boolean }) {
+function ApplyFormPreview({ description, fields, levels, hasAssessment, required, assessmentMode = 'after_form' }: { description?: string; fields: IntakeFormField[]; levels: { key: string; label: string }[]; hasAssessment: boolean; required: boolean; assessmentMode?: string }) {
   const hasDesc = !!description && !!description.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
   const Row = ({ label, req, children }: { label: string; req?: boolean; children: React.ReactNode }) => (
     <div>
@@ -751,7 +863,7 @@ function ApplyFormPreview({ description, fields, levels, hasAssessment, required
       ))}
       {hasAssessment && (
         <p className="text-xs rounded-lg bg-brand-50 dark:bg-brand-500/15 text-brand-800 px-3 py-2">
-          + {required ? 'Required' : 'Optional'} assessment (one assigned at random after submitting)
+          + {required ? 'Required' : 'Optional'} assessment ({assessmentMode === 'on_invite' ? 'sent by email when you choose' : 'one assigned at random after submitting'})
         </p>
       )}
     </div>
@@ -825,7 +937,7 @@ function AssessmentSubmissionView({ assessment, submission, onChanged }: { asses
   const questions = (assessment.questions || []).slice().sort((a: any, b: any) => a.position - b.position);
   const answers = submission.answers || {};
   const ai = submission.aiDraft || null;
-  const hasOpenEnded = questions.some((q: any) => q.type === 'short_text' || q.type === 'long_text');
+  const hasOpenEnded = questions.some((q: any) => ['short_text', 'long_text', 'code', 'video'].includes(q.type));
   const hasAiScores = !!(ai && ai.perQuestion && Object.keys(ai.perQuestion).length);
 
   const runAi = async () => {
@@ -843,7 +955,35 @@ function AssessmentSubmissionView({ assessment, submission, onChanged }: { asses
 
   const renderAnswer = (q: any) => {
     const a = answers[q.id] || {};
-    if (q.type === 'mcq' || q.type === 'multi_select') {
+    if (q.type === 'video') {
+      return a.videoUrl ? (
+        <div className="space-y-1.5">
+          <video controls playsInline preload="metadata" src={a.videoUrl} className="w-full max-h-72 rounded-lg bg-black" />
+          {a.transcript && (
+            <details>
+              <summary className="text-xs text-slate-500 cursor-pointer">Live captions</summary>
+              <p className="mt-1 text-xs text-slate-600 whitespace-pre-wrap bg-slate-50 dark:bg-white/5 rounded-lg p-2">{a.transcript}</p>
+            </details>
+          )}
+        </div>
+      ) : <span className="text-amber-700">No video was recorded.</span>;
+    }
+    if (q.type === 'code') {
+      return a.text ? (
+        <div className="space-y-1.5">
+          <div className="rounded-lg overflow-hidden border border-slate-800">
+            <CodeEditor value={a.text} language={q.config?.codeLanguage || 'javascript'} readOnly minHeight="60px" maxHeight="320px" />
+          </div>
+          {q.rubric && (
+            <details>
+              <summary className="text-xs text-brand-600 cursor-pointer">Model solution / rubric</summary>
+              <pre className="mt-1 text-xs text-slate-600 whitespace-pre-wrap bg-amber-50/60 rounded-lg p-2">{q.rubric}</pre>
+            </details>
+          )}
+        </div>
+      ) : <span className="text-slate-400">No code written.</span>;
+    }
+    if (q.type === 'mcq' || q.type === 'multi_select' || q.type === 'true_false') {
       const picked = (a.optionIds || []).map((oid: string) => (q.options || []).find((o: any) => o.id === oid)?.label).filter(Boolean);
       const correct = (q.correctOptionIds || []);
       const isRight = correct.length && a.optionIds && correct.length === a.optionIds.length && correct.every((c: string) => a.optionIds.includes(c));
@@ -876,6 +1016,16 @@ function AssessmentSubmissionView({ assessment, submission, onChanged }: { asses
           {(submission.submissionCount ?? 1) > 1 && (
             <p className="text-[11px] text-slate-400">Final version · applicant updated it {submission.submissionCount} times</p>
           )}
+          {(submission.startedAt || submission.submittedAt) && (
+            <p className="text-[11px] text-slate-400">
+              {submission.startedAt ? `Started ${new Date(submission.startedAt).toLocaleString()}` : ''}
+              {submission.startedAt && submission.submittedAt ? ' · ' : ''}
+              {submission.submittedAt && submission.status !== 'in_progress' ? `submitted ${new Date(submission.submittedAt).toLocaleString()}` : ''}
+              {submission.startedAt && submission.submittedAt && submission.status !== 'in_progress'
+                ? ` (${Math.max(1, Math.round((new Date(submission.submittedAt).getTime() - new Date(submission.startedAt).getTime()) / 60000))} min)` : ''}
+              {submission.status === 'in_progress' ? ' · still answering' : ''}
+            </p>
+          )}
         </div>
         <span className="text-xs text-slate-500">
           Auto {submission.autoScore ?? 0}/{submission.maxScore ?? 0}
@@ -907,6 +1057,11 @@ function AssessmentSubmissionView({ assessment, submission, onChanged }: { asses
           );
         })}
       </div>
+      {assessment.proctored && submission.proctor && (
+        <div className="mt-4">
+          <ProctorSummary proctor={submission.proctor} screenRequired submitted={submission.status !== 'in_progress'} />
+        </div>
+      )}
       <div className="mt-4 flex flex-wrap items-end gap-2">
         <div>
           <label className="block text-xs text-slate-500 mb-1">Final score (override)</label>
@@ -927,6 +1082,51 @@ function AssessmentSubmissionView({ assessment, submission, onChanged }: { asses
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Send the chosen applicants their assessment — each gets the one for their
+ * level, by email, with a fresh private link. Says what happened to each.
+ */
+function SendAssessmentButton({ cohortId, applicationIds, onDone }: { cohortId: string; applicationIds: string[]; onDone: () => void }) {
+  const confirm = useConfirm();
+  const [busy, setBusy] = useState(false);
+  if (!applicationIds.length) return null;
+  const send = async () => {
+    const n = applicationIds.length;
+    const ok = await confirm({
+      title: `Send the assessment to ${n} applicant${n === 1 ? '' : 's'}?`,
+      description: 'Each gets an email with the assessment for their level and a private link. Anyone already invited gets a new link (the old one stops working). Anyone who already submitted, or was removed, rejected or withdrew, is skipped.',
+      confirmLabel: `Send to ${n}`,
+    });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      const res: { data?: { sent: { warning?: string }[]; skipped: { email?: string; reason: string }[] } } = await applicationApi.sendAssessment(cohortId, applicationIds);
+      const out = res?.data;
+      const sent = out?.sent.length ?? 0;
+      const skipped = out?.skipped ?? [];
+      const undelivered = (out?.sent ?? []).filter((s) => s.warning).length;
+      if (sent) toast.success(`Assessment sent to ${sent} applicant${sent === 1 ? '' : 's'}`);
+      // Their links work, but the email didn't reach them (a bounced address, or mail off).
+      if (undelivered) toast.message(`${undelivered} email${undelivered === 1 ? '' : 's'} weren't delivered — check the address and resend.`);
+      if (skipped.length) {
+        const reasons = [...new Set(skipped.map((s) => s.reason))].slice(0, 3).join('; ');
+        toast.message(`${skipped.length} skipped: ${reasons}`);
+      }
+      onDone();
+    } catch (e) {
+      toast.error(extractApiErrorMessage(e, 'Could not send the assessment'));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <button onClick={send} disabled={busy}
+      className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-50">
+      {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />} Send assessment ({applicationIds.length})
+    </button>
   );
 }
 
@@ -1018,6 +1218,7 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
   const [scoreFilter, setScoreFilter] = useState<'all' | 'scored' | 'unscored' | 'pass' | 'fail'>('all');
   const [levelFit, setLevelFit] = useState<'all' | 'mismatch' | 'match' | 'unchecked'>('all');
   const [levelFilter, setLevelFilter] = useState<string>('all');
+  const [stageFilter, setStageFilter] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'recent' | 'score_desc' | 'score_asc' | 'name'>('recent');
 
   // Live count per status tab, from the FULL set (not the filtered view).
@@ -1032,6 +1233,7 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
     const rows = applications.filter((a) => {
       if (statusFilter !== 'all' && a.status !== statusFilter) return false;
       if (levelFilter !== 'all' && (a.level || '') !== levelFilter) return false;
+      if (stageFilter !== 'all' && (a.stage || 'added') !== stageFilter) return false;
       if (scoreFilter === 'scored' && a.assessmentScore == null) return false;
       if (scoreFilter === 'unscored' && a.assessmentScore != null) return false;
       if (scoreFilter === 'pass' && passOf(a) !== 'pass') return false;
@@ -1052,7 +1254,7 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
       if (sortBy === 'name') return fullName(a).localeCompare(fullName(b));
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
-  }, [applications, statusFilter, levelFilter, scoreFilter, levelFit, query, sortBy, passThreshold]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [applications, statusFilter, levelFilter, stageFilter, scoreFilter, levelFit, query, sortBy, passThreshold]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Headline numbers for the cohort (always the full set, not the filter).
   const stats = useMemo(() => {
@@ -1068,7 +1270,7 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
   // Paginate the filtered view — 305 rows in one DOM table is needlessly heavy.
   const PAGE_SIZE = 25;
   const [page, setPage] = useState(1);
-  useEffect(() => { setPage(1); }, [statusFilter, levelFilter, scoreFilter, levelFit, query, sortBy]);
+  useEffect(() => { setPage(1); }, [statusFilter, levelFilter, stageFilter, scoreFilter, levelFit, query, sortBy]);
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const visible = useMemo(() => filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [filtered, page]);
   const filteredIds = useMemo(() => filtered.map((a) => a.id), [filtered]);
@@ -1092,6 +1294,7 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
     const base = [
       { key: 'wants', label: 'Wants' },
       ...((cohort?.levels?.length ?? 0) > 0 ? [{ key: 'level', label: 'Level' }] : []),
+      { key: 'stage', label: 'Step' },
       { key: 'status', label: 'Status' },
       { key: 'score', label: 'Score' },
       { key: 'email', label: 'Email' },
@@ -1113,7 +1316,7 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
     return [...base, ...formFields, ...extra];
   }, [cohort, applications]);
 
-  const DEFAULT_COLS = ['wants', 'level', 'status', 'score'];
+  const DEFAULT_COLS = ['wants', 'level', 'stage', 'status', 'score'];
   const [visibleCols, setVisibleCols] = useState<string[]>(DEFAULT_COLS);
   const [colsOpen, setColsOpen] = useState(false);
   useEffect(() => {
@@ -1156,6 +1359,7 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
     if (key === 'status') {
       return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_CHIP[a.status]}`}>{a.status.replace(/_/g, ' ')}</span>;
     }
+    if (key === 'stage') return <StageChip stage={a.stage} />;
     if (key === 'score') {
       return (
         <div className="flex items-center gap-2">
@@ -1442,6 +1646,8 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
             </button>
           )}
           <PassThresholdControl cohortId={id} value={passThreshold} onSaved={refetch} />
+          {/* Selected applicants → each gets their level's assessment by email. */}
+          <SendAssessmentButton cohortId={id} applicationIds={[...selected]} onDone={() => { setSelected(new Set()); refetch(); }} />
           {/* Selected applicants → a selection pool. Changes nothing about their applications. */}
           <AddToPoolButton programId={cohort?.programId} applicationIds={[...selected]} />
           <IntakeScoreToolbar cohortId={id} cohortName={cohort?.name || 'cohort'} selectedIds={[...selected]} visibleIds={filteredIds} onDone={() => { setSelected(new Set()); refetch(); }} />
@@ -1488,6 +1694,13 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
             {(cohort?.levels || []).map((l) => <option key={l.key} value={l.key}>{l.label}</option>)}
           </select>
         )}
+        <select value={stageFilter} onChange={(e) => setStageFilter(e.target.value)} aria-label="Filter by step" className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500">
+          <option value="all">All steps</option>
+          {Object.entries(STAGE_META).map(([k, m]) => {
+            const n = applications.filter((a) => (a.stage || 'added') === k).length;
+            return n ? <option key={k} value={k}>{m.label} ({n})</option> : null;
+          })}
+        </select>
         <select value={sortBy} onChange={(e) => setSortBy(e.target.value as typeof sortBy)} className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500">
           <option value="recent">Newest first</option>
           <option value="score_desc">Score: high → low</option>
@@ -1613,6 +1826,7 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
           onReject={rejectApplication}
           levelLabel={levelLabel}
           onRemoved={() => { void refetch(); }}
+          onUpdated={() => { void refetch(); }}
         />
       )}
     </div>

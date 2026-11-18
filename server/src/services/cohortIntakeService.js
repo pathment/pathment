@@ -132,11 +132,14 @@ class CohortIntakeService {
       'name', 'description', 'status', 'capacity', 'startDate', 'endDate',
       // public intake link + assessment configuration
       'applyOpensAt', 'applyClosesAt', 'maxApplications', 'intakeFormSchema',
-      'assessmentId', 'assessmentRequired', 'assessmentDeadline', 'timezone', 'passThreshold'
+      'assessmentId', 'assessmentRequired', 'assessmentDeadline', 'timezone', 'passThreshold', 'assessmentMode'
     ];
     const patch = {};
     for (const key of allowed) {
       if (data[key] !== undefined) patch[key] = data[key];
+    }
+    if (patch.assessmentMode !== undefined && !['after_form', 'on_invite'].includes(patch.assessmentMode)) {
+      throw new ValidationError('Choose when applicants take the assessment');
     }
 
     if (data.levels !== undefined) patch.levels = normalizeLevels(data.levels);
@@ -250,7 +253,8 @@ class CohortIntakeService {
     await target.update({
       intakeFormSchema: source.intakeFormSchema || [],
       assessmentId: source.assessmentId || null,
-      assessmentRequired: source.assessmentRequired || false
+      assessmentRequired: source.assessmentRequired || false,
+      assessmentMode: source.assessmentMode || 'after_form'
     });
     return target;
   }

@@ -29,6 +29,10 @@ export interface Application {
   /** Max points of the applicant's submission + AI's holistic score (list view). */
   maxScore?: number | null;
   aiOverall?: number | null;
+  /** Where they are in the assessment pipeline (server-computed). */
+  stage?: string;
+  assessmentInvitedAt?: string | null;
+  assessmentInviteCount?: number;
   /** Evidence-based placement: the level the rules landed on + the proof. */
   recommendedLevel?: string | null;
   levelEvidence?: {

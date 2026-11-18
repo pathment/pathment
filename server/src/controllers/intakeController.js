@@ -320,6 +320,12 @@ const rejectApplication = catchAsync(async (req, res) => {
   res.status(200).json(successResponse('Application rejected', { application }));
 });
 
+/** POST /cohorts/:id/applications/send-assessment  { applicationIds } — email each their level's assessment. */
+const sendAssessmentInvites = catchAsync(async (req, res) => {
+  const result = await require('../services/assessmentPipelineService').sendInvites(req.params.id, req.body?.applicationIds, req.user);
+  res.status(200).json(successResponse(`Assessment sent to ${result.sent.length}`, result));
+});
+
 /** GET /applications/:id/removal — what removing this applicant would undo (no writes). */
 const previewApplicationRemoval = catchAsync(async (req, res) => {
   const preview = await require('../services/applicationRemovalService').preview(req.params.id);
@@ -358,6 +364,7 @@ const commitUnassignedAssignment = catchAsync(async (req, res) => {
 });
 
 module.exports = {
+  sendAssessmentInvites,
   previewApplicationRemoval,
   removeApplication,
   listCohorts,

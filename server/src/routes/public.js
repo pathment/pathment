@@ -3,7 +3,7 @@ const router = express.Router();
 const publicController = require('../controllers/publicController');
 const clanController = require('../controllers/clanController');
 const upload = require('../middlewares/upload');
-const { publicIntakeLimiter, certificateVerifyLimiter } = require('../middlewares/rateLimiter');
+const { publicIntakeLimiter, assessmentAttemptLimiter, certificateVerifyLimiter } = require('../middlewares/rateLimiter');
 const { authenticate, optionalAuth } = require('../middlewares/auth');
 const { validateBody } = require('../middlewares/validate');
 const clanSchemas = require('../validations/clanValidation');
@@ -38,7 +38,15 @@ router.get('/applications/:token', publicController.getStatus);
 router.get('/verify/:number', certificateVerifyLimiter, publicController.verifyCertificate);
 router.patch('/applications/:token', publicIntakeLimiter, publicController.updateInfo);
 router.post('/applications/:token/withdraw', publicIntakeLimiter, publicController.withdraw);
-router.post('/applications/:token/assessment', publicIntakeLimiter, publicController.submitAssessment);
+// Per private link, like the rest of the attempt: a classroom submitting together shares one IP.
+router.post('/applications/:token/assessment', assessmentAttemptLimiter, publicController.submitAssessment);
+// Taking the assessment: start (clock + capability check), autosave, proctoring, video answers.
+router.post('/applications/:token/assessment/start', assessmentAttemptLimiter, publicController.startAssessment);
+router.patch('/applications/:token/assessment/draft', assessmentAttemptLimiter, publicController.saveAssessmentDraft);
+router.post('/applications/:token/assessment/proctor', assessmentAttemptLimiter, publicController.logAssessmentProctor);
+router.post('/applications/:token/assessment/snapshot', assessmentAttemptLimiter, upload.singleSafe('image'), publicController.uploadAssessmentSnapshot);
+router.post('/applications/:token/assessment/video/sign', assessmentAttemptLimiter, publicController.signAssessmentVideo);
+router.post('/applications/:token/assessment/video', assessmentAttemptLimiter, upload.singleSafeLarge('video'), publicController.attachAssessmentVideo);
 router.post(
   '/applications/:token/upload',
   publicIntakeLimiter,

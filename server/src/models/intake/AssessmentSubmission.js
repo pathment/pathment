@@ -72,6 +72,17 @@ module.exports = (sequelize, DataTypes) => {
     },
     // AI grading result — a SUGGESTION the admin reviews, never the final score.
     // { perQuestion: { [questionId]: { score, note } }, overall, summary, model, at }
+    // When they began (a timed attempt's clock) and the proctoring record.
+    startedAt: {
+      type: DataTypes.DATE,
+      field: 'started_at'
+    },
+    proctorLog: {
+      type: DataTypes.JSONB,
+      allowNull: false,
+      defaultValue: [],
+      field: 'proctor_log'
+    },
     aiDraft: {
       type: DataTypes.JSONB,
       allowNull: true,

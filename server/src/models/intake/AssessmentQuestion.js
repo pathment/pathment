@@ -24,7 +24,7 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING(20),
       allowNull: false,
       validate: {
-        isIn: [['mcq', 'multi_select', 'short_text', 'long_text', 'file_upload', 'external_link']]
+        isIn: [['mcq', 'multi_select', 'true_false', 'short_text', 'long_text', 'file_upload', 'external_link', 'video', 'code']]
       }
     },
     prompt: {

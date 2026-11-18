@@ -101,8 +101,11 @@ export function useProctor({
   const requestFullscreen = useCallback(async () => {
     try {
       const el = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => Promise<void> };
-      if (el.requestFullscreen) await el.requestFullscreen();
-      else if (el.webkitRequestFullscreen) await el.webkitRequestFullscreen();
+      const asked = el.requestFullscreen ? el.requestFullscreen() : el.webkitRequestFullscreen?.();
+      // Never let fullscreen hold up the attempt: a browser that neither grants
+      // nor refuses would otherwise leave the candidate stuck before the start.
+      // Not being fullscreen is shown (and logged) by the exit banner instead.
+      await Promise.race([asked, new Promise((resolve) => setTimeout(resolve, 1200))]);
     } catch {
       /* user may deny; the exit banner handles it */
     }
@@ -140,6 +143,15 @@ export function useProctor({
       document.removeEventListener('copy', onCopy);
       document.removeEventListener('contextmenu', onContextMenu);
     };
+  }, [active, log]);
+
+  // ── Never went fullscreen ───────────────────────────────────────────────────
+  // Leaving fullscreen is logged when it happens; never entering it is not an
+  // event at all, so it's checked once, a moment after the attempt starts.
+  useEffect(() => {
+    if (!active) return;
+    const id = setTimeout(() => { if (!document.fullscreenElement) log('not_fullscreen'); }, 4000);
+    return () => clearTimeout(id);
   }, [active, log]);
 
   // ── Periodic flush ───────────────────────────────────────────────────────

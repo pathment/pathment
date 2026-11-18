@@ -67,5 +67,7 @@ router.post('/cohorts/:id/scores/import/preview', ...adminOnly, intakeController
 router.post('/cohorts/:id/scores/import/apply', ...adminOnly, intakeController.applyScoreImport);
 router.post('/cohorts/:id/applications/bulk-accept', ...adminOnly, intakeController.bulkAcceptApplications);
 router.post('/cohorts/:id/applications/bulk-reject', ...adminOnly, intakeController.bulkRejectApplications);
+// Email each chosen applicant the assessment for their level (with a fresh private link).
+router.post('/cohorts/:id/applications/send-assessment', ...adminOnly, intakeController.sendAssessmentInvites);
 
 module.exports = router;

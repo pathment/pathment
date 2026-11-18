@@ -41,6 +41,20 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.INTEGER,
       field: 'time_limit_mins'
     },
+    // The time limit is a real deadline from the moment they start (auto-submits),
+    // not just a suggestion. Needs timeLimitMins.
+    enforceTimeLimit: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+      field: 'enforce_time_limit'
+    },
+    // Full proctoring: camera on and the entire screen shared, snapshots of both.
+    proctored: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false
+    },
     status: {
       type: DataTypes.STRING(20),
       allowNull: false,

@@ -2,8 +2,10 @@ const crypto = require('crypto');
 const { models } = require('../db');
 const { NotFoundError, ValidationError } = require('../utils/errors/errorTypes');
 
-const QUESTION_TYPES = ['mcq', 'multi_select', 'short_text', 'long_text', 'file_upload', 'external_link'];
-const AUTO_GRADED = ['mcq', 'multi_select'];
+const QUESTION_TYPES = ['mcq', 'multi_select', 'true_false', 'short_text', 'long_text', 'file_upload', 'external_link', 'video', 'code'];
+const AUTO_GRADED = ['mcq', 'multi_select', 'true_false'];
+const TRUE_FALSE_OPTIONS = [{ id: 'true', label: 'True' }, { id: 'false', label: 'False' }];
+const { maxRecordingSeconds } = require('./proctoringRules');
 
 /**
  * Assessment authoring (admin) + grading. An assessment is a reusable set of
@@ -55,9 +57,15 @@ class AssessmentService {
     }
   }
 
+  /** Enforcing a time limit needs one to enforce. */
+  _assertTimeLimit(enforce, timeLimitMins) {
+    if (enforce && !(Number(timeLimitMins) >= 1)) throw new ValidationError('Set a time limit to enforce it');
+  }
+
   async createAssessment(data, createdBy) {
     this._validateMeta(data);
     if (!data.title || !data.title.trim()) throw new ValidationError('A title is required');
+    this._assertTimeLimit(data.enforceTimeLimit, data.timeLimitMins);
     return models.Assessment.create({
       title: data.title.trim(),
       description: data.description || null,
@@ -66,6 +74,8 @@ class AssessmentService {
       passingScore: (data.passingScore ?? '') === '' ? null : Number(data.passingScore),
       aiRubric: data.aiRubric && String(data.aiRubric).trim() ? String(data.aiRubric).trim() : null,
       timeLimitMins: (data.timeLimitMins ?? '') === '' ? null : Number(data.timeLimitMins),
+      enforceTimeLimit: Boolean(data.enforceTimeLimit),
+      proctored: Boolean(data.proctored),
       // A brand-new assessment has no questions yet, so it cannot be published.
       // Publishing is a deliberate step after adding at least one question.
       status: 'draft',
@@ -77,9 +87,15 @@ class AssessmentService {
     const assessment = await models.Assessment.findByPk(assessmentId);
     if (!assessment) throw new NotFoundError('Assessment not found');
     this._validateMeta(data);
-    const allowed = ['title', 'description', 'instructions', 'programId', 'passingScore', 'timeLimitMins', 'status', 'aiRubric'];
+    const allowed = ['title', 'description', 'instructions', 'programId', 'passingScore', 'timeLimitMins', 'status', 'aiRubric', 'enforceTimeLimit', 'proctored'];
     const patch = {};
     for (const key of allowed) if (data[key] !== undefined) patch[key] = data[key];
+    if (patch.enforceTimeLimit !== undefined) patch.enforceTimeLimit = Boolean(patch.enforceTimeLimit);
+    if (patch.proctored !== undefined) patch.proctored = Boolean(patch.proctored);
+    this._assertTimeLimit(
+      patch.enforceTimeLimit ?? assessment.enforceTimeLimit,
+      patch.timeLimitMins !== undefined ? patch.timeLimitMins : assessment.timeLimitMins,
+    );
     if (patch.status && !['draft', 'published', 'archived'].includes(patch.status)) {
       throw new ValidationError('Invalid status');
     }
@@ -117,6 +133,23 @@ class AssessmentService {
         const validIds = new Set(options.map((o) => o.id));
         correctOptionIds = (q.correctOptionIds || []).filter((id) => validIds.has(id));
         if (q.type === 'mcq' && correctOptionIds.length > 1) correctOptionIds = [correctOptionIds[0]];
+      } else if (q.type === 'true_false') {
+        options = TRUE_FALSE_OPTIONS;
+        correctOptionIds = (q.correctOptionIds || []).map(String).filter((id) => id === 'true' || id === 'false').slice(0, 1);
+      }
+
+      // Per-type settings the applicant's runner needs. A code question's model
+      // solution goes in `rubric` (admin-only), never in config (the applicant sees config).
+      const config = q.config && typeof q.config === 'object' && !Array.isArray(q.config) ? { ...q.config } : {};
+      delete config.referenceSolution;
+      if (q.type === 'video') config.maxRecordingSeconds = maxRecordingSeconds(config);
+      else delete config.maxRecordingSeconds;
+      if (q.type === 'code') {
+        config.codeLanguage = String(config.codeLanguage || 'javascript').trim().slice(0, 30) || 'javascript';
+        config.starterCode = config.starterCode ? String(config.starterCode) : '';
+      } else {
+        delete config.codeLanguage;
+        delete config.starterCode;
       }
 
       return {
@@ -131,7 +164,7 @@ class AssessmentService {
         // Grading guidance the AI scores an open-ended answer against. Stored
         // for any type (harmless), surfaced in the builder for text questions.
         rubric: q.rubric && String(q.rubric).trim() ? String(q.rubric).trim() : null,
-        config: q.config && typeof q.config === 'object' ? q.config : {}
+        config
       };
     });
 
@@ -246,6 +279,8 @@ class AssessmentService {
       description: assessmentJson.description,
       instructions: assessmentJson.instructions,
       timeLimitMins: assessmentJson.timeLimitMins,
+      enforceTimeLimit: Boolean(assessmentJson.enforceTimeLimit && assessmentJson.timeLimitMins),
+      proctored: Boolean(assessmentJson.proctored),
       questions: (assessmentJson.questions || [])
         .sort((a, b) => a.position - b.position)
         .map((q) => ({
@@ -273,7 +308,7 @@ class AssessmentService {
       maxScore += q.points || 0;
       const answer = answers[q.id] || {};
 
-      if (q.type === 'mcq') {
+      if (q.type === 'mcq' || q.type === 'true_false') {
         const picked = (answer.optionIds || [])[0];
         if (picked && q.correctOptionIds.includes(picked)) autoScore += q.points || 0;
       } else if (q.type === 'multi_select') {
@@ -294,11 +329,15 @@ class AssessmentService {
     for (const q of questions) {
       if (!q.required) continue;
       const a = answers[q.id] || {};
+      const starter = String(q.config?.starterCode || '').trim();
       const empty =
-        (q.type === 'mcq' || q.type === 'multi_select') ? !(a.optionIds && a.optionIds.length)
+        (q.type === 'mcq' || q.type === 'multi_select' || q.type === 'true_false') ? !(a.optionIds && a.optionIds.length)
           : q.type === 'file_upload' ? !a.fileUrl
             : q.type === 'external_link' ? !a.link
-              : !(a.text && String(a.text).trim());
+              : q.type === 'video' ? !a.videoUrl
+                // Code left exactly as the starter is no answer.
+                : q.type === 'code' ? !(a.text && String(a.text).trim() && String(a.text).trim() !== starter)
+                  : !(a.text && String(a.text).trim());
       if (empty) throw new ValidationError('Please answer all required questions before submitting');
     }
   }
@@ -325,7 +364,13 @@ class AssessmentService {
   // ── AI grading (a SUGGESTION the admin reviews — never the final score) ──────
   /** Open-ended types the AI can read + score from text. mcq/multi_select are
    *  already auto-graded; file/link have no gradable text, so they stay manual. */
-  _aiGradableTypes() { return ['short_text', 'long_text']; }
+  _aiGradableTypes() { return ['short_text', 'long_text', 'code', 'video']; }
+
+  /** The text the AI reads for an answer: what they wrote, or a video's live captions. */
+  _answerText(q, answer = {}) {
+    if (q.type === 'video') return String(answer.transcript || '').trim();
+    return String(answer.text || '').trim();
+  }
 
   /**
    * AI-score ONE submission: each open-ended answer against its per-question
@@ -349,7 +394,7 @@ class AssessmentService {
     // Per-question blocks for the open-ended, answered items only.
     const gradable = questions.filter((q) => this._aiGradableTypes().includes(q.type));
     const blocks = gradable
-      .map((q) => ({ q, text: String((answers[q.id] || {}).text || '').trim() }))
+      .map((q) => ({ q, text: this._answerText(q, answers[q.id] || {}) }))
       .filter((b) => b.text.length > 0);
 
     // Compact context so the holistic score can weigh the whole picture.

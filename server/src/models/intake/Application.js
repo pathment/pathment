@@ -127,6 +127,25 @@ module.exports = (sequelize, DataTypes) => {
     assessmentSubmittedAt: {
       type: DataTypes.DATE,
       field: 'assessment_submitted_at'
+    },
+    // The assessment pipeline, step by step (see applicationStage).
+    assessmentInvitedAt: {
+      type: DataTypes.DATE,
+      field: 'assessment_invited_at'
+    },
+    assessmentInviteCount: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0,
+      field: 'assessment_invite_count'
+    },
+    linkOpenedAt: {
+      type: DataTypes.DATE,
+      field: 'link_opened_at'
+    },
+    assessmentStartedAt: {
+      type: DataTypes.DATE,
+      field: 'assessment_started_at'
     }
   }, {
     tableName: 'applications',

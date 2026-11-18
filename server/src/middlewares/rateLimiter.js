@@ -123,8 +123,13 @@ const EXEMPT_PATHS = new Set([
 // Methods that only read. HEAD is included because it is a GET without a body.
 const SAFE_METHODS = new Set(['GET', 'HEAD']);
 
+// An assessment attempt in progress (autosave, proctoring, snapshots, video)
+// has its own per-link limiter. Counted against the shared per-IP backstop, a
+// classroom taking it together on one network would lock each other out.
+const ASSESSMENT_ATTEMPT = /^\/public\/applications\/[^/]+\/assessment(\/(start|draft|proctor|snapshot|video|video\/sign))?$/;
+
 function isExempt(req) {
-  return req.method === 'OPTIONS' || EXEMPT_PATHS.has(req.path);
+  return req.method === 'OPTIONS' || EXEMPT_PATHS.has(req.path) || ASSESSMENT_ATTEMPT.test(req.path);
 }
 
 /**
@@ -174,6 +179,18 @@ const publicIntakeLimiter = make({
   max: 30,
   message: 'Too many requests. Please try again later.',
   skipSuccessfulRequests: false,
+});
+
+// An applicant taking their assessment: autosave, proctor events, snapshots and
+// video uploads arrive every few seconds for up to a few hours. Counted per
+// private link (not per IP — a classroom shares one), generous enough for a
+// real attempt and still a ceiling on a script hammering one link.
+const assessmentAttemptLimiter = make({
+  windowMs: 60 * 1000,
+  max: 40,
+  message: 'Too many requests. Please slow down.',
+  skipSuccessfulRequests: false,
+  keyGenerator: (req) => `assessment:${String(req.params?.token || '').slice(0, 128)}`,
 });
 
 // Public credential verification. A twelve-character code out of 5.3 x 10^17
@@ -226,6 +243,7 @@ module.exports = {
   refreshTokenLimiter,
   apiLimiter,
   publicIntakeLimiter,
+  assessmentAttemptLimiter,
   certificateVerifyLimiter,
   // Exported for tests: the bucketing and exemption rules are the whole point of
   // the backstop, and they are easier to pin directly than through 3000 requests.

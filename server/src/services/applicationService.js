@@ -45,17 +45,26 @@ class ApplicationService {
     if (ids.length) {
       const subs = await models.AssessmentSubmission.findAll({
         where: { applicationId: ids },
-        attributes: ['applicationId', 'maxScore', 'submittedAt', 'aiDraft'],
+        attributes: ['applicationId', 'maxScore', 'submittedAt', 'aiDraft', 'status', 'startedAt', 'gradedAt'],
       });
       const byApp = new Map();
       for (const s of subs) {
         const prev = byApp.get(s.applicationId);
         if (!prev || new Date(s.submittedAt || 0) > new Date(prev.submittedAt || 0)) byApp.set(s.applicationId, s);
       }
+      // Programme invitations, for "invited to programme" / "joined".
+      const inviteIds = applications.map((a) => a.inviteId).filter(Boolean);
+      const invites = inviteIds.length
+        ? await models.RegistrationInvite.findAll({ where: { id: inviteIds }, attributes: ['id', 'usedAt', 'createdAt'] })
+        : [];
+      const inviteById = new Map(invites.map((i) => [i.id, i]));
+      const pipeline = require('./assessmentPipelineService');
       applications.forEach((a) => {
         const s = byApp.get(a.id);
         a.setDataValue('maxScore', s && s.maxScore != null ? Number(s.maxScore) : null);
         a.setDataValue('aiOverall', s && s.aiDraft && s.aiDraft.overall != null ? s.aiDraft.overall : null);
+        // Where they are in the assessment pipeline (see assessmentPipelineService).
+        a.setDataValue('stage', pipeline.stageOf(a, s || null, a.inviteId ? inviteById.get(a.inviteId) : null));
       });
     }
     // The cohort's pass threshold rides along so the client can render pass/fail.
@@ -177,10 +186,20 @@ class ApplicationService {
       });
     }
 
+    // The pipeline, step by step, and the proctoring record split for review.
+    const pipeline = require('./assessmentPipelineService');
+    const invite = app.inviteId ? await models.RegistrationInvite.findByPk(app.inviteId, { attributes: ['id', 'usedAt', 'createdAt'] }) : null;
+    const subJson = submission ? submission.toJSON() : null;
+    if (subJson) {
+      subJson.proctor = require('./proctoredMedia').splitProctorLog(subJson.proctorLog || [], []);
+      delete subJson.proctorLog;
+    }
     return {
       application: app,
+      stage: pipeline.stageOf(app, submission, invite),
+      timeline: pipeline.timelineOf(app, submission, invite),
       assessment: assessment ? assessment.toJSON() : null,
-      submission: submission ? submission.toJSON() : null,
+      submission: subJson,
       // Who took them out of the intake, when and why (removed applications).
       removal: app.status === 'removed' ? await require('./applicationRemovalService').removalFor(app.id) : null,
     };

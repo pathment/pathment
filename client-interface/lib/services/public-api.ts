@@ -1,4 +1,6 @@
 import { apiClient } from './api-client';
+import { videoFormData, type VideoUploadEndpoints } from './video-upload';
+import type { ProctorApi } from './interview-api';
 import type { IntakeFieldType } from '@/lib/config/intakeFields';
 
 /**
@@ -47,7 +49,7 @@ export interface ApplyInfo {
 
 export interface PublicAssessmentQuestion {
   id: string;
-  type: 'mcq' | 'multi_select' | 'short_text' | 'long_text' | 'file_upload' | 'external_link';
+  type: 'mcq' | 'multi_select' | 'true_false' | 'short_text' | 'long_text' | 'file_upload' | 'external_link' | 'video' | 'code';
   prompt: string;
   required: boolean;
   options: { id: string; label: string }[];
@@ -60,7 +62,38 @@ export interface AssessmentAnswer {
   fileUrl?: string;
   fileName?: string;
   link?: string;
+  /** Video answers: stored by the server once uploaded; captions while recording. */
+  videoUrl?: string;
+  transcript?: string;
 }
+
+/** Where an applicant's video answers go, through their private link (see video-upload). */
+export const assessmentVideoEndpoints = (token: string): VideoUploadEndpoints => {
+  const base = `/public/applications/${encodeURIComponent(token)}/assessment`;
+  return {
+    sign: (_sessionId, questionId) => apiClient.post(`${base}/video/sign`, { questionId }),
+    attach: (_sessionId, questionId, publicId) => apiClient.post(`${base}/video`, { questionId, publicId }),
+    uploadFile: (_sessionId, questionId, blob, onProgress) => apiClient.post(`${base}/video`, videoFormData(questionId, blob), {
+      timeout: 180000,
+      onUploadProgress: (e: { loaded: number; total?: number }) => { if (e.total) onProgress?.(e.loaded / e.total); },
+    }),
+  };
+};
+
+/** An applicant's proctoring: events and snapshots through their private link (see useProctor). */
+export const assessmentProctorApi = (token: string): ProctorApi => {
+  const base = `/public/applications/${encodeURIComponent(token)}/assessment`;
+  return {
+    logProctor: (_sid, events) => apiClient.post(`${base}/proctor`, { events }),
+    uploadSnapshot: (_sid, blob, questionId, source = 'camera') => {
+      const fd = new FormData();
+      fd.append('image', blob, `${source}-${Date.now()}.jpg`);
+      fd.append('source', source);
+      if (questionId) fd.append('questionId', questionId);
+      return apiClient.post(`${base}/snapshot`, fd);
+    },
+  };
+};
 
 export const publicApi = {
   listPrograms: () =>
@@ -90,6 +123,15 @@ export const publicApi = {
 
   submitAssessment: (token: string, answers: Record<string, AssessmentAnswer>) =>
     apiClient.post<any>(`/public/applications/${encodeURIComponent(token)}/assessment`, { answers }).then((r) => r.data),
+
+  /** Begin: starts the clock (timed), checks the browser can run it (proctored / video). */
+  startAssessment: (token: string, capabilities: string[]) =>
+    apiClient.post<{ data: { status: string; startedAt: string; deadlineAt: string | null; serverNow: string } }>(`/public/applications/${encodeURIComponent(token)}/assessment/start`, { capabilities })
+      .then((r) => r.data),
+
+  /** Autosave while answering. */
+  saveAssessmentDraft: (token: string, answers: Record<string, AssessmentAnswer>) =>
+    apiClient.patch<{ data: { saved: boolean } }>(`/public/applications/${encodeURIComponent(token)}/assessment/draft`, { answers }).then((r) => r.data),
 
   // Applicant self-serve, before the deadline: edit submitted info, or withdraw.
   updateInfo: (token: string, data: Record<string, unknown>) =>

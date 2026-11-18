@@ -12,6 +12,8 @@ export const FLAG_LABEL: Record<string, string> = {
   focus_loss: 'Left the tab',
   window_blur: 'Window lost focus',
   fullscreen_exit: 'Exited fullscreen',
+  not_fullscreen: 'Never went fullscreen',
+  time_expired: 'Time ran out (auto-submitted)',
   paste_blocked: 'Paste blocked',
   copy_blocked: 'Copy blocked',
   context_menu_blocked: 'Right-click blocked',

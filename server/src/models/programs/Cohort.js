@@ -117,6 +117,15 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.DATE,
       field: 'assessment_deadline'
     },
+    // When applicants meet the assessment: 'after_form' (straight after applying,
+    // as it always was) or 'on_invite' (only once an admin sends it to them).
+    assessmentMode: {
+      type: DataTypes.STRING(20),
+      allowNull: false,
+      defaultValue: 'after_form',
+      field: 'assessment_mode',
+      validate: { isIn: [['after_form', 'on_invite']] }
+    },
     createdBy: {
       type: DataTypes.UUID,
       field: 'created_by'
