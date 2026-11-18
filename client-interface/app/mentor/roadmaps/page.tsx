@@ -199,16 +199,30 @@ function ChainDrawer({ roadmap, candidates, onClose, onSaved }: { roadmap: Linea
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  // An imported copy with no chain of its own follows the one the admin set on
+  // the organization's roadmap; these are the ids that chain points to here.
+  const [inherited, setInherited] = useState<string[]>([]);
 
   useEffect(() => {
     mentorApi.getRoadmapLinks(roadmap.id)
-      .then((r: { data?: { links?: { toRoadmapId: string }[] } }) => setSelected(new Set((r.data?.links || []).map((l) => l.toRoadmapId))))
+      .then((r: { data?: { links?: { toRoadmapId: string; inherited?: boolean }[] } }) => {
+        const links = r.data?.links || [];
+        setSelected(new Set(links.map((l) => l.toRoadmapId)));
+        setInherited(links.length > 0 && links.every((l) => l.inherited) ? links.map((l) => l.toRoadmapId) : []);
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [roadmap.id]);
 
+  const followsOrg = inherited.length > 0;
+  const unchanged = followsOrg && selected.size === inherited.length && inherited.every((id) => selected.has(id));
+  const inheritedNames = inherited.map((id) => candidates.find((c) => c.id === id)?.name).filter(Boolean).join(', ');
+
   const toggle = (id: string) => setSelected((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const save = async () => {
+    // Still the organization's chain: nothing to store, and it keeps following
+    // the admin's chain if they change it later.
+    if (unchanged) { onClose(); return; }
     setSaving(true);
     try {
       await mentorApi.setRoadmapLinks(roadmap.id, [...selected]);
@@ -229,6 +243,15 @@ function ChainDrawer({ roadmap, candidates, onClose, onSaved }: { roadmap: Linea
         </>
       }>
       <div className="space-y-3">
+        {!loading && followsOrg && (
+          <div className="rounded-lg bg-brand-50 dark:bg-brand-500/10 border border-brand-200 dark:border-brand-500/30 px-3 py-2 text-xs text-brand-800 dark:text-brand-200">
+            {unchanged
+              ? `Follows your organization's chain: ${inheritedNames || 'the next roadmap'} comes next, assigned automatically. Pick something else to change it for this roadmap.`
+              : selected.size === 0
+                ? `With nothing picked, this keeps following your organization's chain (${inheritedNames || 'the next roadmap'}).`
+                : "Saving replaces your organization's chain for this roadmap with what you've picked."}
+          </div>
+        )}
         <div className="rounded-lg bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 px-3 py-2 text-xs text-slate-500">
           {selected.size <= 1
             ? 'Pick one — it auto-assigns the moment a mentee finishes this roadmap.'

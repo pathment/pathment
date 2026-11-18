@@ -1040,13 +1040,26 @@ class LinearRoadmapService {
 
   // ── Reusable chain graph (roadmap_links) ────────────────────────────────────
   /** Outgoing links of a roadmap, with the target's name (for authoring UI). */
-  async getNextLinks(roadmapId) {
+  /**
+   * What comes after this roadmap. With `mentorId`, an imported copy that has no
+   * links of its own shows the chain it inherits from its org roadmap (resolved
+   * to that mentor's copies, exactly as `_advanceChain` will follow it), marked
+   * `inherited` so the editor can say where it comes from.
+   */
+  async getNextLinks(roadmapId, mentorId = null) {
     const links = await models.RoadmapLink.findAll({
       where: { fromRoadmapId: roadmapId },
       order: [['position', 'ASC']],
       include: [{ model: models.Roadmap, as: 'toRoadmap', attributes: ['id', 'name'] }],
     });
-    return links.map((l) => ({ id: l.id, toRoadmapId: l.toRoadmapId, name: l.toRoadmap?.name || null, position: l.position }));
+    if (links.length || !mentorId) {
+      return links.map((l) => ({ id: l.id, toRoadmapId: l.toRoadmapId, name: l.toRoadmap?.name || null, position: l.position }));
+    }
+    const inherited = await this._inheritedLinks(roadmapId, mentorId);
+    if (!inherited.length) return [];
+    const targets = await models.Roadmap.findAll({ where: { id: inherited.map((l) => l.toRoadmapId) }, attributes: ['id', 'name'] });
+    const names = new Map(targets.map((r) => [r.id, r.name]));
+    return inherited.map((l) => ({ id: null, toRoadmapId: l.toRoadmapId, name: names.get(l.toRoadmapId) || null, position: l.position, inherited: true }));
   }
 
   /** Would adding from→to create a cycle? (to already reaches from, or to===from) */

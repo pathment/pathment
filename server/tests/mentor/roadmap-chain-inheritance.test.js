@@ -100,4 +100,28 @@ describe('finishing a mentor\'s copy of a chained org roadmap', () => {
     await svc.assignToMentee(ctx.mentor.id, loneCopy.id, ctx.mentee.id, 0, null, null, null, null, ctx.clan.id);
     expect(await finish(loneCopy.id, ctx.mentee.id)).toEqual({ completed: true });
   });
+
+  it('shows the inherited chain in the mentor\'s "what comes next", and their own once they set one', async () => {
+    const copy1 = await svc.importOrgRoadmap(ctx.mentor.id, ctx.month1.id);
+    // Nobody imported Month 2 yet: it points at the org roadmap.
+    expect(await svc.getNextLinks(copy1.id, ctx.mentor.id)).toEqual([
+      expect.objectContaining({ toRoadmapId: ctx.month2.id, name: 'Month 2', inherited: true }),
+    ]);
+    const copy2 = await svc.importOrgRoadmap(ctx.mentor.id, ctx.month2.id);
+    expect(await svc.getNextLinks(copy1.id, ctx.mentor.id)).toEqual([
+      expect.objectContaining({ toRoadmapId: copy2.id, inherited: true }),
+    ]);
+    // Without a mentor (internal callers) only real links are reported.
+    expect(await svc.getNextLinks(copy1.id)).toEqual([]);
+    // The org roadmap reports its own link, not marked inherited.
+    const [own] = await svc.getNextLinks(ctx.month1.id, ctx.mentor.id);
+    expect(own.inherited).toBeUndefined();
+
+    const other = await svc.createRoadmap(ctx.mentor.id, { name: 'Detour', programId: ctx.program.id, steps: [step('Detour')] });
+    await svc.setNextLinks(ctx.mentor.id, copy1.id, [other.id]);
+    const links = await svc.getNextLinks(copy1.id, ctx.mentor.id);
+    expect(links).toHaveLength(1);
+    expect(links[0]).toMatchObject({ toRoadmapId: other.id });
+    expect(links[0].inherited).toBeUndefined();
+  });
 });

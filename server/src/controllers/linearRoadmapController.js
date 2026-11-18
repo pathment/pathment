@@ -124,7 +124,7 @@ const myRoadmaps = catchAsync(async (req, res) => {
 
 // ── Roadmap chaining (reusable graph) ─────────────────────────────────────────
 const getLinks = catchAsync(async (req, res) => {
-  res.status(200).json(successResponse('Links retrieved', { links: await linearRoadmapService.getNextLinks(req.params.id) }));
+  res.status(200).json(successResponse('Links retrieved', { links: await linearRoadmapService.getNextLinks(req.params.id, req.user.id) }));
 });
 const setLinks = catchAsync(async (req, res) => {
   const links = await linearRoadmapService.setNextLinks(req.user.id, req.params.id, req.body?.toIds || []);
