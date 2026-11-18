@@ -199,6 +199,18 @@ export function pickVideoMime(): string | null {
 
 export const videoRecordingSupported = () => recorderSupported() && pickVideoMime() !== null;
 
+/** The best container this browser records voice-only answers into, or null. */
+export function pickAudioMime(): string | null {
+  if (typeof window === 'undefined' || typeof (window as any).MediaRecorder === 'undefined') return null;
+  const MR = (window as any).MediaRecorder;
+  for (const c of ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus']) {
+    try { if (MR.isTypeSupported?.(c)) return c; } catch { /* keep looking */ }
+  }
+  return null;
+}
+
+export const audioRecordingSupported = () => recorderSupported() && pickAudioMime() !== null;
+
 /**
  * Bitrates for a video answer: enough to read a face and a whiteboard, small
  * enough that the longest allowed answer (5 min) stays near 20MB.
@@ -227,11 +239,15 @@ export class VideoAnswerRecorder {
 
   constructor(private readonly onInterrupted?: (reason: 'camera' | 'mic' | 'error') => void) {}
 
-  /** Start recording. Returns null on success, or what went wrong. */
-  async start(cameraTrack: MediaStreamTrack | null): Promise<null | 'unsupported' | 'camera' | 'mic'> {
-    const mime = pickVideoMime();
+  /**
+   * Start recording. Returns null on success, or what went wrong. `audioOnly`
+   * records the voice alone (an audio answer): no camera track at all.
+   */
+  async start(cameraTrack: MediaStreamTrack | null, { audioOnly = false }: { audioOnly?: boolean } = {}): Promise<null | 'unsupported' | 'camera' | 'mic'> {
+    const mime = audioOnly ? pickAudioMime() : pickVideoMime();
     if (!mime || !recorderSupported()) return 'unsupported';
     this.mime = mime;
+    if (audioOnly) return this.startVoice();
 
     let video: MediaStreamTrack | null = null;
     if (cameraTrack && cameraTrack.readyState === 'live') {
@@ -266,6 +282,30 @@ export class VideoAnswerRecorder {
     video.addEventListener('ended', () => this.onInterrupted?.('camera'));
     audio.addEventListener('ended', () => this.onInterrupted?.('mic'));
     // A chunk a second, so an interruption still leaves everything up to it.
+    this.recorder.start(1000);
+    this.startedAt = Date.now();
+    this.stopping = null;
+    return null;
+  }
+
+  /** The voice-only take: a fresh mic, nothing from the camera. */
+  private async startVoice(): Promise<null | 'unsupported' | 'mic'> {
+    let audio: MediaStreamTrack | null = null;
+    try {
+      audio = (await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })).getAudioTracks()[0] || null;
+    } catch { return 'mic'; }
+    if (!audio) return 'mic';
+    this.stream = new MediaStream([audio]);
+    this.chunks = [];
+    try {
+      this.recorder = new (window as any).MediaRecorder(this.stream, { mimeType: this.mime, audioBitsPerSecond: AUDIO_BITS });
+    } catch {
+      this.cleanup();
+      return 'unsupported';
+    }
+    this.recorder.ondataavailable = (e: any) => { if (e.data?.size > 0) this.chunks.push(e.data); };
+    this.recorder.onerror = () => this.onInterrupted?.('error');
+    audio.addEventListener('ended', () => this.onInterrupted?.('mic'));
     this.recorder.start(1000);
     this.startedAt = Date.now();
     this.stopping = null;

@@ -937,7 +937,7 @@ function AssessmentSubmissionView({ assessment, submission, onChanged }: { asses
   const questions = (assessment.questions || []).slice().sort((a: any, b: any) => a.position - b.position);
   const answers = submission.answers || {};
   const ai = submission.aiDraft || null;
-  const hasOpenEnded = questions.some((q: any) => ['short_text', 'long_text', 'code', 'video'].includes(q.type));
+  const hasOpenEnded = questions.some((q: any) => ['short_text', 'long_text', 'code', 'video', 'audio'].includes(q.type));
   const hasAiScores = !!(ai && ai.perQuestion && Object.keys(ai.perQuestion).length);
 
   const runAi = async () => {
@@ -955,10 +955,12 @@ function AssessmentSubmissionView({ assessment, submission, onChanged }: { asses
 
   const renderAnswer = (q: any) => {
     const a = answers[q.id] || {};
-    if (q.type === 'video') {
+    if (q.type === 'video' || q.type === 'audio') {
       return a.videoUrl ? (
         <div className="space-y-1.5">
-          <video controls playsInline preload="metadata" src={a.videoUrl} className="w-full max-h-72 rounded-lg bg-black" />
+          {q.type === 'audio'
+            ? <audio controls preload="metadata" src={a.videoUrl} className="w-full" />
+            : <video controls playsInline preload="metadata" src={a.videoUrl} className="w-full max-h-72 rounded-lg bg-black" />}
           {a.transcript && (
             <details>
               <summary className="text-xs text-slate-500 cursor-pointer">Live captions</summary>
@@ -966,7 +968,7 @@ function AssessmentSubmissionView({ assessment, submission, onChanged }: { asses
             </details>
           )}
         </div>
-      ) : <span className="text-amber-700">No video was recorded.</span>;
+      ) : <span className="text-amber-700">No {q.type === 'audio' ? 'recording' : 'video'} was made.</span>;
     }
     if (q.type === 'code') {
       return a.text ? (

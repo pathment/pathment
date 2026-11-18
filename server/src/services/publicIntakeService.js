@@ -581,7 +581,7 @@ class PublicIntakeService {
   _withServerVideos(questions, incoming, stored) {
     const out = { ...(incoming || {}) };
     for (const q of questions) {
-      if (q.type !== 'video') continue;
+      if (q.type !== 'video' && q.type !== 'audio') continue;
       const keep = stored?.[q.id] || {};
       out[q.id] = { ...(out[q.id] || {}), videoUrl: keep.videoUrl || null, publicId: keep.publicId || null };
       if (!keep.videoUrl) { delete out[q.id].videoUrl; delete out[q.id].publicId; }
@@ -629,7 +629,7 @@ class PublicIntakeService {
       { status: 'submitted', submittedAt: submission.submittedAt }, application.status,
     )) throw new ConflictError('This assessment has already been submitted.');
     const question = (assessment.questions || []).find((q) => q.id === questionId);
-    if (!question || question.type !== 'video') throw new ValidationError('Video can only be attached to a video question');
+    if (!question || (question.type !== 'video' && question.type !== 'audio')) throw new ValidationError('A recording can only be attached to a video or audio question');
     return { submission, question };
   }
 

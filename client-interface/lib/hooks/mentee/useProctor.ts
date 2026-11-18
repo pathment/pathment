@@ -114,6 +114,10 @@ export function useProctor({
   // ── DOM listeners while active ──────────────────────────────────────────────
   useEffect(() => {
     if (!active) return;
+    // Fullscreen is asked for by the Start click, before the attempt is active
+    // and these listeners exist, so its change event can come and go unheard.
+    // Read where we are now (next frame) rather than waiting for the next change.
+    const syncFrame = requestAnimationFrame(() => setIsFullscreen(!!document.fullscreenElement));
 
     const onVisibility = () => {
       if (document.hidden) { setFocusLosses((n) => n + 1); log('focus_loss', { reason: 'tab_hidden' }); }
@@ -137,6 +141,7 @@ export function useProctor({
     document.addEventListener('contextmenu', onContextMenu);
 
     return () => {
+      cancelAnimationFrame(syncFrame);
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('blur', onBlur);
       document.removeEventListener('fullscreenchange', onFullscreenChange);

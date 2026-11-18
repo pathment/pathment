@@ -1,17 +1,17 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   AlertTriangle, ArrowRight, CalendarClock, CheckCircle2, Clock, Code2, Eye, FileUp, ListChecks, Loader2,
-  Maximize2, Monitor, Pencil, Play, ShieldCheck, Timer, Upload, Video,
+  Maximize2, Mic, Monitor, Pencil, Play, ShieldCheck, Timer, Upload, Video,
 } from 'lucide-react';
 import {
   publicApi, assessmentProctorApi, assessmentVideoEndpoints,
   type AssessmentAnswer, type PublicAssessmentQuestion,
 } from '@/lib/services/public-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
-import { videoRecordingSupported } from '@/lib/utils/interviewMedia';
+import { audioRecordingSupported, videoRecordingSupported } from '@/lib/utils/interviewMedia';
 import { useProctor } from '@/lib/hooks/mentee/useProctor';
 import { useScreenShare } from '@/lib/hooks/mentee/useScreenShare';
 import { useAnswerUploads } from '@/lib/hooks/mentee/useAnswerUploads';
@@ -57,7 +57,7 @@ function answered(q: PublicAssessmentQuestion, a?: AssessmentAnswer, take?: Blob
     case 'mcq': case 'multi_select': case 'true_false': return !!a?.optionIds?.length;
     case 'file_upload': return !!a?.fileUrl;
     case 'external_link': return !!a?.link?.trim();
-    case 'video': return !!(a?.videoUrl || take);
+    case 'video': case 'audio': return !!(a?.videoUrl || take);
     case 'code': {
       const starter = String(q.config?.starterCode || '').trim();
       return !!a?.text?.trim() && a.text.trim() !== starter;
@@ -94,6 +94,7 @@ export function AssessmentRunner({
   const proctored = !!assessment.proctored;
   const timed = !!(assessment.enforceTimeLimit && assessment.timeLimitMins);
   const hasVideo = questions.some((q) => q.type === 'video');
+  const hasAudio = questions.some((q) => q.type === 'audio');
   const cameraRequired = proctored || hasVideo;
   const oneSitting = proctored || timed;
   const deviceProblem = deviceProblemFor({ screenRequired: proctored, hasVideo });
@@ -205,7 +206,7 @@ export function AssessmentRunner({
   const enterSetup = async () => {
     setPhase('setup');
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: hasVideo });
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: hasVideo || hasAudio });
       setupRef.current = stream;
       setSetupStream(stream);
     } catch {
@@ -398,11 +399,12 @@ export function AssessmentRunner({
         {meta}
         {assessment.description && <p className="mt-3 text-sm text-slate-600 whitespace-pre-wrap">{assessment.description}</p>}
         {assessment.instructions && <p className="mt-2 text-sm text-slate-500 whitespace-pre-wrap rounded-lg bg-slate-50 dark:bg-white/5 p-3">{assessment.instructions}</p>}
-        {(timed || proctored || hasVideo) && (
+        {(timed || proctored || hasVideo || hasAudio) && (
           <ul className="mt-4 space-y-2 text-sm text-slate-600">
             {timed && <li className="flex gap-2"><Timer className="w-4 h-4 text-brand-500 shrink-0 mt-0.5" />You have {assessment.timeLimitMins} minutes once you start. The clock keeps running if you close the page, and it submits by itself at zero.</li>}
             {proctored && <li className="flex gap-2"><Monitor className="w-4 h-4 text-brand-500 shrink-0 mt-0.5" />Proctored: your camera stays on and your entire screen is shared the whole time. Pictures of both are taken at random moments, and leaving the page is noted.</li>}
             {hasVideo && <li className="flex gap-2"><Video className="w-4 h-4 text-brand-500 shrink-0 mt-0.5" />Some questions are answered on camera — you record a short video.</li>}
+            {hasAudio && <li className="flex gap-2"><Mic className="w-4 h-4 text-brand-500 shrink-0 mt-0.5" />Some questions are answered out loud — you record your voice.</li>}
             {oneSitting && <li className="flex gap-2"><AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />One sitting: once you submit, you can&apos;t change your answers.</li>}
           </ul>
         )}
@@ -486,8 +488,19 @@ export function AssessmentRunner({
           {questions.map((q, idx) => {
             const a = answers[q.id];
             const isMissing = missing.has(q.id);
+            // A section heading where a new section starts.
+            const section = typeof q.config?.section === 'string' ? q.config.section : '';
+            const prevSection = idx > 0 && typeof questions[idx - 1].config?.section === 'string' ? questions[idx - 1].config?.section : '';
+            const sectionStarts = !!section && section !== prevSection;
             return (
-              <div key={q.id} id={`aq-${q.id}`} onFocusCapture={() => setFocusedId(q.id)} onPointerDown={() => setFocusedId(q.id)}
+              <Fragment key={q.id}>
+              {sectionStarts && (
+                <div className={`border-b border-slate-200 pb-2 ${idx > 0 ? 'pt-4' : ''}`}>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-brand-600">Section</p>
+                  <h3 className="text-base font-semibold text-slate-900">{section}</h3>
+                </div>
+              )}
+              <div id={`aq-${q.id}`} onFocusCapture={() => setFocusedId(q.id)} onPointerDown={() => setFocusedId(q.id)}
                 className={`rounded-xl ${isMissing ? 'ring-2 ring-rose-400 p-3 -m-3' : ''}`}>
                 <p className="font-medium text-slate-800"><span className="text-slate-400 mr-1">{idx + 1}.</span>{q.prompt}{q.required && <span className="text-rose-500"> *</span>}</p>
                 {q.type === 'multi_select' && <p className="text-xs text-slate-500 mt-0.5">Select all that apply.</p>}
@@ -532,10 +545,11 @@ export function AssessmentRunner({
                       />
                     </div>
                   )}
-                  {q.type === 'video' && (
+                  {(q.type === 'video' || q.type === 'audio') && (
                     <VideoAnswer
                       tone="light"
-                      supported={videoRecordingSupported()}
+                      audioOnly={q.type === 'audio'}
+                      supported={q.type === 'audio' ? audioRecordingSupported() : videoRecordingSupported()}
                       recording={take.recording && take.questionId === q.id}
                       elapsed={take.elapsed}
                       maxSeconds={Number(q.config?.maxRecordingSeconds) || 120}
@@ -545,14 +559,15 @@ export function AssessmentRunner({
                       savedUrl={a?.videoUrl || null}
                       upload={uploads.status[q.id]}
                       transcript={a?.transcript || ''}
-                      disabled={take.recording || (cameraRequired && !proctor.cameraLive)}
-                      onStart={() => { setFocusedId(q.id); void take.start(q.id, Number(q.config?.maxRecordingSeconds) || 120); }}
+                      disabled={take.recording || (q.type === 'video' && cameraRequired && !proctor.cameraLive)}
+                      onStart={() => { setFocusedId(q.id); void take.start(q.id, Number(q.config?.maxRecordingSeconds) || 120, { audioOnly: q.type === 'audio' }); }}
                       onStop={() => void take.stop()}
                       onRetry={() => { const b = takes[q.id]; if (b) void uploads.upload(token, q.id, 'video', b); }}
                     />
                   )}
                 </div>
               </div>
+              </Fragment>
             );
           })}
         </div>
@@ -561,7 +576,7 @@ export function AssessmentRunner({
           <button onClick={() => void submit()} disabled={phase === 'submitting' || take.recording}
             className="w-full h-11 bg-brand-600 hover:bg-brand-700 text-white rounded-lg font-medium disabled:opacity-50 inline-flex items-center justify-center gap-2">
             {phase === 'submitting' && <Loader2 className="w-4 h-4 animate-spin" />}
-            {phase === 'submitting' ? (uploads.unsent ? `Sending ${uploads.unsent} video${uploads.unsent === 1 ? '' : 's'}…` : 'Submitting…') : submitted ? 'Save changes' : 'Submit assessment'}
+            {phase === 'submitting' ? (uploads.unsent ? `Sending ${uploads.unsent} recording${uploads.unsent === 1 ? '' : 's'}…` : 'Submitting…') : submitted ? 'Save changes' : 'Submit assessment'}
           </button>
           <p className="mt-2 text-center text-xs text-slate-400">
             {take.recording ? 'Stop recording before you submit.'

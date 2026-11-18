@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef } from 'react';
-import { AlertTriangle, CheckCircle2, Circle, Loader2, RotateCcw, Square, Video } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Circle, Loader2, Mic, RotateCcw, Square, Video } from 'lucide-react';
 import { fmtClock } from '@/lib/utils/interviewMedia';
 import type { UploadStatus } from '@/lib/hooks/mentee/useAnswerUploads';
 
@@ -30,7 +30,7 @@ const TONES = {
  */
 export function VideoAnswer({
   supported, recording, elapsed, maxSeconds, liveStream, cameraStream, takeBlob, savedUrl, upload,
-  transcript, disabled, onStart, onStop, onRetry, tone = 'dark',
+  transcript, disabled, onStart, onStop, onRetry, tone = 'dark', audioOnly = false,
 }: {
   supported: boolean;
   recording: boolean;
@@ -52,6 +52,8 @@ export function VideoAnswer({
   onStop: () => void;
   onRetry: () => void;
   tone?: 'dark' | 'light';
+  /** A voice-only answer: no camera, played back as audio. */
+  audioOnly?: boolean;
 }) {
   const t = TONES[tone];
   const liveRef = useRef<HTMLVideoElement | null>(null);
@@ -69,18 +71,38 @@ export function VideoAnswer({
 
   const left = Math.max(0, maxSeconds - elapsed);
   const playback = takeUrl || savedUrl;
+  const noun = audioOnly ? 'recording' : 'video';
 
   if (!supported) {
     return (
       <div className={`rounded-2xl border p-6 text-sm flex items-start gap-2 ${t.unsupported}`}>
         <AlertTriangle className={`w-4 h-4 shrink-0 mt-0.5 ${t.unsupportedIcon}`} />
-        This browser can&apos;t record video. Open this in Chrome, Edge or Firefox on a computer to answer this question.
+        This browser can&apos;t record {audioOnly ? 'audio' : 'video'}. Open this in Chrome, Edge or Firefox on a computer to answer this question.
       </div>
     );
   }
 
   return (
     <div className={`rounded-2xl border p-4 sm:p-6 ${t.box}`}>
+      {audioOnly ? (
+        <div className="relative mx-auto w-full max-w-xl overflow-hidden rounded-xl border border-slate-700 bg-slate-950 px-4 py-6">
+          {recording ? (
+            <div className="flex items-center justify-between gap-3 text-white">
+              <span className="inline-flex items-center gap-2 text-sm font-medium"><span className="h-2.5 w-2.5 animate-pulse rounded-full bg-red-500" />Recording your answer · {fmtClock(elapsed)}</span>
+              <span className={`rounded-md px-2 py-1 text-xs font-semibold tabular-nums ${left <= 15 ? 'bg-red-600 text-white' : 'bg-white/10 text-white'}`}>{fmtClock(left)} left</span>
+            </div>
+          ) : playback ? (
+            <audio key={playback} src={playback} controls className="w-full" />
+          ) : (
+            <div className="flex items-center justify-center gap-2 text-sm text-slate-400"><Mic className="h-4 w-4" />Answer out loud: voice only, no camera.</div>
+          )}
+          {recording && (
+            <div className="absolute inset-x-0 bottom-0 h-1 bg-white/10">
+              <div className="h-full bg-red-500 transition-[width] duration-1000 ease-linear" style={{ width: `${Math.min(100, (elapsed / maxSeconds) * 100)}%` }} />
+            </div>
+          )}
+        </div>
+      ) : (
       <div className="relative mx-auto aspect-video w-full max-w-xl overflow-hidden rounded-xl border border-slate-700 bg-slate-950">
         {showLive ? (
           stream
@@ -105,6 +127,7 @@ export function VideoAnswer({
           </div>
         )}
       </div>
+      )}
 
       <div className="mt-4 flex flex-col items-center gap-2">
         {recording ? (
@@ -121,17 +144,19 @@ export function VideoAnswer({
         )}
         <p className={`text-xs text-center ${t.hint}`}>
           {recording
-            ? 'Look at the camera and answer out loud. It stops by itself when the time is up.'
+            ? (audioOnly ? 'Answer out loud. It stops by itself when the time is up.' : 'Look at the camera and answer out loud. It stops by itself when the time is up.')
             : playback
               ? 'Recording again replaces this one.'
-              : `You have up to ${fmtClock(maxSeconds)} on camera. Your mentor sees and hears the recording.`}
+              : audioOnly
+                ? `You have up to ${fmtClock(maxSeconds)} to answer out loud. The reviewer hears the recording.`
+                : `You have up to ${fmtClock(maxSeconds)} on camera. Your mentor sees and hears the recording.`}
         </p>
 
         {!recording && upload && (
           upload.state === 'uploading' ? (
             <div className="w-full max-w-xs">
               <div className={`flex items-center justify-between text-xs ${t.progress}`}>
-                <span className="inline-flex items-center gap-1.5"><Loader2 className="h-3.5 w-3.5 animate-spin" />Sending your video…</span>
+                <span className="inline-flex items-center gap-1.5"><Loader2 className="h-3.5 w-3.5 animate-spin" />Sending your {noun}…</span>
                 <span className="tabular-nums">{Math.round(upload.progress * 100)}%</span>
               </div>
               <div className={`mt-1 h-1.5 overflow-hidden rounded-full ${t.track}`}>
@@ -142,7 +167,7 @@ export function VideoAnswer({
             <p className={`inline-flex items-center gap-1.5 text-xs ${t.saved}`}><CheckCircle2 className="h-3.5 w-3.5" />Saved</p>
           ) : (
             <p className={`inline-flex items-center gap-2 text-xs ${t.failed}`}>
-              <AlertTriangle className="h-3.5 w-3.5" />Your video didn&apos;t send.
+              <AlertTriangle className="h-3.5 w-3.5" />Your {noun} didn&apos;t send.
               <button type="button" onClick={onRetry} className="rounded-md bg-amber-600 px-2 py-0.5 font-medium text-white hover:bg-amber-700">Try again</button>
             </p>
           )

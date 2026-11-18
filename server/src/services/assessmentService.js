@@ -2,7 +2,9 @@ const crypto = require('crypto');
 const { models } = require('../db');
 const { NotFoundError, ValidationError } = require('../utils/errors/errorTypes');
 
-const QUESTION_TYPES = ['mcq', 'multi_select', 'true_false', 'short_text', 'long_text', 'file_upload', 'external_link', 'video', 'code'];
+const QUESTION_TYPES = ['mcq', 'multi_select', 'true_false', 'short_text', 'long_text', 'file_upload', 'external_link', 'video', 'audio', 'code'];
+/** Answered by recording (video, or voice only); stored as { videoUrl, publicId, transcript }. */
+const RECORDED = ['video', 'audio'];
 const AUTO_GRADED = ['mcq', 'multi_select', 'true_false'];
 const TRUE_FALSE_OPTIONS = [{ id: 'true', label: 'True' }, { id: 'false', label: 'False' }];
 const { maxRecordingSeconds } = require('./proctoringRules');
@@ -142,7 +144,13 @@ class AssessmentService {
       // solution goes in `rubric` (admin-only), never in config (the applicant sees config).
       const config = q.config && typeof q.config === 'object' && !Array.isArray(q.config) ? { ...q.config } : {};
       delete config.referenceSolution;
-      if (q.type === 'video') config.maxRecordingSeconds = maxRecordingSeconds(config);
+      // An optional section heading ("Scenarios", "Interview"); questions that
+      // share one are shown together under it.
+      if (config.section != null) {
+        const section = String(config.section).trim().slice(0, 80);
+        if (section) config.section = section; else delete config.section;
+      }
+      if (RECORDED.includes(q.type)) config.maxRecordingSeconds = maxRecordingSeconds(config);
       else delete config.maxRecordingSeconds;
       if (q.type === 'code') {
         config.codeLanguage = String(config.codeLanguage || 'javascript').trim().slice(0, 30) || 'javascript';
@@ -334,7 +342,7 @@ class AssessmentService {
         (q.type === 'mcq' || q.type === 'multi_select' || q.type === 'true_false') ? !(a.optionIds && a.optionIds.length)
           : q.type === 'file_upload' ? !a.fileUrl
             : q.type === 'external_link' ? !a.link
-              : q.type === 'video' ? !a.videoUrl
+              : RECORDED.includes(q.type) ? !a.videoUrl
                 // Code left exactly as the starter is no answer.
                 : q.type === 'code' ? !(a.text && String(a.text).trim() && String(a.text).trim() !== starter)
                   : !(a.text && String(a.text).trim());
@@ -364,11 +372,11 @@ class AssessmentService {
   // ── AI grading (a SUGGESTION the admin reviews — never the final score) ──────
   /** Open-ended types the AI can read + score from text. mcq/multi_select are
    *  already auto-graded; file/link have no gradable text, so they stay manual. */
-  _aiGradableTypes() { return ['short_text', 'long_text', 'code', 'video']; }
+  _aiGradableTypes() { return ['short_text', 'long_text', 'code', 'video', 'audio']; }
 
   /** The text the AI reads for an answer: what they wrote, or a video's live captions. */
   _answerText(q, answer = {}) {
-    if (q.type === 'video') return String(answer.transcript || '').trim();
+    if (RECORDED.includes(q.type)) return String(answer.transcript || '').trim();
     return String(answer.text || '').trim();
   }
 

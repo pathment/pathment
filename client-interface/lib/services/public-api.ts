@@ -49,7 +49,7 @@ export interface ApplyInfo {
 
 export interface PublicAssessmentQuestion {
   id: string;
-  type: 'mcq' | 'multi_select' | 'true_false' | 'short_text' | 'long_text' | 'file_upload' | 'external_link' | 'video' | 'code';
+  type: 'mcq' | 'multi_select' | 'true_false' | 'short_text' | 'long_text' | 'file_upload' | 'external_link' | 'video' | 'audio' | 'code';
   prompt: string;
   required: boolean;
   options: { id: string; label: string }[];

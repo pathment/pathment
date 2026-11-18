@@ -1,6 +1,6 @@
 import { apiClient } from './api-client';
 
-export type AssessmentQuestionType = 'mcq' | 'multi_select' | 'true_false' | 'short_text' | 'long_text' | 'file_upload' | 'external_link' | 'video' | 'code';
+export type AssessmentQuestionType = 'mcq' | 'multi_select' | 'true_false' | 'short_text' | 'long_text' | 'file_upload' | 'external_link' | 'video' | 'audio' | 'code';
 
 export interface AssessmentQuestionInput {
   id?: string;

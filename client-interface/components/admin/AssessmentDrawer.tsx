@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { ChevronDown, ChevronUp, Code2, Eye, GripVertical, Loader2, Plus, Save, Timer, Trash2, Video } from 'lucide-react';
+import { ChevronDown, ChevronUp, Code2, Eye, GripVertical, Layers, Loader2, Mic, Plus, Save, Timer, Trash2, Video } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { assessmentApi, type Assessment, type AssessmentQuestionType } from '@/lib/services/assessment-api';
@@ -34,10 +34,11 @@ const TYPE_LABELS: Record<AssessmentQuestionType, string> = {
   true_false: 'True / false',
   code: 'Code',
   video: 'Video answer',
+  audio: 'Audio answer',
 };
 const AUTO_GRADED: AssessmentQuestionType[] = ['mcq', 'multi_select', 'true_false'];
-// Types the AI can read + score — these get a rubric box (a video is read from its captions).
-const AI_GRADABLE: AssessmentQuestionType[] = ['short_text', 'long_text', 'code', 'video'];
+// Types the AI can read + score — these get a rubric box (a recording is read from its captions).
+const AI_GRADABLE: AssessmentQuestionType[] = ['short_text', 'long_text', 'code', 'video', 'audio'];
 const TRUE_FALSE = [{ id: 'true', label: 'True' }, { id: 'false', label: 'False' }];
 /** How long one video answer may run (the server caps it at 5 minutes). */
 const RECORDING_CHOICES = [60, 120, 180, 300];
@@ -105,9 +106,13 @@ export function AssessmentDrawer({
     const base: QuestionDraft = { id: newId(), type, prompt: '', required: true, points: AUTO_GRADED.includes(type) ? 10 : 0, options: [], correctOptionIds: [], rubric: '', config: {} };
     if (type === 'true_false') base.options = TRUE_FALSE;
     else if (AUTO_GRADED.includes(type)) base.options = [{ id: newId(), label: '' }, { id: newId(), label: '' }];
-    if (type === 'video') { base.config = { maxRecordingSeconds: 120 }; base.points = 10; }
+    if (type === 'video' || type === 'audio') { base.config = { maxRecordingSeconds: 120 }; base.points = 10; }
     if (type === 'code') { base.config = { codeLanguage: 'javascript', starterCode: '' }; base.points = 10; }
-    setQuestions((prev) => [...prev, base]);
+    // A new question joins the section the last one is in.
+    setQuestions((prev) => {
+      const section = prev.length ? prev[prev.length - 1].config?.section : undefined;
+      return [...prev, typeof section === 'string' && section ? { ...base, config: { ...base.config, section } } : base];
+    });
   };
   const patchQuestion = (qid: string, patch: Partial<QuestionDraft>) =>
     setQuestions((prev) => prev.map((q) => (q.id === qid ? { ...q, ...patch } : q)));
@@ -331,6 +336,13 @@ function QuestionCard({
             className="mt-3 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-card"
           />
 
+          <label className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+            <Layers className="w-3.5 h-3.5 text-brand-600" />Section
+            <input value={String(q.config.section || '')} onChange={(e) => setConfig({ section: e.target.value })} placeholder="e.g. Scenarios, MCQs, Interview" maxLength={80}
+              className="w-56 border border-slate-200 rounded-lg px-2 py-1 text-sm bg-card focus:outline-none focus:ring-2 focus:ring-brand-500" />
+            <span className="text-slate-400">Questions next to each other with the same section show under one heading.</span>
+          </label>
+
           {q.type === 'true_false' && (
             <div className="mt-3">
               <p className="text-xs text-slate-500 mb-1.5">The correct answer:</p>
@@ -345,14 +357,14 @@ function QuestionCard({
             </div>
           )}
 
-          {q.type === 'video' && (
+          {(q.type === 'video' || q.type === 'audio') && (
             <label className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-              <Video className="w-3.5 h-3.5 text-brand-600" />Longest recording
+              {q.type === 'audio' ? <Mic className="w-3.5 h-3.5 text-brand-600" /> : <Video className="w-3.5 h-3.5 text-brand-600" />}Longest recording
               <select value={Number(q.config.maxRecordingSeconds) || 120} onChange={(e) => setConfig({ maxRecordingSeconds: Number(e.target.value) })}
                 className="rounded-lg border border-slate-200 bg-card px-2 py-1 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-500">
                 {RECORDING_CHOICES.map((sec) => <option key={sec} value={sec}>{sec / 60} min</option>)}
               </select>
-              <span className="text-slate-400">They answer on camera; you watch it and score it. Needs a laptop or desktop.</span>
+              <span className="text-slate-400">{q.type === 'audio' ? 'They answer out loud, voice only; you listen and score it.' : 'They answer on camera; you watch it and score it. Needs a laptop or desktop.'}</span>
             </label>
           )}
 
@@ -372,7 +384,7 @@ function QuestionCard({
           {AI_GRADABLE.includes(q.type) && (
             <div className="mt-3 rounded-lg border border-violet-200 bg-violet-50/60 dark:bg-violet-500/10 p-3">
               <label className="block text-xs font-medium text-violet-800 mb-1">
-                {q.type === 'code' ? 'Model solution / rubric' : 'Grading rubric'} <span className="font-normal text-violet-600">— {q.type === 'video' ? 'how to score the video (the AI reads its captions)' : 'how the AI should score this answer'}</span>
+                {q.type === 'code' ? 'Model solution / rubric' : 'Grading rubric'} <span className="font-normal text-violet-600">— {q.type === 'video' || q.type === 'audio' ? 'how to score the recording (the AI reads its captions)' : 'how the AI should score this answer'}</span>
               </label>
               <RubricField
                 value={q.rubric}

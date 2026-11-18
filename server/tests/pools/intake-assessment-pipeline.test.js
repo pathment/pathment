@@ -76,6 +76,29 @@ describe('question types', () => {
   });
 });
 
+describe('audio answers and sections', () => {
+  it('keeps a section label, caps the length of an audio answer, and needs the recording', async () => {
+    const a = await makeAssessment('Sections', [
+      { type: 'long_text', prompt: 'A customer reports…', points: 5, config: { section: '  Scenarios  ' } },
+      { type: 'audio', prompt: 'Tell us about yourself', points: 5, config: { section: 'Interview', maxRecordingSeconds: 999 } },
+      { type: 'mcq', prompt: 'Pick one', points: 2, options: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], correctOptionIds: ['a'], config: { section: '' } },
+    ]);
+    const full = await assessmentService.getAssessment(a.id);
+    const [scenario, audio, mcq] = full.questions;
+    expect(scenario.config).toEqual({ section: 'Scenarios' });
+    expect(audio.config).toEqual({ section: 'Interview', maxRecordingSeconds: 300 });
+    expect(mcq.config).toEqual({});
+    expect(() => assessmentService.validateAnswers(full.questions, {
+      [scenario.id]: { text: 'I would…' }, [mcq.id]: { optionIds: ['a'] },
+    })).toThrow(/answer all required/);
+    expect(() => assessmentService.validateAnswers(full.questions, {
+      [scenario.id]: { text: 'I would…' }, [mcq.id]: { optionIds: ['a'] }, [audio.id]: { videoUrl: 'https://x/a.webm' },
+    })).not.toThrow();
+    expect(assessmentService._aiGradableTypes()).toContain('audio');
+    expect(assessmentService._answerText(audio, { transcript: 'I am a developer' })).toBe('I am a developer');
+  });
+});
+
 describe('the pipeline', () => {
   let beginnerTest; let seniorTest; let app;
 

@@ -66,8 +66,11 @@ export function useVideoTake({ getCameraTrack, onTake, onCaptions, log, captureN
     return run;
   }, []);
 
-  /** Start a take for `forQuestion`. Resolves false (with a toast) if it couldn't. */
-  const start = useCallback(async (forQuestion: string, maxSeconds: number): Promise<boolean> => {
+  /**
+   * Start a take for `forQuestion`. Resolves false (with a toast) if it couldn't.
+   * `audioOnly` records the voice alone, for an audio answer.
+   */
+  const start = useCallback(async (forQuestion: string, maxSeconds: number, { audioOnly = false }: { audioOnly?: boolean } = {}): Promise<boolean> => {
     if (recRef.current || stoppingRef.current) return false;
     const rec: VideoAnswerRecorder = new VideoAnswerRecorder((reason) => {
       if (recRef.current !== rec) return;
@@ -75,11 +78,11 @@ export function useVideoTake({ getCameraTrack, onTake, onCaptions, log, captureN
       toast.error(`${reason === 'mic' ? 'Your microphone stopped' : reason === 'camera' ? 'Your camera turned off' : 'The recording failed'}, so the recording stopped. What was recorded is kept — you can record again.`);
       void stop();
     });
-    const problem = await rec.start(cbs.current.getCameraTrack());
+    const problem = await rec.start(audioOnly ? null : cbs.current.getCameraTrack(), { audioOnly });
     if (problem) {
-      toast.error(problem === 'mic' ? 'Microphone access is needed to answer on video.'
+      toast.error(problem === 'mic' ? `Microphone access is needed to answer ${audioOnly ? 'out loud' : 'on video'}.`
         : problem === 'camera' ? 'Camera access is needed to answer on video.'
-          : 'This browser can’t record video. Use Chrome, Edge or Firefox on a computer.');
+          : `This browser can’t record ${audioOnly ? 'audio' : 'video'}. Use Chrome, Edge or Firefox on a computer.`);
       return false;
     }
     recRef.current = rec;
