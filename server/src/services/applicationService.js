@@ -6,7 +6,8 @@ const adminService = require('./adminService');
 const cohortIntakeService = require('./cohortIntakeService');
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const DECIDED = ['accepted', 'rejected'];
+// Settled: nothing more happens to these unless an admin acts on them on purpose.
+const DECIDED = ['accepted', 'rejected', 'removed'];
 
 function pick(row, keys) {
   for (const k of keys) {
@@ -179,7 +180,9 @@ class ApplicationService {
     return {
       application: app,
       assessment: assessment ? assessment.toJSON() : null,
-      submission: submission ? submission.toJSON() : null
+      submission: submission ? submission.toJSON() : null,
+      // Who took them out of the intake, when and why (removed applications).
+      removal: app.status === 'removed' ? await require('./applicationRemovalService').removalFor(app.id) : null,
     };
   }
 
@@ -249,6 +252,7 @@ class ApplicationService {
 
     const cohort = app.cohort;
     if (!cohort) throw new ValidationError('Application is not attached to a cohort');
+    if (app.status === 'removed') throw new ConflictError('This applicant was removed from the intake.');
     const normalizedEmail = (app.email || '').trim().toLowerCase();
 
     const isLive = (inv) => inv && !inv.usedAt && !inv.revokedAt && new Date(inv.expiresAt) > new Date();
@@ -355,7 +359,7 @@ class ApplicationService {
       if (!found.has(id)) { skipped.push({ id, reason: 'not in this cohort' }); continue; }
       const app = apps.find((a) => a.id === id);
       if (app.status === 'accepted') { skipped.push({ id, email: app.email, reason: 'already accepted' }); continue; }
-      if (app.status === 'withdrawn') { skipped.push({ id, email: app.email, reason: 'withdrawn' }); continue; }
+      if (app.status === 'withdrawn' || app.status === 'removed') { skipped.push({ id, email: app.email, reason: app.status }); continue; }
       try {
         const { invite } = await this.acceptApplication(id, { clanId }, acceptedBy);
         invited.push({ id, email: app.email, inviteId: invite.id });
@@ -392,7 +396,7 @@ class ApplicationService {
       const app = apps.find((a) => a.id === id);
       if (app.status === 'rejected') { skipped.push({ id, email: app.email, reason: 'already rejected' }); continue; }
       if (app.status === 'accepted') { skipped.push({ id, email: app.email, reason: 'already accepted' }); continue; }
-      if (app.status === 'withdrawn') { skipped.push({ id, email: app.email, reason: 'withdrawn' }); continue; }
+      if (app.status === 'withdrawn' || app.status === 'removed') { skipped.push({ id, email: app.email, reason: app.status }); continue; }
       try {
         await this.rejectApplication(id, { reason }, reviewerId); // sets rejected + emails the reason
         rejected.push({ id, email: app.email });
@@ -406,6 +410,7 @@ class ApplicationService {
   async rejectApplication(applicationId, { reason } = {}, reviewerId) {
     const app = await models.Application.findByPk(applicationId);
     if (!app) throw new NotFoundError('Application not found');
+    if (app.status === 'removed') throw new ConflictError('This applicant was removed from the intake.');
 
     const wasDecided = app.status === 'rejected';
     const finalReason = reason || app.decisionReason;

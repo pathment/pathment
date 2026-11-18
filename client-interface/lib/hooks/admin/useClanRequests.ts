@@ -6,6 +6,8 @@ import { clanRequestsApi } from '@/lib/services/clan-requests-api';
 export interface ChangeRequest {
   id: string;
   mentee: string | null;
+  /** Opens their profile from the request. */
+  menteeId?: string | null;
   fromClan: string | null;
   toClan: string | null;
   /** For the admin programme/clan filter. */

@@ -41,6 +41,7 @@ const STATUS_META: Record<string, { label: string; cls: string }> = {
   rejected: { label: 'Not selected', cls: 'bg-rose-100 text-rose-700' },
   waitlisted: { label: 'Waitlisted', cls: 'bg-violet-100 text-violet-700' },
   withdrawn: { label: 'Withdrawn', cls: 'bg-slate-200 text-slate-600' },
+  removed: { label: 'Closed', cls: 'bg-slate-200 text-slate-600' },
 };
 
 const prettyKey = (k: string) =>
@@ -202,7 +203,9 @@ export default function ApplicationStatusPage() {
   const meta = STATUS_META[application.status] || STATUS_META.pending;
   const submitted = Boolean(submission && submission.status !== 'in_progress');
   const showRunner = Boolean(assessment && data.canEditAssessment && (!submitted || editing));
-  const withdrawn = application.status === 'withdrawn';
+  // Closed by the programme team: nothing left for the applicant to do here.
+  const withdrawn = application.status === 'withdrawn' || application.status === 'removed';
+  const removedByTeam = application.status === 'removed';
 
   const SKIP = new Set(['firstName', 'lastName', 'phone', 'email']);
   const extra = Object.entries(application.responses || {}).filter(([k, v]) => !SKIP.has(k) && v != null && String(v).trim() !== '');
@@ -214,8 +217,17 @@ export default function ApplicationStatusPage() {
 
       {withdrawn ? (
         <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 dark:bg-slate-800/40 p-6 text-center">
-          <p className="font-medium text-slate-700">You withdrew this application.</p>
-          <p className="mt-1 text-sm text-slate-500">If that was a mistake, you can apply again from the program page.</p>
+          {removedByTeam ? (
+            <>
+              <p className="font-medium text-slate-700">This application is closed.</p>
+              <p className="mt-1 text-sm text-slate-500">The programme team has closed it. If you think this is a mistake, reply to the email you received from them.</p>
+            </>
+          ) : (
+            <>
+              <p className="font-medium text-slate-700">You withdrew this application.</p>
+              <p className="mt-1 text-sm text-slate-500">If that was a mistake, you can apply again from the program page.</p>
+            </>
+          )}
         </div>
       ) : (
         <Timeline status={application.status} hasAssessment={!!assessment} />

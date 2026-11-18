@@ -13,6 +13,7 @@ import { apiClient } from '@/lib/services/api-client';
 import { Drawer } from '@/components/shared/Drawer';
 import { SelectMenu } from '@/components/shared/SelectMenu';
 import { StandingClanRequests } from '@/components/shared/StandingClanRequests';
+import { AdminMenteeDrawer } from '@/components/admin/AdminMenteeDrawer';
 
 type Tab = 'requests' | 'cross' | 'standing';
 const CROSS_KINDS = [
@@ -96,6 +97,18 @@ function AdminClanRequestsInner() {
   const [destinations, setDestinations] = useState<ClanDestination[] | null>(null);
   const [confirmCross, setConfirmCross] = useState(false);
   const chosen = destinations?.find((d) => d.id === decisionClan) || null;
+
+  // The mentee whose profile is open (from a request row).
+  const [viewing, setViewing] = useState<ChangeRequest | null>(null);
+
+  /** Approve a request: a mentee's own ask, or one whose clan has closed, needs a destination chosen first. */
+  const approve = (r: ChangeRequest) => (r.origin === 'mentee' || r.toClanOpen === false
+    ? openDecision(r, true)
+    : act(r.id, () => clanRequestsApi.resolveRequest(r.id, 'approved'), 'Approved - mentee moved'));
+  /** Deny a request: a mentee's own ask needs a reason they will read. */
+  const deny = (r: ChangeRequest) => (r.origin === 'mentee'
+    ? openDecision(r, false)
+    : act(r.id, () => clanRequestsApi.resolveRequest(r.id, 'denied'), 'Denied'));
 
   const openDecision = (request: ChangeRequest, approve: boolean) => {
     setDeciding({ request, approve });
@@ -267,7 +280,14 @@ function AdminClanRequestsInner() {
                   <div key={r.id} className="bg-card rounded-2xl border border-slate-200 p-4 flex items-center gap-3">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <p className="text-sm font-medium text-slate-900">{r.mentee}</p>
+                        {r.menteeId ? (
+                          <button type="button" onClick={() => setViewing(r)} title="See their profile, clan, mentors and work"
+                            className="text-sm font-medium text-slate-900 hover:text-brand-700 hover:underline underline-offset-2">
+                            {r.mentee}
+                          </button>
+                        ) : (
+                          <p className="text-sm font-medium text-slate-900">{r.mentee}</p>
+                        )}
                         {/* A mentor's ask is already with the receiving clan — say
                             so, so an admin doesn't think it's stuck on them. */}
                         {r.origin === 'mentor' && (
@@ -312,16 +332,11 @@ function AdminClanRequestsInner() {
                     {r.status === 'pending' ? (
                       <div className="flex items-center gap-1.5 shrink-0">
                         <button
-                          // A mentee's ask, or one whose clan has closed, needs a destination chosen.
-                          onClick={() => (r.origin === 'mentee' || r.toClanOpen === false
-                            ? openDecision(r, true)
-                            : act(r.id, () => clanRequestsApi.resolveRequest(r.id, 'approved'), 'Approved - mentee moved'))}
+                          onClick={() => approve(r)}
                           disabled={busy === r.id}
                           className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-medium hover:bg-emerald-100 disabled:opacity-50"><Check className="w-3.5 h-3.5" />Approve</button>
                         <button
-                          onClick={() => (r.origin === 'mentee'
-                            ? openDecision(r, false)
-                            : act(r.id, () => clanRequestsApi.resolveRequest(r.id, 'denied'), 'Denied'))}
+                          onClick={() => deny(r)}
                           disabled={busy === r.id}
                           className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 text-slate-600 text-xs font-medium hover:border-red-300 hover:text-red-600 disabled:opacity-50"><X className="w-3.5 h-3.5" />Deny</button>
                       </div>
@@ -456,6 +471,26 @@ function AdminClanRequestsInner() {
           )}
         </>
       )}
+
+      {/* Who is asking: their profile, with the request's own decision at hand. */}
+      <AdminMenteeDrawer
+        menteeId={viewing?.menteeId ?? null}
+        title={viewing?.mentee || 'Mentee'}
+        subtitle={viewing ? `${viewing.fromClan || 'No clan'} → ${viewing.toClan || (viewing.status === 'pending' ? 'you choose' : 'not decided')}` : undefined}
+        onClose={() => setViewing(null)}
+        footer={viewing?.status === 'pending' ? (
+          <>
+            <button onClick={() => { const r = viewing; setViewing(null); void deny(r); }} disabled={busy === viewing.id}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-slate-200 text-slate-700 text-sm hover:border-red-300 hover:text-red-600 disabled:opacity-50">
+              <X className="w-4 h-4" />Deny
+            </button>
+            <button onClick={() => { const r = viewing; setViewing(null); void approve(r); }} disabled={busy === viewing.id}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm hover:bg-emerald-700 disabled:opacity-50">
+              <Check className="w-4 h-4" />Approve
+            </button>
+          </>
+        ) : undefined}
+      />
 
       {/* Deciding a mentee's own request: choose where they go, or say why not. */}
       <Drawer

@@ -170,7 +170,7 @@ class PublicIntakeService {
     let application = await models.Application.findOne({ where: { cohortId: cohort.id, email } });
     const isNew = !application;
     if (application) {
-      if (['accepted', 'rejected'].includes(application.status)) {
+      if (['accepted', 'rejected', 'removed'].includes(application.status)) {
         throw new ConflictError('An application with this email has already been processed');
       }
       // Changing level invalidates a previously-assigned assessment (re-pick).
@@ -243,7 +243,8 @@ class PublicIntakeService {
     // (later/earlier) deadline, falling back to the apply-closes date.
     const infoDeadline = cohort?.applyClosesAt || null;
     const assessmentDeadline = cohort?.assessmentDeadline || cohort?.applyClosesAt || null;
-    const decided = ['accepted', 'rejected'].includes(application.status);
+    // Removed by an admin counts as settled: nothing more can be changed.
+    const decided = ['accepted', 'rejected', 'removed'].includes(application.status);
     const pastInfoDeadline = !!(infoDeadline && now > new Date(infoDeadline));
     const pastAssessmentDeadline = !!(assessmentDeadline && now > new Date(assessmentDeadline));
 
@@ -323,7 +324,7 @@ class PublicIntakeService {
     const application = await this._findByAccessToken(rawToken);
     const cohort = application.cohort;
 
-    if (['accepted', 'rejected'].includes(application.status)) throw new ConflictError('Your application has already been decided and can no longer be edited.');
+    if (['accepted', 'rejected', 'removed'].includes(application.status)) throw new ConflictError('Your application has already been decided and can no longer be edited.');
     if (application.status === 'withdrawn') throw new ConflictError('This application has been withdrawn.');
     if (cohort?.applyClosesAt && new Date() > new Date(cohort.applyClosesAt)) throw new ValidationError('The deadline to edit your application has passed.');
 
@@ -386,7 +387,7 @@ class PublicIntakeService {
   /** Withdraw an application (self-serve). Allowed any time before a decision. */
   async withdrawApplication(rawToken) {
     const application = await this._findByAccessToken(rawToken);
-    if (['accepted', 'rejected'].includes(application.status)) {
+    if (['accepted', 'rejected', 'removed'].includes(application.status)) {
       throw new ConflictError('Your application has already been decided and can no longer be withdrawn.');
     }
     if (application.status !== 'withdrawn') await application.update({ status: 'withdrawn' });
@@ -404,7 +405,7 @@ class PublicIntakeService {
     const application = await this._findByAccessToken(rawToken);
     const cohort = application.cohort;
 
-    if (['accepted', 'rejected'].includes(application.status)) {
+    if (['accepted', 'rejected', 'removed'].includes(application.status)) {
       throw new ConflictError('Your application has already been decided — the assessment can no longer be changed.');
     }
     const assessmentDeadline = cohort?.assessmentDeadline || cohort?.applyClosesAt;
@@ -525,7 +526,7 @@ class PublicIntakeService {
     if (!cohort) return generic;
 
     const application = await models.Application.findOne({ where: { cohortId: cohort.id, email } });
-    if (!application || ['accepted', 'rejected'].includes(application.status)) return generic;
+    if (!application || ['accepted', 'rejected', 'removed'].includes(application.status)) return generic;
 
     const rawToken = generateRandomToken();
     await application.update({

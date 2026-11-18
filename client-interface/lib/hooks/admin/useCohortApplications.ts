@@ -8,7 +8,9 @@ import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import type { Cohort } from './useCohorts';
 
 export type ApplicationStatus =
-  | 'pending' | 'assessment_sent' | 'under_review' | 'accepted' | 'rejected' | 'waitlisted' | 'withdrawn';
+  | 'pending' | 'assessment_sent' | 'under_review' | 'accepted' | 'rejected' | 'waitlisted' | 'withdrawn'
+  /** Taken out of the intake by an admin (who and why are on the application). */
+  | 'removed';
 
 export interface Application {
   id: string;

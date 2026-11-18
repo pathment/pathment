@@ -39,6 +39,34 @@ export const cohortApi = {
 };
 
 /** Applications - intake records inside a cohort. Admin-only. */
+/** What removing an applicant from the intake would undo. */
+export interface RemovalPreview {
+  application: { id: string; status: string; email: string; name: string };
+  alreadyRemoved: boolean;
+  pools: { memberId: string; poolId: string; poolName: string; openTasks: number; placed: boolean }[];
+  invite: { id: string } | null;
+  programme: {
+    userId: string;
+    clans: { id: string; name: string }[];
+    openTasks: number;
+    enrollments: { id: string; status: string }[];
+  } | null;
+}
+
+/** Who removed an applicant, when and why. */
+export interface ApplicationRemoval {
+  at: string;
+  by: string | null;
+  reason: string | null;
+  undone: {
+    pools?: { poolName: string; tasksCancelled: number }[];
+    invite?: boolean;
+    clans?: string[];
+    tasksCancelled?: number;
+    enrollmentsDropped?: number;
+  } | null;
+}
+
 export const applicationApi = {
   list: (cohortId: string, status?: string) =>
     apiClient.get(`/intake/cohorts/${cohortId}/applications`, { params: { status } }),
@@ -59,6 +87,10 @@ export const applicationApi = {
     apiClient.post(`/intake/applications/${id}/accept`, { clanId }),
   reject: (id: string, reason?: string) =>
     apiClient.post(`/intake/applications/${id}/reject`, { reason }),
+  /** What removing this applicant would undo (no changes). */
+  removalPreview: (id: string) => apiClient.get(`/intake/applications/${id}/removal`),
+  /** Take them out of the intake at any stage; `reason` is kept with who did it. */
+  remove: (id: string, reason: string) => apiClient.post(`/intake/applications/${id}/remove`, { reason }),
   /** Accept + invite a batch of selected applicants (emails go out — irreversible).
    *  Idempotent: already-accepted / registered / withdrawn are skipped with a reason. */
   bulkAccept: (cohortId: string, applicationIds: string[], clanId?: string) =>

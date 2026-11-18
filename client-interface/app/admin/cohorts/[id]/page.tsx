@@ -23,6 +23,7 @@ import { AddToPoolButton } from '@/components/admin/pools/AddToPoolButton';
 import { LevelCriteriaEditor } from '@/components/admin/LevelCriteriaEditor';
 import { IntakeAutomationPanel } from '@/components/admin/IntakeAutomationPanel';
 import { Drawer } from '@/components/shared/Drawer';
+import { RemoveFromIntakePanel } from '@/components/admin/RemoveFromIntakePanel';
 import RichTextEditor from '@/components/shared/RichTextEditor';
 import { RichContent } from '@/components/shared/RichContent';
 import { getBrowserTimeZone, splitLocal } from '@/lib/utils/datetime';
@@ -58,6 +59,7 @@ const STATUS_TABS: { key: ApplicationStatus | 'all'; label: string }[] = [
   { key: 'rejected', label: 'Rejected' },
   { key: 'waitlisted', label: 'Waitlisted' },
   { key: 'withdrawn', label: 'Withdrawn' },
+  { key: 'removed', label: 'Removed' },
 ];
 
 const STATUS_CHIP: Record<ApplicationStatus, string> = {
@@ -68,6 +70,7 @@ const STATUS_CHIP: Record<ApplicationStatus, string> = {
   rejected:        'bg-rose-50 text-rose-700',
   waitlisted:      'bg-purple-50 text-purple-700',
   withdrawn:       'bg-slate-200 text-slate-500',
+  removed:         'bg-slate-200 text-slate-500 line-through',
 };
 
 /** Minimal CSV → array of header→value objects (parses every column). */
@@ -107,10 +110,12 @@ function fullName(a: Application) {
 }
 
 function ApplicationDrawer({
-  app, onClose, onUpdate, onAccept, onReject, levelLabel,
+  app, onClose, onUpdate, onAccept, onReject, levelLabel, onRemoved,
 }: {
   app: Application;
   onClose: () => void;
+  /** After the applicant was taken out of the intake. */
+  onRemoved: () => void;
   /** Level key → the admin's own label, for the placement panel. */
   levelLabel: (k: string) => string;
   onUpdate: (id: string, data: { status?: string; assessmentScore?: number; reviewerNotes?: string; decisionReason?: string }) => Promise<void>;
@@ -123,7 +128,17 @@ function ApplicationDrawer({
   const [rejecting, setRejecting] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
   const [decReason, setDecReason] = useState(app.decisionReason ?? '');
-  const decided = app.status === 'accepted' || app.status === 'rejected';
+  const decided = app.status === 'accepted' || app.status === 'rejected' || app.status === 'removed';
+  const removed = app.status === 'removed';
+  const [removing, setRemoving] = useState(false);
+  const stopRemoving = useCallback(() => setRemoving(false), []);
+  const removeButton = (
+    <button onClick={() => setRemoving(true)} disabled={busy}
+      title="Take them out of the intake — undoes their pool places, invitation and, if they joined, their clan and enrollment"
+      className="mr-auto inline-flex items-center gap-1.5 px-3 py-2 text-sm text-slate-500 hover:text-rose-700 rounded-lg">
+      <Trash2 className="w-4 h-4" /> Remove from intake
+    </button>
+  );
 
   // Load the assessment submission (if any) for this application.
   const [detail, setDetail] = useState<any>(null);
@@ -151,7 +166,12 @@ function ApplicationDrawer({
           {app.phone && <span className="inline-flex items-center gap-1"><Phone className="w-3 h-3" />{app.phone}</span>}
         </div>
       )}
-      footer={decided ? undefined : (
+      footer={removing ? (
+        <RemoveFromIntakePanel applicationId={app.id} name={fullName(app)} onCancel={stopRemoving}
+          onRemoved={() => { setRemoving(false); reloadDetail(); onRemoved(); }} />
+      ) : removed ? undefined : decided ? (
+        <div className="flex w-full">{removeButton}</div>
+      ) : (
         <div className="w-full">
           {rejecting ? (
             <div className="space-y-2">
@@ -165,7 +185,8 @@ function ApplicationDrawer({
               </div>
             </div>
           ) : (
-            <div className="flex justify-end gap-2">
+            <div className="flex items-center justify-end gap-2">
+              {removeButton}
               <button onClick={() => setRejecting(true)} disabled={busy} className="inline-flex items-center gap-1.5 px-4 py-2 text-sm border border-rose-200 text-rose-700 hover:bg-rose-50 rounded-lg">
                 <XCircle className="w-4 h-4" /> Reject
               </button>
@@ -184,6 +205,31 @@ function ApplicationDrawer({
             {app.programPreference && <span className="text-xs text-slate-500">wants: {app.programPreference}</span>}
             {app.user && <span className="text-xs text-emerald-600">· registered</span>}
           </div>
+
+          {/* Removed: who, when, why, and what it undid. */}
+          {removed && (
+            <div className="rounded-xl border border-slate-300 bg-slate-50 dark:bg-white/5 p-4 text-sm">
+              <p className="font-medium text-slate-800">Removed from the intake</p>
+              {detail?.removal ? (
+                <>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    {detail.removal.by ? `By ${detail.removal.by}` : 'By an admin'} · {new Date(detail.removal.at).toLocaleString()}
+                  </p>
+                  {detail.removal.reason && <p className="mt-2 text-slate-700 whitespace-pre-wrap">{detail.removal.reason}</p>}
+                  {detail.removal.undone && (
+                    <ul className="mt-2 list-disc pl-4 text-xs text-slate-500 space-y-0.5">
+                      {(detail.removal.undone.pools || []).map((p: { poolName: string; tasksCancelled: number }) => (
+                        <li key={p.poolName}>Withdrawn from {p.poolName}{p.tasksCancelled ? ` (${p.tasksCancelled} task${p.tasksCancelled === 1 ? '' : 's'} cancelled)` : ''}</li>
+                      ))}
+                      {detail.removal.undone.invite && <li>Sign-up invitation revoked</li>}
+                      {(detail.removal.undone.clans || []).length > 0 && <li>Removed from {detail.removal.undone.clans.join(', ')}{detail.removal.undone.tasksCancelled ? ` (${detail.removal.undone.tasksCancelled} task${detail.removal.undone.tasksCancelled === 1 ? '' : 's'} cancelled)` : ''}</li>}
+                      {detail.removal.undone.enrollmentsDropped > 0 && <li>Programme enrollment dropped</li>}
+                    </ul>
+                  )}
+                </>
+              ) : <p className="mt-1 text-xs text-slate-400">Loading who removed them…</p>}
+            </div>
+          )}
 
           {/* Rejection reason — editable after a decision; shown to the applicant. */}
           {app.status === 'rejected' && (
@@ -1566,6 +1612,7 @@ export default function CohortReviewPage({ params }: { params: Promise<{ id: str
           onAccept={acceptApplication}
           onReject={rejectApplication}
           levelLabel={levelLabel}
+          onRemoved={() => { void refetch(); }}
         />
       )}
     </div>

@@ -42,6 +42,9 @@ router.post('/cohorts/:id/assign/commit', ...adminOnly, intakeController.commitC
 router.post('/cohorts/:id/assign/unassigned/preview', ...adminOnly, intakeController.previewUnassignedAssignment);
 router.post('/cohorts/:id/assign/unassigned/commit', ...adminOnly, intakeController.commitUnassignedAssignment);
 router.post('/applications/:id/reject', ...adminOnly, intakeController.rejectApplication);
+// Take an applicant out of the intake at any stage (pools, invite, programme undone; who/why kept).
+router.get('/applications/:id/removal', ...adminOnly, intakeController.previewApplicationRemoval);
+router.post('/applications/:id/remove', ...adminOnly, intakeController.removeApplication);
 router.post('/assessment-submissions/:submissionId/grade', ...adminOnly, intakeController.gradeAssessmentSubmission);
 router.post('/assessment-submissions/:submissionId/ai-grade', ...adminOnly, intakeController.aiGradeSubmission);
 router.post('/assessment-submissions/:submissionId/apply-ai', ...adminOnly, intakeController.applyAiScores);

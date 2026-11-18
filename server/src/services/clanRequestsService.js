@@ -124,6 +124,8 @@ class ClanRequestsService {
       requests: requests.map((r) => ({
         id: r.id,
         mentee: fullName(r.mentee),
+        // So the admin can open the mentee's profile from the request.
+        menteeId: r.menteeId || null,
         fromClan: r.fromClan?.name || null,
         toClan: r.toClan?.name || null,
         fromClanId: r.fromClanId || null,

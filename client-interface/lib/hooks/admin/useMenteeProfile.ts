@@ -122,8 +122,10 @@ const EMPTY: MenteeProfileBundle = {
   stats: null,
 };
 
-export function useMenteeProfile(): UseMenteeProfileReturn {
-  const { id } = useParams<{ id: string }>();
+/** The mentee in the route (`/admin/mentees/[id]`), or `menteeId` when shown elsewhere (a drawer). */
+export function useMenteeProfile(menteeId?: string | null): UseMenteeProfileReturn {
+  const params = useParams<{ id: string }>();
+  const id = menteeId ?? params?.id;
 
   const { data, loading, error, errorStatus, refetch } = useApiQuery<MenteeProfileBundle>({
     queryKey: qk.admin.menteeProfileDetail(id ?? ''),

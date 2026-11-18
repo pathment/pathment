@@ -16,7 +16,7 @@ const assessmentService = require('./assessmentService');
  *   reviewer_notes   internal notes
  */
 const EDITABLE = ['total_score', 'status', 'reviewer_notes'];
-const STATUSES = ['pending', 'assessment_sent', 'under_review', 'accepted', 'rejected', 'waitlisted', 'withdrawn'];
+const STATUSES = ['pending', 'assessment_sent', 'under_review', 'accepted', 'rejected', 'waitlisted', 'withdrawn', 'removed'];
 
 const num = (v) => (v == null || v === '' ? null : Number(v));
 const shortPrompt = (p) => String(p || 'Question').replace(/\s+/g, ' ').trim().slice(0, 60);

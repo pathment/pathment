@@ -80,7 +80,7 @@ class PoolAutomationService {
    */
   async backfillCohort(pool, cohortId) {
     const applications = await models.Application.findAll({
-      where: { cohortId, status: { [Op.notIn]: ['withdrawn', 'rejected'] } },
+      where: { cohortId, status: { [Op.notIn]: ['withdrawn', 'rejected', 'removed'] } },
       attributes: ['id', 'email', 'firstName', 'lastName', 'level'],
     });
     if (!applications.length) return { added: 0 };
@@ -131,7 +131,8 @@ class PoolAutomationService {
   async processApplication(applicationId, { review = true } = {}) {
     if (review) await safely('AI review', () => this.autoLevel(applicationId));
     const application = await models.Application.findByPk(applicationId);
-    if (!application) return;
+    // Removed from the intake: it must not find its way back into a pool.
+    if (!application || application.status === 'removed') return;
     await safely('add to attached pools', () => this.onApplication(application));
     await safely('pool level follows', () => this.syncLevelFromApplication(applicationId));
   }

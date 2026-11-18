@@ -59,7 +59,8 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       defaultValue: 'pending',
       validate: {
-        isIn: [['pending', 'assessment_sent', 'under_review', 'accepted', 'rejected', 'waitlisted', 'withdrawn']]
+        // 'removed': taken out of the intake by an admin (see applicationRemovalService).
+        isIn: [['pending', 'assessment_sent', 'under_review', 'accepted', 'rejected', 'waitlisted', 'withdrawn', 'removed']]
       }
     },
     assessmentScore: {

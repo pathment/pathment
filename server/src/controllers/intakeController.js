@@ -320,6 +320,18 @@ const rejectApplication = catchAsync(async (req, res) => {
   res.status(200).json(successResponse('Application rejected', { application }));
 });
 
+/** GET /applications/:id/removal — what removing this applicant would undo (no writes). */
+const previewApplicationRemoval = catchAsync(async (req, res) => {
+  const preview = await require('../services/applicationRemovalService').preview(req.params.id);
+  res.status(200).json(successResponse('Removal preview', preview));
+});
+
+/** POST /applications/:id/remove  { reason } — take them out of the intake, undoing what it started. */
+const removeApplication = catchAsync(async (req, res) => {
+  const result = await require('../services/applicationRemovalService').remove(req.params.id, { reason: req.body?.reason }, req.user);
+  res.status(200).json(successResponse('Applicant removed from the intake', result));
+});
+
 /** POST /cohorts/:id/assign/preview  { applicationIds, settings } — propose clans, no writes. */
 const previewClanAssignment = catchAsync(async (req, res) => {
   const { applicationIds, settings } = req.body || {};
@@ -346,6 +358,8 @@ const commitUnassignedAssignment = catchAsync(async (req, res) => {
 });
 
 module.exports = {
+  previewApplicationRemoval,
+  removeApplication,
   listCohorts,
   getCohort,
   createCohort,
