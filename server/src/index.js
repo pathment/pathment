@@ -195,6 +195,11 @@ async function start() {
       require('./workers/syncWorker').start();
     }
 
+    // Send outgoing webhooks (webhook_deliveries), with retries.
+    if (process.env.WEBHOOK_WORKER_DISABLED !== 'true') {
+      require('./workers/webhookWorker').start();
+    }
+
     server.listen(PORT, () => {
       console.log(`✓ Server running on port ${PORT}`);
       console.log(`✓ Environment: ${process.env.NODE_ENV || 'development'}`);

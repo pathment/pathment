@@ -101,6 +101,9 @@ const WORKSPACE_MODELS = {
   SyncConnection: 'sync_connections',
   SyncRun: 'sync_runs',
   ExternalIdentity: 'external_identities',
+  // Outgoing webhooks (migration 155).
+  WebhookEndpoint: 'webhook_endpoints',
+  WebhookDelivery: 'webhook_deliveries',
 };
 
 const GLOBAL_MODELS = new Set([

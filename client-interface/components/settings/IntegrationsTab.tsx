@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  AlertTriangle, BookOpen, Cable, CheckCircle2, Copy, Download, KeyRound, Loader2, Plus, RefreshCw, Trash2, Wand2, XCircle,
+  AlertTriangle, BookOpen, Cable, CheckCircle2, Copy, Download, Eye, KeyRound, Loader2, Plus, RefreshCw, Send, Trash2, Wand2, Webhook, XCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Drawer } from '@/components/shared/Drawer';
@@ -11,7 +11,7 @@ import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { cohortApi } from '@/lib/services/intake-api';
 import {
   integrationsApi, type ApiKeyInfo, type FieldMapping, type IntegrationMeta, type MappingRule, type PreviewRow,
-  type SyncConnection, type SyncRun,
+  type SyncConnection, type SyncRun, type WebhookDelivery, type WebhookEndpoint,
 } from '@/lib/services/integrations-api';
 
 /**
@@ -46,7 +46,7 @@ async function copy(text: string, what = 'Copied') {
   try { await navigator.clipboard.writeText(text); toast.success(what); } catch { toast.error('Could not copy — select it and copy by hand'); }
 }
 
-type Section = 'keys' | 'connections' | 'history';
+type Section = 'keys' | 'connections' | 'history' | 'webhooks';
 
 export default function IntegrationsTab() {
   const [section, setSection] = useState<Section>('keys');
@@ -75,7 +75,7 @@ export default function IntegrationsTab() {
       )}
 
       <div className="flex gap-1 border-b border-slate-200 dark:border-slate-700">
-        {([['keys', 'API keys'], ['connections', 'Connections'], ['history', 'Sync history']] as const).map(([id, label]) => (
+        {([['keys', 'API keys'], ['connections', 'Connections'], ['history', 'Sync history'], ['webhooks', 'Webhooks']] as const).map(([id, label]) => (
           <button key={id} onClick={() => setSection(id)}
             className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${section === id ? 'border-brand-600 text-brand-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
             {label}
@@ -86,6 +86,7 @@ export default function IntegrationsTab() {
       {section === 'keys' && <ApiKeysSection meta={meta} />}
       {section === 'connections' && <ConnectionsSection meta={meta} onRan={() => setSection('history')} />}
       {section === 'history' && <HistorySection />}
+      {section === 'webhooks' && <WebhooksSection meta={meta} />}
     </div>
   );
 }
@@ -576,12 +577,294 @@ function StatusPill({ status }: { status: string }) {
     queued: 'bg-slate-100 text-slate-600', running: 'bg-brand-50 text-brand-700',
     partial: 'bg-amber-50 text-amber-700', expired: 'bg-amber-50 text-amber-700',
     failed: 'bg-rose-50 text-rose-700', revoked: 'bg-slate-100 text-slate-500',
+    enabled: 'bg-emerald-50 text-emerald-700', disabled: 'bg-slate-100 text-slate-500',
+    pending: 'bg-slate-100 text-slate-600', retrying: 'bg-amber-50 text-amber-700',
   };
-  const label: Record<string, string> = { succeeded: 'Done', partial: 'Done with errors', running: 'Running', queued: 'Queued', failed: 'Failed', active: 'Active', revoked: 'Revoked', expired: 'Expired' };
+  const label: Record<string, string> = {
+    enabled: 'On', disabled: 'Off', pending: 'Waiting', retrying: 'Retrying', succeeded: 'Done', partial: 'Done with errors', running: 'Running', queued: 'Queued', failed: 'Failed', active: 'Active', revoked: 'Revoked', expired: 'Expired' };
   return (
     <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${map[status] || 'bg-slate-100 text-slate-600'}`}>
       {status === 'running' && <Loader2 className="h-3 w-3 animate-spin" />}{label[status] || status}
     </span>
+  );
+}
+
+// ── Webhooks ────────────────────────────────────────────────────────────────────
+function WebhooksSection({ meta }: { meta: IntegrationMeta | null }) {
+  const confirm = useConfirm();
+  const [list, setList] = useState<WebhookEndpoint[] | null>(null);
+  const [editing, setEditing] = useState<WebhookEndpoint | 'new' | null>(null);
+  const [secret, setSecret] = useState<{ secret: string; url: string; fresh: boolean } | null>(null);
+  const [open, setOpen] = useState<WebhookEndpoint | null>(null);
+  const load = useCallback(() => integrationsApi.listWebhooks().then(setList).catch((e) => { toast.error(extractApiErrorMessage(e, 'Could not load webhooks')); setList([]); }), []);
+  useEffect(() => { void load(); }, [load]);
+
+  const toggle = async (w: WebhookEndpoint) => {
+    try {
+      await integrationsApi.updateWebhook(w.id, { status: w.status === 'enabled' ? 'disabled' : 'enabled' });
+      toast.success(w.status === 'enabled' ? 'Turned off — nothing more is sent to it' : 'Turned on');
+      void load();
+    } catch (e) { toast.error(extractApiErrorMessage(e, 'Could not change it')); }
+  };
+  const remove = async (w: WebhookEndpoint) => {
+    if (!(await confirm({
+      title: 'Delete this endpoint?',
+      description: `${w.url} stops getting events, and its delivery log goes with it. This cannot be undone.`,
+      confirmLabel: 'Delete endpoint', variant: 'danger',
+    }))) return;
+    try { await integrationsApi.removeWebhook(w.id); toast.success('Endpoint deleted'); void load(); }
+    catch (e) { toast.error(extractApiErrorMessage(e, 'Could not delete it')); }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm text-slate-500">
+          Pathment tells your systems when something happens — an applicant is accepted, a mentee finishes a roadmap — with a signed POST to the URL you give.{' '}
+          <a href={`${DOCS}/guides/webhooks`} target="_blank" rel="noreferrer" className="text-brand-700 underline">How to receive them</a>
+        </p>
+        <button onClick={() => setEditing('new')} className={`${primaryBtn} shrink-0`}><Plus className="w-4 h-4" />Add endpoint</button>
+      </div>
+      {list === null ? <Spinner /> : list.length === 0 ? (
+        <Empty icon={<Webhook className="w-9 h-9 text-slate-300" />} title="No endpoints yet" body="Add the URL of the system that should hear about applicants, mentees and syncs." />
+      ) : (
+        <div className={`${card} divide-y divide-slate-100 dark:divide-slate-800`}>
+          {list.map((w) => (
+            <div key={w.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
+              <button onClick={() => setOpen(w)} className="min-w-0 flex-1 text-left">
+                <p className="truncate font-mono text-sm text-slate-900">{w.url}</p>
+                <p className="mt-0.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
+                  {w.description && <span>{w.description}</span>}
+                  <span>{w.events.length} event{w.events.length === 1 ? '' : 's'}</span>
+                  <span>{w.lastSuccessAt ? `Last delivered ${when(w.lastSuccessAt)}` : 'Nothing delivered yet'}</span>
+                  {w.consecutiveFailures > 0 && <span className="text-amber-700">{w.consecutiveFailures} failed in a row</span>}
+                </p>
+                {w.status === 'disabled' && w.disabledReason && <p className="mt-1 text-xs text-rose-700">{w.disabledReason}</p>}
+              </button>
+              <StatusPill status={w.status} />
+              <button onClick={() => setOpen(w)} className={ghostBtn}>Deliveries</button>
+              <button onClick={() => setEditing(w)} className={ghostBtn}>Edit</button>
+              <button onClick={() => void toggle(w)} className={ghostBtn}>{w.status === 'enabled' ? 'Turn off' : 'Turn on'}</button>
+              <button onClick={() => void remove(w)} className={`${ghostBtn} hover:text-rose-700`} aria-label="Delete endpoint"><Trash2 className="h-3.5 w-3.5" /></button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {editing && (
+        <WebhookDrawer meta={meta} endpoint={editing === 'new' ? null : editing} onClose={() => setEditing(null)}
+          onSaved={(created) => { setEditing(null); if (created) setSecret({ ...created, fresh: true }); void load(); }} />
+      )}
+      {open && (
+        <DeliveriesDrawer endpoint={open} onClose={() => { setOpen(null); void load(); }}
+          onSecret={(s) => setSecret({ secret: s, url: open.url, fresh: false })} />
+      )}
+      {secret && (
+        <Drawer open onClose={() => setSecret(null)} title="Signing secret" subtitle={secret.url} width="md"
+          footer={<button onClick={() => setSecret(null)} className={primaryBtn}>Done</button>}>
+          <div className="space-y-4">
+            {secret.fresh && (
+              <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>Put this in your receiver now. It proves each request really came from Pathment. You can show it again later from the endpoint&apos;s deliveries.</span>
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <code className="min-w-0 flex-1 break-all rounded-lg border border-slate-200 bg-slate-50 p-3 font-mono text-sm dark:border-slate-700 dark:bg-slate-900">{secret.secret}</code>
+              <button onClick={() => void copy(secret.secret, 'Secret copied')} className={ghostBtn}><Copy className="h-3.5 w-3.5" />Copy</button>
+            </div>
+            <p className="text-xs text-slate-500">
+              Each request carries a <code className="font-mono">Pathment-Signature</code> header — see{' '}
+              <a href={`${DOCS}/guides/webhooks`} target="_blank" rel="noreferrer" className="text-brand-700 underline">verifying signatures</a>.
+            </p>
+          </div>
+        </Drawer>
+      )}
+    </div>
+  );
+}
+
+function WebhookDrawer({ meta, endpoint, onClose, onSaved }: {
+  meta: IntegrationMeta | null; endpoint: WebhookEndpoint | null; onClose: () => void;
+  onSaved: (created: { secret: string; url: string } | null) => void;
+}) {
+  const events = useMemo(() => meta?.webhookEvents || [], [meta]);
+  const [url, setUrl] = useState(endpoint?.url || '');
+  const [description, setDescription] = useState(endpoint?.description || '');
+  const [chosen, setChosen] = useState<string[]>(endpoint?.events || []);
+  const [saving, setSaving] = useState(false);
+  const all = events.length > 0 && chosen.length === events.length;
+  const groups = useMemo(() => {
+    const out: Record<string, { key: string; description: string }[]> = {};
+    for (const e of events) (out[e.key.split('.')[0]] ||= []).push(e);
+    return Object.entries(out);
+  }, [events]);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      if (endpoint) {
+        await integrationsApi.updateWebhook(endpoint.id, { url: url.trim(), description: description.trim() || null, events: chosen });
+        toast.success('Endpoint saved');
+        onSaved(null);
+      } else {
+        const out = await integrationsApi.createWebhook({ url: url.trim(), description: description.trim() || undefined, events: chosen });
+        toast.success('Endpoint added');
+        onSaved({ secret: out.secret, url: out.endpoint.url });
+      }
+    } catch (e) { toast.error(extractApiErrorMessage(e, 'Could not save the endpoint')); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <Drawer open onClose={onClose} width="md" title={endpoint ? 'Edit endpoint' : 'Add a webhook endpoint'}
+      footer={(
+        <button onClick={() => void save()} disabled={saving || !url.trim() || !chosen.length} className={primaryBtn}>
+          {saving && <Loader2 className="h-4 w-4 animate-spin" />}{endpoint ? 'Save' : 'Add endpoint'}
+        </button>
+      )}>
+      <div className="space-y-5">
+        <label className="block">
+          <span className="text-sm font-medium text-slate-800">URL</span>
+          <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://your-system.example.com/pathment/webhooks" className={`${field} mt-1 font-mono`} />
+          <span className="mt-1 block text-xs text-slate-500">Must be https and reachable from the internet. Answer with any 2xx within 10 seconds.</span>
+        </label>
+        <label className="block">
+          <span className="text-sm font-medium text-slate-800">Description <span className="font-normal text-slate-400">(optional)</span></span>
+          <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="e.g. CRM — admissions" className={`${field} mt-1`} maxLength={200} />
+        </label>
+        <div>
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-slate-800">Events to send</span>
+            <button onClick={() => setChosen(all ? [] : events.map((e) => e.key))} className="text-xs text-brand-700 hover:underline">{all ? 'Clear all' : 'Select all'}</button>
+          </div>
+          <div className="mt-2 space-y-3">
+            {groups.map(([group, items]) => (
+              <div key={group}>
+                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">{group}</p>
+                <div className="space-y-1">
+                  {items.map((e) => (
+                    <label key={e.key} className="flex cursor-pointer items-start gap-2.5 rounded-lg px-2 py-1.5 hover:bg-slate-50 dark:hover:bg-white/5">
+                      <input type="checkbox" className="mt-0.5" checked={chosen.includes(e.key)}
+                        onChange={(ev) => setChosen((c) => (ev.target.checked ? [...c, e.key] : c.filter((k) => k !== e.key)))} />
+                      <span>
+                        <code className="font-mono text-xs text-slate-800">{e.key}</code>
+                        <span className="block text-xs text-slate-500">{e.description}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </Drawer>
+  );
+}
+
+function DeliveriesDrawer({ endpoint, onClose, onSecret }: { endpoint: WebhookEndpoint; onClose: () => void; onSecret: (s: string) => void }) {
+  const confirm = useConfirm();
+  const [rows, setRows] = useState<WebhookDelivery[] | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const load = useCallback(
+    () => integrationsApi.listDeliveries(endpoint.id).then(setRows).catch((e) => { toast.error(extractApiErrorMessage(e, 'Could not load deliveries')); setRows([]); }),
+    [endpoint.id],
+  );
+  useEffect(() => { void load(); }, [load]);
+  // Keep it live while something is about to be sent.
+  useEffect(() => {
+    if (!rows?.some((r) => r.status === 'pending')) return;
+    const id = setInterval(() => void load(), 3000);
+    return () => clearInterval(id);
+  }, [rows, load]);
+
+  const ping = async () => {
+    setBusy('ping');
+    try {
+      const d = await integrationsApi.pingWebhook(endpoint.id);
+      if (d.status === 'succeeded') toast.success(`Test event delivered — HTTP ${d.lastStatusCode}`);
+      else toast.error(`Test event failed — ${d.lastError || `HTTP ${d.lastStatusCode}`}`);
+      void load();
+    } catch (e) { toast.error(extractApiErrorMessage(e, 'Could not send the test event')); }
+    finally { setBusy(null); }
+  };
+  const reveal = async () => {
+    setBusy('reveal');
+    try { onSecret(await integrationsApi.revealWebhookSecret(endpoint.id)); }
+    catch (e) { toast.error(extractApiErrorMessage(e, 'Could not show the secret')); }
+    finally { setBusy(null); }
+  };
+  const rotate = async () => {
+    if (!(await confirm({
+      title: 'Make a new signing secret?',
+      description: 'The old secret stops working straight away, so your receiver will reject events until you give it the new one.',
+      confirmLabel: 'Make new secret', variant: 'danger',
+    }))) return;
+    setBusy('rotate');
+    try { onSecret(await integrationsApi.rotateWebhookSecret(endpoint.id)); toast.success('New secret made'); }
+    catch (e) { toast.error(extractApiErrorMessage(e, 'Could not make a new secret')); }
+    finally { setBusy(null); }
+  };
+  const redeliver = async (d: WebhookDelivery) => {
+    setBusy(d.id);
+    try { await integrationsApi.redeliver(d.id); toast.success('Sending it again'); void load(); }
+    catch (e) { toast.error(extractApiErrorMessage(e, 'Could not send it again')); }
+    finally { setBusy(null); }
+  };
+
+  return (
+    <Drawer open onClose={onClose} width="lg" title="Deliveries" subtitle={endpoint.url}
+      footer={(
+        <div className="flex flex-wrap gap-2">
+          <button onClick={() => void ping()} disabled={!!busy} className={primaryBtn}>
+            {busy === 'ping' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}Send test event
+          </button>
+          <button onClick={() => void reveal()} disabled={!!busy} className={ghostBtn}><Eye className="h-3.5 w-3.5" />Show secret</button>
+          <button onClick={() => void rotate()} disabled={!!busy} className={ghostBtn}><KeyRound className="h-3.5 w-3.5" />New secret</button>
+        </div>
+      )}>
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm text-slate-500">The last 50 events sent here. A failed one is retried for just under two days.</p>
+          <button onClick={() => void load()} className={ghostBtn}><RefreshCw className="h-3.5 w-3.5" />Refresh</button>
+        </div>
+        {rows === null ? <Spinner /> : rows.length === 0 ? (
+          <Empty icon={<Send className="w-9 h-9 text-slate-300" />} title="Nothing sent yet" body="Send a test event to check your receiver, or wait for something to happen." />
+        ) : (
+          <div className={`${card} divide-y divide-slate-100 dark:divide-slate-800`}>
+            {rows.map((d) => (
+              <div key={d.id} className="px-3 py-2.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button onClick={() => setExpanded(expanded === d.id ? null : d.id)} className="min-w-0 flex-1 text-left">
+                    <p className="font-mono text-xs text-slate-900">{d.type}</p>
+                    <p className="text-xs text-slate-500">
+                      {when(d.createdAt)} · {d.attempts} attempt{d.attempts === 1 ? '' : 's'}
+                      {d.lastStatusCode ? ` · HTTP ${d.lastStatusCode}` : ''}{d.lastDurationMs != null ? ` · ${d.lastDurationMs} ms` : ''}
+                      {d.status === 'retrying' && d.nextAttemptAt ? ` · next try ${when(d.nextAttemptAt)}` : ''}
+                    </p>
+                    {d.lastError && d.status !== 'succeeded' && <p className="text-xs text-rose-700">{d.lastError}</p>}
+                  </button>
+                  <StatusPill status={d.status} />
+                  {d.status !== 'pending' && (
+                    <button onClick={() => void redeliver(d)} disabled={busy === d.id} className={ghostBtn}>
+                      {busy === d.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}Resend
+                    </button>
+                  )}
+                </div>
+                {expanded === d.id && (
+                  <div className="mt-2 space-y-2">
+                    <pre className="max-h-64 overflow-auto rounded-lg bg-slate-50 p-2 font-mono text-[11px] text-slate-700 dark:bg-slate-900 dark:text-slate-200">{JSON.stringify(d.payload, null, 2)}</pre>
+                    {d.lastResponseBody && <p className="text-xs text-slate-500">Your server answered: <code className="font-mono">{d.lastResponseBody.slice(0, 300)}</code></p>}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </Drawer>
   );
 }
 

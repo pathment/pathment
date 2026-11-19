@@ -183,8 +183,10 @@ class SyncService {
         records: null, // the outcome is kept; the payload isn't needed any more
         finishedAt: new Date(),
       });
+      await require('../webhooks/webhookService').emit(run.organizationId, 'sync.job.completed', () => ({ job: this.presentJob(run) }));
     } catch (error) {
       await run.update({ status: 'failed', errorMessage: String(error.message || error).slice(0, 1000), finishedAt: new Date() });
+      await require('../webhooks/webhookService').emit(run.organizationId, 'sync.job.completed', () => ({ job: this.presentJob(run) }));
       require('../utils/logger').error('Sync run failed', { runId, message: error.message });
     }
     return run;

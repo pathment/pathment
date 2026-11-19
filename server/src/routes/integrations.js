@@ -13,6 +13,7 @@ const apiKeys = require('../integrations/apiKeyService');
 const syncService = require('../integrations/syncService');
 const { TARGET_FIELDS, TRANSFORMS } = require('../integrations/fieldMapping');
 const { createAuditLog } = require('../utils/auditContext');
+const webhooks = require('../webhooks/webhookService');
 
 const router = express.Router();
 router.use(authenticate, requirePermission(PERMISSIONS.SYSTEM_SETTINGS));
@@ -27,6 +28,7 @@ router.get('/meta', (req, res) => {
     fields: TARGET_FIELDS,
     transforms: TRANSFORMS,
     maxRecords: syncService.MAX_RECORDS,
+    webhookEvents: Object.entries(webhooks.EVENTS).map(([key, description]) => ({ key, description })),
     baseUrl: process.env.PUBLIC_API_BASE_URL || 'https://api.pathment.me/api/v1',
   }));
 });
@@ -118,6 +120,53 @@ router.post('/runs', catchAsync(async (req, res) => {
     source: 'app',
   });
   res.status(202).json(successResponse('Sync queued', { run: syncService.presentJob(run) }, 202));
+}));
+
+// ── Webhooks ──────────────────────────────────────────────────────────────────
+router.get('/webhooks', catchAsync(async (req, res) => {
+  res.json(successResponse('Webhook endpoints', { endpoints: await webhooks.list() }));
+}));
+
+router.post('/webhooks', catchAsync(async (req, res) => {
+  const { endpoint, secret } = await webhooks.create(req.user, req.body || {});
+  await audit(req, 'WEBHOOK_ENDPOINT_CREATED', 'WebhookEndpoint', endpoint.id, { url: endpoint.url, events: endpoint.events });
+  res.status(201).json(successResponse('Webhook endpoint added', { endpoint, secret }, 201));
+}));
+
+router.patch('/webhooks/:id', catchAsync(async (req, res) => {
+  const endpoint = await webhooks.update(req.params.id, req.body || {});
+  await audit(req, 'WEBHOOK_ENDPOINT_UPDATED', 'WebhookEndpoint', endpoint.id, { url: endpoint.url, events: endpoint.events, status: endpoint.status });
+  res.json(successResponse('Webhook endpoint saved', { endpoint }));
+}));
+
+router.delete('/webhooks/:id', catchAsync(async (req, res) => {
+  await webhooks.remove(req.params.id);
+  await audit(req, 'WEBHOOK_ENDPOINT_DELETED', 'WebhookEndpoint', req.params.id, {});
+  res.json(successResponse('Webhook endpoint deleted', { deleted: true }));
+}));
+
+router.post('/webhooks/:id/reveal-secret', catchAsync(async (req, res) => {
+  const out = await webhooks.revealSecret(req.params.id);
+  await audit(req, 'WEBHOOK_SECRET_REVEALED', 'WebhookEndpoint', req.params.id, {});
+  res.json(successResponse('Signing secret', out));
+}));
+
+router.post('/webhooks/:id/rotate-secret', catchAsync(async (req, res) => {
+  const out = await webhooks.rotateSecret(req.params.id);
+  await audit(req, 'WEBHOOK_SECRET_ROTATED', 'WebhookEndpoint', req.params.id, {});
+  res.json(successResponse('New signing secret — update your receiver now', out));
+}));
+
+router.post('/webhooks/:id/ping', catchAsync(async (req, res) => {
+  res.json(successResponse('Test event sent', { delivery: await webhooks.ping(req.params.id) }));
+}));
+
+router.get('/webhooks/:id/deliveries', catchAsync(async (req, res) => {
+  res.json(successResponse('Deliveries', { deliveries: await webhooks.deliveries(req.params.id, { limit: req.query.limit }) }));
+}));
+
+router.post('/webhooks/deliveries/:id/redeliver', catchAsync(async (req, res) => {
+  res.json(successResponse('Queued again', { delivery: await webhooks.redeliver(req.params.id) }));
 }));
 
 module.exports = router;

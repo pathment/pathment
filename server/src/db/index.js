@@ -111,6 +111,9 @@ if (models.User && models.OrganizationMembership) {
   });
 }
 
+// Outgoing webhooks: report changes from the models themselves (src/webhooks/events.js).
+require('../webhooks/events').install(models);
+
 module.exports = {
   sequelize,
   Sequelize,
