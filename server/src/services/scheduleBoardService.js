@@ -103,7 +103,16 @@ class ScheduleBoardService {
     throw new ForbiddenError('You cannot change this plan');
   }
 
+  /**
+   * May this person set work in a plan, wearing the hat they have on now?
+   *
+   * In the mentee portal, nobody assigns: someone who is also a mentor or an
+   * admin is, right there, a mentee looking at their own day, and gets a
+   * mentee's planner (personal items, no "assign work"). They assign from the
+   * mentor or admin portal.
+   */
   async _canAssign(actor, clanId) {
+    if (require('../utils/auditContext').getRequestContext().portalRole === 'mentee') return false;
     return authz.can(actor, PERMISSIONS.SCHEDULE_ASSIGN, { clanId: clanId || null });
   }
 

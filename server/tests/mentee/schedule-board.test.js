@@ -90,6 +90,21 @@ describe('the day planner', () => {
       expect(b.viewer.canAssign).toBe(true);
       expect(slotOf(b, LOCKED).rights.canRetime).toBe(true);
     });
+
+    it('never lets anyone assign from the mentee portal, whatever else they are', async () => {
+      // Someone who is a mentor (or admin) as well as a mentee: in the mentee
+      // portal they wear the mentee hat, so no "assign work" there.
+      const { runWithRequestContext, getRequestContext } = require('../../src/utils/auditContext');
+      const inPortal = (portalRole, fn) => runWithRequestContext({ ...getRequestContext(), portalRole }, fn);
+
+      const asMentee = await inPortal('mentee', () => board.board(mentee.id, { clanId: clan.id }, mentor));
+      expect(asMentee.viewer.canAssign).toBe(false);
+      await expect(inPortal('mentee', () => board.addItem(mentee.id, OPEN, { title: 'Ship it', kind: 'review' }, mentor, clan.id)))
+        .rejects.toThrow();
+
+      const asMentor = await inPortal('mentor', () => board.board(mentee.id, { clanId: clan.id }, mentor));
+      expect(asMentor.viewer.canAssign).toBe(true);
+    });
   });
 
   describe('items', () => {
