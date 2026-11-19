@@ -83,7 +83,8 @@ class PlatformOrganizationService {
       created: [['createdAt', 'DESC']],
       name: [['name', 'ASC']],
       members: [[sequelize.literal(`(SELECT COUNT(*) FROM organization_memberships om
-        WHERE om.organization_id = "Organization"."id" AND om.status = 'active')`), 'DESC']],
+        JOIN users u ON u.id = om.user_id
+        WHERE om.organization_id = "Organization"."id" AND om.status = 'active' AND u.role = 'mentee')`), 'DESC']],
       activity: [['updatedAt', 'DESC']],
     }[sort] || [['createdAt', 'DESC']];
 
@@ -128,11 +129,14 @@ class PlatformOrganizationService {
   async _usageFor(ids) {
     if (!ids.length) return {};
     const [members, programs, clans] = await Promise.all([
-      models.OrganizationMembership.findAll({
-        ...SKIP, raw: true,
-        attributes: ['organizationId', [sequelize.fn('COUNT', '*'), 'count']],
-        where: { organizationId: ids, status: 'active' }, group: ['organization_id'],
-      }),
+      // Participants only (mentees), matching how plans count members.
+      sequelize.query(
+        `SELECT om.organization_id AS "organizationId", COUNT(*)::int AS count
+         FROM organization_memberships om JOIN users u ON u.id = om.user_id
+         WHERE om.organization_id IN (:ids) AND om.status = 'active' AND u.role = 'mentee'
+         GROUP BY om.organization_id`,
+        { replacements: { ids }, type: sequelize.QueryTypes.SELECT },
+      ),
       models.Program.findAll({
         ...SKIP, raw: true,
         attributes: ['organizationId', [sequelize.fn('COUNT', '*'), 'count']],

@@ -31,6 +31,9 @@ const serializeOrganization = (organization, membership = null) => ({
   membershipRole: membership?.role || null,
 });
 
+/** The user role that counts toward a plan's member limit. */
+const PARTICIPANT_ROLE = 'mentee';
+
 class OrganizationService {
   workspaceCreationEnabled() {
     return process.env.MULTI_TENANT_WORKSPACES_ENABLED === 'true';
@@ -248,7 +251,14 @@ class OrganizationService {
   async usage(organizationId, options = {}) {
     const query = { transaction: options.transaction };
     const programs = await models.Program.count({ where: { organizationId }, ...query });
-    const members = await models.OrganizationMembership.count({ where: { organizationId, status: 'active' }, ...query });
+    // Plans are billed on participants: mentees count toward the member
+    // limit, mentors and admins never do, so a program can add all the
+    // volunteer mentors it needs without touching its plan.
+    const members = await models.OrganizationMembership.count({
+      where: { organizationId, status: 'active' },
+      include: [{ model: models.User, as: 'user', attributes: [], where: { role: PARTICIPANT_ROLE } }],
+      ...query,
+    });
     const clans = await models.Clan.count({
       include: [{ model: models.Program, as: 'program', attributes: [], where: { organizationId } }],
       ...query,
@@ -378,11 +388,14 @@ class OrganizationService {
         skipOrganizationScope: true,
       });
     }
+    // Mentors and admins are free: only a participant joining can hit the cap.
+    if (resource === 'members' && options.role && options.role !== PARTICIPANT_ROLE) return true;
     const { plan } = await this.subscription(organizationId, options);
     const limit = Number(plan.limits?.[resource]);
     if (!Number.isFinite(limit) || limit < 0) return true;
     const usage = currentValue == null ? (await this.usage(organizationId, options))[resource] : currentValue;
-    if (usage >= limit) throw new ForbiddenError(`Your ${plan.name} plan allows ${limit} ${resource}. Upgrade to add more.`);
+    const noun = resource === 'members' ? 'participants' : resource;
+    if (usage >= limit) throw new ForbiddenError(`Your ${plan.name} plan allows ${limit} ${noun}. Upgrade to add more.`);
     return true;
   }
 }
