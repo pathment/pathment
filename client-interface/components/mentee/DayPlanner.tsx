@@ -255,6 +255,8 @@ export function DayPlanner({
    * shown "From your mentor" on blocks they had set themselves.
    */
   const mine = board?.viewer.isOwnerMentee ?? true;
+  /** Can the viewer assign work here (a mentor or an admin — even on their own day)? */
+  const canAssign = board?.viewer.canAssign ?? false;
 
   /** Every block, as somewhere an item can be sent. */
   const blockChoices = useMemo(
@@ -339,6 +341,7 @@ export function DayPlanner({
             onHide={() => optimistic(slot.id, (b) => ({ ...b, slots: b.slots.filter((s) => s.id !== slot.id) }),
               () => scheduleApi.hidePlanSlot(menteeId, slot.id, true, clanId))}
             mine={mine}
+            canAssign={canAssign}
             blockChoices={blockChoices}
             onMoveTo={moveItem}
             onSetRepeat={setRepeat}
@@ -549,7 +552,7 @@ export function DayPlanner({
 
 function SlotCard({
   slot, busy, isDropTarget, onDropTarget, onDropItem,
-  onToggleDone, onAddItem, onRetime, onRemove, onHide, itemBusy, mine, blockChoices, onMoveTo,
+  onToggleDone, onAddItem, onRetime, onRemove, onHide, itemBusy, mine, canAssign, blockChoices, onMoveTo,
   onSetRepeat, onOpen, onAssignInto,
 }: {
   slot: PlanSlot;
@@ -565,6 +568,8 @@ function SlotCard({
   itemBusy: Set<string>;
   /** True when the viewer IS the mentee. Decides whose voice the block speaks in. */
   mine: boolean;
+  /** The viewer can assign real work into this block (a mentor or an admin). */
+  canAssign: boolean;
   blockChoices: { id: string; label: string; time: string }[];
   onMoveTo: (taskId: string, slotId: string | null) => void;
   onSetRepeat: (item: PlanItem, repeat: Partial<RepeatRule> | null) => void;
@@ -652,18 +657,6 @@ function SlotCard({
 
         <div className="flex shrink-0 items-center gap-1">
           {busy && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" aria-hidden />}
-          {/* The same Assign task button as everywhere else — it just already
-              knows which block the work is going into. */}
-          {!mine && (
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); onAssignInto(); }}
-              title={`Assign a task into ${slot.label}`}
-              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-600 hover:border-brand-300 hover:text-brand-700 dark:border-slate-700 dark:text-slate-300"
-            >
-              <Plus className="h-3 w-3" aria-hidden />Assign task
-            </button>
-          )}
           {slot.rights.canLock && (
             <button
               type="button"
@@ -782,6 +775,23 @@ function SlotCard({
           needs both without leaving the block; that was the missing half of
           "assign a task here".
       */}
+      {canAssign ? (
+        /*
+          Someone who can assign (a mentor or an admin) assigns real work here:
+          the same Assign drawer as everywhere else, already pointed at this
+          block. A free-text box made a bare plan item instead of a task.
+        */
+        <div className="px-4 pb-3.5 pt-2">
+          <button
+            type="button"
+            onClick={onAssignInto}
+            title={`Assign a task into ${slot.label}`}
+            className="flex w-full items-center gap-2 rounded-xl border border-dashed border-slate-300 px-3 py-2 text-sm font-medium text-slate-500 transition-colors hover:border-brand-400 hover:bg-brand-50/50 hover:text-brand-700 dark:border-slate-700 dark:hover:bg-brand-500/10"
+          >
+            <Plus className="h-3.5 w-3.5" aria-hidden />Assign work to {slot.label}
+          </button>
+        </div>
+      ) : (
       <div className="px-4 pb-3.5 pt-2">
         <div className="flex items-center gap-2">
           <div className="relative min-w-0 flex-1">
@@ -828,6 +838,7 @@ function SlotCard({
           </div>
         )}
       </div>
+      )}
     </li>
   );
 }

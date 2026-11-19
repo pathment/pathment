@@ -54,7 +54,8 @@ export function TodayTimeline<P extends Pending>({
   pending: P[];
   renderPending: (item: P, index: number) => ReactNode;
   renderTaskRow: (task: Task) => ReactNode;
-  onAssign: () => void;
+  /** Open the Assign drawer; with a block, the work goes into that block. */
+  onAssign: (block?: { id: string; label: string }) => void;
   /** Changes whenever their work does (the task list itself), so the board follows. */
   reloadKey: unknown;
   /** The day's progress as this card reads it, so the face in the row agrees. */
@@ -268,7 +269,7 @@ export function TodayTimeline<P extends Pending>({
                   <Pencil className="h-3.5 w-3.5" />{hasPlan ? 'Edit day' : 'Plan day'}
                 </button>
               )}
-              <button type="button" onClick={onAssign} disabled={readOnly}
+              <button type="button" onClick={() => onAssign()} disabled={readOnly}
                 className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-brand-600 hover:bg-brand-50 hover:text-brand-700 disabled:opacity-50 dark:hover:bg-brand-500/10">
                 <Plus className="h-3.5 w-3.5" />Assign
               </button>
@@ -378,7 +379,7 @@ export function TodayTimeline<P extends Pending>({
                           <p className="py-1 text-xs text-muted-foreground">Nothing in this block today.</p>
                         )}
                         {!narrowed && !readOnly && slot.rights?.canAddItems && (
-                          <InlineAdd menteeId={menteeId} slotId={slot.id} clanId={clanId} onAdded={() => void refetch()} />
+                          <AssignIntoBlock label={slot.label} onAssign={() => onAssign({ id: slot.id, label: slot.label })} />
                         )}
                       </div>
                     )}
@@ -654,45 +655,16 @@ function BulkBar({ count, total, allChosen, onToggleAll, ids, subs, titleOf, slo
   );
 }
 
-/** Add one item straight into a block, without leaving the review. */
-function InlineAdd({ menteeId, slotId, clanId, onAdded }: { menteeId: string; slotId: string; clanId: string | null; onAdded: () => void }) {
-  const [open, setOpen] = useState(false);
-  const [text, setText] = useState('');
-  const [saving, setSaving] = useState(false);
-  const save = async () => {
-    const title = text.trim();
-    if (!title) return;
-    setSaving(true);
-    try {
-      await scheduleApi.addPlanItem(menteeId, slotId, { title, kind: 'review', clanId });
-      setText('');
-      onAdded();
-      toast.success('Added to their day');
-    } catch (e) {
-      toast.error(extractApiErrorMessage(e, 'Could not add that'));
-    } finally { setSaving(false); }
-  };
-  if (!open) {
-    return (
-      <button type="button" onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-1 rounded-lg px-1.5 py-1 text-xs text-muted-foreground hover:bg-slate-50 hover:text-brand-700 dark:hover:bg-white/5">
-        <Plus className="h-3.5 w-3.5" />Add for them
-      </button>
-    );
-  }
+/**
+ * Assign real work into one block: the same Assign drawer as the header's,
+ * already pointed at this block. (This used to be a free-text box that made a
+ * bare plan item, not a task.)
+ */
+function AssignIntoBlock({ label, onAssign }: { label: string; onAssign: () => void }) {
   return (
-    <form onSubmit={(e) => { e.preventDefault(); void save(); }} className="flex items-center gap-2">
-      <input
-        autoFocus value={text} onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => { if (e.key === 'Escape') { setOpen(false); setText(''); } }}
-        placeholder="What should they do in this block?"
-        className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-transparent px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-slate-700"
-      />
-      <button type="submit" disabled={saving || !text.trim()}
-        className="shrink-0 rounded-lg bg-brand-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50">
-        {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Add'}
-      </button>
-      <button type="button" onClick={() => { setOpen(false); setText(''); }} className="shrink-0 px-1 text-xs text-muted-foreground hover:text-slate-700">Cancel</button>
-    </form>
+    <button type="button" onClick={onAssign} title={`Assign a task into ${label}`}
+      className="flex w-full items-center gap-1.5 rounded-lg border border-dashed border-slate-300 px-3 py-2 text-xs font-medium text-slate-500 hover:border-brand-400 hover:bg-brand-50/50 hover:text-brand-700 dark:border-slate-700 dark:hover:bg-brand-500/10">
+      <Plus className="h-3.5 w-3.5" />Assign work to {label}
+    </button>
   );
 }

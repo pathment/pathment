@@ -170,6 +170,8 @@ export default function CohortReview() {
   const [reviewing, setReviewing] = useState<ApprovalItem | null>(null);
   const [showHelp, setShowHelp] = useState(false);
   const [assigning, setAssigning] = useState(false);
+  // The block the work goes into, when Assign was opened from one.
+  const [assignBlock, setAssignBlock] = useState<{ id: string; label: string } | null>(null);
   // Extension request the mentor is reviewing (approve-with-adjust / decline).
   const [extReview, setExtReview] = useState<any>(null); // eslint-disable-line @typescript-eslint/no-explicit-any
   const [extDays, setExtDays] = useState(3);
@@ -1502,7 +1504,7 @@ export default function CohortReview() {
             pending={pending}
             reloadKey={tasks}
             onProgress={(p) => setLiveProgress((cur) => ({ ...cur, [mentee!.id]: p }))}
-            onAssign={() => setAssigning(true)}
+            onAssign={(block) => { setAssignBlock(block ?? null); setAssigning(true); }}
             onChanged={refresh}
             renderTaskRow={renderTaskRow}
             renderPending={(item) => {
@@ -1780,7 +1782,8 @@ export default function CohortReview() {
             risk: mentee.risk,
             level: mentee.level,
           }}
-          onClose={() => setAssigning(false)}
+          {...(assignBlock ? { scheduleSlotId: assignBlock.id, slotLabel: assignBlock.label } : {})}
+          onClose={() => { setAssigning(false); setAssignBlock(null); }}
           onAssigned={refresh}
         />
       )}
