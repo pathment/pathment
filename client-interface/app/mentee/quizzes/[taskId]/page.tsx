@@ -13,16 +13,22 @@ import {
   quizApi, quizVideoEndpoints, quizProctorApi, type CandidateQuiz, type CandidateQuizQuestion, type QuizSubmitResult,
   type QuizResultItem,
 } from '@/lib/services/quiz-api';
-import { useProctor } from '@/lib/hooks/mentee/useProctor';
-import { useScreenShare } from '@/lib/hooks/mentee/useScreenShare';
-import { useAnswerUploads } from '@/lib/hooks/mentee/useAnswerUploads';
-import { useVideoTake } from '@/lib/hooks/mentee/useVideoTake';
-import { videoRecordingSupported } from '@/lib/utils/interviewMedia';
-import { VideoAnswer } from '@/components/mentee/VideoAnswer';
+import { useProctor } from '@/lib/proctoring/useProctor';
+import { useScreenShare } from '@/lib/proctoring/useScreenShare';
+import { useAnswerUploads } from '@/lib/proctoring/useAnswerUploads';
+import { useVideoTake } from '@/lib/proctoring/useVideoTake';
+import { videoRecordingSupported } from '@/lib/proctoring/media';
+import { VideoAnswer } from '@/components/proctoring/VideoAnswer';
 import {
   ScreenShareStep, DeviceProblemNotice, CameraOffOverlay, ScreenOffOverlay, UploadProblemDialog,
-  browserCapabilities, deviceProblemFor,
-} from '@/components/mentee/proctoring/ProctorUI';
+  FullscreenRequiredOverlay, ConnectionBanner, browserCapabilities, deviceProblemFor,
+} from '@/components/proctoring/ProctorUI';
+import { useOfflineSave, readUnsent } from '@/lib/proctoring/useOfflineSave';
+import { useOnline } from '@/lib/proctoring/useOnline';
+
+/** One autosaved answer, kept on the device until the server has it. */
+type QuizSave = Parameters<typeof quizApi.saveAnswer>[1];
+const unsentKey = (sessionId: string) => `pathment.answers.quiz.${sessionId}`;
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { useConfirm } from '@/lib/context/ConfirmContext';
 import { useClan, isHistoricalCohortClan } from '@/lib/context/ClanContext';
@@ -105,9 +111,19 @@ export default function QuizRunnerPage({ params }: { params: Promise<{ taskId: s
     cameraSnapshots: screenRequired,
     screenStream: screenRequired ? screen.stream : null,
     currentQuestionId: q?.id ?? null,
-    api: quizProctorApi,
+    transport: quizProctorApi,
+    // A quiz proctored with screen sharing can't be answered outside fullscreen.
+    fullscreen: screenRequired ? 'required' : 'off',
   });
   useEffect(() => { logRef.current = proctor.log; }, [proctor.log]);
+  const online = useOnline();
+
+  // Answers are kept on the device until the server has them (offline, a crash, a power cut).
+  const answerSaves = useOfflineSave<QuizSave>({
+    storageKey: sessionId ? unsentKey(sessionId) : null,
+    send: (_questionId, payload) => quizApi.saveAnswer(sessionId as string, payload),
+  });
+  const saveOffline = answerSaves.save;
 
   /*
    * One runner, two kinds of work.
@@ -143,15 +159,20 @@ export default function QuizRunnerPage({ params }: { params: Promise<{ taskId: s
         if (d?.serverNow) clockSkewRef.current = Date.parse(d.serverNow) - Date.now();
         setSessionStartedAt(d?.state?.sessionStartedAt || null);
         const seed: Record<string, Answer> = {};
+        // Answers that never reached the server (offline, a crash, a power cut) win over the server's copy.
+        const unsent = readUnsent<QuizSave>(d?.state?.activeSessionId ? unsentKey(d.state.activeSessionId) : null);
         d.questions.forEach((qq) => {
           const saved = d.state.savedAnswers.find((a) => a.questionId === qq.id);
+          const local = unsent[qq.id];
+          const options = local ? local.selectedOptionIds : saved?.selectedOptionIds;
+          const text = local ? local.answerText : saved?.answerText;
           seed[qq.id] = {
-            selectedOptionIds: saved?.selectedOptionIds ? [...saved.selectedOptionIds] : [],
+            selectedOptionIds: options ? [...options] : [],
             // A code question opens on its starting code until they've written something.
-            answerText: saved?.answerText || (qq.kind === 'code' ? (qq.starterCode || '') : ''),
+            answerText: text || (qq.kind === 'code' ? (qq.starterCode || '') : ''),
             videoBlob: null,
             videoUrl: saved?.videoUrl || null,
-            transcript: saved?.transcript || '',
+            transcript: (local?.transcript ?? saved?.transcript) || '',
           };
         });
         setAnswers(seed);
@@ -170,13 +191,13 @@ export default function QuizRunnerPage({ params }: { params: Promise<{ taskId: s
     const a = answersRef.current[questionId];
     if (!a) return;
     const isVideo = questions.find((qq) => qq.id === questionId)?.kind === 'video';
-    await quizApi.saveAnswer(sessionId, {
+    await saveOffline(questionId, {
       questionId,
       selectedOptionIds: a.selectedOptionIds,
       answerText: a.answerText.trim() ? a.answerText : null,
       ...(isVideo ? { transcript: a.transcript || null } : {}),
-    }).catch(() => { /* autosave is best-effort */ });
-  }, [sessionId, questions]);
+    });
+  }, [sessionId, questions, saveOffline]);
 
   const setAnswer = useCallback((questionId: string, patch: Partial<Answer>) => {
     setAnswers((prev) => {
@@ -616,17 +637,7 @@ export default function QuizRunnerPage({ params }: { params: Promise<{ taskId: s
           </div>
         </div>
 
-        {screenRequired && !proctor.isFullscreen && (
-          <div className="border-b border-amber-200 bg-amber-50">
-            <div className="max-w-3xl mx-auto px-6 py-2.5 flex items-center justify-between gap-3 text-sm text-amber-800">
-              <span className="inline-flex items-center gap-2"><AlertTriangle className="w-4 h-4" />You left fullscreen. This is noted for your mentor.</span>
-              <button onClick={() => proctor.requestFullscreen()} className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-medium">
-                <Maximize2 className="w-3.5 h-3.5" />Return to fullscreen
-              </button>
-            </div>
-          </div>
-        )}
-
+        {!online && <div className="max-w-3xl mx-auto w-full px-6 pt-3"><ConnectionBanner online={online} /></div>}
         {/* Question */}
         <div className="flex-1 overflow-y-auto">
           <div key={q.id} className="max-w-3xl mx-auto px-6 py-8">
@@ -752,6 +763,9 @@ export default function QuizRunnerPage({ params }: { params: Promise<{ taskId: s
         {cameraRequired && !proctor.cameraLive && <CameraOffOverlay noun="quiz" onRetry={recoverCamera} />}
         {screenRequired && !screen.live && (cameraRequired ? proctor.cameraLive : true) && (
           <ScreenOffOverlay noun="quiz" screen={screen} onShared={() => { proctor.log('screen_share_restored'); void proctor.requestFullscreen(); }} />
+        )}
+        {proctor.fullscreenBlocked && !(cameraRequired && !proctor.cameraLive) && !(screenRequired && !screen.live) && (
+          <FullscreenRequiredOverlay noun="quiz" onEnter={proctor.requestFullscreen} onCannot={proctor.continueWithoutFullscreen} />
         )}
         {uploadProblem !== null && (
           <UploadProblemDialog count={uploadProblem} onRetry={() => void submit({ confirmed: true })} onSubmitAnyway={() => void submit({ force: true })} />

@@ -11,7 +11,7 @@ import { quizApi, type QuizReview, type QuizReviewItem } from '@/lib/services/qu
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { Avatar } from '@/components/shared/Avatar';
 import { useConfirm } from '@/lib/context/ConfirmContext';
-import { ProctorSummary, SnapshotStrip } from '@/components/mentor/ProctorSummary';
+import { ProctorSummary, SnapshotStrip } from '@/components/proctoring/ProctorSummary';
 
 const KIND_ICON = {
   single: ListChecks,

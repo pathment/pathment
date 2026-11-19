@@ -1,29 +1,49 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { interviewProctorApi, type ProctorApi, type ProctorEvent } from '@/lib/services/interview-api';
-import { grabFrame, randomDelay } from '@/lib/utils/interviewMedia';
+import { grabFrame, randomDelay } from '@/lib/proctoring/media';
+import type { ProctorEvent, ProctorTransport } from '@/lib/proctoring/types';
 
 /**
- * useProctor — the interview anti-cheat harness (all client-side, zero cost).
+ * useProctor — watches one proctored attempt (all client-side, zero cost).
+ *
  * While `active`, it:
- *   - locks the page to fullscreen and flags any exit,
+ *   - keeps the page fullscreen: `required` locks Esc where the browser allows
+ *     it and reports `fullscreenBlocked` so the host can cover the questions
+ *     until they're back; `track` only logs; `off` ignores fullscreen,
  *   - counts tab/window focus losses (visibility + blur),
- *   - blocks & logs copy / paste / right-click,
- *   - captures webcam snapshots at random moments (when a camera stream is provided),
- *   - captures the shared screen at random moments, and right away when they
- *     leave the tab or window (so the mentor sees where they went),
- * and buffers every event, flushing to the server on an interval and on demand.
- * The mentor sees the resulting proctor log in review (Phase 4).
+ *   - blocks & logs copy and right-click,
+ *   - captures camera and screen snapshots at random moments, and the screen
+ *     right away when they leave the tab or window,
+ *   - notices the connection dropping and coming back, and logs both,
+ *   - logs every time the attempt is opened, so a resume after a crash, a
+ *     closed tab or a power cut shows up (with how long they were away when
+ *     it's the same device),
+ * and buffers every event, flushing to the host on an interval and on demand.
+ * Unsent events are kept on the device, so a crash or power cut loses nothing:
+ * they're sent the next time the attempt opens.
+ *
+ * The hook knows nothing about any host: where events and snapshots go is the
+ * `transport` the host passes in.
  */
+export type FullscreenMode = 'required' | 'track' | 'off';
+
 export interface ProctorState {
   focusLosses: number;
   isFullscreen: boolean;
-  /** For a camera-required interview: is a live camera frame currently available?
-   *  Goes false when the candidate turns the camera off / it disconnects mid-run. */
+  /** Fullscreen is required and they've left it: cover the questions until they're back. */
+  fullscreenBlocked: boolean;
+  /** The browser can't (or won't) go fullscreen; the attempt carries on and it's noted. */
+  fullscreenUnavailable: boolean;
+  /** For a camera-required attempt: is a live camera frame currently available? */
   cameraLive: boolean;
+  /** The device's connection, as the browser reports it. */
+  online: boolean;
   totalEvents: number;
-  requestFullscreen: () => Promise<void>;
+  /** Ask for fullscreen (call it from a click). Resolves true once fullscreen. */
+  requestFullscreen: () => Promise<boolean>;
+  /** Their browser won't go fullscreen even when asked: let them carry on, flagged. */
+  continueWithoutFullscreen: () => void;
   log: (type: string, meta?: Record<string, unknown>) => void;
   flush: () => Promise<void>;
   /** Take a camera and a screen snapshot now (e.g. as a video answer starts and ends). */
@@ -31,41 +51,63 @@ export interface ProctorState {
 }
 
 interface Options {
+  /** Identifies the attempt to the host (a session id, a private link's token). */
   sessionId: string | null;
   active: boolean;
+  /** Where events and snapshots go. */
+  transport: ProctorTransport;
   videoRef: React.RefObject<HTMLVideoElement | null>;
   cameraRequired: boolean;
-  /** Id of the question on screen — stamped onto each snapshot so the mentor can
-   *  see what the candidate was doing during a specific question. */
+  /** Id of the question on screen — stamped onto each snapshot and event. */
   currentQuestionId?: string | null;
-  /** Take webcam snapshots (defaults to cameraRequired). Off for an unproctored
-   *  interview that only has the camera on for its video answers. */
+  /** Take camera snapshots (defaults to cameraRequired). */
   cameraSnapshots?: boolean;
-  /** The shared screen, when the interview is proctored with screen sharing. */
+  /** The shared screen, when the attempt is proctored with screen sharing. */
   screenStream?: MediaStream | null;
-  /** Where events and snapshots go: an interview's or a quiz's endpoints. */
-  api?: ProctorApi;
+  /** Default `track`. */
+  fullscreen?: FullscreenMode;
   /** Average gap between snapshots; each one lands at a random point around it. */
   snapshotIntervalMs?: number;
   flushIntervalMs?: number;
 }
 
+// ── Kept on the device: unsent events, and when the attempt was last seen ─────
+const PENDING = (id: string) => `pathment.proctor.${id}.pending`;
+const SEEN = (id: string) => `pathment.proctor.${id}.seen`;
+const read = <T,>(key: string, fallback: T): T => {
+  try { const v = localStorage.getItem(key); return v ? (JSON.parse(v) as T) : fallback; } catch { return fallback; }
+};
+const write = (key: string, value: unknown) => {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* storage full or blocked: memory still has it */ }
+};
+/** At most this many unsent events are kept on the device. */
+const MAX_PENDING = 500;
+
+type KeyboardLock = { lock?: (keys?: string[]) => Promise<void>; unlock?: () => void };
+const keyboard = (): KeyboardLock | undefined =>
+  (typeof navigator !== 'undefined' ? (navigator as Navigator & { keyboard?: KeyboardLock }).keyboard : undefined);
+
 export function useProctor({
   sessionId,
   active,
+  transport,
   videoRef,
   cameraRequired,
   currentQuestionId = null,
   cameraSnapshots,
   screenStream = null,
-  api = interviewProctorApi,
+  fullscreen = 'track',
   snapshotIntervalMs = 25000,
   flushIntervalMs = 10000,
 }: Options): ProctorState {
   const takeCameraShots = cameraSnapshots ?? cameraRequired;
   const [focusLosses, setFocusLosses] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  // Until the first read after going active, "not fullscreen" is unknown, not a fact.
+  const [fullscreenKnown, setFullscreenKnown] = useState(false);
+  const [fullscreenUnavailable, setFullscreenUnavailable] = useState(false);
   const [cameraLive, setCameraLive] = useState(true);
+  const [online, setOnline] = useState(true);
   const [totalEvents, setTotalEvents] = useState(0);
 
   const buffer = useRef<ProctorEvent[]>([]);
@@ -75,41 +117,120 @@ export function useProctor({
   useEffect(() => { sessionRef.current = sessionId; }, [sessionId]);
   useEffect(() => { activeRef.current = active; }, [active]);
   useEffect(() => { questionRef.current = currentQuestionId; }, [currentQuestionId]);
-  const apiRef = useRef(api);
-  useEffect(() => { apiRef.current = api; }, [api]);
+  const transportRef = useRef(transport);
+  useEffect(() => { transportRef.current = transport; }, [transport]);
 
   // ── Event buffering + flush ──────────────────────────────────────────────
+  const persist = useCallback(() => {
+    const sid = sessionRef.current;
+    if (sid) write(PENDING(sid), buffer.current.slice(-MAX_PENDING));
+  }, []);
+
+  const flushing = useRef(false);
   const flush = useCallback(async () => {
     const sid = sessionRef.current;
-    if (!sid || buffer.current.length === 0) return;
+    if (!sid || buffer.current.length === 0 || flushing.current) return;
+    flushing.current = true;
     const batch = buffer.current;
     buffer.current = [];
     try {
-      await apiRef.current.logProctor(sid, batch);
+      await transportRef.current.logProctor(sid, batch);
     } catch {
-      // Re-queue on failure so nothing is lost.
+      // Keep them (in memory and on the device) and try again later.
       buffer.current = [...batch, ...buffer.current];
+    } finally {
+      flushing.current = false;
+      persist();
     }
-  }, []);
+  }, [persist]);
 
   const log = useCallback((type: string, meta: Record<string, unknown> = {}) => {
-    buffer.current.push({ type, at: new Date().toISOString(), meta });
+    const q = questionRef.current;
+    buffer.current.push({ type, at: new Date().toISOString(), meta: q && meta.questionId === undefined ? { ...meta, questionId: q } : meta });
     setTotalEvents((n) => n + 1);
-  }, []);
+    persist();
+  }, [persist]);
+
+  // Anything left unsent last time (a crash, a power cut) goes first.
+  useEffect(() => {
+    if (!sessionId) return;
+    const left = read<ProctorEvent[]>(PENDING(sessionId), []);
+    if (left.length) buffer.current = [...left, ...buffer.current];
+  }, [sessionId]);
+
+  // ── Opened / resumed ───────────────────────────────────────────────────────
+  // Every opening is logged; more than one means they came back (after a crash,
+  // a closed tab, a lost connection or a power cut). On the same device we also
+  // know how long they were gone.
+  useEffect(() => {
+    if (!active || !sessionId) return;
+    const seen = read<number | null>(SEEN(sessionId), null);
+    log('attempt_opened', seen ? { awayMs: Math.max(0, Date.now() - seen), sameDevice: true } : {});
+    const beat = () => write(SEEN(sessionId), Date.now());
+    beat();
+    const id = setInterval(beat, 5000);
+    return () => clearInterval(id);
+  }, [active, sessionId, log]);
+
+  // ── Connection ─────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!active) return;
+    let lostAt: number | null = navigator.onLine === false ? Date.now() : null;
+    const sync = requestAnimationFrame(() => setOnline(navigator.onLine !== false));
+    const onOffline = () => {
+      lostAt = Date.now();
+      setOnline(false);
+      log('connection_lost');
+    };
+    const onOnline = () => {
+      setOnline(true);
+      log('connection_restored', lostAt ? { downMs: Date.now() - lostAt } : {});
+      lostAt = null;
+      void flush();
+    };
+    // Leaving the page (closing, reloading, a crash we can see coming): try to send now.
+    const onPageHide = () => { persist(); void flush(); };
+    window.addEventListener('offline', onOffline);
+    window.addEventListener('online', onOnline);
+    window.addEventListener('pagehide', onPageHide);
+    return () => {
+      cancelAnimationFrame(sync);
+      window.removeEventListener('offline', onOffline);
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('pagehide', onPageHide);
+    };
+  }, [active, log, flush, persist]);
 
   // ── Fullscreen ────────────────────────────────────────────────────────────
-  const requestFullscreen = useCallback(async () => {
+  const lockEscape = useCallback(() => {
+    // Chrome and Edge: Esc no longer leaves fullscreen (they must press and hold it).
+    if (fullscreen === 'required') keyboard()?.lock?.(['Escape']).catch(() => { });
+  }, [fullscreen]);
+
+  const requestFullscreen = useCallback(async (): Promise<boolean> => {
+    if (fullscreen === 'off') return false;
+    if (document.fullscreenElement) { lockEscape(); return true; }
+    const el = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => Promise<void> };
+    if (!document.fullscreenEnabled && !el.webkitRequestFullscreen) {
+      setFullscreenUnavailable(true);
+      log('fullscreen_unavailable', { reason: 'unsupported' });
+      return false;
+    }
     try {
-      const el = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => Promise<void> };
       const asked = el.requestFullscreen ? el.requestFullscreen() : el.webkitRequestFullscreen?.();
       // Never let fullscreen hold up the attempt: a browser that neither grants
       // nor refuses would otherwise leave the candidate stuck before the start.
-      // Not being fullscreen is shown (and logged) by the exit banner instead.
       await Promise.race([asked, new Promise((resolve) => setTimeout(resolve, 1200))]);
     } catch {
-      /* user may deny; the exit banner handles it */
+      // Refused outright (a policy, an embedded page): carry on, and say so.
+      setFullscreenUnavailable(true);
+      log('fullscreen_unavailable', { reason: 'refused' });
+      return false;
     }
-  }, []);
+    const ok = !!document.fullscreenElement;
+    if (ok) lockEscape();
+    return ok;
+  }, [fullscreen, lockEscape, log]);
 
   // ── DOM listeners while active ──────────────────────────────────────────────
   useEffect(() => {
@@ -117,7 +238,13 @@ export function useProctor({
     // Fullscreen is asked for by the Start click, before the attempt is active
     // and these listeners exist, so its change event can come and go unheard.
     // Read where we are now (next frame) rather than waiting for the next change.
-    const syncFrame = requestAnimationFrame(() => setIsFullscreen(!!document.fullscreenElement));
+    const syncFrame = requestAnimationFrame(() => {
+      const fs = !!document.fullscreenElement;
+      setIsFullscreen(fs);
+      setFullscreenKnown(true);
+      if (fs) lockEscape();
+    });
+    let leftAt: number | null = null;
 
     const onVisibility = () => {
       if (document.hidden) { setFocusLosses((n) => n + 1); log('focus_loss', { reason: 'tab_hidden' }); }
@@ -129,7 +256,16 @@ export function useProctor({
     const onFullscreenChange = () => {
       const fs = !!document.fullscreenElement;
       setIsFullscreen(fs);
-      if (!fs) log('fullscreen_exit');
+      if (fullscreen === 'off') return;
+      if (!fs) {
+        leftAt = Date.now();
+        log('fullscreen_exit');
+        keyboard()?.unlock?.();
+      } else {
+        if (leftAt) log('fullscreen_restored', { awayMs: Date.now() - leftAt });
+        leftAt = null;
+        lockEscape();
+      }
     };
     const onCopy = (e: ClipboardEvent) => { e.preventDefault(); log('copy_blocked'); };
     const onContextMenu = (e: MouseEvent) => { e.preventDefault(); log('context_menu_blocked'); };
@@ -142,22 +278,23 @@ export function useProctor({
 
     return () => {
       cancelAnimationFrame(syncFrame);
+      keyboard()?.unlock?.();
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('blur', onBlur);
       document.removeEventListener('fullscreenchange', onFullscreenChange);
       document.removeEventListener('copy', onCopy);
       document.removeEventListener('contextmenu', onContextMenu);
     };
-  }, [active, log]);
+  }, [active, log, fullscreen, lockEscape]);
 
   // ── Never went fullscreen ───────────────────────────────────────────────────
   // Leaving fullscreen is logged when it happens; never entering it is not an
   // event at all, so it's checked once, a moment after the attempt starts.
   useEffect(() => {
-    if (!active) return;
+    if (!active || fullscreen === 'off') return;
     const id = setTimeout(() => { if (!document.fullscreenElement) log('not_fullscreen'); }, 4000);
     return () => clearTimeout(id);
-  }, [active, log]);
+  }, [active, fullscreen, log]);
 
   // ── Periodic flush ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -168,8 +305,8 @@ export function useProctor({
 
   // ── Required-camera health ───────────────────────────────────────────────
   // Detect a camera that was allowed at the start but then turned off / covered /
-  // disconnected mid-interview (browser controls, OS, unplug). The track goes
-  // `muted` or `ended` — we surface that so the runner can block & warn instead of
+  // disconnected mid-attempt (browser controls, OS, unplug). The track goes
+  // `muted` or `ended` — we surface that so the host can block & warn instead of
   // silently recording black frames.
   useEffect(() => {
     if (!active || !cameraRequired) { setCameraLive(true); return; }
@@ -215,8 +352,9 @@ export function useProctor({
     const blob = await grabFrame(video, source === 'screen' ? 1600 : 960, source === 'screen' ? 0.7 : 0.6);
     if (!blob) return;
     try {
-      await apiRef.current.uploadSnapshot(sid, blob, questionRef.current, source);
+      await transportRef.current.uploadSnapshot(sid, blob, questionRef.current, source);
     } catch {
+      // Offline, a snapshot is simply skipped (and noted); the next one is on its way.
       log('snapshot_failed', { source, ...(reason ? { reason } : {}) });
     }
   }, [videoRef, log]);
@@ -270,5 +408,15 @@ export function useProctor({
     };
   }, [active, screenStream, shoot]);
 
-  return { focusLosses, isFullscreen, cameraLive, totalEvents, requestFullscreen, log, flush, captureNow };
+  const continueWithoutFullscreen = useCallback(() => {
+    setFullscreenUnavailable(true);
+    log('fullscreen_unavailable', { reason: 'could_not_enter' });
+  }, [log]);
+
+  const fullscreenBlocked = active && fullscreen === 'required' && fullscreenKnown && !isFullscreen && !fullscreenUnavailable;
+
+  return {
+    focusLosses, isFullscreen, fullscreenBlocked, fullscreenUnavailable, cameraLive, online, totalEvents,
+    requestFullscreen, continueWithoutFullscreen, log, flush, captureNow,
+  };
 }

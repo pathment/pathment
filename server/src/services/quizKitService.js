@@ -3,7 +3,7 @@ const { Op } = require('sequelize');
 const { models, sequelize } = require('../db');
 const { NotFoundError, ForbiddenError, ValidationError, ConflictError } = require('../utils/errors/errorTypes');
 const { snapToDifficultyPoints } = require('../config/points');
-const { maxRecordingSeconds, VIDEO_KIND } = require('./proctoringRules');
+const { maxRecordingSeconds, VIDEO_KIND } = require('../proctoring/rules');
 
 const QUESTION_KINDS = ['single', 'multi', 'boolean', 'short', 'video', 'code'];
 // Kinds a person scores: a quiz with one always goes to mentor review.

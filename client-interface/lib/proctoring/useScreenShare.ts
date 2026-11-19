@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { screenShareSupported } from '@/lib/utils/interviewMedia';
+import { screenShareSupported } from '@/lib/proctoring/media';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 

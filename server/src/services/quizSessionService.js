@@ -7,8 +7,8 @@ const authzService = require('./authzService');
 const { PERMISSIONS } = require('../config/permissions');
 const submissionService = require('./submissionService');
 const clanLifecycleService = require('./clanLifecycleService');
-const proctoring = require('./proctoringRules');
-const media = require('./proctoredMedia');
+const proctoring = require('../proctoring/rules');
+const media = require('../proctoring/media');
 
 const { VIDEO_KIND } = proctoring;
 const CODE_KIND = 'code';
@@ -27,7 +27,7 @@ const gradedNoun = (n) => `${n} answer${n === 1 ? '' : 's'}`;
  * Video questions are answered on camera and scored by the mentor, so a quiz
  * with one always goes to review. Proctored quizzes (camera + entire screen)
  * keep a proctor log of snapshots and events, like interviews — both use
- * proctoringRules (who needs what) and proctoredMedia (storing it).
+ * src/proctoring: rules (who needs what) and media (storing it).
  */
 class QuizSessionService {
   // ── Grading (pure) ───────────────────────────────────────────────────────────
@@ -190,7 +190,7 @@ class QuizSessionService {
         timeLimitSeconds: assignment.timeLimitSeconds,
         showAnswers: assignment.showAnswers,
         passScore: assignment.passScore,
-        // What the runner must have before the clock starts (see proctoringRules).
+        // What the runner must have before the clock starts (see src/proctoring/rules).
         cameraRequired: requirements.camera,
         screenShareRequired: requirements.screen,
         videoAnswers: requirements.video,
@@ -312,7 +312,7 @@ class QuizSessionService {
 
   // ── Video answers and proctoring ─────────────────────────────────────────────
 
-  /** The session a recording may land on: open, or submitted moments ago (see proctoredMedia). */
+  /** The session a recording may land on: open, or submitted moments ago (see src/proctoring/media). */
   async _recordingSession(sessionId, menteeId) {
     const session = await models.QuizSession.findByPk(sessionId);
     if (!session) throw new NotFoundError('Quiz session not found');
@@ -333,7 +333,7 @@ class QuizSessionService {
     return question;
   }
 
-  /** Permission to upload one video answer straight to Cloudinary (see proctoredMedia). */
+  /** Permission to upload one video answer straight to Cloudinary (see src/proctoring/media). */
   async signVideoUpload(sessionId, menteeId, questionId) {
     const session = await this._recordingSession(sessionId, menteeId);
     const question = await this._videoQuestion(session, questionId);

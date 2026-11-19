@@ -1,4 +1,4 @@
-import { screenShareSupported, videoRecordingSupported } from '@/lib/utils/interviewMedia';
+import { screenShareSupported, videoRecordingSupported } from '@/lib/proctoring/media';
 
 /** What this browser can do, sent when an attempt starts (see the server's proctoringRules). */
 export const browserCapabilities = () =>

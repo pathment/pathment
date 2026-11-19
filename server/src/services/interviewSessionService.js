@@ -8,8 +8,8 @@ const authzService = require('./authzService');
 const { PERMISSIONS } = require('../config/permissions');
 const submissionService = require('./submissionService');
 const clanLifecycleService = require('./clanLifecycleService');
-const proctoring = require('./proctoringRules');
-const media = require('./proctoredMedia');
+const proctoring = require('../proctoring/rules');
+const media = require('../proctoring/media');
 
 /**
  * InterviewSessionService — the candidate runner (Phase 2). Owns starting/resuming
@@ -130,7 +130,7 @@ class InterviewSessionService {
       interviewer,
       options: {
         allowRetake: assignment.allowRetake,
-        // What the runner must have before the clock starts (see proctoringRules).
+        // What the runner must have before the clock starts (see src/proctoring/rules).
         cameraRequired: requirements.camera,
         screenShareRequired: requirements.screen,
         videoAnswers: requirements.video,
@@ -514,7 +514,7 @@ class InterviewSessionService {
 
     // Snapshots are placed under the question on screen when they were taken
     // (older interviews didn't record it, so they go by when each answer began).
-    const { snapshots, flags, flagCounts } = media.splitProctorLog(session ? (session.proctorLog || []) : [], answers);
+    const { snapshots, flags, flagCounts, stats } = media.splitProctorLog(session ? (session.proctorLog || []) : [], answers);
 
     const items = questions.map((q) => {
       const a = answerByQ.get(q.id);
@@ -568,7 +568,7 @@ class InterviewSessionService {
       } : null,
       // Proctoring (webcam snapshots + behavior flags) is reviewer-only — never
       // shown back to the candidate being proctored.
-      proctor: isOwnerMentee ? { snapshots: [], flags: [], flagCounts: {} } : { snapshots, flags, flagCounts },
+      proctor: isOwnerMentee ? { snapshots: [], flags: [], flagCounts: {} } : { snapshots, flags, flagCounts, stats },
       // Mentor's manual follow-up flag (hidden from the owning mentee).
       flag: isOwnerMentee ? null : (session?.meta?.flag?.flagged ? session.meta.flag : null),
       items,

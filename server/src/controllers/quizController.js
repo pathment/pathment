@@ -56,7 +56,7 @@ exports.getCandidateQuiz = catchAsync(async (req, res) => {
 exports.startQuiz = catchAsync(async (req, res) => {
   const session = await quizSessionService.startOrResume(req.params.taskId, req.user.id, {
     clanId: requestedClanId(req),
-    // What this client can do (screen share, video answers) — see proctoringRules.
+    // What this client can do (screen share, video answers) — see src/proctoring/rules.
     capabilities: req.body && req.body.capabilities,
   });
   res.status(200).json(successResponse('Quiz session ready', { session }));

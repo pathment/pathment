@@ -7,7 +7,7 @@ const QUESTION_TYPES = ['mcq', 'multi_select', 'true_false', 'short_text', 'long
 const RECORDED = ['video', 'audio'];
 const AUTO_GRADED = ['mcq', 'multi_select', 'true_false'];
 const TRUE_FALSE_OPTIONS = [{ id: 'true', label: 'True' }, { id: 'false', label: 'False' }];
-const { maxRecordingSeconds } = require('./proctoringRules');
+const { maxRecordingSeconds } = require('../proctoring/rules');
 
 /**
  * Assessment authoring (admin) + grading. An assessment is a reusable set of

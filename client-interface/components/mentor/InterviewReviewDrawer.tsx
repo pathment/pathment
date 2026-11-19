@@ -12,7 +12,7 @@ import { interviewApi, type InterviewReview, type ReviewItem } from '@/lib/servi
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { useConfirm } from '@/lib/context/ConfirmContext';
 import { fmtClock } from '@/lib/utils/interviewMedia';
-import { FLAG_LABEL, SourceBadge } from '@/components/mentor/ProctorSummary';
+import { FLAG_LABEL, SourceBadge } from '@/components/proctoring/ProctorSummary';
 
 /** The icon for a question's kind. */
 const kindIcon = (kind: string) => (kind === 'code' ? Code2 : kind === 'text' ? Type : kind === 'video' ? Video : Mic);

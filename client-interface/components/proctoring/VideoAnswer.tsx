@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useRef } from 'react';
 import { AlertTriangle, CheckCircle2, Circle, Loader2, Mic, RotateCcw, Square, Video } from 'lucide-react';
-import { fmtClock } from '@/lib/utils/interviewMedia';
-import type { UploadStatus } from '@/lib/hooks/mentee/useAnswerUploads';
+import { fmtClock } from '@/lib/proctoring/media';
+import type { UploadStatus } from '@/lib/proctoring/useAnswerUploads';
 
 /** Class names for the dark interview studio and the light quiz page. */
 const TONES = {

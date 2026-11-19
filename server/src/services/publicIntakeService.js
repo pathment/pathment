@@ -14,8 +14,8 @@ const ACCESS_TOKEN_TTL_DAYS = 60;
 // A timed attempt's answers still land this long after the clock runs out (the
 // browser auto-submits at zero; this absorbs a slow network).
 const TIMED_GRACE_MS = 90 * 1000;
-const proctoring = require('./proctoringRules');
-const media = require('./proctoredMedia');
+const proctoring = require('../proctoring/rules');
+const media = require('../proctoring/media');
 
 /** Proctored or strictly timed: one sitting, no revising after submit. */
 const oneShot = (assessment) => Boolean(assessment?.proctored || (assessment?.enforceTimeLimit && assessment?.timeLimitMins));

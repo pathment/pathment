@@ -1,11 +1,12 @@
 'use client';
 
-import { AlertTriangle, Camera, Eye, Loader2, Monitor, Trash2 } from 'lucide-react';
-import type { ProctorSnapshot } from '@/lib/services/interview-api';
+import { AlertTriangle, Camera, Eye, Loader2, Monitor, RotateCcw, Trash2 } from 'lucide-react';
+import type { ProctorSnapshot } from '@/lib/proctoring/types';
 
 /**
- * How a mentor reads a proctored attempt — interviews and quizzes alike: the
- * behaviour flags in words, and each snapshot marked webcam or screen.
+ * How a reviewer reads a proctored attempt, for any host: the interruptions
+ * (came back after closing the page, offline, out of fullscreen) with how
+ * long, the behaviour flags in words, and each snapshot marked webcam or screen.
  */
 
 export const FLAG_LABEL: Record<string, string> = {
@@ -30,7 +31,47 @@ export const FLAG_LABEL: Record<string, string> = {
   multiple_monitors: 'More than one monitor connected',
   video_interrupted: 'Video recording cut off',
   video_too_large: 'Video too large to send',
+  connection_lost: 'Went offline',
+  fullscreen_unavailable: 'Browser couldn’t go fullscreen',
 };
+
+/** Events that only carry the timing for the interruptions line, not flags of their own. */
+const TIMING_ONLY = new Set(['attempt_opened', 'connection_restored', 'fullscreen_restored']);
+
+/** The server's totals (proctoring media.proctorStats). */
+export interface ProctorStats {
+  opens: number;
+  resumes: number;
+  awayMs: number;
+  offline: number;
+  offlineMs: number;
+  fullscreenExits: number;
+  fullscreenOutMs: number;
+  fullscreenUnavailable: boolean;
+}
+
+/** 2h 05m · 3m 10s · 12s */
+export function fmtDuration(ms: number): string {
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${String(s % 60).padStart(2, '0')}s`;
+  return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;
+}
+
+/** "Came back 1× (away 3m 10s) · Offline 2× (1m 05s) · Out of fullscreen 1× (12s)" */
+function Interruptions({ stats }: { stats: ProctorStats }) {
+  const parts: string[] = [];
+  if (stats.resumes) parts.push(`Came back after closing or losing the page ${stats.resumes}×${stats.awayMs ? ` (away ${fmtDuration(stats.awayMs)})` : ''}`);
+  if (stats.offline) parts.push(`Offline ${stats.offline}×${stats.offlineMs ? ` (${fmtDuration(stats.offlineMs)})` : ''}`);
+  if (stats.fullscreenExits) parts.push(`Out of fullscreen ${stats.fullscreenExits}×${stats.fullscreenOutMs ? ` (${fmtDuration(stats.fullscreenOutMs)})` : ''}`);
+  if (!parts.length) return null;
+  return (
+    <p className="mb-2 inline-flex items-start gap-1.5 rounded-lg bg-slate-50 dark:bg-white/5 px-2.5 py-1.5 text-xs text-slate-600">
+      <RotateCcw className="h-3.5 w-3.5 shrink-0 mt-0.5 text-slate-400" />{parts.join(' · ')}
+    </p>
+  );
+}
 
 /** A thumbnail's corner badge: was this the webcam or the shared screen? */
 export function SourceBadge({ source }: { source?: 'camera' | 'screen' }) {
@@ -62,7 +103,7 @@ export function SnapshotStrip({ snapshots, size = 'md' }: { snapshots: ProctorSn
 
 /** The whole-attempt proctoring card: flags, a missing-screen warning, every snapshot. */
 export function ProctorSummary({ proctor, screenRequired, submitted, canDelete, deleting, onDelete }: {
-  proctor: { snapshots: ProctorSnapshot[]; flagCounts: Record<string, number> };
+  proctor: { snapshots: ProctorSnapshot[]; flagCounts: Record<string, number>; stats?: ProctorStats };
   screenRequired?: boolean;
   submitted?: boolean;
   canDelete?: boolean;
@@ -71,7 +112,7 @@ export function ProctorSummary({ proctor, screenRequired, submitted, canDelete, 
 }) {
   const screens = proctor.snapshots.filter((s) => s.source === 'screen').length;
   const cams = proctor.snapshots.length - screens;
-  const flags = Object.entries(proctor.flagCounts);
+  const flags = Object.entries(proctor.flagCounts).filter(([type]) => !TIMING_ONLY.has(type));
   return (
     <div className="rounded-xl border border-slate-200 p-4">
       <div className="flex items-center justify-between mb-2">
@@ -86,6 +127,7 @@ export function ProctorSummary({ proctor, screenRequired, submitted, canDelete, 
           </button>
         )}
       </div>
+      {proctor.stats && <Interruptions stats={proctor.stats} />}
       {flags.length > 0 ? (
         <div className="flex flex-wrap gap-1.5 mb-3">
           {flags.map(([type, count]) => (

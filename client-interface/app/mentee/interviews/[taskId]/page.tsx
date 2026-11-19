@@ -9,21 +9,26 @@ import {
   Code2, Type, AlertTriangle, Play, RotateCcw, Maximize2, Eye, ShieldCheck, Monitor,
 } from 'lucide-react';
 import {
-  interviewApi, interviewVideoEndpoints, type CandidateInterview, type CandidateQuestion,
+  interviewApi, interviewProctorApi, interviewVideoEndpoints, type CandidateInterview, type CandidateQuestion,
 } from '@/lib/services/interview-api';
 import {
   ScreenShareStep, DeviceProblemNotice, CameraOffOverlay, ScreenOffOverlay, UploadProblemDialog,
-  browserCapabilities, deviceProblemFor,
-} from '@/components/mentee/proctoring/ProctorUI';
+  FullscreenRequiredOverlay, ConnectionBanner, browserCapabilities, deviceProblemFor,
+} from '@/components/proctoring/ProctorUI';
+import { useOfflineSave, readUnsent } from '@/lib/proctoring/useOfflineSave';
+
+/** One autosaved answer, kept on the device until the server has it. */
+type InterviewSave = Parameters<typeof interviewApi.saveAnswer>[1];
+const unsentKey = (sessionId: string) => `pathment.answers.interview.${sessionId}`;
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import {
   speak, stopSpeaking, createRecognizer, VoiceRecorder, VideoAnswerRecorder,
   recognitionSupported, recorderSupported, videoRecordingSupported, MAX_VIDEO_BYTES,
-} from '@/lib/utils/interviewMedia';
-import { useProctor } from '@/lib/hooks/mentee/useProctor';
-import { useScreenShare } from '@/lib/hooks/mentee/useScreenShare';
-import { useAnswerUploads, type RecordingKind } from '@/lib/hooks/mentee/useAnswerUploads';
-import { VideoAnswer } from '@/components/mentee/VideoAnswer';
+} from '@/lib/proctoring/media';
+import { useProctor } from '@/lib/proctoring/useProctor';
+import { useScreenShare } from '@/lib/proctoring/useScreenShare';
+import { useAnswerUploads, type RecordingKind } from '@/lib/proctoring/useAnswerUploads';
+import { VideoAnswer } from '@/components/proctoring/VideoAnswer';
 import { useAudioLevel } from '@/lib/hooks/mentee/useAudioLevel';
 import { CodeEditor } from '@/components/shared/CodeEditor';
 import { InterviewerOrb, Waveform, RingTimer, MicCheck } from '@/components/mentee/interviewStudio';
@@ -146,8 +151,18 @@ export default function InterviewRunnerPage({ params }: { params: Promise<{ task
     cameraSnapshots: screenRequired,
     screenStream: screenRequired ? screen.stream : null,
     currentQuestionId: q?.id ?? null,
+    transport: interviewProctorApi,
+    // A fully proctored interview can't be answered outside fullscreen; otherwise it's noted.
+    fullscreen: screenRequired ? 'required' : 'track',
   });
   useEffect(() => { logRef.current = proctor.log; }, [proctor.log]);
+
+  // Answers are kept on the device until the server has them (offline, a crash, a power cut).
+  const answerSaves = useOfflineSave<InterviewSave>({
+    storageKey: sessionId ? unsentKey(sessionId) : null,
+    send: (_questionId, payload) => interviewApi.saveAnswer(sessionId as string, payload),
+  });
+  const saveOffline = answerSaves.save;
 
   // ── Load ───────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -161,13 +176,16 @@ export default function InterviewRunnerPage({ params }: { params: Promise<{ task
         setSessionStartedAt(d?.state?.sessionStartedAt || null);
         if (!d?.state?.activeSessionId) clearActiveInterview();
         const seed: Record<string, Draft> = {};
+        // Typing that never reached the server (offline, a crash, a power cut) wins over the server's copy.
+        const unsent = readUnsent<InterviewSave>(d?.state?.activeSessionId ? unsentKey(d.state.activeSessionId) : null);
         d.questions.forEach((qq) => {
           const saved = d.state.savedAnswers.find((a) => a.questionId === qq.id);
+          const local = unsent[qq.id];
           seed[qq.id] = {
-            transcript: saved?.transcript || '',
-            code: saved?.code ?? qq.starterCode ?? '',
-            answerText: saved?.answerText || '',
-            seconds: saved?.timeSpentSeconds || 0,
+            transcript: (local ? local.transcript : saved?.transcript) || '',
+            code: (local?.code ?? saved?.code) ?? qq.starterCode ?? '',
+            answerText: (local ? local.answerText : saved?.answerText) || '',
+            seconds: local?.timeSpentSeconds ?? saved?.timeSpentSeconds ?? 0,
             audioBlob: null,
             videoBlob: null,
             videoUrl: saved?.videoUrl || null,
@@ -322,15 +340,15 @@ export default function InterviewRunnerPage({ params }: { params: Promise<{ task
       // Read the freshest draft from the ref, not a stale closure, so we never
       // autosave an out-of-date snapshot over newer text.
       const d = { ...draftsRef.current[questionId], ...patch };
-      interviewApi.saveAnswer(sessionId, {
+      void saveOffline(questionId, {
         questionId,
         transcript: d.transcript || null,
         code: d.code || null,
         answerText: d.answerText || null,
         timeSpentSeconds: d.seconds,
-      }).catch(() => { /* autosave is best-effort */ });
+      });
     }, 1200);
-  }, [sessionId]);
+  }, [sessionId, saveOffline]);
 
   // ── Stopping a recording (voice or video) ───────────────────────────────────
   // One way out of every recording: the stop button, the recording cap, the
@@ -838,8 +856,10 @@ export default function InterviewRunnerPage({ params }: { params: Promise<{ task
         </div>
       </div>
 
-      {/* Fullscreen nudge */}
-      {!proctor.isFullscreen && (
+      <div className="px-6 empty:hidden"><ConnectionBanner online={proctor.online} tone="dark" /></div>
+
+      {/* Fullscreen nudge (a fully proctored interview is stopped instead — see below) */}
+      {!proctor.isFullscreen && !proctor.fullscreenBlocked && !screenRequired && (
         <div className="flex items-center justify-between gap-3 px-6 py-2.5 bg-amber-500/10 border-b border-amber-500/30 text-sm text-amber-200">
           <span className="inline-flex items-center gap-2"><AlertTriangle className="w-4 h-4" />You left fullscreen. This is noted for your mentor.</span>
           <button onClick={() => proctor.requestFullscreen()} className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-medium">
@@ -982,6 +1002,11 @@ export default function InterviewRunnerPage({ params }: { params: Promise<{ task
           shared again (the clock keeps running, and the gap is logged). */}
       {screenRequired && !screen.live && (cameraRequired ? proctor.cameraLive : true) && (
         <ScreenOffOverlay noun="interview" screen={screen} onShared={() => { proctor.log('screen_share_restored'); void proctor.requestFullscreen(); }} />
+      )}
+
+      {/* Required fullscreen: left it, so the questions are covered until they're back. */}
+      {proctor.fullscreenBlocked && !(cameraRequired && !proctor.cameraLive) && !(screenRequired && !screen.live) && (
+        <FullscreenRequiredOverlay noun="interview" onEnter={proctor.requestFullscreen} onCannot={proctor.continueWithoutFullscreen} />
       )}
 
       {/* A hand-pressed Finish with a video answer that didn't send. */}

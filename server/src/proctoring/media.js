@@ -1,6 +1,7 @@
 /**
- * The recordings and proctor log behind a proctored attempt — shared by
- * interviews and quizzes, so both store, check and show them the same way.
+ * The recordings and proctor log behind a proctored attempt — shared by every
+ * host (interviews, quizzes, intake assessments, …), so all of them store,
+ * check and show them the same way.
  *
  *   - the proctor log is appended in the database, never read-modify-written;
  *   - a video answer goes from the browser straight to Cloudinary on a signed
@@ -11,10 +12,19 @@
 const { sequelize } = require('../db');
 const { ValidationError } = require('../utils/errors/errorTypes');
 const { uploadToCloudinary } = require('../utils/cloudinaryUpload');
-const rules = require('./proctoringRules');
+const rules = require('./rules');
 
 // Only these tables carry a proctor log; the name is never taken from a request.
 const LOG_TABLES = new Set(['interview_sessions', 'quiz_sessions', 'assessment_submissions']);
+
+/**
+ * A new host adds its attempts table here, once, at load: the table needs a
+ * `proctor_log jsonb NOT NULL DEFAULT '[]'` column (and `updated_at`).
+ */
+function registerLogTable(table) {
+  if (!/^[a-z_][a-z0-9_]*$/.test(String(table))) throw new Error(`Not a table name: ${table}`);
+  LOG_TABLES.add(table);
+}
 
 /**
  * Add events to the end of a session's proctor log in one statement.
@@ -151,7 +161,28 @@ function splitProctorLog(log = [], answers = []) {
   }));
   const flags = log.filter((e) => e.type !== 'snapshot');
   const flagCounts = flags.reduce((m, e) => { m[e.type] = (m[e.type] || 0) + 1; return m; }, {});
-  return { snapshots, flags, flagCounts };
+  return { snapshots, flags, flagCounts, stats: proctorStats(flags) };
+}
+
+/**
+ * The attempt's interruptions, totalled for a reviewer: how many times it was
+ * opened (more than once = they came back after a crash, a closed tab or a
+ * power cut), how long they were away between openings (when it's known —
+ * same device), and how long they were offline or out of fullscreen.
+ */
+function proctorStats(flags = []) {
+  const sum = (type, key) => flags.filter((e) => e.type === type).reduce((n, e) => n + (Number(e.meta?.[key]) || 0), 0);
+  const opens = flags.filter((e) => e.type === 'attempt_opened').length;
+  return {
+    opens,
+    resumes: Math.max(0, opens - 1),
+    awayMs: sum('attempt_opened', 'awayMs'),
+    offline: flags.filter((e) => e.type === 'connection_lost').length,
+    offlineMs: sum('connection_restored', 'downMs'),
+    fullscreenExits: flags.filter((e) => e.type === 'fullscreen_exit').length,
+    fullscreenOutMs: sum('fullscreen_restored', 'awayMs'),
+    fullscreenUnavailable: flags.some((e) => e.type === 'fullscreen_unavailable'),
+  };
 }
 
 /** Delete every snapshot image in a log; returns the log without them. */
@@ -166,6 +197,8 @@ async function deleteSnapshotImages(log = []) {
 }
 
 module.exports = {
+  LOG_TABLES,
+  registerLogTable,
   appendProctorEvents,
   cleanClientEvents,
   storeSnapshot,
@@ -174,5 +207,6 @@ module.exports = {
   removeRecording,
   recordingStillAccepted,
   splitProctorLog,
+  proctorStats,
   deleteSnapshotImages,
 };

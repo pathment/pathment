@@ -11,17 +11,22 @@ import {
   type AssessmentAnswer, type PublicAssessmentQuestion,
 } from '@/lib/services/public-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
-import { audioRecordingSupported, videoRecordingSupported } from '@/lib/utils/interviewMedia';
-import { useProctor } from '@/lib/hooks/mentee/useProctor';
-import { useScreenShare } from '@/lib/hooks/mentee/useScreenShare';
-import { useAnswerUploads } from '@/lib/hooks/mentee/useAnswerUploads';
-import { useVideoTake } from '@/lib/hooks/mentee/useVideoTake';
-import { VideoAnswer } from '@/components/mentee/VideoAnswer';
+import { audioRecordingSupported, videoRecordingSupported } from '@/lib/proctoring/media';
+import { useProctor } from '@/lib/proctoring/useProctor';
+import { useScreenShare } from '@/lib/proctoring/useScreenShare';
+import { useAnswerUploads } from '@/lib/proctoring/useAnswerUploads';
+import { useVideoTake } from '@/lib/proctoring/useVideoTake';
+import { VideoAnswer } from '@/components/proctoring/VideoAnswer';
 import { CodeEditor } from '@/components/shared/CodeEditor';
 import {
   ScreenShareStep, DeviceProblemNotice, CameraOffOverlay, ScreenOffOverlay, UploadProblemDialog,
-  browserCapabilities, deviceProblemFor,
-} from '@/components/mentee/proctoring/ProctorUI';
+  FullscreenRequiredOverlay, ConnectionBanner, browserCapabilities, deviceProblemFor,
+} from '@/components/proctoring/ProctorUI';
+import { useOfflineSave, readUnsent } from '@/lib/proctoring/useOfflineSave';
+import { useOnline } from '@/lib/proctoring/useOnline';
+
+/** The answers, kept on the device until the server has them. */
+const unsentKey = (token: string) => `pathment.answers.assessment.${token}`;
 
 export interface RunnerAssessment {
   id: string;
@@ -102,7 +107,19 @@ export function AssessmentRunner({
   const inProgress = submission?.status === 'in_progress' && !!submission.startedAt;
 
   const [phase, setPhase] = useState<Phase>(() => (inProgress && !cameraRequired ? 'answering' : 'overview'));
-  const [answers, setAnswers] = useState<Record<string, AssessmentAnswer>>(submission?.answers || {});
+  const [answers, setAnswers] = useState<Record<string, AssessmentAnswer>>(() => {
+    const server = submission?.answers || {};
+    if (submitted) return server;
+    // Answers that never reached the server (offline, a crash, a power cut) win
+    // over its copy — except recordings, which only the server holds.
+    const local = readUnsent<Record<string, AssessmentAnswer>>(unsentKey(token)).answers;
+    if (!local) return server;
+    const merged: Record<string, AssessmentAnswer> = { ...server };
+    for (const [qId, a] of Object.entries(local)) {
+      merged[qId] = { ...server[qId], ...a, videoUrl: server[qId]?.videoUrl };
+    }
+    return merged;
+  });
   const answersRef = useRef(answers);
   useEffect(() => { answersRef.current = answers; }, [answers]);
   const [takes, setTakes] = useState<Record<string, Blob>>({});
@@ -139,8 +156,23 @@ export function AssessmentRunner({
     cameraSnapshots: proctored,
     screenStream: proctored ? screen.stream : null,
     currentQuestionId: focusedId,
-    api: proctorApi,
+    transport: proctorApi,
+    // A proctored assessment can't be answered outside fullscreen.
+    fullscreen: proctored ? 'required' : 'off',
   });
+  const online = useOnline();
+
+  // Autosave goes through the device: kept there until the server has it.
+  const draftSaves = useOfflineSave<Record<string, AssessmentAnswer>>({
+    storageKey: answering && !submitted ? unsentKey(token) : null,
+    send: (_key, value) => publicApi.saveAssessmentDraft(token, value),
+    onRejected: (_key, e) => {
+      const msg = extractApiErrorMessage(e, '');
+      if (/time is up/i.test(msg)) { toast.message(msg); onChanged(); }
+    },
+  });
+  const saveDraft = draftSaves.save;
+  const clearDraft = draftSaves.clear;
   useEffect(() => { logRef.current = proctor.log; }, [proctor.log]);
 
   const setAnswer = useCallback((qId: string, patch: AssessmentAnswer) => {
@@ -172,16 +204,10 @@ export function AssessmentRunner({
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       setSaveState('saving');
-      publicApi.saveAssessmentDraft(token, answersRef.current)
-        .then(() => setSaveState('saved'))
-        .catch((e) => {
-          setSaveState('idle');
-          const msg = extractApiErrorMessage(e, '');
-          if (/time is up/i.test(msg)) { toast.message(msg); onChanged(); }
-        });
+      void saveDraft('answers', answersRef.current).then((ok) => setSaveState(ok ? 'saved' : 'idle'));
     }, 1500);
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
-  }, [answers, answering, submitted, token, onChanged]);
+  }, [answers, answering, submitted, saveDraft]);
 
   // ── The clock ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -326,6 +352,7 @@ export function AssessmentRunner({
       }
       await proctor.flush();
       await publicApi.submitAssessment(token, answersRef.current);
+      clearDraft();
       camRef.current?.getTracks().forEach((t) => t.stop());
       screen.stop();
       if (document.fullscreenElement) document.exitFullscreen().catch(() => { });
@@ -472,14 +499,7 @@ export function AssessmentRunner({
             )}
           </div>
         </div>
-        {proctored && !proctor.isFullscreen && (
-          <div className="mt-2 flex items-center justify-between gap-3 rounded-lg bg-amber-50 px-3 py-1.5 text-xs text-amber-800">
-            <span className="inline-flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5" />You left fullscreen. This is noted for the reviewers.</span>
-            <button onClick={() => proctor.requestFullscreen()} className="inline-flex items-center gap-1 px-2 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-md font-medium">
-              <Maximize2 className="w-3 h-3" />Fullscreen
-            </button>
-          </div>
-        )}
+        {!online && <div className="mt-2"><ConnectionBanner online={online} /></div>}
       </div>
 
       <div className="p-6">
@@ -599,6 +619,9 @@ export function AssessmentRunner({
       {cameraRequired && !proctor.cameraLive && <CameraOffOverlay noun="assessment" onRetry={recoverCamera} />}
       {proctored && !screen.live && proctor.cameraLive && (
         <ScreenOffOverlay noun="assessment" screen={screen} onShared={() => { proctor.log('screen_share_restored'); void proctor.requestFullscreen(); }} />
+      )}
+      {proctor.fullscreenBlocked && proctor.cameraLive && !(proctored && !screen.live) && (
+        <FullscreenRequiredOverlay noun="assessment" onEnter={proctor.requestFullscreen} onCannot={proctor.continueWithoutFullscreen} />
       )}
       {uploadProblem !== null && (
         <UploadProblemDialog count={uploadProblem} onRetry={() => void submit({ force: false, auto: false })} onSubmitAnyway={() => void submit({ force: true })} />

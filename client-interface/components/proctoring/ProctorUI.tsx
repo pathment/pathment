@@ -1,20 +1,21 @@
 'use client';
 
-import type { ReactNode } from 'react';
-import { AlertTriangle, CheckCircle2, Laptop, Loader2, Monitor, MonitorOff, RotateCcw, VideoOff } from 'lucide-react';
-import type { ScreenShare, ScreenShareProblem } from '@/lib/hooks/mentee/useScreenShare';
+import { useState, type ReactNode } from 'react';
+import { AlertTriangle, CheckCircle2, Laptop, Loader2, Maximize2, Monitor, MonitorOff, RotateCcw, VideoOff, WifiOff } from 'lucide-react';
+import type { ScreenShare, ScreenShareProblem } from '@/lib/proctoring/useScreenShare';
 
 /**
- * The proctoring screens a candidate meets, shared by interviews and quizzes:
- * sharing the screen in setup, being stopped when the camera or the share
- * drops, a device that can't take part, and a video that didn't send.
+ * The proctoring screens a candidate meets, for any host (interviews, quizzes,
+ * intake assessments, …): sharing the screen in setup; being stopped when the
+ * camera or the share drops, or when they leave a required fullscreen; going
+ * offline; a device that can't take part; and a video that didn't send.
  *
  * `tone` follows the page: the interview studio is dark, quizzes are light.
  * The blocking overlays are always dark — they cover the page on purpose.
  */
 
 export type Tone = 'dark' | 'light';
-/** 'interview' | 'quiz' — used in sentences ("This quiz is proctored…"). */
+/** What the host calls the attempt — used in sentences ("This quiz is proctored…"). */
 export type Noun = string;
 
 const T = {
@@ -129,7 +130,7 @@ export function CameraOffOverlay({ noun, onRetry }: { noun: Noun; onRetry: () =>
       footnote={<p className="text-xs text-slate-500 mt-3">Nothing happening? Re-enable camera access for this site from your browser&apos;s address bar, then retry.</p>}
     >
       This {noun} requires your camera to stay on, and it looks like it was turned off or disconnected.
-      Turn it back on to continue — {STILL_RUNNING} and this pause is recorded for your mentor.
+      Turn it back on to continue — {STILL_RUNNING} and this pause is recorded for the reviewers.
     </BlockOverlay>
   );
 }
@@ -148,8 +149,63 @@ export function ScreenOffOverlay({ noun, screen, onShared }: { noun: Noun; scree
       )}
       footnote={screen.problem ? <ScreenProblem problem={screen.problem} /> : null}
     >
-      This {noun} requires your entire screen to be shared the whole time. Share it again to continue — {STILL_RUNNING} and this pause is recorded for your mentor.
+      This {noun} requires your entire screen to be shared the whole time. Share it again to continue — {STILL_RUNNING} and this pause is recorded for the reviewers.
     </BlockOverlay>
+  );
+}
+
+/**
+ * Fullscreen is required and they left it: the questions stay covered until
+ * they're back. Esc is locked where the browser allows it, but a determined
+ * candidate can still leave (holding Esc, the OS), so this is the stop.
+ * If their browser won't go fullscreen at all, they can carry on — flagged.
+ */
+export function FullscreenRequiredOverlay({ noun, onEnter, onCannot }: {
+  noun: Noun;
+  /** Resolves true once fullscreen. */
+  onEnter: () => Promise<boolean>;
+  /** Their browser won't go fullscreen even when asked. */
+  onCannot: () => void;
+}) {
+  const [failed, setFailed] = useState(0);
+  const [busy, setBusy] = useState(false);
+  return (
+    <BlockOverlay
+      tone="amber"
+      icon={<Maximize2 className="w-9 h-9 text-amber-400" />}
+      title="Go back to fullscreen"
+      action={(
+        <button
+          onClick={async () => { setBusy(true); const ok = await onEnter(); setBusy(false); if (!ok) setFailed((n) => n + 1); }}
+          disabled={busy}
+          className="inline-flex items-center gap-2 px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-sm font-medium disabled:opacity-50">
+          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Maximize2 className="w-4 h-4" />} Return to fullscreen
+        </button>
+      )}
+      footnote={failed > 0 ? (
+        <p className="text-xs text-slate-400 mt-4">
+          Your browser didn&apos;t go fullscreen.{' '}
+          <button onClick={onCannot} className="underline text-slate-200 hover:text-white">Continue without it</button>
+          {' '}— the reviewers will see that you couldn&apos;t.
+        </p>
+      ) : null}
+    >
+      This {noun} has to stay fullscreen. Leaving it is recorded for the reviewers, and the questions are hidden until you&apos;re back — {STILL_RUNNING}.
+    </BlockOverlay>
+  );
+}
+
+/**
+ * The connection dropped. Answering carries on: answers are kept on this device
+ * and sent as soon as it's back. Not a stop — losing the internet isn't cheating.
+ */
+export function ConnectionBanner({ online, tone = 'light' }: { online: boolean; tone?: Tone }) {
+  if (online) return null;
+  return (
+    <div role="status" className={`flex items-start gap-2 rounded-lg px-3 py-2 text-xs ${tone === 'dark' ? 'bg-amber-500/15 text-amber-100' : 'bg-amber-50 text-amber-900'}`}>
+      <WifiOff className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+      <span>You&apos;re offline. Keep going: your answers are saved on this device and sent when the connection is back. The clock keeps running.</span>
+    </div>
   );
 }
 
@@ -177,4 +233,4 @@ export function UploadProblemDialog({ count, onRetry, onSubmitAnyway }: { count:
 }
 
 /** What this browser can do, sent when an attempt starts (the server's proctoringRules). */
-export { browserCapabilities, deviceProblemFor } from './capabilities';
+export { browserCapabilities, deviceProblemFor } from '@/lib/proctoring/capabilities';

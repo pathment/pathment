@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { VideoAnswerRecorder, createRecognizer, MAX_VIDEO_BYTES } from '@/lib/utils/interviewMedia';
+import { VideoAnswerRecorder, createRecognizer, MAX_VIDEO_BYTES } from '@/lib/proctoring/media';
 
 interface Options {
   /** The proctoring camera's track; the recorder records a clone of it. */

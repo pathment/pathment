@@ -191,7 +191,7 @@ class ApplicationService {
     const invite = app.inviteId ? await models.RegistrationInvite.findByPk(app.inviteId, { attributes: ['id', 'usedAt', 'createdAt'] }) : null;
     const subJson = submission ? submission.toJSON() : null;
     if (subJson) {
-      subJson.proctor = require('./proctoredMedia').splitProctorLog(subJson.proctorLog || [], []);
+      subJson.proctor = require('../proctoring/media').splitProctorLog(subJson.proctorLog || [], []);
       delete subJson.proctorLog;
     }
     return {

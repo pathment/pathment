@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { uploadVideoAnswer, type VideoUploadEndpoints } from '@/lib/services/video-upload';
+import { uploadVideoAnswer, type VideoUploadEndpoints } from '@/lib/proctoring/videoUpload';
 
 export type RecordingKind = 'voice' | 'video';
 
@@ -27,12 +27,13 @@ export interface AnswerUploadTargets {
 }
 
 /**
- * Every recorded answer of an interview or quiz on its way to the server.
+ * Every recorded answer of an attempt on its way to the host.
  *
  * - One question's uploads run one after another, so when a candidate records
  *   again the newer take always lands last (the server replaces the older one).
  * - Each upload retries with a growing pause; a clip that never makes it stays
  *   held here, and `flush` tries all of them again before submitting.
+ * - When the connection comes back, anything still held is sent again by itself.
  * - While anything is unsent, closing or reloading the tab asks first: the
  *   recording only exists in this page until it is uploaded.
  */
@@ -44,6 +45,7 @@ export function useAnswerUploads(targets: AnswerUploadTargets) {
   const chains = useRef(new Map<string, Promise<boolean>>());
   const [unsent, setUnsent] = useState(0);
   const sync = () => setUnsent(held.current.size);
+  const lastSession = useRef<string | null>(null);
 
   const patch = (questionId: string, next: Partial<UploadStatus> & { kind: RecordingKind }) =>
     setStatus((cur) => ({ ...cur, [questionId]: { ...(cur[questionId] ?? { progress: 0, state: 'uploading' }), ...next } }));
@@ -61,6 +63,7 @@ export function useAnswerUploads(targets: AnswerUploadTargets) {
   /** Upload one recording (replacing any earlier take of the same question). Resolves true when stored. */
   const upload = useCallback((sessionId: string, questionId: string, kind: RecordingKind, blob: Blob, attempts = 3): Promise<boolean> => {
     held.current.set(questionId, { kind, blob });
+    lastSession.current = sessionId;
     sync();
     const run = async () => {
       // A newer take arrived while we waited our turn: let that one go instead.
@@ -100,6 +103,14 @@ export function useAnswerUploads(targets: AnswerUploadTargets) {
 
   /** Give up on a question's recording (they chose to submit without it). */
   const drop = useCallback((questionId: string) => { held.current.delete(questionId); sync(); }, []);
+
+  // Back online: send what's still held, without waiting for Finish.
+  useEffect(() => {
+    if (!unsent) return;
+    const retry = () => { if (lastSession.current) void flush(lastSession.current); };
+    window.addEventListener('online', retry);
+    return () => window.removeEventListener('online', retry);
+  }, [unsent, flush]);
 
   useEffect(() => {
     if (!unsent) return;

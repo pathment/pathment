@@ -26,7 +26,7 @@ import { IntakeAutomationPanel } from '@/components/admin/IntakeAutomationPanel'
 import { Drawer } from '@/components/shared/Drawer';
 import { RemoveFromIntakePanel } from '@/components/admin/RemoveFromIntakePanel';
 import { CodeEditor } from '@/components/shared/CodeEditor';
-import { ProctorSummary } from '@/components/mentor/ProctorSummary';
+import { ProctorSummary } from '@/components/proctoring/ProctorSummary';
 import RichTextEditor from '@/components/shared/RichTextEditor';
 import { RichContent } from '@/components/shared/RichContent';
 import { getBrowserTimeZone, splitLocal } from '@/lib/utils/datetime';

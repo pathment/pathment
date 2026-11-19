@@ -1,5 +1,5 @@
 import { apiClient } from './api-client';
-import { videoFormData, type VideoUploadEndpoints } from './video-upload';
+import { videoFormData, type VideoUploadEndpoints } from '@/lib/proctoring/videoUpload';
 import type { ProctorApi, ProctorEvent, ProctorSnapshot } from './interview-api';
 
 // ── Types ──────────────────────────────────────────────────────────────────

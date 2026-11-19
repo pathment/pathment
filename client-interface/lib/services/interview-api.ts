@@ -1,11 +1,11 @@
 import { apiClient } from './api-client';
-import { videoFormData, type VideoUploadEndpoints } from './video-upload';
+import { videoFormData, type VideoUploadEndpoints } from '@/lib/proctoring/videoUpload';
 
-/** Where a proctored attempt sends its events and snapshots (interviews and quizzes). */
-export interface ProctorApi {
-  logProctor: (sessionId: string, events: ProctorEvent[]) => Promise<unknown>;
-  uploadSnapshot: (sessionId: string, blob: Blob, questionId?: string | null, source?: 'camera' | 'screen') => Promise<unknown>;
-}
+import type { ProctorEvent, ProctorSnapshot, ProctorTransport } from '@/lib/proctoring/types';
+
+/** The proctoring types now live in the proctoring package; re-exported for existing callers. */
+export type { ProctorEvent, ProctorSnapshot };
+export type ProctorApi = ProctorTransport;
 
 // ── Types ──────────────────────────────────────────────────────────────────
 export type InterviewQuestionKind = 'voice' | 'code' | 'text' | 'video';
@@ -148,12 +148,6 @@ export interface SaveAnswerPayload {
   timeSpentSeconds?: number;
 }
 
-export interface ProctorEvent {
-  type: string;
-  at?: string;
-  meta?: Record<string, unknown>;
-}
-
 // ── API ──────────────────────────────────────────────────────────────────
 export const interviewApi = {
   // Authoring. Pass `status` (e.g. 'published') to limit to assignable kits.
@@ -262,7 +256,6 @@ export interface ReviewItem {
   answer: ReviewAnswer | null;
   snapshots?: ProctorSnapshot[];
 }
-export interface ProctorSnapshot { url: string; at: string; questionId?: string | null; source?: 'camera' | 'screen' }
 export interface InterviewReview {
   task: { id: string; status: string; pointsAwarded: number | null; menteeId: string };
   kit: { id: string; title: string; description: string | null };

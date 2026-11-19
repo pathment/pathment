@@ -62,7 +62,7 @@ exports.getCandidateInterview = catchAsync(async (req, res) => {
 exports.startInterview = catchAsync(async (req, res) => {
   const session = await interviewSessionService.startOrResume(req.params.taskId, req.user.id, {
     clanId: requestedClanId(req),
-    // What this client can do (screen share, video answers) — see proctoringRules.
+    // What this client can do (screen share, video answers) — see src/proctoring/rules.
     capabilities: req.body && req.body.capabilities,
   });
   res.status(200).json(successResponse('Interview session ready', { session }));
