@@ -95,6 +95,12 @@ const WORKSPACE_MODELS = {
   RagIngestionJob: 'rag_ingestion_jobs',
   MessageDraft: 'message_drafts',
   MentorEditHistory: 'mentor_edit_histories',
+  // Public API and sync (migration 154). An API key is found across workspaces
+  // once, by its prefix (skipOrganizationScope), then sets the request's workspace.
+  ApiKey: 'api_keys',
+  SyncConnection: 'sync_connections',
+  SyncRun: 'sync_runs',
+  ExternalIdentity: 'external_identities',
 };
 
 const GLOBAL_MODELS = new Set([

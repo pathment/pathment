@@ -2,7 +2,7 @@
 
 import { Suspense, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { User, Bell, Shield, Loader2, Save, KeyRound, Palette, Lock, Building2, CreditCard, LayoutGrid } from 'lucide-react';
+import { User, Bell, Shield, Loader2, Save, KeyRound, Palette, Lock, Building2, CreditCard, LayoutGrid, Cable } from 'lucide-react';
 import { useAdminSettings } from '@/lib/hooks/admin';
 import { useOrganization } from '@/lib/context/OrganizationContext';
 import { PageHeader } from '@/components/admin/ui';
@@ -13,6 +13,7 @@ import { AppearanceTab } from '@/components/settings/AppearanceTab';
 import AIConnectionsTab from '@/components/settings/AIConnectionsTab';
 import { NotificationPreferencesTab } from '@/components/settings/NotificationPreferencesTab';
 import AppsTab from '@/components/settings/AppsTab';
+import IntegrationsTab from '@/components/settings/IntegrationsTab';
 import ReviewLockTab from '@/components/settings/ReviewLockTab';
 import { PhoneField } from '@/components/shared/PhoneField';
 import { OrganizationSettingsTab } from '@/components/settings/OrganizationSettingsTab';
@@ -26,6 +27,7 @@ const TABS = [
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'ai', label: 'AI Connections', icon: KeyRound },
   { id: 'apps', label: 'Apps', icon: LayoutGrid },
+  { id: 'integrations', label: 'Integrations', icon: Cable },
   { id: 'review-lock', label: 'Review Lock', icon: Lock },
   { id: 'security', label: 'Security', icon: Shield },
 ];
@@ -47,7 +49,8 @@ function AdminSettingsInner() {
   const { loading, saving, profileData, setProfileData, handleProfileUpdate } = useAdminSettings();
   // Apps are a workspace-admin surface (system.settings); the API enforces the same rule.
   const { overview } = useOrganization();
-  const tabs = overview?.canManageOrganization === true ? TABS : TABS.filter((x) => x.id !== 'apps');
+  // Apps and Integrations act for the whole workspace: organization managers only.
+  const tabs = overview?.canManageOrganization === true ? TABS : TABS.filter((x) => x.id !== 'apps' && x.id !== 'integrations');
 
   if (loading) {
     return (
@@ -141,6 +144,7 @@ function AdminSettingsInner() {
           {activeTab === 'notifications' && <NotificationPreferencesTab role="admin" />}
           {activeTab === 'ai' && <AIConnectionsTab />}
           {activeTab === 'apps' && tabs.some((x) => x.id === 'apps') && <AppsTab />}
+          {activeTab === 'integrations' && tabs.some((x) => x.id === 'integrations') && <IntegrationsTab />}
           {activeTab === 'review-lock' && <ReviewLockTab />}
           {activeTab === 'security' && <SecurityTab userRole="admin" showAuditLogs={true} />}
         </div>

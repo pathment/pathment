@@ -185,6 +185,8 @@ router.use('/platform', require('./platform'));
 
 // External apps - platform catalog + per-workspace connections
 router.use('/apps', require('./externalApps'));
+// Settings → Integrations: API keys, sync connections, sync history (public API: /api/v1).
+router.use('/integrations', require('./integrations'));
 
 // External courses (Buildment) - assignable catalog + per-task enrollment/progress
 router.use('/courses', require('./courses'));

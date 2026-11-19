@@ -76,6 +76,13 @@ app.use(cors({
 // would otherwise re-serialize and break the signature.
 app.use(express.json({ limit: '10mb', verify: (req, _res, buf) => { req.rawBody = buf; } }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+// A public API caller who sends broken JSON gets the v1 error envelope.
+app.use((err, req, res, next) => {
+  if (err && err.type === 'entity.parse.failed' && req.path.startsWith('/api/v1')) {
+    return require('./publicApi/v1').sendError(req, res, 400, 'invalid_json', 'The request body is not valid JSON.');
+  }
+  return next(err);
+});
 
 // Seed per-request audit context (IP + user-agent) for downstream audit writes.
 app.use(requestContext);
@@ -118,6 +125,9 @@ app.get('/', (req, res) => {
 // crawlers; the real per-action limits live on the auth and public-intake routes.
 // It is a PAIR of limiters (reads and writes have separate budgets) — Express
 // flattens the array, and each one skips the other's methods.
+// Public API v1 (API keys, its own per-key limit and error envelope) — before
+// the app's /api backstop, which is per IP and shaped for the web client.
+app.use('/api/v1', require('./publicApi/v1'));
 app.use('/api', ...require('./middlewares/rateLimiter').apiLimiter, routes);
 
 // Provider webhooks (Resend delivery/bounce/complaint) — public, provider-signed.
@@ -178,6 +188,11 @@ async function start() {
     // Pull progress for open course enrollments (Buildment) every 15 minutes.
     if (process.env.COURSE_SYNC_DISABLED !== 'true') {
       require('./workers/courseSyncWorker').start();
+    }
+
+    // Process people synced in through the public API (sync_runs).
+    if (process.env.SYNC_WORKER_DISABLED !== 'true') {
+      require('./workers/syncWorker').start();
     }
 
     server.listen(PORT, () => {
