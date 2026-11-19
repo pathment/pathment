@@ -44,7 +44,7 @@ router.post('/api-keys', catchAsync(async (req, res) => {
   const { key, apiKey } = await apiKeys.create(req.user, req.body || {});
   await audit(req, 'API_KEY_CREATED', 'ApiKey', apiKey.id, { name: apiKey.name, prefix: apiKey.prefix, scopes: apiKey.scopes });
   // The only response that ever carries the whole key.
-  res.status(201).json(successResponse('API key created — copy it now, it will not be shown again', { key, apiKey }, 201));
+  res.status(201).json(successResponse('API key created. Copy it now, because it won’t be shown again.', { key, apiKey }, 201));
 }));
 
 router.post('/api-keys/:id/revoke', catchAsync(async (req, res) => {
@@ -168,7 +168,7 @@ router.post('/webhooks/:id/reveal-secret', catchAsync(async (req, res) => {
 router.post('/webhooks/:id/rotate-secret', catchAsync(async (req, res) => {
   const out = await webhooks.rotateSecret(req.params.id);
   await audit(req, 'WEBHOOK_SECRET_ROTATED', 'WebhookEndpoint', req.params.id, {});
-  res.json(successResponse('New signing secret — update your receiver now', out));
+  res.json(successResponse('New signing secret made. Update your receiver now.', out));
 }));
 
 router.post('/webhooks/:id/ping', catchAsync(async (req, res) => {

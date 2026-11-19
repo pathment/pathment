@@ -17,7 +17,7 @@ import {
 
 /**
  * Settings → Integrations: what another system needs to bring people into an
- * intake — an API key, a connection (how its field names map to ours), and the
+ * intake: an API key, a connection (how its field names map to ours), and the
  * history of every sync with what happened to each record.
  * Docs for developers: https://pathment.me/docs
  */
@@ -34,17 +34,17 @@ const FIELD_LABEL: Record<string, string> = {
 const FIELD_HINT: Record<string, string> = {
   email: 'Required. How a person is matched when there is no ID.',
   externalId: 'Strongly recommended: how a later sync finds the same person.',
-  level: 'Must be one of the intake’s levels — use the value map to translate.',
+  level: 'Must match one of the intake’s levels. Use the value map to translate theirs.',
 };
 const TRANSFORM_LABEL: Record<string, string> = {
   trim: 'As is', lowercase: 'lowercase', uppercase: 'UPPERCASE', titlecase: 'Title Case',
   first_name: 'First word (first name)', last_name: 'The rest (last name)', digits: 'Digits only (phones)', date: 'Date (YYYY-MM-DD)',
 };
 
-const when = (iso?: string | null) => (iso ? new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '—');
+const when = (iso?: string | null) => (iso ? new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '-');
 
 async function copy(text: string, what = 'Copied') {
-  try { await navigator.clipboard.writeText(text); toast.success(what); } catch { toast.error('Could not copy — select it and copy by hand'); }
+  try { await navigator.clipboard.writeText(text); toast.success(what); } catch { toast.error('Couldn’t copy it. Select the text and copy it yourself.'); }
 }
 
 type Section = 'keys' | 'connections' | 'history' | 'webhooks';
@@ -60,8 +60,8 @@ export default function IntegrationsTab() {
         <div>
           <h2 className="text-slate-900 flex items-center gap-2"><Cable className="w-5 h-5 text-brand-600" /> Integrations</h2>
           <p className="text-slate-500 text-sm mt-0.5 max-w-2xl">
-            Bring people into an intake from your other systems. A system sends its records with an API key; a connection
-            says how its field names match ours; every sync is recorded below with what happened to each record.
+            Connect Pathment to the other systems you use. They can send people into an intake, or Pathment can fetch
+            them from a URL. Webhooks tell those systems when something changes here.
           </p>
         </div>
         <a href={DOCS} target="_blank" rel="noreferrer" className={ghostBtn}><BookOpen className="w-3.5 h-3.5" />Developer docs</a>
@@ -104,7 +104,7 @@ function ApiKeysSection({ meta }: { meta: IntegrationMeta | null }) {
   const revoke = async (k: ApiKeyInfo) => {
     if (!(await confirm({
       title: `Revoke “${k.name}”?`,
-      description: 'Anything using this key stops working straight away. This cannot be undone — create a new key if you need one.',
+      description: 'Anything using this key stops working straight away. You can’t undo this, but you can create a new key.',
       confirmLabel: 'Revoke key', variant: 'danger',
     }))) return;
     try { await integrationsApi.revokeKey(k.id); toast.success('Key revoked'); void load(); }
@@ -152,13 +152,13 @@ function ApiKeysSection({ meta }: { meta: IntegrationMeta | null }) {
           <div className="space-y-4">
             <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>This is the only time the whole key is shown. Store it in your other system&apos;s secrets now — Pathment keeps only a fingerprint of it.</span>
+              <span>You won&apos;t see the full key again, so save it in the other system now. Pathment only keeps a fingerprint of it.</span>
             </div>
             <div className="flex items-center gap-2">
               <code className="min-w-0 flex-1 break-all rounded-lg border border-slate-200 bg-slate-50 p-3 font-mono text-sm dark:border-slate-700 dark:bg-slate-900">{revealed.key}</code>
               <button onClick={() => void copy(revealed.key, 'Key copied')} className={ghostBtn}><Copy className="h-3.5 w-3.5" />Copy</button>
             </div>
-            <p className="text-xs text-slate-500">Send it as <code className="font-mono">Authorization: Bearer {revealed.key.slice(0, 12)}…</code> — see the <a href={`${DOCS}/authentication`} target="_blank" rel="noreferrer" className="text-brand-700 underline">authentication guide</a>.</p>
+            <p className="text-xs text-slate-500">Send it as <code className="font-mono">Authorization: Bearer {revealed.key.slice(0, 12)}…</code>. See the <a href={`${DOCS}/authentication`} target="_blank" rel="noreferrer" className="text-brand-700 underline">authentication guide</a>.</p>
           </div>
         </Drawer>
       )}
@@ -236,7 +236,7 @@ function ConnectionsSection({ meta, onRan }: { meta: IntegrationMeta | null; onR
     setPulling(c.id);
     try {
       const r = await integrationsApi.pullNow(c.id);
-      if (r.status === 'queued') { toast.success(`Fetched ${r.total?.toLocaleString()} record${r.total === 1 ? '' : 's'} — syncing now`); onRan(); }
+      if (r.status === 'queued') { toast.success(`Fetched ${r.total?.toLocaleString()} record${r.total === 1 ? '' : 's'}. Syncing them now.`); onRan(); }
       else if (r.status === 'empty') toast.message('The URL returned no records');
       else toast.error(`Couldn’t fetch the records: ${r.error}`);
       void load();
@@ -246,7 +246,7 @@ function ConnectionsSection({ meta, onRan }: { meta: IntegrationMeta | null; onR
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-slate-500 max-w-2xl">A connection tells Pathment how another system names its fields — <em>email_address</em>, <em>full_name</em>, <em>track</em> — so its records arrive as applicants without anyone renaming columns. It can also fetch them itself, from a URL, on a schedule.</p>
+        <p className="text-sm text-slate-500 max-w-2xl">A connection tells Pathment what another system calls its fields (<em>email_address</em>, <em>full_name</em>, <em>track</em>), so its records come in as applicants and nobody has to rename columns. It can also fetch the records from a URL on a schedule.</p>
         <button onClick={() => setEditing('new')} className={primaryBtn}><Plus className="w-4 h-4" />New connection</button>
       </div>
       {list === null ? <Spinner /> : list.length === 0 ? (
@@ -307,7 +307,7 @@ function PullLine({ connection: c }: { connection: SyncConnection }) {
         <span className="text-slate-400">·</span><span>{SCHEDULE_LABEL[c.pullSchedule] || c.pullSchedule}</span>
       </p>
       <p>
-        {c.pullLastAt ? <>Last pull {when(c.pullLastAt)}{word && <> — <span className={cls}>{word}</span></>}</> : 'Not pulled yet'}
+        {c.pullLastAt ? <>Last pull {when(c.pullLastAt)}{word && <>: <span className={cls}>{word}</span></>}</> : 'Not pulled yet'}
         {c.pullSchedule !== 'manual' && c.pullNextAt && <span className="text-slate-400"> · next {when(c.pullNextAt)}</span>}
       </p>
       {c.pullLastError && <p className={c.pullLastStatus === 'failed' ? 'text-rose-700' : 'text-amber-700'}>{c.pullLastError}</p>}
@@ -369,7 +369,7 @@ function ConnectionDrawer({ meta, intakes, connection, onClose, onSaved }: {
     try {
       const m = await integrationsApi.suggest(s[0]);
       setRules((prev) => ({ ...m.fields, ...Object.fromEntries(Object.entries(prev).filter(([, r]) => r.from || r.default)) }));
-      toast.success(`Matched ${Object.keys(m.fields).length} field${Object.keys(m.fields).length === 1 ? '' : 's'} — check them below`);
+      toast.success(`Matched ${Object.keys(m.fields).length} field${Object.keys(m.fields).length === 1 ? '' : 's'}. Check them below.`);
     } catch (e) { toast.error(extractApiErrorMessage(e, 'Could not suggest a mapping')); } finally { setBusy(null); }
   };
 
@@ -451,7 +451,7 @@ function ConnectionDrawer({ meta, intakes, connection, onClose, onSaved }: {
           <div className="grid gap-2 sm:grid-cols-2">
             {([
               ['push', 'Their system sends them', 'It calls the Pathment API with an API key whenever it has people.'],
-              ['pull', 'Pathment fetches them', 'From a URL that returns JSON or CSV — a Google Sheet works — now or on a schedule.'],
+              ['pull', 'Pathment fetches them', 'From a URL that returns JSON or CSV, like a published Google Sheet. Now or on a schedule.'],
             ] as const).map(([v, label, hint]) => (
               <button key={v} type="button" onClick={() => setSource(v)}
                 className={`rounded-lg border p-2.5 text-left ${source === v ? 'border-brand-400 bg-brand-50 dark:bg-brand-500/10' : 'border-slate-200 hover:border-slate-300 dark:border-slate-700'}`}>
@@ -488,7 +488,7 @@ function ConnectionDrawer({ meta, intakes, connection, onClose, onSaved }: {
                 </label>
                 <label className="block">
                   <span className="mb-1 block text-xs font-medium text-slate-600">Next page is at <span className="font-normal text-slate-400">(optional)</span></span>
-                  <input value={pull.nextPath || ''} onChange={(e) => setP({ nextPath: e.target.value })} placeholder="e.g. links.next — or a Link header" className={`${field} py-1.5 font-mono text-xs`} />
+                  <input value={pull.nextPath || ''} onChange={(e) => setP({ nextPath: e.target.value })} placeholder="e.g. links.next (or a Link header)" className={`${field} py-1.5 font-mono text-xs`} />
                 </label>
               </div>
             )}
@@ -518,7 +518,7 @@ function ConnectionDrawer({ meta, intakes, connection, onClose, onSaved }: {
                 <label className="block sm:col-span-2">
                   <span className="mb-1 block text-xs font-medium text-slate-600">{pull.auth === 'basic' ? 'Password' : pull.auth === 'bearer' ? 'Token' : 'Header value'}</span>
                   <input type="password" value={pullSecret} onChange={(e) => { setPullSecret(e.target.value); setTested(null); }} autoComplete="new-password"
-                    placeholder={secretKept ? 'Saved — leave blank to keep it' : ''} className={`${field} py-1.5 font-mono text-xs`} />
+                    placeholder={secretKept ? 'Saved. Leave blank to keep it.' : ''} className={`${field} py-1.5 font-mono text-xs`} />
                   <span className="mt-1 block text-[11px] text-slate-400">Stored encrypted, sent only to this URL&apos;s own server, never shown again.</span>
                 </label>
               )}
@@ -542,7 +542,7 @@ function ConnectionDrawer({ meta, intakes, connection, onClose, onSaved }: {
                 <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
                 <span>
                   Found {tested.total.toLocaleString()} record{tested.total === 1 ? '' : 's'}{tested.pages > 1 ? ` over ${tested.pages} pages` : ''}
-                  {tested.truncated ? ' (the most one pull takes)' : ''}. The first few are in the sample below — use Suggest mapping. Nothing was imported.
+                  {tested.truncated ? ' (the most one pull takes)' : ''}. The first few are in the sample below, ready for Suggest mapping. Nothing was imported.
                 </span>
               </p>
             ) : (
@@ -573,7 +573,7 @@ function ConnectionDrawer({ meta, intakes, connection, onClose, onSaved }: {
             </div>
           </div>
           <textarea value={sample} onChange={(e) => setSample(e.target.value)} rows={6} placeholder={SAMPLE_HINT} spellCheck={false} className={`${field} font-mono text-xs`} />
-          <p className="mt-1 text-xs text-slate-500">Paste one record (or an array). It stays in your browser except for the preview — nothing is imported.</p>
+          <p className="mt-1 text-xs text-slate-500">Paste one record, or an array of them. Only the preview uses it, and nothing is imported.</p>
         </div>
 
         <div className={`${card} overflow-hidden`}>
@@ -586,7 +586,7 @@ function ConnectionDrawer({ meta, intakes, connection, onClose, onSaved }: {
               <div key={k} className="border-b border-slate-100 px-3 py-2.5 last:border-0 dark:border-slate-800">
                 <div className="grid grid-cols-[minmax(0,9rem)_minmax(0,1fr)_minmax(0,10rem)] items-center gap-2">
                   <span className="text-sm text-slate-800">{FIELD_LABEL[k] || k}{k === 'email' && <span className="text-rose-500"> *</span>}</span>
-                  <input value={r.from || ''} onChange={(e) => setRule(k, { from: e.target.value })} placeholder={k === 'email' ? 'email_address' : k === 'externalId' ? 'id' : '—'} className={`${field} py-1.5 font-mono text-xs`} />
+                  <input value={r.from || ''} onChange={(e) => setRule(k, { from: e.target.value })} placeholder={k === 'email' ? 'email_address' : k === 'externalId' ? 'id' : '-'} className={`${field} py-1.5 font-mono text-xs`} />
                   <select value={r.transform || 'trim'} onChange={(e) => setRule(k, { transform: e.target.value })} className={`${field} py-1.5 text-xs`}>
                     {(meta?.transforms || Object.keys(TRANSFORM_LABEL)).map((t) => <option key={t} value={t}>{TRANSFORM_LABEL[t] || t}</option>)}
                   </select>
@@ -642,12 +642,12 @@ function RunDrawer({ connection, intakes, onClose, onQueued }: { connection: Syn
     setBusy(true);
     try {
       await integrationsApi.startRun({ cohortId, connectionId: connection.id, records: list, dryRun });
-      toast.success(dryRun ? 'Dry run queued — nothing will be written' : `Sync of ${list.length} record${list.length === 1 ? '' : 's'} queued`);
+      toast.success(dryRun ? 'Dry run queued. Nothing will be saved.' : `Sync of ${list.length} record${list.length === 1 ? '' : 's'} queued`);
       onQueued();
     } catch (e) { toast.error(extractApiErrorMessage(e, 'Could not start the sync')); } finally { setBusy(false); }
   };
   return (
-    <Drawer open onClose={onClose} width="lg" title={`Try a sync — ${connection.name}`} subtitle="Paste records exported from their system"
+    <Drawer open onClose={onClose} width="lg" title={`Try a sync: ${connection.name}`} subtitle="Paste records exported from their system"
       footer={<>
         <button onClick={onClose} className={ghostBtn}>Cancel</button>
         <button onClick={() => void run()} disabled={busy || !cohortId || !records.trim()} className={primaryBtn}>{busy && <Loader2 className="h-4 w-4 animate-spin" />}{dryRun ? 'Run a dry run' : 'Sync now'}</button>
@@ -663,7 +663,7 @@ function RunDrawer({ connection, intakes, onClose, onQueued }: { connection: Syn
         <textarea value={records} onChange={(e) => setRecords(e.target.value)} rows={12} spellCheck={false} placeholder={`[\n${SAMPLE_HINT}\n]`} className={`${field} font-mono text-xs`} />
         <label className="flex items-start gap-2 text-sm text-slate-700">
           <input type="checkbox" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} className="mt-0.5 accent-brand-600" />
-          <span>Dry run <span className="block text-xs text-slate-500">Check the mapping and matching and see the report — without adding anyone or sending anything.</span></span>
+          <span>Dry run <span className="block text-xs text-slate-500">See the full report without adding anyone or sending anything.</span></span>
         </label>
       </div>
     </Drawer>
@@ -696,7 +696,7 @@ function HistorySection() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-slate-500">Every sync — from the API or from here — and what happened to each record.</p>
+        <p className="text-sm text-slate-500">Every sync, whether it came from the API, a pull or this page, and what happened to each record.</p>
         <button onClick={() => void load()} className={ghostBtn}><RefreshCw className="h-3.5 w-3.5" />Refresh</button>
       </div>
       {runs === null ? <Spinner /> : runs.length === 0 ? (
@@ -734,7 +734,7 @@ function HistorySection() {
                 {open.errors.map((e, i) => (
                   <div key={i} className="px-3 py-2">
                     <p className="text-slate-800">Record {e.index + 1}{e.email ? ` · ${e.email}` : ''}{e.externalId ? ` · ${e.externalId}` : ''}</p>
-                    <p className="text-xs text-slate-500"><code className="font-mono">{e.code}</code> — {e.message}</p>
+                    <p className="text-xs text-slate-500"><code className="font-mono">{e.code}</code>: {e.message}</p>
                   </div>
                 ))}
               </div>
@@ -791,7 +791,7 @@ function WebhooksSection({ meta }: { meta: IntegrationMeta | null }) {
   const toggle = async (w: WebhookEndpoint) => {
     try {
       await integrationsApi.updateWebhook(w.id, { status: w.status === 'enabled' ? 'disabled' : 'enabled' });
-      toast.success(w.status === 'enabled' ? 'Turned off — nothing more is sent to it' : 'Turned on');
+      toast.success(w.status === 'enabled' ? 'Turned off. Nothing more will be sent to it.' : 'Turned on');
       void load();
     } catch (e) { toast.error(extractApiErrorMessage(e, 'Could not change it')); }
   };
@@ -809,7 +809,7 @@ function WebhooksSection({ meta }: { meta: IntegrationMeta | null }) {
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-slate-500">
-          Pathment tells your systems when something happens — an applicant is accepted, a mentee finishes a roadmap — with a signed POST to the URL you give.{' '}
+          When something happens in Pathment, like an applicant being accepted or a mentee finishing a roadmap, we send a signed POST to the URL you add here.{' '}
           <a href={`${DOCS}/guides/webhooks`} target="_blank" rel="noreferrer" className="text-brand-700 underline">How to receive them</a>
         </p>
         <button onClick={() => setEditing('new')} className={`${primaryBtn} shrink-0`}><Plus className="w-4 h-4" />Add endpoint</button>
@@ -863,7 +863,7 @@ function WebhooksSection({ meta }: { meta: IntegrationMeta | null }) {
               <button onClick={() => void copy(secret.secret, 'Secret copied')} className={ghostBtn}><Copy className="h-3.5 w-3.5" />Copy</button>
             </div>
             <p className="text-xs text-slate-500">
-              Each request carries a <code className="font-mono">Pathment-Signature</code> header — see{' '}
+              Each request carries a <code className="font-mono">Pathment-Signature</code> header. See{' '}
               <a href={`${DOCS}/guides/webhooks`} target="_blank" rel="noreferrer" className="text-brand-700 underline">verifying signatures</a>.
             </p>
           </div>
@@ -920,7 +920,7 @@ function WebhookDrawer({ meta, endpoint, onClose, onSaved }: {
         </label>
         <label className="block">
           <span className="text-sm font-medium text-slate-800">Description <span className="font-normal text-slate-400">(optional)</span></span>
-          <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="e.g. CRM — admissions" className={`${field} mt-1`} maxLength={200} />
+          <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="e.g. Admissions CRM" className={`${field} mt-1`} maxLength={200} />
         </label>
         <div>
           <div className="flex items-center justify-between">
@@ -973,8 +973,8 @@ function DeliveriesDrawer({ endpoint, onClose, onSecret }: { endpoint: WebhookEn
     setBusy('ping');
     try {
       const d = await integrationsApi.pingWebhook(endpoint.id);
-      if (d.status === 'succeeded') toast.success(`Test event delivered — HTTP ${d.lastStatusCode}`);
-      else toast.error(`Test event failed — ${d.lastError || `HTTP ${d.lastStatusCode}`}`);
+      if (d.status === 'succeeded') toast.success(`Test event delivered (HTTP ${d.lastStatusCode})`);
+      else toast.error(`Test event failed: ${d.lastError || `HTTP ${d.lastStatusCode}`}`);
       void load();
     } catch (e) { toast.error(extractApiErrorMessage(e, 'Could not send the test event')); }
     finally { setBusy(null); }

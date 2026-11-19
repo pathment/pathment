@@ -84,7 +84,7 @@ function listIn(body, recordsPath) {
     const arrays = Object.keys(body).filter((k) => Array.isArray(body[k]));
     if (arrays.length === 1) return body[arrays[0]];
   }
-  throw new outbound.OutboundError('Couldn’t find the list of records in the response — say where it is under "Records are at" (for example data.items)');
+  throw new outbound.OutboundError('Couldn’t find the list of records in the response. Tell us where it is under "Records are at", for example data.items.');
 }
 
 function nextPageUrl(body, headers, nextPath, current) {
@@ -110,7 +110,7 @@ class PullService {
   /** Validated pull settings, or a ValidationError saying what's wrong. */
   cleanConfig(input) {
     if (!input || typeof input !== 'object') throw new ValidationError('Give the URL to fetch the records from');
-    const url = outbound.checkUrl(input.url, { credentialsMessage: 'Leave the username and password out of the URL — use the sign-in settings below' });
+    const url = outbound.checkUrl(input.url, { credentialsMessage: 'Leave the username and password out of the URL and use the sign-in settings below.' });
     const guessed = /\.csv($|\?)|[?&](output|format)=csv/i.test(url) ? 'csv' : 'json';
     const format = input.format || guessed;
     if (!FORMATS.includes(format)) throw new ValidationError('The format must be JSON or CSV');
@@ -202,15 +202,15 @@ class PullService {
       const res = await outbound.request(url, {
         headers, timeoutMs: TIMEOUT_MS, maxBytes: MAX_BYTES, maxRedirects: 5, secretHeaders: config.headerName ? [config.headerName] : [],
       });
-      if (res.status === 401 || res.status === 403) throw new outbound.OutboundError(`The server refused the sign-in (HTTP ${res.status}) — check the credential`, res.status);
+      if (res.status === 401 || res.status === 403) throw new outbound.OutboundError(`The server refused the sign-in (HTTP ${res.status}). Check the credential.`, res.status);
       if (res.status < 200 || res.status >= 300) throw new outbound.OutboundError(`The server answered HTTP ${res.status}`, res.status);
       let page;
       let body = null;
       if (config.format === 'csv') {
-        if (/^\s*<(!doctype|html)/i.test(res.body)) throw new outbound.OutboundError('The URL returned a web page, not CSV — for a Google Sheet use File → Share → Publish to web → CSV');
+        if (/^\s*<(!doctype|html)/i.test(res.body)) throw new outbound.OutboundError('The URL returned a web page, not CSV. For a Google Sheet, use File → Share → Publish to web and choose CSV.');
         page = parseCsv(res.body);
       } else {
-        try { body = JSON.parse(res.body); } catch { throw new outbound.OutboundError('The response isn’t JSON — if it is a spreadsheet export, choose CSV'); }
+        try { body = JSON.parse(res.body); } catch { throw new outbound.OutboundError('The response isn’t JSON. If it’s a spreadsheet export, choose CSV.'); }
         page = listIn(body, config.recordsPath);
       }
       for (const r of page) {
