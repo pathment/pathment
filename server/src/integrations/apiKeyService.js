@@ -15,6 +15,9 @@ const { ValidationError, NotFoundError } = require('../utils/errors/errorTypes')
 const SCOPES = {
   'intakes:read': 'Read intakes, their applicants and sync jobs',
   'applicants:write': 'Add and update applicants in an intake',
+  'programmes:read': 'Read programmes and clans',
+  'mentees:read': 'Read mentees — names, emails and where they are enrolled (personal data)',
+  'progress:read': 'Read progress: completion, tasks, roadmap steps, attendance, certificates (no names)',
 };
 const KEY_PREFIX = 'pk_live_';
 const PREFIX_LENGTH = 12;

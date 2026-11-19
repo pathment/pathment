@@ -15,7 +15,7 @@
 const express = require('express');
 const rateLimit = require('express-rate-limit');
 const { Op } = require('sequelize');
-const { models } = require('../db');
+const { models, sequelize } = require('../db');
 const apiKeys = require('../integrations/apiKeyService');
 const syncService = require('../integrations/syncService');
 const { setRequestOrganization } = require('../utils/auditContext');
@@ -265,6 +265,105 @@ router.get('/jobs/:jobId', requireScope('intakes:read', 'applicants:write'), wra
   const run = await models.SyncRun.findByPk(req.params.jobId, { attributes: { exclude: ['records'] } });
   if (!run) throw new V1Error(404, 'job_not_found', 'No job with that ID in this workspace.');
   res.json(syncService.presentJob(run));
+}));
+
+// ── Phase 2: programmes, clans, mentees, progress (read only) ───────────────────
+const reads = require('./readService');
+const UUID = /^[0-9a-f-]{36}$/i;
+const idOr404 = (id, code, what) => { if (!UUID.test(String(id))) throw new V1Error(404, code, `No ${what} with that ID in this workspace.`); };
+const optionalUuid = (req, name) => {
+  const v = req.query[name];
+  if (v == null || v === '') return null;
+  if (!UUID.test(String(v))) throw new V1Error(400, 'validation_failed', `\`${name}\` must be an ID.`, name);
+  return String(v);
+};
+const since = (req) => {
+  if (!req.query.updatedSince) return null;
+  const d = new Date(String(req.query.updatedSince));
+  if (Number.isNaN(d.getTime())) throw new V1Error(400, 'validation_failed', '`updatedSince` must be an ISO 8601 date.', 'updatedSince');
+  return d;
+};
+/** A page from rows fetched with limit+1, presented by id. */
+function pageOf(rows, limit, present) {
+  const hasMore = rows.length > limit;
+  const data = rows.slice(0, limit);
+  const last = data[data.length - 1];
+  return {
+    data: data.map(present),
+    hasMore,
+    nextCursor: hasMore && last ? Buffer.from(`${new Date(last.createdAt).toISOString()}|${last.id}`, 'utf8').toString('base64url') : null,
+  };
+}
+
+router.get('/programmes', requireScope('programmes:read'), wrap(async (req, res) => {
+  const { limit, after } = pageParams(req);
+  const where = afterWhere(after);
+  if (req.query.status) where.status = String(req.query.status);
+  const rows = await reads.programmes(where, limit + 1);
+  res.json(pageOf(rows, limit, (p) => p));
+}));
+
+router.get('/programmes/:programmeId', requireScope('programmes:read'), wrap(async (req, res) => {
+  idOr404(req.params.programmeId, 'programme_not_found', 'programme');
+  const p = await reads.programme(req.params.programmeId);
+  if (!p) throw new V1Error(404, 'programme_not_found', 'No programme with that ID in this workspace.');
+  res.json(p);
+}));
+
+router.get('/programmes/:programmeId/progress', requireScope('progress:read'), wrap(async (req, res) => {
+  idOr404(req.params.programmeId, 'programme_not_found', 'programme');
+  const exists = await models.Program.findByPk(req.params.programmeId, { attributes: ['id'] });
+  if (!exists) throw new V1Error(404, 'programme_not_found', 'No programme with that ID in this workspace.');
+  const { limit, after } = pageParams(req);
+  const { rows, present } = await reads.programmeProgress(req.params.programmeId, { clanId: optionalUuid(req, 'clanId'), after }, limit + 1);
+  res.json(pageOf(rows, limit, (e) => present.get(e.id)));
+}));
+
+router.get('/clans', requireScope('programmes:read'), wrap(async (req, res) => {
+  const { limit, after } = pageParams(req);
+  const where = afterWhere(after);
+  const programmeId = optionalUuid(req, 'programmeId');
+  if (programmeId) where.programId = programmeId;
+  if (req.query.status) where.status = String(req.query.status);
+  const rows = await reads.clans(where, limit + 1);
+  res.json(pageOf(rows, limit, (c) => c));
+}));
+
+router.get('/clans/:clanId', requireScope('programmes:read'), wrap(async (req, res) => {
+  idOr404(req.params.clanId, 'clan_not_found', 'clan');
+  const c = await reads.clan(req.params.clanId);
+  if (!c) throw new V1Error(404, 'clan_not_found', 'No clan with that ID in this workspace.');
+  res.json(c);
+}));
+
+router.get('/mentees', requireScope('mentees:read'), wrap(async (req, res) => {
+  const { limit, after } = pageParams(req);
+  const { rows, present } = await reads.mentees({
+    programmeId: optionalUuid(req, 'programmeId'),
+    clanId: optionalUuid(req, 'clanId'),
+    email: req.query.email ? String(req.query.email) : null,
+    externalId: req.query.externalId ? String(req.query.externalId) : null,
+    updatedSince: since(req),
+    after,
+  }, limit + 1);
+  res.json(pageOf(rows, limit, (u) => present.get(u.id)));
+}));
+
+router.get('/mentees/:menteeId', requireScope('mentees:read'), wrap(async (req, res) => {
+  idOr404(req.params.menteeId, 'mentee_not_found', 'mentee');
+  const m = await reads.mentee(req.params.menteeId);
+  if (!m) throw new V1Error(404, 'mentee_not_found', 'No mentee with that ID in this workspace.');
+  res.json(m);
+}));
+
+router.get('/mentees/:menteeId/progress', requireScope('progress:read'), wrap(async (req, res) => {
+  idOr404(req.params.menteeId, 'mentee_not_found', 'mentee');
+  // A mentee of this workspace (progress needs no personal data, but the person must be ours).
+  const [[known]] = await sequelize.query(`SELECT 1 AS ok FROM clan_memberships WHERE organization_id = :org AND user_id = :id AND role = 'mentee' LIMIT 1`,
+    { replacements: { org: req.organizationId, id: req.params.menteeId } });
+  if (!known) throw new V1Error(404, 'mentee_not_found', 'No mentee with that ID in this workspace.');
+  const data = await reads.menteeProgress(req.params.menteeId, { programmeId: optionalUuid(req, 'programmeId') });
+  res.json({ data });
 }));
 
 router.use((req, _res, next) => next(new V1Error(404, 'not_found', `No endpoint ${req.method} ${req.baseUrl}${req.path}. See https://pathment.me/docs/api.`)));
