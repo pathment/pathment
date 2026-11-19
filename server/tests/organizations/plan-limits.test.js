@@ -51,7 +51,9 @@ describe('plan limits', () => {
     return plan;
   };
 
-  describe.each(['starter', 'growth', 'scale'])('the %s plan', (key) => {
+  // growth and scale are retired (157_pricing_v2) but still enforced for the
+  // workspaces that keep them.
+  describe.each(['starter', 'program', 'academy', 'institution', 'growth', 'scale'])('the %s plan', (key) => {
     it.each(METERED)('enforces its published %s limit, or publishes none', async (resource) => {
       const plan = await onPlan(key);
       const limit = Number(plan.limits?.[resource]);
@@ -69,7 +71,7 @@ describe('plan limits', () => {
       await expect(organizationService.assertLimit(organizationId, resource, limit - 1))
         .resolves.toBe(true);
       await expect(organizationService.assertLimit(organizationId, resource, limit))
-        .rejects.toThrow(new RegExp(`${limit} ${resource}`, 'i'));
+        .rejects.toThrow(new RegExp(`${limit} ${resource === 'members' ? 'participants' : resource}`, 'i'));
       await expect(organizationService.assertLimit(organizationId, resource, limit + 5))
         .rejects.toThrow(/upgrade/i);
     });
@@ -125,13 +127,30 @@ describe('plan limits', () => {
       )).rejects.toThrow(/upgrade/i);
     });
 
-    /** Creating somebody from the admin screen is still filling a seat. */
-    it('refuses an admin-created member at the cap', async () => {
+    /** Plans are billed on participants: mentors and admins never fill a seat. */
+    it('lets an admin be created at the participant cap', async () => {
       const adminService = require('../../src/services/adminService');
       await fillTo('members', 0);
       await expect(adminService.createAdmin({
-        firstName: 'Over', lastName: 'Cap', email: 'over-cap@test.com', password: 'Test@1234',
-      }, admin.id)).rejects.toThrow(/upgrade/i);
+        firstName: 'Free', lastName: 'Admin', email: 'free-admin@test.com', password: 'Test@1234',
+      }, admin.id)).resolves.toBeTruthy();
+    });
+
+    it('refuses a participant at the cap but not a mentor', async () => {
+      await fillTo('members', 0);
+      await expect(organizationService.assertLimit(organizationId, 'members', null, { role: 'mentee' }))
+        .rejects.toThrow(/upgrade/i);
+      await expect(organizationService.assertLimit(organizationId, 'members', null, { role: 'mentor' }))
+        .resolves.toBe(true);
+    });
+
+    it('counts only mentees as participants', async () => {
+      const before = (await organizationService.usage(organizationId)).members;
+      const extraMentor = await createMentor({ email: 'plan-mentor-2@test.com' });
+      await models.OrganizationMembership.findOrCreate({
+        where: { organizationId, userId: extraMentor.id }, defaults: { role: 'member', status: 'active' },
+      });
+      expect((await organizationService.usage(organizationId)).members).toBe(before);
     });
   });
 });

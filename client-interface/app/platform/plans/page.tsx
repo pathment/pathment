@@ -111,7 +111,7 @@ function PlanEditor({ plan, onClose }: { plan: PlatformPlan | null; onClose: () 
         </label>
       </div>
 
-      <h3 className="mt-5 text-xs font-semibold text-muted-foreground">Limits <span className="font-normal">(-1 = unlimited; members/programs/clans are enforced today)</span></h3>
+      <h3 className="mt-5 text-xs font-semibold text-muted-foreground">Limits <span className="font-normal">(-1 = unlimited; members = participants (mentees only), programs and clans are enforced today)</span></h3>
       <div className="mt-2 space-y-1.5">
         {draft.limits.map((row, index) => (
           <div key={index} className="flex items-center gap-2">

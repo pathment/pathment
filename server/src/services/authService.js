@@ -148,7 +148,7 @@ class AuthService {
         throw new AuthorizationError('Your workspace membership is suspended');
       }
       if (workspaceMembership?.status !== 'active') {
-        await organizationService.assertLimit(organizationId, 'members', null, { transaction });
+        await organizationService.assertLimit(organizationId, 'members', null, { transaction, role: invite.role });
         if (workspaceMembership) {
           await workspaceMembership.update({ status: 'active', joinedAt: new Date() }, { transaction });
         } else {
@@ -258,7 +258,7 @@ class AuthService {
 
       const organizationService = require('./organizationService');
       const organizationId = invite.organizationId || await organizationService.currentId();
-      await organizationService.assertLimit(organizationId, 'members', null, { transaction });
+      await organizationService.assertLimit(organizationId, 'members', null, { transaction, role });
 
       // Check if email already exists
       const existingUser = await models.User.findOne({ where: { email: normalizedEmail }, transaction });
@@ -515,7 +515,8 @@ class AuthService {
 
       const organizationService = require('./organizationService');
       const organizationId = await organizationService.currentId();
-      await organizationService.assertLimit(organizationId, 'members', null, { transaction });
+      // Self-registration always creates a mentee.
+      await organizationService.assertLimit(organizationId, 'members', null, { transaction, role: 'mentee' });
 
       const user = await models.User.create({
         firstName,

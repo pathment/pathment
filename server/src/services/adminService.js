@@ -447,7 +447,7 @@ class AdminService {
     // acceptance both check the member cap; creating somebody from the admin
     // screen did not, which made the whole limit optional for anyone who
     // could reach that screen.
-    await require('./organizationService').assertLimit(organizationId, 'members');
+    await require('./organizationService').assertLimit(organizationId, 'members', null, { role: 'admin' });
     await models.OrganizationMembership.findOrCreate({
       where: { organizationId, userId: admin.id },
       defaults: { role: 'admin', status: 'active', joinedAt: new Date(), invitedBy: createdBy },

@@ -41,7 +41,7 @@ export function OverviewTab({ detail }: { detail: WorkspaceDetail }) {
 
       <SectionCard title="Usage" description="Against the effective (override-aware) limits." className="lg:col-span-1">
         <div className="space-y-4">
-          <UsageMeter used={usage.members} limit={limits.members} label="Members" />
+          <UsageMeter used={usage.members} limit={limits.members} label="Participants" />
           <UsageMeter used={usage.programs} limit={limits.programs} label="Programs" />
           <UsageMeter used={usage.clans} limit={limits.clans} label="Clans" />
         </div>

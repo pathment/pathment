@@ -14,6 +14,31 @@ const LABELS: Record<string, string> = {
   programCompletionStanding: 'Standing clan requests',
 };
 
+/** Plans are billed on participants (mentees); mentors and admins never count. */
+const METRIC_LABELS: Record<string, string> = { members: 'participants', programs: 'programs', clans: 'clans' };
+
+/**
+ * The headline price: the monthly equivalent of the annual price when the plan
+ * has one (that is the price it is sold at), with the month-to-month price
+ * beside it.
+ */
+function priceParts(plan: Plan) {
+  const money = (cents: number) => new Intl.NumberFormat('en', {
+    style: 'currency', currency: plan.currency, currencyDisplay: 'code',
+    maximumFractionDigits: cents % 100 === 0 ? 0 : 2,
+  }).format(cents / 100);
+  if (!plan.monthlyPriceCents && !plan.annualPriceCents) return { headline: 'Free', unit: '', note: '' };
+  if (plan.annualPriceCents) {
+    const perMonth = Math.round(plan.annualPriceCents / 12);
+    return {
+      headline: money(perMonth),
+      unit: '/month, billed yearly',
+      note: plan.monthlyPriceCents ? `or ${money(plan.monthlyPriceCents)} month to month` : '',
+    };
+  }
+  return { headline: money(plan.monthlyPriceCents), unit: '/month', note: '' };
+}
+
 export function PlansSettingsTab() {
   const { overview, refresh, loading: overviewLoading } = useOrganization();
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -110,7 +135,7 @@ export function PlansSettingsTab() {
           const published = plannedLimitLabel(key);
           return (
             <div key={key} className="rounded-2xl border border-border p-4">
-              <p className="text-xs font-medium capitalize text-muted-foreground">{key}</p>
+              <p className="text-xs font-medium capitalize text-muted-foreground">{METRIC_LABELS[key] || key}</p>
               <p className="mt-1 text-2xl font-semibold">
                 {used}
                 <span className="text-sm font-normal text-muted-foreground"> / {unlimited ? 'Unlimited' : limit}</span>
@@ -132,6 +157,7 @@ export function PlansSettingsTab() {
           );
         })}
       </div>
+      <p className="text-xs text-muted-foreground">Participants are the mentees in this workspace. Mentors and admins are always free and never count toward a limit.</p>
       {shownOverrides.length > 0 && (
         <p className="text-sm text-muted-foreground">
           {shownOverrides.length === 1 ? 'One limit has' : `${shownOverrides.length} limits have`} been set for this
@@ -143,12 +169,17 @@ export function PlansSettingsTab() {
       {subscription.requestedPlan && <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">Plan change requested: <strong>{subscription.requestedPlan.name}</strong>. Not active yet. Pathment will arrange an invoice; your current plan and limits stay in effect until an operator confirms and activates the change.</div>}
       {error && <div role="status"><p>Could not load available plans.</p><button onClick={() => { setError(false); setLoading(true); setAttempt(n => n + 1); }} className="text-brand-700 underline">Try again</button></div>}
       {!error && plans.length === 0 && <p role="status">No plans are currently published.</p>}
-      <div className="grid gap-4 xl:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {cards.map((plan) => { const active = plan.id === subscription.plan.id; const pending = plan.id === subscription.requestedPlan?.id; return (
           <article key={plan.id} className={`rounded-2xl border p-5 ${active ? 'border-brand-400 ring-2 ring-brand-500/15' : 'border-border'}`}>
             <div className="flex items-center justify-between"><h3 className="font-semibold">{plan.name}</h3>{active && <span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700">Current</span>}</div>
             <p className="mt-2 min-h-10 text-sm text-muted-foreground">{plan.description}</p>
-            <p className="mt-4 text-2xl font-semibold">{plan.monthlyPriceCents ? new Intl.NumberFormat('en', { style: 'currency', currency: plan.currency, currencyDisplay: 'code' }).format(plan.monthlyPriceCents / 100) : 'Free'}<span className="text-sm font-normal text-muted-foreground">{plan.monthlyPriceCents ? '/month' : ''}</span></p>
+            {(() => { const price = priceParts(plan); return (
+              <div className="mt-4">
+                <p className="text-2xl font-semibold">{price.headline}<span className="text-sm font-normal text-muted-foreground">{price.unit}</span></p>
+                {price.note && <p className="mt-0.5 text-xs text-muted-foreground">{price.note}</p>}
+              </div>
+            ); })()}
             {/*
                 What this PLAN comes with — on every card, the current one
                 included. It used to swap in the workspace's own limits here,
@@ -159,7 +190,7 @@ export function PlansSettingsTab() {
                 workspace is stated once, in the usage cards above.
             */}
             <ul className="mt-4 space-y-2 text-sm">{Object.entries(plan.limits).map(([key, limit]) => (
-              <li key={key}>{limitText(limit)} {key}</li>
+              <li key={key}>{limitText(limit)} {METRIC_LABELS[key] || key}</li>
             ))}</ul>
             {active && shownOverrides.length > 0 && (
               <p className="mt-2 text-xs text-brand-700 dark:text-brand-300">
