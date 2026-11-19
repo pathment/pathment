@@ -9,6 +9,9 @@ const logger = require('../utils/logger');
  * after 15 minutes, up to three attempts, then marked failed.
  *
  * Polls every 5 seconds, and `kick()` starts at once when a batch is queued.
+ *
+ * Scheduled pulls (pull connectors) run on their own loop on the same timer,
+ * so a slow source never holds up the batches waiting to be processed.
  */
 const POLL_MS = 5000;
 const STALE_MINUTES = 15;
@@ -17,6 +20,7 @@ const MAX_ATTEMPTS = 3;
 let timer;
 let running = false;
 let again = false;
+let pulling = false;
 
 async function claim() {
   const { sequelize } = require('../db');
@@ -61,9 +65,27 @@ async function tick() {
   }
 }
 
+/** Pull the connections whose schedule is due, one after another. */
+async function pullTick() {
+  if (pulling) return;
+  pulling = true;
+  try {
+    const { runWithRequestContext } = require('../utils/auditContext');
+    const pulls = require('../integrations/pullService');
+    for (let job = await pulls.claimDue(); job; job = await pulls.claimDue()) {
+      // eslint-disable-next-line no-await-in-loop
+      await runWithRequestContext({ organizationId: job.organization_id, workspaceJob: true }, () => pulls.runScheduled(job));
+    }
+  } catch (error) {
+    logger.error('Scheduled pull pass failed', { message: error.message });
+  } finally {
+    pulling = false;
+  }
+}
+
 function start() {
   if (timer) return;
-  timer = setInterval(tick, POLL_MS);
+  timer = setInterval(() => { void tick(); void pullTick(); }, POLL_MS);
   timer.unref();
   setTimeout(tick, 3000).unref();
 }
@@ -74,4 +96,4 @@ function kick() {
   void tick();
 }
 
-module.exports = { start, kick, tick };
+module.exports = { start, kick, tick, pullTick };

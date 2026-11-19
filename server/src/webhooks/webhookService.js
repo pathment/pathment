@@ -17,8 +17,6 @@
  * DNS answer can't be switched to an internal address after the URL was saved.
  */
 const crypto = require('crypto');
-const dns = require('dns');
-const net = require('net');
 const http = require('http');
 const https = require('https');
 const { models } = require('../db');
@@ -49,44 +47,13 @@ const TIMEOUT_MS = 10_000;
 const LEASE_MS = 2 * 60_000;
 const CACHE_MS = 30_000;
 
-const allowInsecure = () => process.env.NODE_ENV !== 'production' && process.env.WEBHOOKS_ALLOW_PRIVATE === 'true';
+const outbound = require('../utils/outboundHttp');
 
-// ── Addresses we never call ───────────────────────────────────────────────────
-function isPrivateAddress(address) {
-  if (net.isIPv4(address)) {
-    const [a, b] = address.split('.').map(Number);
-    return a === 0 || a === 10 || a === 127 || (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254)
-      || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 192 && b === 0) || a >= 224;
-  }
-  const v = String(address).toLowerCase();
-  if (v.startsWith('::ffff:')) return isPrivateAddress(v.slice(7));
-  return v === '::' || v === '::1' || v.startsWith('fc') || v.startsWith('fd') || v.startsWith('fe8') || v.startsWith('fe9')
-    || v.startsWith('fea') || v.startsWith('feb') || v.startsWith('ff');
-}
-
-/** dns.lookup that refuses internal addresses — used for every connection. */
-function safeLookup(hostname, options, callback) {
-  dns.lookup(hostname, { ...options, all: true }, (err, addresses) => {
-    if (err) return callback(err);
-    const list = Array.isArray(addresses) ? addresses : [{ address: addresses, family: options.family || 4 }];
-    const bad = list.find((a) => isPrivateAddress(a.address));
-    if (bad && !allowInsecure()) return callback(new Error(`Refusing to call an internal address (${bad.address})`));
-    const first = list[0];
-    if (options.all) return callback(null, list);
-    return callback(null, first.address, first.family);
-  });
-}
-
+const { isPrivateAddress, safeLookup } = outbound;
 function checkUrl(raw) {
-  let url;
-  try { url = new URL(String(raw || '').trim()); } catch { throw new ValidationError('That is not a valid URL'); }
-  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && allowInsecure())) throw new ValidationError('The URL must start with https://');
-  if (url.username || url.password) throw new ValidationError('Leave credentials out of the URL; check our signature instead');
-  if (!allowInsecure() && (net.isIP(url.hostname) ? isPrivateAddress(url.hostname) : /^(localhost|.*\.local|.*\.internal)$/i.test(url.hostname))) {
-    throw new ValidationError('The URL must be reachable on the public internet');
-  }
-  if (url.href.length > 500) throw new ValidationError('The URL is too long');
-  return url.href;
+  const href = outbound.checkUrl(raw, { credentialsMessage: 'Leave credentials out of the URL; check our signature instead' });
+  if (href.length > 500) throw new ValidationError('The URL is too long');
+  return href;
 }
 
 const newSecret = () => `whsec_${crypto.randomBytes(24).toString('base64url')}`;

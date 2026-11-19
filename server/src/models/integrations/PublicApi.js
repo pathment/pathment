@@ -37,7 +37,25 @@ module.exports = (sequelize, DataTypes) => {
     },
     createdBy: { type: DataTypes.UUID, allowNull: true, field: 'created_by' },
     archivedAt: { type: DataTypes.DATE, allowNull: true, field: 'archived_at' },
+    // Pull connectors (migration 156): Pathment fetches the records from a URL.
+    pullConfig: { type: DataTypes.JSONB, allowNull: true, field: 'pull_config' },
+    pullSecretEncrypted: { type: DataTypes.TEXT, allowNull: true, field: 'pull_secret_encrypted' },
+    pullSchedule: {
+      type: DataTypes.STRING(20), allowNull: false, defaultValue: 'manual', field: 'pull_schedule',
+      validate: { isIn: [['manual', 'hourly', 'every_6_hours', 'daily']] },
+    },
+    pullNextAt: { type: DataTypes.DATE, allowNull: true, field: 'pull_next_at' },
+    pullLastAt: { type: DataTypes.DATE, allowNull: true, field: 'pull_last_at' },
+    pullLastStatus: { type: DataTypes.STRING(20), allowNull: true, field: 'pull_last_status' },
+    pullLastError: { type: DataTypes.STRING(500), allowNull: true, field: 'pull_last_error' },
+    pullLastHash: { type: DataTypes.STRING(64), allowNull: true, field: 'pull_last_hash' },
   }, { tableName: 'sync_connections', underscored: true, timestamps: true, indexes: [] });
+
+  // The stored credential never leaves the server: say only whether there is one.
+  SyncConnection.prototype.toJSON = function toJSON() {
+    const { pullSecretEncrypted, pullLastHash, ...rest } = this.get({ plain: true });
+    return { ...rest, hasPullSecret: !!pullSecretEncrypted };
+  };
 
   const SyncRun = sequelize.define('SyncRun', {
     id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },

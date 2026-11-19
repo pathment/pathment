@@ -12,6 +12,7 @@ import { cohortApi } from '@/lib/services/intake-api';
 import {
   integrationsApi, type ApiKeyInfo, type FieldMapping, type IntegrationMeta, type MappingRule, type PreviewRow,
   type SyncConnection, type SyncRun, type WebhookDelivery, type WebhookEndpoint,
+  type ConnectionInput, type PullAuth, type PullConfig, type PullSchedule, type PullTestResult,
 } from '@/lib/services/integrations-api';
 
 /**
@@ -230,10 +231,22 @@ function ConnectionsSection({ meta, onRan }: { meta: IntegrationMeta | null; onR
     catch (e) { toast.error(extractApiErrorMessage(e, 'Could not remove it')); }
   };
 
+  const [pulling, setPulling] = useState<string | null>(null);
+  const pullNow = async (c: SyncConnection) => {
+    setPulling(c.id);
+    try {
+      const r = await integrationsApi.pullNow(c.id);
+      if (r.status === 'queued') { toast.success(`Fetched ${r.total?.toLocaleString()} record${r.total === 1 ? '' : 's'} — syncing now`); onRan(); }
+      else if (r.status === 'empty') toast.message('The URL returned no records');
+      else toast.error(`Couldn’t fetch the records: ${r.error}`);
+      void load();
+    } catch (e) { toast.error(extractApiErrorMessage(e, 'Could not pull')); } finally { setPulling(null); }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-slate-500 max-w-2xl">A connection tells Pathment how another system names its fields — <em>email_address</em>, <em>full_name</em>, <em>track</em> — so its records arrive as applicants without anyone renaming columns.</p>
+        <p className="text-sm text-slate-500 max-w-2xl">A connection tells Pathment how another system names its fields — <em>email_address</em>, <em>full_name</em>, <em>track</em> — so its records arrive as applicants without anyone renaming columns. It can also fetch them itself, from a URL, on a schedule.</p>
         <button onClick={() => setEditing('new')} className={primaryBtn}><Plus className="w-4 h-4" />New connection</button>
       </div>
       {list === null ? <Spinner /> : list.length === 0 ? (
@@ -254,9 +267,14 @@ function ConnectionsSection({ meta, onRan }: { meta: IntegrationMeta | null; onR
                   <span key={k} className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600 dark:bg-white/10">{FIELD_LABEL[k] || k} ← <span className="font-mono">{r.from || `"${r.default}"`}</span></span>
                 ))}
               </div>
+              {c.pullConfig && <PullLine connection={c} />}
               <div className="mt-3 flex flex-wrap items-center gap-2">
-                <button onClick={() => setEditing(c)} className={ghostBtn}>Edit mapping</button>
-                <button onClick={() => setRunning(c)} className={ghostBtn}>Try a sync</button>
+                <button onClick={() => setEditing(c)} className={ghostBtn}>Edit</button>
+                {c.pullConfig ? (
+                  <button onClick={() => void pullNow(c)} disabled={pulling === c.id || !c.cohortId} className={ghostBtn}>
+                    {pulling === c.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}Pull now
+                  </button>
+                ) : <button onClick={() => setRunning(c)} className={ghostBtn}>Try a sync</button>}
                 <button onClick={() => void copy(c.id, 'Connection ID copied')} className={`${ghostBtn} font-mono`} title="Send this as `connection` in the API"><Copy className="h-3 w-3" />{c.id.slice(0, 8)}…</button>
               </div>
             </div>
@@ -269,6 +287,31 @@ function ConnectionsSection({ meta, onRan }: { meta: IntegrationMeta | null; onR
           onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void load(); }} />
       )}
       {running && <RunDrawer connection={running} intakes={intakes} onClose={() => setRunning(null)} onQueued={() => { setRunning(null); onRan(); }} />}
+    </div>
+  );
+}
+
+const SCHEDULE_LABEL: Record<string, string> = { manual: 'When you press Pull now', hourly: 'Every hour', every_6_hours: 'Every 6 hours', daily: 'Once a day' };
+
+/** A pull connector's source, schedule and how the last pull went. */
+function PullLine({ connection: c }: { connection: SyncConnection }) {
+  const host = (() => { try { return new URL(c.pullConfig!.url).host; } catch { return c.pullConfig!.url; } })();
+  const last: Record<string, [string, string]> = {
+    ok: ['text-emerald-700', 'fetched'], unchanged: ['text-slate-500', 'nothing new'], empty: ['text-amber-700', 'no records'], failed: ['text-rose-700', 'failed'],
+  };
+  const [cls, word] = (c.pullLastStatus && last[c.pullLastStatus]) || ['text-slate-500', ''];
+  return (
+    <div className="mt-2 space-y-0.5 rounded-lg bg-slate-50 px-2.5 py-2 text-xs text-slate-600 dark:bg-white/5">
+      <p className="flex flex-wrap items-center gap-x-1.5">
+        <Download className="h-3 w-3" /><span>Fetches {c.pullConfig!.format.toUpperCase()} from</span><code className="font-mono">{host}</code>
+        <span className="text-slate-400">·</span><span>{SCHEDULE_LABEL[c.pullSchedule] || c.pullSchedule}</span>
+      </p>
+      <p>
+        {c.pullLastAt ? <>Last pull {when(c.pullLastAt)}{word && <> — <span className={cls}>{word}</span></>}</> : 'Not pulled yet'}
+        {c.pullSchedule !== 'manual' && c.pullNextAt && <span className="text-slate-400"> · next {when(c.pullNextAt)}</span>}
+      </p>
+      {c.pullLastError && <p className={c.pullLastStatus === 'failed' ? 'text-rose-700' : 'text-amber-700'}>{c.pullLastError}</p>}
+      {!c.cohortId && <p className="text-amber-700">Choose an intake (Edit) before it can pull.</p>}
     </div>
   );
 }
@@ -292,7 +335,18 @@ function ConnectionDrawer({ meta, intakes, connection, onClose, onSaved }: {
   const [keepUnmapped, setKeepUnmapped] = useState(connection?.mapping?.keepUnmapped !== false);
   const [sample, setSample] = useState('');
   const [preview, setPreview] = useState<{ problems: string[]; rows: PreviewRow[] } | null>(null);
-  const [busy, setBusy] = useState<'suggest' | 'preview' | 'save' | null>(null);
+  const [busy, setBusy] = useState<'suggest' | 'preview' | 'save' | 'test' | null>(null);
+  // Where the records come from: they send them (API), or Pathment fetches them from a URL.
+  const [source, setSource] = useState<'push' | 'pull'>(connection?.pullConfig ? 'pull' : 'push');
+  const [pull, setPull] = useState<PullConfig>(connection?.pullConfig || {
+    url: '', format: 'json', recordsPath: null, nextPath: null, auth: 'none', headerName: null, username: null,
+  });
+  const [pullSecret, setPullSecret] = useState('');
+  const [schedule, setSchedule] = useState<PullSchedule>(connection?.pullSchedule || 'daily');
+  const [tested, setTested] = useState<PullTestResult | null>(null);
+  const setP = (patch: Partial<PullConfig>) => { setPull((p) => ({ ...p, ...patch })); setTested(null); };
+  const secretKept = !!connection?.hasPullSecret && connection.pullConfig?.auth === pull.auth;
+  const needsSecret = source === 'pull' && pull.auth !== 'none' && !pullSecret.trim() && !secretKept;
 
   const mapping: FieldMapping = useMemo(() => ({
     fields: Object.fromEntries(Object.entries(rules).filter(([, r]) => r && (r.from?.trim() || r.default?.trim())).map(([k, r]) => [k, {
@@ -326,10 +380,37 @@ function ConnectionDrawer({ meta, intakes, connection, onClose, onSaved }: {
     catch (e) { toast.error(extractApiErrorMessage(e, 'Could not preview')); } finally { setBusy(null); }
   };
 
+  const pullBody = (): Partial<PullConfig> => ({
+    url: pull.url.trim(),
+    format: pull.format,
+    recordsPath: pull.format === 'json' ? pull.recordsPath?.trim() || null : null,
+    nextPath: pull.format === 'json' ? pull.nextPath?.trim() || null : null,
+    auth: pull.auth,
+    headerName: pull.auth === 'header' ? pull.headerName?.trim() || null : null,
+    username: pull.auth === 'basic' ? pull.username?.trim() || null : null,
+  });
+
+  const testPull = async () => {
+    setBusy('test');
+    try {
+      const r = await integrationsApi.testPull({ pull: pullBody(), pullSecret: pullSecret.trim() || undefined, connectionId: connection?.id });
+      setTested(r);
+      if (r.ok && r.samples.length) {
+        setSample(JSON.stringify(r.samples, null, 2));
+        setPreview(null);
+      }
+    } catch (e) { toast.error(extractApiErrorMessage(e, 'Could not test the URL')); } finally { setBusy(null); }
+  };
+
   const save = async () => {
     setBusy('save');
     try {
-      const body = { name: name.trim(), cohortId: cohortId || null, afterSync, mapping };
+      const body: ConnectionInput = { name: name.trim(), cohortId: cohortId || null, afterSync, mapping };
+      if (source === 'pull') {
+        body.pull = pullBody();
+        body.pullSchedule = schedule;
+        if (pullSecret.trim()) body.pullSecret = pullSecret.trim();
+      } else if (connection?.pullConfig) body.pull = null;
       if (connection) await integrationsApi.updateConnection(connection.id, body);
       else await integrationsApi.createConnection(body);
       toast.success(connection ? 'Connection saved' : 'Connection created');
@@ -343,7 +424,8 @@ function ConnectionDrawer({ meta, intakes, connection, onClose, onSaved }: {
     <Drawer open onClose={onClose} width="xl" title={connection ? `Edit “${connection.name}”` : 'New connection'} subtitle="How another system's fields become Pathment applicants"
       footer={<>
         <button onClick={onClose} className={ghostBtn}>Cancel</button>
-        <button onClick={() => void save()} disabled={busy !== null || !name.trim() || !mapping.fields.email} className={primaryBtn}>
+        <button onClick={() => void save()} className={primaryBtn}
+          disabled={busy !== null || !name.trim() || !mapping.fields.email || (source === 'pull' && (!pull.url.trim() || !cohortId || needsSecret))}>
           {busy === 'save' && <Loader2 className="h-4 w-4 animate-spin" />}{connection ? 'Save' : 'Create connection'}
         </button>
       </>}>
@@ -354,13 +436,120 @@ function ConnectionDrawer({ meta, intakes, connection, onClose, onSaved }: {
             <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Applications CRM" className={field} />
           </label>
           <label className="block">
-            <span className="mb-1 block text-sm font-medium text-slate-700">Default intake <span className="font-normal text-slate-400">(for “Try a sync”)</span></span>
+            <span className="mb-1 block text-sm font-medium text-slate-700">
+              {source === 'pull' ? <>Intake <span className="font-normal text-slate-400">(where pulled people go)</span></> : <>Default intake <span className="font-normal text-slate-400">(for “Try a sync”)</span></>}
+            </span>
             <select value={cohortId} onChange={(e) => setCohortId(e.target.value)} className={field}>
               <option value="">None</option>
               {intakes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </label>
         </div>
+
+        <fieldset>
+          <legend className="mb-1.5 text-sm font-medium text-slate-700">Where the records come from</legend>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {([
+              ['push', 'Their system sends them', 'It calls the Pathment API with an API key whenever it has people.'],
+              ['pull', 'Pathment fetches them', 'From a URL that returns JSON or CSV — a Google Sheet works — now or on a schedule.'],
+            ] as const).map(([v, label, hint]) => (
+              <button key={v} type="button" onClick={() => setSource(v)}
+                className={`rounded-lg border p-2.5 text-left ${source === v ? 'border-brand-400 bg-brand-50 dark:bg-brand-500/10' : 'border-slate-200 hover:border-slate-300 dark:border-slate-700'}`}>
+                <span className="block text-sm font-medium text-slate-800">{label}</span>
+                <span className="mt-0.5 block text-[11px] text-slate-500">{hint}</span>
+              </button>
+            ))}
+          </div>
+        </fieldset>
+
+        {source === 'pull' && (
+          <div className={`${card} space-y-4 p-4`}>
+            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_8rem]">
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium text-slate-700">URL</span>
+                <input value={pull.url} onChange={(e) => setP({ url: e.target.value, ...(/\.csv($|\?)|[?&](output|format)=csv/i.test(e.target.value) ? { format: 'csv' } : {}) })}
+                  placeholder="https://their-system.example.com/api/people" className={`${field} font-mono text-xs`} />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium text-slate-700">Format</span>
+                <select value={pull.format} onChange={(e) => setP({ format: e.target.value as 'json' | 'csv' })} className={field}>
+                  <option value="json">JSON</option>
+                  <option value="csv">CSV</option>
+                </select>
+              </label>
+            </div>
+            {pull.format === 'csv' ? (
+              <p className="text-xs text-slate-500">The first row is the column names. For a Google Sheet: File → Share → Publish to web → choose the sheet → CSV, and paste that link.</p>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-slate-600">Records are at <span className="font-normal text-slate-400">(optional)</span></span>
+                  <input value={pull.recordsPath || ''} onChange={(e) => setP({ recordsPath: e.target.value })} placeholder="found by itself, or e.g. data.items" className={`${field} py-1.5 font-mono text-xs`} />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-slate-600">Next page is at <span className="font-normal text-slate-400">(optional)</span></span>
+                  <input value={pull.nextPath || ''} onChange={(e) => setP({ nextPath: e.target.value })} placeholder="e.g. links.next — or a Link header" className={`${field} py-1.5 font-mono text-xs`} />
+                </label>
+              </div>
+            )}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-slate-600">Sign-in</span>
+                <select value={pull.auth} onChange={(e) => { setP({ auth: e.target.value as PullAuth }); setPullSecret(''); }} className={`${field} py-1.5 text-xs`}>
+                  <option value="none">None (a public or secret link)</option>
+                  <option value="bearer">Bearer token</option>
+                  <option value="header">A header (API key)</option>
+                  <option value="basic">Username and password</option>
+                </select>
+              </label>
+              {pull.auth === 'header' && (
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-slate-600">Header name</span>
+                  <input value={pull.headerName || ''} onChange={(e) => setP({ headerName: e.target.value })} placeholder="X-Api-Key" className={`${field} py-1.5 font-mono text-xs`} />
+                </label>
+              )}
+              {pull.auth === 'basic' && (
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-slate-600">Username</span>
+                  <input value={pull.username || ''} onChange={(e) => setP({ username: e.target.value })} className={`${field} py-1.5 text-xs`} autoComplete="off" />
+                </label>
+              )}
+              {pull.auth !== 'none' && (
+                <label className="block sm:col-span-2">
+                  <span className="mb-1 block text-xs font-medium text-slate-600">{pull.auth === 'basic' ? 'Password' : pull.auth === 'bearer' ? 'Token' : 'Header value'}</span>
+                  <input type="password" value={pullSecret} onChange={(e) => { setPullSecret(e.target.value); setTested(null); }} autoComplete="new-password"
+                    placeholder={secretKept ? 'Saved — leave blank to keep it' : ''} className={`${field} py-1.5 font-mono text-xs`} />
+                  <span className="mt-1 block text-[11px] text-slate-400">Stored encrypted, sent only to this URL&apos;s own server, never shown again.</span>
+                </label>
+              )}
+            </div>
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-slate-600">Pull</span>
+                <select value={schedule} onChange={(e) => setSchedule(e.target.value as PullSchedule)} className={`${field} py-1.5 text-xs`}>
+                  <option value="manual">Only when I press “Pull now”</option>
+                  <option value="hourly">Every hour</option>
+                  <option value="every_6_hours">Every 6 hours</option>
+                  <option value="daily">Once a day</option>
+                </select>
+              </label>
+              <button onClick={() => void testPull()} disabled={busy !== null || !pull.url.trim() || needsSecret} className={ghostBtn}>
+                {busy === 'test' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}Test the URL
+              </button>
+            </div>
+            {tested && (tested.ok ? (
+              <p className="inline-flex items-start gap-1.5 text-sm text-emerald-700">
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>
+                  Found {tested.total.toLocaleString()} record{tested.total === 1 ? '' : 's'}{tested.pages > 1 ? ` over ${tested.pages} pages` : ''}
+                  {tested.truncated ? ' (the most one pull takes)' : ''}. The first few are in the sample below — use Suggest mapping. Nothing was imported.
+                </span>
+              </p>
+            ) : (
+              <p className="inline-flex items-start gap-1.5 text-sm text-rose-700"><XCircle className="mt-0.5 h-4 w-4 shrink-0" />{tested.error}</p>
+            ))}
+          </div>
+        )}
 
         <fieldset>
           <legend className="mb-1.5 text-sm font-medium text-slate-700">After each sync</legend>
@@ -521,7 +710,7 @@ function HistorySection() {
                   {r.intakeName || 'Intake'}{r.dryRun && <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-normal text-slate-600 dark:bg-white/10">Dry run</span>}
                 </p>
                 <p className="mt-0.5 text-xs text-slate-500">
-                  {when(r.createdAt)} · {r.source === 'app' ? 'From the app' : r.apiKey ? `API key “${r.apiKey.name}”` : 'API'}{r.connectionName ? ` · ${r.connectionName}` : ''}
+                  {when(r.createdAt)} · {r.source === 'pull' ? 'Pulled' : r.source === 'app' ? 'From the app' : r.apiKey ? `API key “${r.apiKey.name}”` : 'API'}{r.connectionName ? ` · ${r.connectionName}` : ''}
                 </p>
               </div>
               <Counts run={r} />

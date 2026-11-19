@@ -17,6 +17,20 @@ export interface ApiKeyInfo {
 export interface MappingRule { from?: string; transform?: string; map?: Record<string, string>; default?: string }
 export interface FieldMapping { fields: Record<string, MappingRule>; keepUnmapped?: boolean }
 
+export type PullSchedule = 'manual' | 'hourly' | 'every_6_hours' | 'daily';
+export type PullAuth = 'none' | 'bearer' | 'header' | 'basic';
+
+/** Where a pull connector fetches its records (the credential itself is never sent back). */
+export interface PullConfig {
+  url: string;
+  format: 'json' | 'csv';
+  recordsPath: string | null;
+  nextPath: string | null;
+  auth: PullAuth;
+  headerName: string | null;
+  username: string | null;
+}
+
 export interface SyncConnection {
   id: string;
   name: string;
@@ -25,7 +39,30 @@ export interface SyncConnection {
   mapping: FieldMapping;
   afterSync: 'none' | 'send_assessment';
   createdAt: string;
+  pullConfig: PullConfig | null;
+  pullSchedule: PullSchedule;
+  pullNextAt: string | null;
+  pullLastAt: string | null;
+  pullLastStatus: 'ok' | 'unchanged' | 'empty' | 'failed' | null;
+  pullLastError: string | null;
+  hasPullSecret: boolean;
 }
+
+export interface ConnectionInput {
+  name?: string;
+  cohortId?: string | null;
+  afterSync?: 'none' | 'send_assessment';
+  mapping?: FieldMapping;
+  pull?: Partial<PullConfig> | null;
+  pullSecret?: string;
+  pullSchedule?: PullSchedule;
+}
+
+export type PullTestResult =
+  | { ok: true; total: number; pages: number; truncated: boolean; samples: Record<string, unknown>[] }
+  | { ok: false; error: string; status: number | null };
+
+export interface PullResult { status: 'queued' | 'unchanged' | 'empty' | 'failed'; total?: number; truncated?: boolean; runs?: string[]; error?: string }
 
 export interface SyncJobError { index: number; externalId: string | null; email: string | null; field: string | null; code: string; message: string }
 
@@ -46,7 +83,7 @@ export interface SyncRun {
   connectionName?: string | null;
   intakeName?: string | null;
   apiKey?: { name: string; prefix: string } | null;
-  source?: 'api' | 'app';
+  source?: 'api' | 'app' | 'pull';
 }
 
 export interface IntegrationMeta {
@@ -100,10 +137,13 @@ export const integrationsApi = {
   revokeKey: (id: string) => apiClient.post<Envelope<{ apiKey: ApiKeyInfo }>>(`/integrations/api-keys/${id}/revoke`, {}).then((r) => r.data.apiKey),
 
   listConnections: () => apiClient.get<Envelope<{ connections: SyncConnection[] }>>('/integrations/connections').then((r) => r.data.connections),
-  createConnection: (body: Partial<SyncConnection>) =>
+  createConnection: (body: ConnectionInput) =>
     apiClient.post<Envelope<{ connection: SyncConnection }>>('/integrations/connections', body).then((r) => r.data.connection),
-  updateConnection: (id: string, body: Partial<SyncConnection>) =>
+  updateConnection: (id: string, body: ConnectionInput) =>
     apiClient.patch<Envelope<{ connection: SyncConnection }>>(`/integrations/connections/${id}`, body).then((r) => r.data.connection),
+  testPull: (body: { pull: Partial<PullConfig>; pullSecret?: string; connectionId?: string }) =>
+    apiClient.post<Envelope<PullTestResult>>('/integrations/connections/pull/test', body).then((r) => r.data),
+  pullNow: (id: string) => apiClient.post<Envelope<PullResult>>(`/integrations/connections/${id}/pull`, {}).then((r) => r.data),
   removeConnection: (id: string) => apiClient.delete(`/integrations/connections/${id}`),
   suggest: (sample: unknown) => apiClient.post<Envelope<{ mapping: FieldMapping }>>('/integrations/connections/suggest', { sample }).then((r) => r.data.mapping),
   preview: (mapping: FieldMapping, samples: unknown[]) =>

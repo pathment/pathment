@@ -1,6 +1,7 @@
 /**
  * Settings → Integrations, for workspace admins (system.settings):
- * API keys, sync connections (field mapping), and sync history.
+ * API keys, sync connections (field mapping, pulling from a URL), sync history
+ * and webhooks.
  * The public API itself is src/publicApi/v1.js.
  */
 const express = require('express');
@@ -11,6 +12,7 @@ const { PERMISSIONS } = require('../config/permissions');
 const { successResponse } = require('../utils/responses');
 const apiKeys = require('../integrations/apiKeyService');
 const syncService = require('../integrations/syncService');
+const pullService = require('../integrations/pullService');
 const { TARGET_FIELDS, TRANSFORMS } = require('../integrations/fieldMapping');
 const { createAuditLog } = require('../utils/auditContext');
 const webhooks = require('../webhooks/webhookService');
@@ -81,6 +83,18 @@ router.post('/connections/suggest', (req, res) => {
 router.post('/connections/preview', (req, res) => {
   res.json(successResponse('Preview', syncService.preview(req.body?.mapping, req.body?.samples || [])));
 });
+
+// Pull connectors: try a URL without importing anything, or pull a connection now.
+router.post('/connections/pull/test', catchAsync(async (req, res) => {
+  const b = req.body || {};
+  res.json(successResponse('Pull test', await pullService.test({ pull: b.pull, pullSecret: b.pullSecret, connectionId: b.connectionId })));
+}));
+
+router.post('/connections/:id/pull', catchAsync(async (req, res) => {
+  const result = await pullService.pull(req.params.id, { force: true, triggeredBy: req.user.id });
+  await audit(req, 'SYNC_CONNECTION_PULLED', 'SyncConnection', req.params.id, { status: result.status, total: result.total ?? 0 });
+  res.status(result.status === 'queued' ? 202 : 200).json(successResponse('Pull started', result, result.status === 'queued' ? 202 : 200));
+}));
 
 // ── Runs (sync history) ───────────────────────────────────────────────────────
 router.get('/runs', catchAsync(async (req, res) => {

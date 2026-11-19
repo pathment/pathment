@@ -79,7 +79,8 @@ class SyncService {
   async createConnection(user, data) {
     const clean = this._cleanConnection(data);
     await this._assertCohort(clean.cohortId);
-    return models.SyncConnection.create({ ...clean, createdBy: user?.id || null });
+    const pull = require('./pullService').columnsFor(data, null);
+    return models.SyncConnection.create({ ...clean, ...pull, createdBy: user?.id || null });
   }
 
   async updateConnection(id, data) {
@@ -87,7 +88,8 @@ class SyncService {
     if (!row) throw new NotFoundError('Connection not found');
     const clean = this._cleanConnection(data, { partial: true });
     if (clean.cohortId) await this._assertCohort(clean.cohortId);
-    await row.update(clean);
+    const pull = require('./pullService').columnsFor(data, row);
+    await row.update({ ...clean, ...pull });
     return row;
   }
 
