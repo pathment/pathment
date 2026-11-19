@@ -67,6 +67,9 @@ describe('field mapping', () => {
     expect(out.responses).toEqual({ city: 'London' });
     // An unknown level falls to the default.
     expect(mapRecord({ user: { email_address: 'b@x.co' }, track: 'Expert' }, mapping).values.level).toBe('beginner');
+    // Without a default, their value goes through as sent (and is then checked against the intake's levels).
+    const noDefault = { fields: { email: { from: 'e' }, level: { from: 'track', map: { Advanced: 'senior' } } } };
+    expect(mapRecord({ e: 'c@x.co', track: 'Expert' }, noDefault).values.level).toBe('Expert');
   });
 
   it('suggests a mapping from common field names', () => {

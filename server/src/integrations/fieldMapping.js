@@ -100,8 +100,11 @@ function mapRecord(record, mapping = null) {
       if (v != null && typeof v === 'object') v = undefined;
       v = applyTransform(v, rule.transform);
       if (v != null && v !== '' && rule.map && typeof rule.map === 'object') {
+        // A mapped value; otherwise the default; otherwise their value as sent
+        // (so an unexpected level is reported as invalid_level, not silently dropped).
         const hit = Object.entries(rule.map).find(([k]) => k.toLowerCase() === String(v).toLowerCase());
-        v = hit ? hit[1] : undefined;
+        if (hit) v = hit[1];
+        else if (rule.default != null) v = String(rule.default);
       }
       if ((v == null || v === '') && rule.default != null) v = String(rule.default);
       if (v != null && v !== '') values[target] = clip(String(v));

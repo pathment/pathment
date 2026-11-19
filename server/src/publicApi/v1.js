@@ -75,7 +75,8 @@ router.use(wrap(async (req, _res, next) => {
 router.use(rateLimit({
   windowMs: 60 * 1000,
   max: 120,
-  keyGenerator: (req) => `v1:${req.apiKey?.id || req.ip}`,
+  // Authentication runs first, so there is always a key here: limit per key, never per IP.
+  keyGenerator: (req) => `v1:${req.apiKey?.id || 'unauthenticated'}`,
   standardHeaders: false,
   legacyHeaders: true, // X-RateLimit-Limit / -Remaining / -Reset
   handler: (req, res) => {
