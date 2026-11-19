@@ -484,7 +484,10 @@ class MentorshipPauseService {
     const paused = await models.ClanMembership.findAll({
       where: { status: 'paused', role: 'mentee', reengageStage: { [Op.lt]: REENGAGE_CADENCE_DAYS.length } },
       include: [{ model: models.Clan, as: 'clan', required: true, where: { frozenAt: null }, attributes: [] }],
-      attributes: ['id', 'userId', 'clanId', 'pausedAt', 'reengageStage', 'reengageCount'],
+      // organizationId must be loaded: saving a row without it makes the
+      // workspace guard see an ownership change and refuse the save — which
+      // left the stage unchanged and re-sent the reminder every hour.
+      attributes: ['id', 'organizationId', 'userId', 'clanId', 'pausedAt', 'reengageStage', 'reengageCount'],
     });
     const now = Date.now();
     let sent = 0;
@@ -499,6 +502,18 @@ class MentorshipPauseService {
       if (!mentee) continue;
       const first = mentee.firstName || 'there';
       const clanName = clan?.name || 'your clan';
+      // Several stages overdue (the job was down, or stuck): one reminder for
+      // the latest one, not one per hour until it catches up.
+      let stage = m.reengageStage;
+      while (stage + 1 < REENGAGE_CADENCE_DAYS.length && now >= new Date(m.pausedAt).getTime() + REENGAGE_CADENCE_DAYS[stage + 1] * DAY_MS) stage += 1;
+      // Move past the stage first: if the save fails, nothing is sent (and
+      // it's retried next run); a reminder can never go out twice for a stage.
+      try {
+        await m.update({ reengageStage: stage + 1, reengageCount: m.reengageCount + 1, lastReengagedAt: new Date() });
+      } catch (e) {
+        console.error('[reengage] could not advance membership', m.id, e.message);
+        continue;
+      }
       try {
         await notificationOrchestrator.dispatch({
           eventKey: NOTIFICATION_EVENTS.MENTEE_REENGAGE,
@@ -516,7 +531,6 @@ class MentorshipPauseService {
             // stage, so we want each touch to go through cleanly.
           },
         });
-        await m.update({ reengageStage: m.reengageStage + 1, reengageCount: m.reengageCount + 1, lastReengagedAt: new Date() });
         sent += 1;
       } catch (e) {
         console.error('[reengage] failed for membership', m.id, e.message);
