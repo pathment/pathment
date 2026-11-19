@@ -174,7 +174,7 @@ export default function InterviewRunnerPage({ params }: { params: Promise<{ task
         setData(d);
         if (d?.serverNow) clockSkewRef.current = Date.parse(d.serverNow) - Date.now();
         setSessionStartedAt(d?.state?.sessionStartedAt || null);
-        if (!d?.state?.activeSessionId) clearActiveInterview();
+        if (!d?.state?.activeSessionId || d?.task?.status === 'cancelled') clearActiveInterview(taskId);
         const seed: Record<string, Draft> = {};
         // Typing that never reached the server (offline, a crash, a power cut) wins over the server's copy.
         const unsent = readUnsent<InterviewSave>(d?.state?.activeSessionId ? unsentKey(d.state.activeSessionId) : null);
@@ -194,7 +194,17 @@ export default function InterviewRunnerPage({ params }: { params: Promise<{ task
         setDrafts(seed);
         setPhase('intro');
       })
-      .catch((e: any) => { if (active) { setErrorMsg(extractApiErrorMessage(e, 'Could not load this interview')); setPhase('error'); } });
+      .catch((e: any) => {
+        if (active) {
+          const status = e?.response?.status || e?.status;
+          const msg = e?.response?.data?.message || e?.message || '';
+          if (status === 404 || status === 410 || /not found|cancelled|not assigned/i.test(msg)) {
+            clearActiveInterview(taskId);
+          }
+          setErrorMsg(extractApiErrorMessage(e, 'Could not load this interview'));
+          setPhase('error');
+        }
+      });
     return () => { active = false; };
   }, [taskId]);
 
