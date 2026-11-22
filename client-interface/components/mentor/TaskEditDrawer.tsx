@@ -146,6 +146,9 @@ export function TaskEditDrawer({
       setDetail(full);
       const saved = full.schedule;
       setSchedule({ ...initialTaskSchedule(), ...saved, endsOn: saved?.endsOn || '' });
+      if (full.interviewAssignment?.totalSeconds) {
+        setInterviewMinutes(Math.round(full.interviewAssignment.totalSeconds / 60));
+      }
       setScheduleReady(true);
       // Without this the resources box reads empty on a task that has some, and
       // adding one would quietly replace the real list with just that one.
@@ -161,6 +164,9 @@ export function TaskEditDrawer({
     return () => { active = false; };
   }, [task.id]);
 
+  const [interviewMinutes, setInterviewMinutes] = useState<number | "">("");
+  const [interviewMinutesTouched, setInterviewMinutesTouched] = useState(false);
+  const isInterview = initial.type === "interview" || task.typeOverride === "interview" || rt.type === "interview";
   const [saving, setSaving] = useState(false);
   const saveRef = useRef<() => Promise<void>>(async () => {});
   const draftKey = `pathment:edit-task:${task.id}`;
@@ -259,6 +265,11 @@ export function TaskEditDrawer({
     if (note !== initial.note) payload.mentorNote = note.trim() || null;
     if (pointsBase !== initial.pointsBase) {
       payload.pointsBase = Math.max(1, Math.min(200, Math.round(Number(pointsBase) || initial.pointsBase)));
+    }
+    if (interviewMinutesTouched && interviewMinutes !== "") {
+      payload.interview = {
+        totalSeconds: Math.max(1, Number(interviewMinutes)) * 60,
+      };
     }
     if (resourcesTouched) {
       const arr = resources
@@ -459,6 +470,38 @@ export function TaskEditDrawer({
             </div>
           )}
         </div>
+
+        {isInterview && (
+          <div className="rounded-xl border border-border p-4 bg-muted/20 space-y-3">
+            <div className="flex items-center justify-between">
+              <label htmlFor="edit-task-interview-duration" className={label}>
+                Interview duration
+              </label>
+              <span className="text-xs text-muted-foreground">Configured limit</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                id="edit-task-interview-duration"
+                type="number"
+                min={1}
+                max={180}
+                disabled={!canSchedule}
+                value={interviewMinutes}
+                onChange={(e) => {
+                  setInterviewMinutesTouched(true);
+                  const v = e.target.value;
+                  setInterviewMinutes(v === "" ? "" : Math.max(1, parseInt(v, 10) || 1));
+                }}
+                placeholder="e.g. 30"
+                className={field}
+              />
+              <span className="text-sm text-slate-500 whitespace-nowrap">min total</span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Adjust the total time limit allowed for this candidate&apos;s interview session.
+            </p>
+          </div>
+        )}
 
         <TaskTimingRow
           due={due}
