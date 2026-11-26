@@ -1,3 +1,4 @@
+import { workspacePath } from '@/lib/services/workspace-scope';
 /**
  * Candidate wording for the shared task statuses (same colours as everywhere
  * else). A round calls the end of a piece of work "approved", not "complete",
@@ -21,5 +22,12 @@ export const OPEN_STATUSES = ['assigned', 'not_started', 'in_progress', 'revisio
 export const fmtPoolDate = (value: string | null) =>
   value ? new Date(value).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) : null;
 
-/** The link to a piece of pool work inside the learner workspace. */
-export const poolTaskHref = (taskId: string) => `/mentee/tasks/${taskId}?pool=1`;
+/**
+ * The link to a piece of pool work inside the learner workspace.
+ *
+ * Workspace-scoped on purpose. An unscoped `/mentee/...` path is not where the
+ * app lives, so following one goes out to the proxy and comes back redirected
+ * — and the `?pool=1` that says to read this from the candidate endpoint has to
+ * survive that trip. Addressing the real path means there is no trip.
+ */
+export const poolTaskHref = (taskId: string) => workspacePath(`/mentee/tasks/${taskId}?pool=1`);

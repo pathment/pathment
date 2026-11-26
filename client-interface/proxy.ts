@@ -94,8 +94,17 @@ export function proxy(request: NextRequest) {
     // Old short links may reuse a workspace the browser actually visited. With
     // no valid remembered workspace, return to the chooser—never a hardcoded
     // tenant that the account may not belong to.
-    target.pathname = validWorkspaceSlug(remembered) ? `/w/${remembered}${pathname}` : '/';
-    target.search = '';
+    const canonical = validWorkspaceSlug(remembered);
+    target.pathname = canonical ? `/w/${remembered}${pathname}` : '/';
+    /*
+     * Canonicalizing the path must not throw the query away: it is part of the
+     * address. Dropping it broke every deep link that carries state — a pool
+     * candidate opening their own work lost the `?pool=1` that says to read it
+     * from the candidate endpoint, landed on the clan route instead and was
+     * told they had no access to their own task. The chooser is the exception:
+     * it is a different destination, so the old query means nothing there.
+     */
+    if (!canonical) target.search = '';
     return NextResponse.redirect(target, 307);
   }
 

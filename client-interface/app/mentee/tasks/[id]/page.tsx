@@ -73,7 +73,17 @@ function TaskDetailsRoute({ id }: { id: string }) {
   return isPoolWork ? <PoolTaskDetail id={id} /> : <ClanTaskDetail id={id} />;
 }
 
-/** The clan endpoint said "not found": try the person's own qualifying work before saying so. */
+/**
+ * The clan endpoint turned this away: try the person's own qualifying work
+ * before saying so.
+ *
+ * Both refusals land here. A pool candidate is deliberately NOT a mentee —
+ * they hold no mentee capability until they are placed — so the clan task
+ * route refuses them with 403, not 404, and refusing by role happens in
+ * middleware before anything looks at the task. Reading 404 alone left a
+ * candidate staring at "You do not have access to this task" about work the
+ * round had just given them.
+ */
 function PoolFallback({ id, otherwise }: { id: string; otherwise: React.ReactNode }) {
   const { data, loading } = useApiQuery({
     queryKey: qk.candidate.task(id),
@@ -137,9 +147,13 @@ function ClanTaskDetail({ id }: { id: string }) {
         onRetry={refetch}
       />
     );
-    // A link without ?pool=1 (a notification, a bookmark, an old drawer link)
-    // still names real work when it is the person's own qualifying work.
-    return errorStatus === 404 ? <PoolFallback id={id} otherwise={notFound} /> : notFound;
+    // A link without ?pool=1 (a notification, a bookmark, a redirect that
+    // dropped the query) still names real work when it is the person's own
+    // qualifying work. 403 is what a pool candidate actually gets here, and
+    // 404 is what anyone else gets for work fenced out of the clan queries.
+    return errorStatus === 404 || errorStatus === 403
+      ? <PoolFallback id={id} otherwise={notFound} />
+      : notFound;
   }
 
   const activeSection =

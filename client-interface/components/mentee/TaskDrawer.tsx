@@ -22,6 +22,7 @@ import { CourseProgressCard } from '@/components/shared/CourseProgressCard';
 import { isMissingDescription } from '@/lib/utils/html';
 import { MyDiscussionResult } from '@/components/mentee/discussions/MyDiscussionResult';
 import { discussionReviewText } from '@/components/mentee/discussions/discussionReviewText';
+import { workspacePath } from '@/lib/services/workspace-scope';
 
 /**
  * One task, opened where the mentee already is.
@@ -122,7 +123,7 @@ export function TaskDrawer({
           <Link
             // Pool work is fenced out of the clan task endpoint, so its page
             // needs the flag that says where to read it from.
-            href={source === 'pool' ? `/mentee/tasks/${task.id}?pool=1` : `/mentee/tasks/${task.id}`}
+            href={workspacePath(source === 'pool' ? `/mentee/tasks/${task.id}?pool=1` : `/mentee/tasks/${task.id}`)}
             className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-brand-600"
           >
             Open full page <ExternalLink className="h-3.5 w-3.5" aria-hidden />
