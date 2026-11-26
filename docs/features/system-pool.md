@@ -17,7 +17,30 @@ Migrations `140_candidate_pools` (two tables, one column) and `142_pool_photo` (
   piece of work takes its points from), `reminderPolicy`, `settings`
   (`autoAssignOnActivation`, `waitlistSize`, `targetClanIds`), and
   `workItems` — the pool's work, one entry per piece (`kind`, its own task template `roadmapTaskId`,
-  `points`, `required`, `dueAt`, kit `config`). Edited under a row lock.
+  `points`, `required`, `dueAt`, kit `config`, and who it is for: `levels` + `forEveryone`).
+  Edited under a row lock.
+
+## Who a piece of work is for
+A candidate gets the work aimed at **their** level and nothing else (`poolService.targetsMember`):
+
+| `levels` | `forEveryone` | round has levels | reaches |
+| --- | --- | --- | --- |
+| `['level-2']` | — | yes | candidates at `level-2` only; a candidate with no level, never |
+| `[]` | `true` | yes | everyone, because an admin said so |
+| `[]` | falsy | yes | **nobody** — it has not been aimed yet |
+| `[]` | — | no | everyone; there is nothing to aim at |
+
+The round's levels are `poolService.levelsFor`: every cohort it draws from (`cohortId` **and**
+`settings.autoAddFromCohortIds`) plus any level its candidates actually carry. Reading only
+`cohortId` left an intake-fed pool with an empty list, so the work screen never offered the level
+picker, every piece was saved aimed at nobody — which used to mean *everyone* — and one candidate
+received all three levels' courses at once.
+
+Aiming is changed in place (`PATCH /pools/:id/assignments/:id` with `levels` / `forEveryone`), so
+work already handed out is re-aimed rather than cancelled and re-added. Re-aiming does not withdraw
+what a candidate already holds; `cancelForMember` does that. Only work aimed at a *different* level
+is taken back when a candidate's level changes (`poolService.aimedElsewhere`) — unaimed work is not
+"the wrong level", so a course in progress never loses its provider seat to a level edit.
 - `PoolMember` — one per (pool, email). `userId` is NULL while only invited. Separate tracks:
   `status` (invited/active/qualifying/reviewing/completed), `decision`
   (selected/waitlisted/not_selected/withdrawn/disqualified), and `placedAt` (set only once enrollment and

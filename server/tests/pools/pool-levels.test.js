@@ -8,10 +8,15 @@
  * group different work instead of one list for everybody.
  *
  * The rule the tests pin down is narrow on purpose:
- *   - work with no levels reaches everyone, exactly as before
  *   - targeted work reaches only those levels, and skips the rest with a
  *     reason an operator can read
  *   - a candidate with no level is never swept into work aimed at one
+ *   - in a round WITH levels, work nobody has aimed reaches nobody: a
+ *     candidate gets the work for their level and nothing else. "Everyone" is
+ *     still available, but it has to be said. Treating silence as everyone is
+ *     what handed one candidate every level's course at once.
+ *   - in a round with NO levels there is nothing to aim at, so everything
+ *     still reaches everyone, exactly as before
  *   - and, the part that actually decides a selection: work a candidate was
  *     never meant to get is not counted against them, and does not inflate
  *     the total they are measured against
@@ -59,8 +64,8 @@ async function candidate(email, level = null) {
 }
 
 /** One piece of work worth 20 points, optionally aimed at levels. */
-const work = (title, levels = []) => poolTaskService.createAssignment(ctx.pool.id, {
-  kind: 'task', title, description: 'x', difficulty: 'hard', levels, assignTo: 'all',
+const work = (title, levels = [], opts = {}) => poolTaskService.createAssignment(ctx.pool.id, {
+  kind: 'task', title, description: 'x', difficulty: 'hard', levels, assignTo: 'all', ...opts,
 }, ctx.admin);
 
 const taskCount = (member) => PoolTask().count({ where: { poolMemberId: member.id, status: { [Op.ne]: 'cancelled' } } });
@@ -96,16 +101,56 @@ describe('the level comes with the candidate', () => {
 });
 
 describe('work reaches the levels it is aimed at', () => {
-  it('reaches everyone when no level is chosen, as it always did', async () => {
+  it('reaches everyone when the admin says Everyone', async () => {
     const beginner = await candidate('beg@test.com', 'beginner');
     const senior = await candidate('sen@test.com', 'senior');
     const none = await candidate('none@test.com');
 
-    const { assigned } = await work('For all');
+    const { assigned } = await work('For all', [], { forEveryone: true });
     expect(assigned.summary.assigned).toBe(3);
     expect(await taskCount(beginner)).toBe(1);
     expect(await taskCount(senior)).toBe(1);
     expect(await taskCount(none)).toBe(1);
+  });
+
+  it('refuses work that names no level in a round that has them', async () => {
+    await candidate('beg@test.com', 'beginner');
+    await expect(work('Unaimed')).rejects.toThrow(/levels this work is for, or mark it for everyone/i);
+  });
+
+  it('gives a candidate the work for their level and nothing else', async () => {
+    const beginner = await candidate('beg@test.com', 'beginner');
+    const senior = await candidate('sen@test.com', 'senior');
+
+    await work('Beginner course', ['beginner']);
+    await work('Senior course', ['senior']);
+
+    // The bug this pins: one candidate holding every level's course.
+    expect(await taskCount(beginner)).toBe(1);
+    expect(await taskCount(senior)).toBe(1);
+  });
+
+  it('an admin can aim work that was saved for everyone, and it then reaches only that level', async () => {
+    // How a round fixes work saved back when the level picker could not show
+    // its levels — without cancelling it and adding it again.
+    const beginner = await candidate('beg@test.com', 'beginner');
+    const senior = await candidate('sen@test.com', 'senior');
+    const { assignment } = await work('Aimed later', [], { forEveryone: true, assignTo: null });
+    await poolTaskService.updateAssignment(ctx.pool.id, assignment.id, { levels: ['beginner'] }, ctx.admin);
+
+    const out = await poolTaskService.assign(ctx.pool.id, assignment.id, {}, ctx.admin);
+    expect(await taskCount(beginner)).toBe(1);
+    expect(await taskCount(senior)).toBe(0);
+    expect(out.results.find((r) => r.memberId === senior.id).reason).toMatch(/for beginner/i);
+  });
+
+  it('still gives everything to everyone in a round with no levels at all', async () => {
+    const a = await candidate('a@test.com');
+    const b = await candidate('b@test.com');
+    const { assigned } = await work('For all');
+    expect(assigned.summary.assigned).toBe(2);
+    expect(await taskCount(a)).toBe(1);
+    expect(await taskCount(b)).toBe(1);
   });
 
   it('reaches only the chosen levels, and says why it skipped the rest', async () => {

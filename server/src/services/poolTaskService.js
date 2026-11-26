@@ -142,7 +142,7 @@ class PoolTaskService {
    * rather than failing the batch, so a second pass over the same roadmap is
    * safe.
    */
-  async addRoadmapSteps(poolId, { roadmapTaskIds = [], required = true, levels = [], dueAt = null, points = {}, assignTo = null }, actor) {
+  async addRoadmapSteps(poolId, { roadmapTaskIds = [], required = true, levels = [], forEveryone = false, dueAt = null, points = {}, assignTo = null }, actor) {
     const ids = [...new Set((Array.isArray(roadmapTaskIds) ? roadmapTaskIds : []).map(String))];
     if (!ids.length) throw new ValidationError('Choose at least one roadmap step');
     const pool = await poolService.getPool(poolId);
@@ -166,6 +166,7 @@ class PoolTaskService {
           required,
           // One level choice applies to every step added in the pass.
           levels,
+          forEveryone,
           dueAt,
           points: points?.[id],
           assignTo,
@@ -199,6 +200,7 @@ class PoolTaskService {
       if (!item) throw new NotFoundError('That work is not part of this pool');
       return models.RoadmapTask.findByPk(item.roadmapTaskId, { attributes: ['difficulty'] });
     })();
+    const roundLevels = await poolService.levelsFor(pool);
     const before = {};
     const assignment = await this._editWorkItems(poolId, (items) => {
       const item = items.find((w) => w.id === assignmentId);
@@ -218,10 +220,28 @@ class PoolTaskService {
         before.dueAt = item.dueAt ?? null;
         item.dueAt = parsed ? parsed.toISOString() : null;
       }
+      /*
+       * Re-aim work that is already in the round. Without this, a piece saved
+       * at the wrong levels (or at none, back when the picker could not show
+       * the round's levels) could only be fixed by cancelling it and adding it
+       * again — which takes it off everyone who already holds it.
+       */
+      if (data.levels !== undefined || data.forEveryone !== undefined) {
+        const next = data.levels !== undefined ? this._levels(data.levels) : poolService.levelsOf(item);
+        const everyone = data.forEveryone !== undefined ? Boolean(data.forEveryone) : Boolean(item.forEveryone);
+        if (roundLevels.length && !next.length && !everyone) {
+          throw new ValidationError('Choose the levels this work is for, or mark it for everyone');
+        }
+        before.levels = poolService.levelsOf(item);
+        before.forEveryone = Boolean(item.forEveryone);
+        item.levels = next;
+        item.forEveryone = next.length === 0 && everyone;
+      }
       return item;
     });
     await poolService.audit(pool.id, actor.id, 'POOL_WORK_UPDATED', {
       assignmentId, points: assignment.points, required: assignment.required, dueAt: assignment.dueAt,
+      levels: poolService.levelsOf(assignment), forEveryone: Boolean(assignment.forEveryone),
     }, before);
     return assignment;
   }
@@ -253,9 +273,10 @@ class PoolTaskService {
     if (!chosen.length) throw new ValidationError('This pool has no work to give yet');
 
     const mentorId = actor?.id || pool.createdById;
+    const roundLevels = await poolService.levelsFor(pool);
     const results = [];
     for (const assignment of chosen) {
-      const out = await this._assignOne(pool, assignment, member, mentorId, { explicit: true });
+      const out = await this._assignOne(pool, assignment, member, mentorId, { explicit: true, roundLevels });
       results.push({ ...out, assignmentId: assignment.id, title: assignment.title });
     }
     const summary = { assigned: 0, skipped: 0, failed: 0 };
@@ -371,6 +392,17 @@ class PoolTaskService {
     }
 
     const points = this._points(pool, data.points, roadmapTask.difficulty);
+    /*
+     * A round with levels must say who each piece of work is for. The screen
+     * asks, but an API call could skip the question, and work that nobody has
+     * aimed reaches nobody — so refuse it here rather than create a piece that
+     * silently sits idle.
+     */
+    const aimedLevels = this._levels(data.levels);
+    const roundLevels = await poolService.levelsFor(pool);
+    if (roundLevels.length && !aimedLevels.length && !data.forEveryone) {
+      throw new ValidationError('Choose the levels this work is for, or mark it for everyone');
+    }
     const assignment = await this._editWorkItems(poolId, (items) => {
       const item = {
         id: crypto.randomUUID(),
@@ -381,7 +413,13 @@ class PoolTaskService {
         // separate table of percentages. Defaults to its difficulty's points.
         points,
         required: data.required !== false,
-        levels: this._levels(data.levels),
+        levels: aimedLevels,
+        /*
+         * The admin said "Everyone" on purpose, rather than never being asked.
+         * Without this the two are indistinguishable, and treating silence as
+         * "everyone" is what sent every level's course to every candidate.
+         */
+        forEveryone: aimedLevels.length === 0 && Boolean(data.forEveryone),
         dueAt: dueAt ? dueAt.toISOString() : null,
         config,
         createdById: actor.id,
@@ -418,9 +456,10 @@ class PoolTaskService {
       where.id = { [Op.in]: memberIds };
     }
     const members = await models.PoolMember.findAll({ where, order: [['createdAt', 'ASC']] });
+    const roundLevels = await poolService.levelsFor(pool, members);
     const results = [];
     for (const member of members) {
-      results.push(await this._assignOne(pool, assignment, member, actor?.id || assignment.createdById || pool.createdById, { explicit: Array.isArray(memberIds) }));
+      results.push(await this._assignOne(pool, assignment, member, actor?.id || assignment.createdById || pool.createdById, { explicit: Array.isArray(memberIds), roundLevels }));
     }
     if (Array.isArray(memberIds)) {
       for (const id of memberIds) {
@@ -433,8 +472,16 @@ class PoolTaskService {
     return { summary, results };
   }
 
-  async _assignOne(pool, assignment, member, mentorId, { explicit = false } = {}) {
+  async _assignOne(pool, assignment, member, mentorId, { explicit = false, roundLevels = null } = {}) {
     const base = { memberId: member.id, email: member.email };
+    /*
+     * The round's own levels decide what unaimed work means here (see
+     * poolService.targetsMember). Callers resolve it once per batch; the
+     * fallback reads the WHOLE round, never just this candidate — one member's
+     * levels are not the round's, and under-reporting them would read as "this
+     * round has no levels" and let unaimed work through to them.
+     */
+    const levels = roundLevels || await poolService.levelsFor(pool);
     /*
      * An admin took this work back from THIS candidate. "Give to everyone" and
      * the automatic paths (activation, a level being set) must not quietly
@@ -447,13 +494,19 @@ class PoolTaskService {
     }
     // Level targeting is checked before anything else, so aiming work at a
     // level never enrolls the wrong candidate on Edorax or takes their seat.
-    if (!poolService.targetsMember(assignment, member)) {
+    if (!poolService.targetsMember(assignment, member, levels)) {
+      const aimed = poolService.levelsOf(assignment);
       return {
         ...base,
         result: 'skipped',
-        reason: member.level
-          ? `This work is for ${assignment.levels.join(', ')}; they applied at ${member.level}`
-          : `This work is for ${assignment.levels.join(', ')}; they have no level`,
+        reason: aimed.length
+          ? (member.level
+            ? `This work is for ${aimed.join(', ')}; they applied at ${member.level}`
+            : `This work is for ${aimed.join(', ')}; they have no level`)
+          // Unaimed in a round that has levels: nobody gets it until an admin
+          // says who it is for. Saying so is the whole point — this used to be
+          // handed to everybody, which is how one candidate got every level.
+          : 'This work is not aimed at a level yet — choose its levels, or Everyone',
       };
     }
     if (!member.userId) return { ...base, result: 'skipped', reason: 'Has not activated their account yet — they receive it on activation' };
@@ -553,9 +606,10 @@ class PoolTaskService {
   async assignAllToMember(memberId, { actorId = null } = {}) {
     const member = await models.PoolMember.findByPk(memberId, { include: [{ model: models.CandidatePool, as: 'pool' }] });
     if (!member?.pool || member.pool.status === 'closed' || member.pool.archivedAt) return [];
+    const roundLevels = await poolService.levelsFor(member.pool, [member]);
     const results = [];
     for (const assignment of poolService.workItems(member.pool).filter((w) => !w.cancelledAt)) {
-      results.push(await this._assignOne(member.pool, assignment, member, actorId || assignment.createdById || member.pool.createdById));
+      results.push(await this._assignOne(member.pool, assignment, member, actorId || assignment.createdById || member.pool.createdById, { roundLevels }));
     }
     return results;
   }

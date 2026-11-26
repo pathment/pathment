@@ -188,7 +188,13 @@ class PoolAutomationService {
     let assigned = 0;
     if (member.userId && !member.decision) {
       const items = poolService.workItems(pool).filter((w) => !w.cancelledAt);
-      const offLevel = items.filter((w) => !poolService.targetsMember(w, member));
+      /*
+       * Only work aimed at a DIFFERENT level is taken back. Work nobody has
+       * aimed yet does not reach new candidates any more, but it is not "the
+       * wrong level" either — cancelling it here would pull a course someone
+       * is part-way through and hand its provider seat back.
+       */
+      const offLevel = items.filter((w) => poolService.aimedElsewhere(w, member));
       if (offLevel.length) {
         const TaskModel = models.AssignedTask.scope('withPoolWork');
         const tasks = await TaskModel.findAll({

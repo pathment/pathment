@@ -426,19 +426,54 @@ class PoolService {
     return (Array.isArray(pool.workItems) ? pool.workItems : []).map((w) => ({ ...w }));
   }
 
+  /** The levels a piece of work is aimed at, as a clean list. */
+  levelsOf(assignment) {
+    return Array.isArray(assignment?.levels) ? assignment.levels.filter(Boolean) : [];
+  }
+
   /**
    * Does this piece of work reach this candidate?
    *
-   * Work with no `levels` is for everyone, which is what every piece written
-   * before levels existed means. Targeted work reaches only candidates who
-   * applied at one of those levels; a candidate with no level is never swept
-   * into work aimed at one. Lives here because both the service that hands
-   * work out and the one that scores it must agree, exactly.
+   * A candidate gets the work for THEIR level and nothing else. Three cases:
+   *
+   *   - aimed at levels   → only candidates at one of them. A candidate with
+   *                         no level is never swept into work aimed at one.
+   *   - aimed at nobody, in a round with no levels
+   *                       → everyone. There is nothing to aim at, so "no
+   *                         levels" is the only thing it can mean.
+   *   - aimed at nobody, in a round that HAS levels
+   *                       → only when an admin deliberately said Everyone
+   *                         (`forEveryone`). Otherwise it has not been aimed
+   *                         yet and reaches no one.
+   *
+   * That last case is the fix for candidates receiving every level's course at
+   * once: work saved before the round's levels were reachable carries an empty
+   * `levels`, which used to read as "for everyone" and handed all of it out.
+   * An unaimed piece now waits for an admin to aim it rather than going to all.
+   *
+   * `roundLevels` is the round's own level list (see `levelsFor`); pass it
+   * whenever it is known. Lives here because the service that hands work out
+   * and the one that scores it must agree, exactly.
    */
-  targetsMember(assignment, member) {
-    const levels = Array.isArray(assignment?.levels) ? assignment.levels : [];
-    if (!levels.length) return true;
-    return Boolean(member?.level) && levels.includes(member.level);
+  targetsMember(assignment, member, roundLevels = null) {
+    const levels = this.levelsOf(assignment);
+    if (levels.length) return Boolean(member?.level) && levels.includes(member.level);
+    if (assignment?.forEveryone) return true;
+    // Unaimed. Only a round with no levels at all can mean "everyone" by default.
+    return !(Array.isArray(roundLevels) && roundLevels.length);
+  }
+
+  /**
+   * Is this work aimed at a level that is NOT this candidate's?
+   *
+   * Narrower than `!targetsMember` on purpose, and the only thing that may
+   * take work back when a level changes: unaimed work is not "the wrong
+   * level", so a course someone is part-way through is never cancelled (and
+   * its provider seat never released) just because nobody has aimed it yet.
+   */
+  aimedElsewhere(assignment, member) {
+    const levels = this.levelsOf(assignment);
+    return levels.length > 0 && !(member?.level && levels.includes(member.level));
   }
 
   /** The work item a pool task belongs to — matched on its task template. */
@@ -564,15 +599,39 @@ class PoolService {
    * levels, and work that cannot be aimed at a level a candidate holds would
    * be a dead option in the picker. Empty list = this round has no levels.
    */
-  async levelsFor(pool, memberRows = []) {
+  async levelsFor(pool, memberRows = null) {
     const byKey = new Map();
-    if (pool.cohortId && models.Cohort) {
-      const cohort = await models.Cohort.findByPk(pool.cohortId, { attributes: ['id', 'levels'] });
-      for (const l of (Array.isArray(cohort?.levels) ? cohort.levels : [])) {
-        if (l?.key) byKey.set(String(l.key), { key: String(l.key), label: l.label || String(l.key) });
+    /*
+     * A level a candidate actually holds counts even when no cohort lists it:
+     * that is the list the work screen offers, so the rule that decides what
+     * unaimed work means has to read the same one. Loaded here when the caller
+     * has no rows to hand, rather than silently answering "this round has no
+     * levels" and letting unaimed work through to everybody.
+     */
+    const rows = memberRows || (models.PoolMember
+      ? await models.PoolMember.findAll({ where: { poolId: pool.id }, attributes: ['level'] })
+      : []);
+    /*
+     * Every intake this round draws from, not just `cohortId`. A pool fed by
+     * the intake switch (`settings.autoAddFromCohortIds`) often has no
+     * `cohortId` of its own, and reading only that one left its level list
+     * empty — so the work screen never offered the level picker and every
+     * piece was saved aimed at nobody, which used to mean "everyone". That is
+     * how candidates came to receive all three levels' courses.
+     */
+    const cohortIds = [...new Set([
+      pool.cohortId,
+      ...(Array.isArray(pool.settings?.autoAddFromCohortIds) ? pool.settings.autoAddFromCohortIds : []),
+    ].filter(Boolean))];
+    if (cohortIds.length && models.Cohort) {
+      const cohorts = await models.Cohort.findAll({ where: { id: { [Op.in]: cohortIds } }, attributes: ['id', 'levels'] });
+      for (const cohort of cohorts) {
+        for (const l of (Array.isArray(cohort?.levels) ? cohort.levels : [])) {
+          if (l?.key) byKey.set(String(l.key), { key: String(l.key), label: l.label || String(l.key) });
+        }
       }
     }
-    for (const r of memberRows) {
+    for (const r of rows) {
       if (r.level && !byKey.has(r.level)) byKey.set(r.level, { key: r.level, label: r.level });
     }
     return [...byKey.values()];

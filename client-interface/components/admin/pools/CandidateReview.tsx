@@ -196,7 +196,13 @@ export function CandidateReview({ data, onChange, canManage, canSelect, canRevie
   const confirm = useConfirm();
   const [workBusy, setWorkBusy] = useState<string | null>(null);
   const OPEN = ['assigned', 'not_started', 'in_progress', 'revision_needed'];
-  const forTheirLevel = (a: (typeof live)[number]) => !a.levels?.length || (!!member?.level && a.levels.includes(member.level));
+  // Mirrors poolService.targetsMember: aimed at their level, or deliberately
+  // for everyone. Work nobody has aimed yet reaches no one in a round that has
+  // levels — it is waiting to be aimed, not addressed to all.
+  const forTheirLevel = (a: (typeof live)[number]) =>
+    (a.levels?.length
+      ? !!member?.level && a.levels.includes(member.level)
+      : a.forEveryone || (data.levels || []).length === 0);
   const giveOne = async (a: (typeof live)[number]) => {
     if (!member) return;
     setWorkBusy(a.id);

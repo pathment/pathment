@@ -91,6 +91,9 @@ class PoolScoringService {
       where: { poolId, [Op.or]: [{ decision: null }, { decision: { [Op.notIn]: ['withdrawn', 'disqualified'] } }] },
       include: [{ model: models.User, as: 'user', attributes: ['id', 'firstName', 'lastName'] }],
     });
+    // Scoring must read targeting exactly as handing work out does, or someone
+    // is ranked against work that never reached them.
+    const roundLevels = await poolService.levelsFor(pool, members);
     // The templates carry the difficulty a piece of work falls back to when it
     // has no points of its own (work added before points existed).
     const templates = workItems.length ? await models.RoadmapTask.findAll({
@@ -144,7 +147,7 @@ class PoolScoringService {
         const t = taskFor.get(`${member.id}:${w.roadmapTaskId}`);
         let earned = 0;
         let status = 'missing';
-        if (!poolService.targetsMember(w, member)) {
+        if (!poolService.targetsMember(w, member, roundLevels)) {
           // Deliberately not theirs: not missing, not owed, not a warning.
           status = 'not_targeted';
         } else if (!t) status = 'not_assigned';

@@ -65,7 +65,9 @@ describe('removing an applicant from the intake', () => {
   });
 
   it('previews, then withdraws the pool place, cancels its work, revokes the invite and keeps who and why', async () => {
-    await poolTaskService.createAssignment(ctx.pool.id, { kind: 'task', title: 'Lab', description: 'x', difficulty: 'hard', levels: [], assignTo: 'all' }, ctx.admin);
+    // For everyone on purpose: this round has levels, and work that names
+    // none of them reaches nobody unless an admin says Everyone.
+    await poolTaskService.createAssignment(ctx.pool.id, { kind: 'task', title: 'Lab', description: 'x', difficulty: 'hard', levels: [], forEveryone: true, assignTo: 'all' }, ctx.admin);
     const app = await apply('ada@test.com');
     await automation.processApplication(app.id, { review: false });
     const member = await activate('ada@test.com');

@@ -161,6 +161,10 @@ function AddWorkDrawer({ data, onClose, onDone }: { data: PoolDashboard; onClose
           roadmapTaskIds: steps,
           required,
           levels,
+          // "Everyone" is a choice, not the absence of one: without it the
+          // server cannot tell a deliberate everyone from work nobody aimed,
+          // and unaimed work reaches no one.
+          forEveryone,
           dueAt: dueAt(),
           // One typed number applies to every step chosen; left blank, each
           // step keeps its own difficulty's points.
@@ -179,6 +183,7 @@ function AddWorkDrawer({ data, onClose, onDone }: { data: PoolDashboard; onClose
         const body: Record<string, unknown> = {
           required,
           levels,
+          forEveryone,
           dueAt: dueAt(),
           points: typedPoints,
           assignTo: assignTo ?? undefined,
@@ -495,6 +500,80 @@ function AddWorkDrawer({ data, onClose, onDone }: { data: PoolDashboard; onClose
 }
 
 /** Re-pricing one piece of work in place, without a drawer for one number. */
+/**
+ * Who a piece of work is for, changed in place.
+ *
+ * Work aimed at nobody reaches nobody once a round has levels, so the round
+ * needs a way to aim what is already in it. Without this the only fix was to
+ * cancel the work and add it again, which takes it off everyone holding it.
+ */
+function AimField({ poolId, assignment, poolLevels, levelLabel, onDone, disabled }: {
+  poolId: string;
+  assignment: PoolAssignment;
+  poolLevels: { key: string; label: string }[];
+  levelLabel: (key: string) => string;
+  onDone: () => void;
+  disabled: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const aimed = assignment.levels || [];
+  const unaimed = aimed.length === 0 && !assignment.forEveryone;
+
+  const label = aimed.length ? aimed.map(levelLabel).join(', ') : assignment.forEveryone ? 'Everyone' : 'Not aimed yet';
+  const tone = aimed.length ? 'bg-violet-50 text-violet-700 border-violet-200'
+    : assignment.forEveryone ? 'bg-amber-50 text-amber-700 border-amber-200'
+      : 'bg-red-50 text-red-700 border-red-200';
+  const title = aimed.length ? 'Only candidates at these levels get it'
+    : assignment.forEveryone ? 'Every candidate gets it'
+      : 'Nobody gets this yet — choose the levels it is for, or Everyone';
+
+  const save = async (levels: string[], forEveryone: boolean) => {
+    setBusy(true);
+    try {
+      await poolApi.updateAssignment(poolId, assignment.id, { levels, forEveryone });
+      toast.success(levels.length
+        ? `“${assignment.title}” is now for ${levels.map(levelLabel).join(', ')}`
+        : `“${assignment.title}” is now for everyone`);
+      setOpen(false);
+      onDone();
+    } catch (e) {
+      toast.error(extractApiErrorMessage(e, 'Could not change who this is for'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (disabled) return <span className={`rounded-full border px-2 py-0.5 font-medium ${tone}`} title={title}>{label}</span>;
+  if (!open) {
+    return (
+      <button type="button" onClick={() => setOpen(true)} title={`${title} · click to change`}
+        className={`rounded-full border px-2 py-0.5 font-medium transition-colors hover:brightness-95 ${tone}`}>
+        {unaimed ? '⚠ ' : ''}{label}
+      </button>
+    );
+  }
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1">
+      {poolLevels.map((l) => {
+        const on = aimed.includes(l.key);
+        return (
+          <button key={l.key} type="button" disabled={busy}
+            onClick={() => save(on ? aimed.filter((k) => k !== l.key) : [...aimed, l.key], false)}
+            className={`rounded-full border px-2 py-0.5 font-medium ${on ? 'border-violet-300 bg-violet-100 text-violet-800' : 'border-border bg-card text-slate-600'}`}>
+            {l.label}
+          </button>
+        );
+      })}
+      <button type="button" disabled={busy} onClick={() => save([], true)}
+        className={`rounded-full border px-2 py-0.5 font-medium ${assignment.forEveryone ? 'border-amber-300 bg-amber-100 text-amber-800' : 'border-border bg-card text-slate-600'}`}>
+        Everyone
+      </button>
+      <button type="button" onClick={() => setOpen(false)} className="px-1 text-slate-400 hover:text-slate-700">done</button>
+    </span>
+  );
+}
+
 function PointsField({ poolId, assignment, onDone, disabled }: { poolId: string; assignment: PoolAssignment; onDone: () => void; disabled: boolean }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(String(assignment.points));
@@ -645,10 +724,14 @@ export function WorkTab({ data, onChange, canAssign }: { data: PoolDashboard; on
                           <span className="rounded-full bg-muted px-2 py-0.5 font-medium capitalize text-slate-600">{a.kind === 'task' ? (a.roadmapTask?.type || 'task').replace('_', ' ') : a.kind}</span>
                           <span className={`rounded-full px-2 py-0.5 font-medium ${a.required ? 'bg-brand-50 text-brand-700' : 'bg-muted text-slate-500'}`}>{a.required ? 'Required' : 'Optional'}</span>
                           {(data.levels || []).length > 0 && (
-                            <span className={`rounded-full px-2 py-0.5 font-medium ${a.levels?.length ? 'bg-violet-50 text-violet-700' : 'bg-amber-50 text-amber-700'}`}
-                              title={a.levels?.length ? 'Only candidates at these levels get it' : 'Every candidate gets it'}>
-                              {a.levels?.length ? a.levels.map(levelLabel).join(', ') : 'Everyone'}
-                            </span>
+                            <AimField
+                              poolId={pool.id}
+                              assignment={a}
+                              poolLevels={data.levels || []}
+                              levelLabel={levelLabel}
+                              onDone={reload}
+                              disabled={!editable || Boolean(a.cancelledAt)}
+                            />
                           )}
                           <span className="inline-flex items-center gap-1 text-muted-foreground"><CalendarClock className="h-3.5 w-3.5" /> Due {fmtDate(a.dueAt)}</span>
                           <PointsField poolId={pool.id} assignment={a} onDone={reload} disabled={!editable || Boolean(a.cancelledAt)} />
@@ -704,7 +787,10 @@ export function WorkTab({ data, onChange, canAssign }: { data: PoolDashboard; on
                   <li key={a.id} className="flex items-center gap-3 px-5 py-3 text-sm text-slate-500 sm:px-6">
                     <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
                     <span className="min-w-0 flex-1 truncate">{a.title}</span>
-                    {a.levels?.length ? <span className="text-xs">{a.levels.map(levelLabel).join(', ')}</span> : <span className="text-xs">Everyone</span>}
+                    <span className="text-xs">
+                      {a.levels?.length ? a.levels.map(levelLabel).join(', ')
+                        : a.forEveryone || (data.levels || []).length === 0 ? 'Everyone' : 'Not aimed'}
+                    </span>
                     <span className="text-xs tabular-nums">Cancelled {fmtDate(a.cancelledAt)}</span>
                   </li>
                 );

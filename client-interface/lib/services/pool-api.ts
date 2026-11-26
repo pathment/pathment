@@ -97,8 +97,14 @@ export interface PoolAssignment {
   required: boolean;
   dueAt: string | null;
   cancelledAt: string | null;
-  /** Levels this work is aimed at. Empty or absent = everyone. */
+  /**
+   * Levels this work is aimed at. Empty means it has not been aimed, which in
+   * a round WITH levels reaches nobody — `forEveryone` is the deliberate
+   * "everyone" a round with levels needs said out loud. In a round with no
+   * levels there is nothing to aim at, so everything reaches everyone.
+   */
   levels?: string[];
+  forEveryone?: boolean;
   /** Course work carries the Edorax course it enrolls candidates in. */
   config?: { courseId?: string; courseSlug?: string | null; courseTitle?: string } | null;
   roadmapTask?: { id: string; title: string; type: string; difficulty?: Difficulty | null } | null;
@@ -382,14 +388,15 @@ export const poolApi = {
   addRoadmapSteps: (id: string, body: {
     roadmapTaskIds: string[];
     required?: boolean;
-    /** Levels the steps are aimed at. Empty = everyone. */
+    /** Levels the steps are aimed at; empty needs `forEveryone` when the round has levels. */
     levels?: string[];
+    forEveryone?: boolean;
     dueAt?: string | null;
     points?: Record<string, number>;
     assignTo?: 'all' | string[] | null;
   }) => apiClient.post<Envelope<RoadmapBatchResult>>(`/pools/${id}/assignments/from-roadmap`, body).then((r) => r.data),
-  /** Re-price a piece of work, or change whether it is required / when it is due. */
-  updateAssignment: (id: string, assignmentId: string, body: { points?: number; required?: boolean; dueAt?: string | null }) =>
+  /** Re-price a piece of work, re-aim it, or change whether it is required / when it is due. */
+  updateAssignment: (id: string, assignmentId: string, body: { points?: number; required?: boolean; dueAt?: string | null; levels?: string[]; forEveryone?: boolean }) =>
     apiClient.patch<Envelope<{ assignment: PoolAssignment }>>(`/pools/${id}/assignments/${assignmentId}`, body).then((r) => r.data.assignment),
   /** Chosen work → one candidate. Omit `assignmentIds` for everything in the pool. */
   assignToMember: (id: string, memberId: string, assignmentIds?: string[]) =>
