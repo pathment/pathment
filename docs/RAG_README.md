@@ -31,7 +31,7 @@ graph TD
 
 ## 🗄️ Database Models & Schema
 
-All Sequelize models are consolidated inside [models.js](../server/src/features/rag/models.js) and register against the shared platform database. The underlying database schema is created via the migration file [090_rag_core.js](../server/scripts/migrations/090_rag_core.js).
+All Sequelize models are consolidated inside [models.js](../server/src/features/rag/models.js) and register against the shared platform database. The underlying database schema is created via the migration file [092_rag_core.js](../server/scripts/migrations/092_rag_core.js).
 
 ### 1. `MentorStyleProfile`
 Stores the styling metrics, tone controls, auto-reply settings, and few-shot examples representing a Mentor's writing persona.
@@ -329,11 +329,11 @@ npm run test tests/rag/generation.test.js
 
 ### Running Migrations
 The database schema creation is fully defined in the migration file:
-* [090_rag_core.js](../server/scripts/migrations/090_rag_core.js) (registers the `mentor_style_profiles`, `knowledge_chunks` with pgvector/FTS, `rag_ingestion_jobs`, `message_drafts`, and `mentor_edit_histories` tables).
+* [092_rag_core.js](../server/scripts/migrations/092_rag_core.js) (registers the `mentor_style_profiles`, `knowledge_chunks` with pgvector/FTS, `rag_ingestion_jobs`, `message_drafts`, and `mentor_edit_histories` tables).
 
 To run the migration:
 ```bash
-node scripts/migrations/090_rag_core.js
+node scripts/migrations/092_rag_core.js
 ```
 
 ---

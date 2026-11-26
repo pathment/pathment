@@ -40,9 +40,9 @@ written to take you from zero to productive:
 | **[docs/features/](features/README.md)** | **The feature manual, one deep dive per feature** (what it is, data model, backend, frontend, and the journey for each role). Start here to understand any specific feature. |
 | **[docs/ARCHITECTURE.md](ARCHITECTURE.md)** | The big picture: the monorepo apps, how a request flows (route → controller → service → model), auth & capabilities, the core apply → accept → register → place → work life-cycle, real-time messaging, background jobs, AI, theming, and the conventions every contributor follows. |
 | **[docs/DATABASE.md](DATABASE.md)** | The complete data model: a "spine" diagram of the core entities plus a per-domain ER diagram (Mermaid) for all 112 models, schema conventions, and the migration history. |
-| **[server/README.md](server/README.md)** | Backend deep-dive: modules, API endpoints, background jobs, security. |
-| **[server/docs/API_DOCUMENTATION.md](server/docs/API_DOCUMENTATION.md)** | REST endpoint reference with request/response examples. |
-| **[client-interface/README.md](client-interface/README.md)** | Frontend structure, theming, and RBAC. |
+| **[server/README.md](../server/README.md)** | Backend deep-dive: modules, API endpoints, background jobs, security. |
+| **[server/docs/API_DOCUMENTATION.md](../server/docs/API_DOCUMENTATION.md)** | REST endpoint reference with request/response examples. |
+| **[client-interface/README.md](../client-interface/README.md)** | Frontend structure, theming, and RBAC. |
 | **[CONTRIBUTING.md](../CONTRIBUTING.md)** | Fork → branch → PR workflow and code standards. |
 
 ---
@@ -773,7 +773,7 @@ POST   /api/tasks/:id/submit       - Submit task (mentee)
 POST   /api/tasks/:id/review       - Review task (mentor)
 ```
 
-For detailed API documentation, see: [server/docs/API_DOCUMENTATION.md](server/docs/API_DOCUMENTATION.md)
+For detailed API documentation, see: [server/docs/API_DOCUMENTATION.md](../server/docs/API_DOCUMENTATION.md)
 
 ---
 

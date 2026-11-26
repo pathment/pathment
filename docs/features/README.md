@@ -71,6 +71,7 @@ Every feature file follows the same template so things are easy to find and reme
 ### Cross-cutting / platform
 | Topic | What it covers |
 | --- | --- |
+| [Workspaces (multi-tenancy)](./multi-tenancy-workspaces.md) | How one deployment serves many organizations: workspace resolution, the ORM tenant scope, socket scoping, the rollout gate, and the known worker gaps. |
 | [Platform console](./platform-console.md) | The OPERATOR surface at `/platform`: platform-admin tiers, workspace provisioning with owner activation links, plan assignment + invoice activation, per-workspace overrides, lifecycle, account-level support, lead inbox, queue/job health, append-only platform audit. |
 | [Error handling & observability](../ARCHITECTURE.md#error-handling--observability) | One error envelope (`message` + `code` + `errors[]` + `requestId`), typed errors, request-id correlation, no-leak prod, structured (aggregator-ready) logging, and the client error boundaries. *(Documented in ARCHITECTURE — it's cross-cutting.)* |
 

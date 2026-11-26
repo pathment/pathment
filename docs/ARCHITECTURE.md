@@ -28,15 +28,22 @@ Three roles, capability-aware so one account can hold several:
 pathment/
 ├── server/            # Backend API - Node.js + Express + Sequelize + PostgreSQL + Socket.IO
 ├── client-interface/  # The product app - Next.js (App Router) + React + Tailwind v4
-├── marketing-site/    # Public landing page - Next.js (apex domain)
 └── docs/              # This documentation
 ```
 
+The marketing site lives in a **separate repository** (`pathment/pathment-marketing`,
+git remote `marketing`), and the mobile app in a private one. Older passages in
+`CONTRIBUTING.md` and `docs/SETUP.md` still describe `marketing-site/` as a folder here
+— it is not. See [MAP.md](./MAP.md#known-documentation-drift).
+
 | App | Stack | Port (dev) |
 | --- | --- | --- |
-| `server` | Express 4, Sequelize 6, PostgreSQL, JWT, Socket.IO, Bull + Redis, Resend (email) | `5000` |
+| `server` | Express 4, Sequelize 6, PostgreSQL, JWT, Socket.IO, Postgres-backed job queues, Resend (email) | `5000` |
 | `client-interface` | Next.js 16, React 19, TypeScript, Tailwind v4, Axios, socket.io-client | `3000` |
-| `marketing-site` | Next.js 16, React 19, Tailwind | `3001` |
+
+> There is **no Redis and no Bull** in `server/package.json`. Queues are Postgres tables
+> claimed with `FOR UPDATE SKIP LOCKED` — see §6 and
+> [decisions/0001](./decisions/0001-postgres-is-the-job-queue.md).
 
 ---
 
@@ -323,7 +330,7 @@ program membership - a person sees the org's content only once they're placed.
   put logic in services, use typed errors, validate with Joi.
 - **Migrations:** add an idempotent numbered script in `server/scripts/migrations/`
   (`up`/`down`, supports `--rollback`). Never edit a shipped migration; add a new one.
-  Bump from the current highest number (042).
+  Bump from the current highest number (157 as of November 2026 — check the folder).
 - **Client:** add API calls in the right `lib/services/*-api.ts`, type payloads in
   `lib/types/`, and reuse shared components. Match the surrounding code's style.
 - **Color:** `brand-*` only; respect dark mode by relying on the slate token overrides.
@@ -343,7 +350,7 @@ program membership - a person sees the org's content only once they're placed.
 cd server
 npm install
 cp .env.example .env          # fill DB url, JWT secrets, AI + Resend keys
-npm run db:create             # create + sync schema  (see DATABASE_SETUP.md)
+npm run db:sync               # build the schema from the models (see DATABASE_SETUP.md)
 npm run seed:admin            # create the first admin
 npm run dev                   # http://localhost:5000
 
@@ -364,6 +371,9 @@ Full details, env var reference, and troubleshooting live in the root
 
 | You want to… | Start here |
 | --- | --- |
+| Find anything fast (paths, docs, test commands) | **[docs/MAP.md](./MAP.md)** |
+| Know why something is built this way | [docs/decisions/](./decisions/README.md) |
+| Know what has already broken in production | [docs/incidents/](./incidents/README.md) |
 | Understand a specific feature (per role) | [docs/features/](./features/README.md) |
 | Understand the data | [docs/DATABASE.md](./DATABASE.md) |
 | Add a backend feature | `server/src/routes` → `controllers` → `services` → `models` |
