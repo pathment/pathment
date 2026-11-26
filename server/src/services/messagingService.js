@@ -91,6 +91,36 @@ class MessagingService {
       ...(await authzService.adminUserIdsFor(scope.programIds || [])),
     ])];
 
+    /*
+     * A selection-pool candidate talks to the people running the round, and
+     * nobody else.
+     *
+     * They have no mentor, no clan and no enrollment, so every branch below
+     * would leave them with an empty directory and no way to ask a question
+     * about the work they have been given. What they may reach is the
+     * workspace's admins plus the admins of the programmes their rounds
+     * belong to — resolved from the pools they are actually in, not from a
+     * portal hat they do not hold. Candidates cannot reach each other.
+     */
+    if (portal === 'candidate') {
+      const poolPrograms = models.PoolMember && models.CandidatePool
+        ? await models.PoolMember.findAll({
+          where: { userId },
+          attributes: ['poolId'],
+          include: [{ model: models.CandidatePool, as: 'pool', attributes: ['programId'] }],
+        })
+        : [];
+      const programIds = [...new Set(poolPrograms.map((m) => m.pool?.programId).filter(Boolean))];
+      const reachable = new Set([
+        ...adminIds,
+        ...(await authzService.adminUserIdsFor(programIds)),
+      ]);
+      reachable.delete(userId);
+      if (workspaceUserIds === null) return [...reachable];
+      const workspaceSet = new Set(workspaceUserIds);
+      return [...reachable].filter((id) => workspaceSet.has(id));
+    }
+
     if (portal === 'admin') {
       if (workspaceUserIds === null) return null;
       /**
@@ -113,6 +143,23 @@ class MessagingService {
           raw: true,
         });
         members.forEach((m) => inScope.add(m.userId));
+      }
+      /*
+       * The candidates in this admin's own selection rounds. They are in no
+       * clan, so the membership query above never reaches them — which left
+       * a programme-scoped admin unable to answer a candidate who had written
+       * to them. An unrestricted admin already has the whole workspace.
+       */
+      if (scope.programIds?.length && models.PoolMember && models.CandidatePool) {
+        const candidates = await models.PoolMember.findAll({
+          where: { userId: { [Op.ne]: null } },
+          attributes: ['userId'],
+          include: [{
+            model: models.CandidatePool, as: 'pool', attributes: [], required: true,
+            where: { programId: { [Op.in]: scope.programIds } },
+          }],
+        });
+        candidates.forEach((m) => inScope.add(m.userId));
       }
       const workspaceSet = new Set(workspaceUserIds);
       return [...inScope].filter((id) => id !== userId && workspaceSet.has(id));

@@ -9,7 +9,10 @@ const { authenticate, authorize } = require('../middlewares/auth');
 const { validateBody, validateParams, validateQuery } = require('../middlewares/validate');
 const { messagingSchemas } = require('../validations/messagingValidation');
 
-router.use(authenticate, authorize(['admin', 'mentor', 'mentee']));
+// 'candidate' is a selection-pool candidate: no clan, no enrollment, and so
+// none of the three portal capabilities. They are here to reach the people
+// running their round — the allow-list holds them to admins only.
+router.use(authenticate, authorize(['admin', 'mentor', 'mentee', 'candidate']));
 
 router.get('/users/search', validateQuery(messagingSchemas.searchUsersQuery), messagingController.searchUsers);
 

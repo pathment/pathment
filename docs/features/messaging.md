@@ -25,6 +25,13 @@ socket, listens for new/delivered/read/reaction events, renders:
 
 ## Role flows
 - **All roles** use the same Message Center. A mentee can only message their mentor(s) + clan members (recipient allow-list); mentors/admins are less restricted.
+- **Selection-pool candidates** (`candidate` capability: in a pool, no clan, no enrollment, so none
+  of the three portal capabilities) reach **only** the workspace's admins and the admins of the
+  programme their round belongs to — resolved from the pools they are in, never a clan roster.
+  Candidates cannot reach each other. The route admits `candidate` explicitly; without it every
+  messaging call was a 403 before anything looked at it. The reverse direction is covered too: a
+  programme-scoped admin's in-scope set includes the candidates in their own rounds, who are in no
+  clan and so were previously unreachable to reply to.
 - Open a conversation → messages mark read → the sender's ticks flip blue in real time.
 
 ## Rules & edge cases

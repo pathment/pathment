@@ -12,6 +12,10 @@ const mockModels = {
   MentorMenteeMatch: { findAll: jest.fn() },
   // Resolving a programme scope to its clans, for the bounded admin case.
   Clan: { findAll: jest.fn() },
+  // Selection-pool candidates: no clan, no mentor, so their directory is
+  // resolved from the rounds they are in rather than from a clan roster.
+  PoolMember: { findAll: jest.fn() },
+  CandidatePool: {},
 };
 
 jest.mock('../../src/db', () => ({ models: mockModels, sequelize: {} }));
@@ -49,6 +53,7 @@ beforeEach(() => {
   authzService.clanIdsInPrograms.mockResolvedValue([]);
   authzService.adminUserIdsFor.mockResolvedValue([]);
   mockModels.MentorProfile.findAll.mockResolvedValue([]);
+  mockModels.PoolMember.findAll.mockResolvedValue([]);
 });
 
 it('gives a mentee only their clan, assigned mentor and admins', async () => {
@@ -176,6 +181,10 @@ it('falls back to every mentor when the mentor has no programme', async () => {
 });
 
 it('puts allowed ids into the query so forbidden users are never fetched', async () => {
+  // Restored at the end: these spies replace methods on the service singleton,
+  // and jest.clearAllMocks() does not put a spy back. Left standing, every
+  // later test in this file silently got this stubbed directory instead of
+  // the real one.
   jest.spyOn(messagingService, 'getAllowedRecipientIds').mockResolvedValue(['mentor', 'peer', 'admin']);
   jest.spyOn(messagingService, 'getClanMemberUserIds').mockResolvedValue(['peer']);
   mockModels.User.findAll.mockResolvedValue([]);
@@ -187,6 +196,8 @@ it('puts allowed ids into the query so forbidden users are never fetched', async
   expect(where[Op.or]).toEqual(expect.arrayContaining([
     { firstName: { [Op.iLike]: '%nadia%' } },
   ]));
+  messagingService.getAllowedRecipientIds.mockRestore();
+  messagingService.getClanMemberUserIds.mockRestore();
 });
 
 it('keeps the source clan in a standing-clan request', () => {
@@ -200,4 +211,59 @@ it('keeps the source clan in a standing-clan request', () => {
   const result = clanRequestValidation.standingRequest.validate(input, { stripUnknown: true });
   expect(result.error).toBeUndefined();
   expect(result.value.sourceClanId).toBe(input.sourceClanId);
+});
+
+
+/*
+ * A selection-pool candidate. They hold no portal capability — no clan, no
+ * enrollment, no mentee profile — so every other branch would hand them an
+ * empty directory and no way to ask about the work they have been given.
+ */
+describe('a selection-pool candidate', () => {
+  const asCandidate = () => {
+    mockContext.portalRole = 'mentee';            // what the learner portal asks for
+    mockModels.User.findByPk.mockResolvedValue({ id: 'candidate', role: 'mentee' });
+    authzService.getCapabilities.mockResolvedValue(['candidate']);
+    mockModels.PoolMember.findAll.mockResolvedValue([{ poolId: 'pool', pool: { programId: 'programme' } }]);
+  };
+
+  it('reaches the workspace admins and their programme admins, and nobody else', async () => {
+    asCandidate();
+    // The programme's admin is a member of this workspace like anyone else.
+    mockModels.OrganizationMembership.findAll.mockResolvedValue([
+      ...memberships, { userId: 'programme-admin', role: 'member' },
+    ]);
+    authzService.adminUserIdsFor.mockResolvedValue(['programme-admin']);
+
+    const visible = await messagingService.getAllowedRecipientIds('candidate');
+
+    expect(visible.sort()).toEqual(['admin', 'programme-admin']);
+    // The admins are looked up for the programme their round belongs to.
+    expect(authzService.adminUserIdsFor).toHaveBeenCalledWith(['programme']);
+  });
+
+  it('cannot reach another candidate, a mentor or a mentee', async () => {
+    asCandidate();
+    const visible = await messagingService.getAllowedRecipientIds('candidate');
+    expect(visible).not.toEqual(expect.arrayContaining(['mentor', 'mentee', 'peer', 'other-candidate']));
+  });
+
+  it('is never offered somebody outside the workspace', async () => {
+    asCandidate();
+    authzService.adminUserIdsFor.mockResolvedValue(['admin-of-another-workspace']);
+    const visible = await messagingService.getAllowedRecipientIds('candidate');
+    expect(visible).toEqual(['admin']);
+  });
+
+  it('is reachable BY a programme-scoped admin, who has no clan in common with them', async () => {
+    mockContext.portalRole = 'admin';
+    mockModels.User.findByPk.mockResolvedValue({ id: 'scoped', role: 'admin' });
+    authzService.getCapabilities.mockResolvedValue(['admin']);
+    authzService.programScopeFor.mockResolvedValue({ unrestricted: false, programIds: ['programme'], clanIds: [] });
+    mockModels.PoolMember.findAll.mockResolvedValue([{ userId: 'mentee' }]);
+
+    const visible = await messagingService.getAllowedRecipientIds('scoped');
+
+    expect(visible).toEqual(expect.arrayContaining(['mentee']));
+  });
 });

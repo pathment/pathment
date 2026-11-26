@@ -138,7 +138,14 @@ export default function Navigation({ role }: NavigationProps) {
    */
   const navLinks = React.useMemo<NavLink[]>(() => {
     if (role !== 'mentee' || !scope.inPool) return visibleLinks;
-    const KEEP = new Set(['/mentee/dashboard', '/mentee/tasks', '/mentee/settings']);
+    /*
+     * Messages is kept: a candidate has no mentor and no clan, so this is the
+     * only way to ask the people running the round a question. The directory
+     * holds them to the workspace's admins and their programme's admins
+     * (messagingService.getAllowedRecipientIds) — candidates cannot reach
+     * each other, and nothing else about the workspace opens up.
+     */
+    const KEEP = new Set(['/mentee/dashboard', '/mentee/tasks', '/mentee/messages', '/mentee/settings']);
     return visibleLinks
       .map((link) => {
         if (!link.children) {
