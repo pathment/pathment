@@ -33,10 +33,22 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING(255),
       field: 'program_preference'
     },
-    // The level the applicant selected (key into the cohort's `levels`). Drives
-    // which assessment pool they're assigned from. null when the cohort has no levels.
+    // The level this applicant is TREATED as, and the one that drives which
+    // assessment pool they're assigned from and which pool work reaches them.
+    // Starts as the level they picked; the automatic review overwrites it with
+    // the level the rules landed on. null when the cohort has no levels.
     level: {
       type: DataTypes.STRING(40)
+    },
+    // The level the APPLICANT picked on the form, kept untouched by the review.
+    // The review reads their own pick as evidence (the base track is locked, and
+    // someone who applied above base falls through rather than being dropped), so
+    // it must never be fed back its own previous answer: that made a re-review
+    // land on a different level each run, swapping the candidate's level-targeted
+    // work and emailing them about every level in turn.
+    selfSelectedLevel: {
+      type: DataTypes.STRING(40),
+      field: 'self_selected_level'
     },
     // The assessment randomly assigned to this applicant from the matching pool.
     // Stored so a returning applicant always sees the SAME assessment (stable).

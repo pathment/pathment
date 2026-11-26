@@ -7,7 +7,7 @@ import { applicationApi } from '@/lib/services/intake-api';
 import { AssignToClansDrawer } from '@/components/admin/AssignToClansDrawer';
 import { AiScoringPreflight } from '@/components/admin/AiScoringPreflight';
 
-interface InviteResult { invited: { id: string; email?: string }[]; skipped: { id: string; email?: string; reason: string }[]; }
+interface InviteResult { invited: { id: string; email?: string; existingAccount?: boolean }[]; skipped: { id: string; email?: string; reason: string }[]; }
 
 interface ImportChange {
   applicationId: string;
@@ -355,6 +355,12 @@ export function IntakeScoreToolbar({
             </div>
             <div className="px-5 py-3 flex flex-wrap gap-4 text-sm border-b border-slate-100">
               <span className="text-emerald-700 font-medium">{inviteResult.invited.length} invited</span>
+              {/* Already on Pathment: emailed "you're in, sign in and join" rather than an invitation to create an account. */}
+              {inviteResult.invited.some((i) => i.existingAccount) && (
+                <span className="text-slate-500">
+                  {inviteResult.invited.filter((i) => i.existingAccount).length} already had an account (emailed to sign in)
+                </span>
+              )}
               {inviteResult.skipped.length > 0 && <span className="text-slate-500">{inviteResult.skipped.length} skipped</span>}
             </div>
             {inviteResult.skipped.length > 0 && (

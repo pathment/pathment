@@ -273,6 +273,15 @@ class ApplicationService {
     if (!cohort) throw new ValidationError('Application is not attached to a cohort');
     if (app.status === 'removed') throw new ConflictError('This applicant was removed from the intake.');
     const normalizedEmail = (app.email || '').trim().toLowerCase();
+    /*
+     * Do they already hold a Pathment account? Asked across workspaces on
+     * purpose (skipOrganizationScope): an account is one global identity, so
+     * someone who has one anywhere signs in rather than creating a second, and
+     * that is what decides which email the invite sends. Only the id is read.
+     */
+    const existingUser = await models.User.findOne({
+      where: { email: normalizedEmail }, attributes: ['id'], skipOrganizationScope: true,
+    });
 
     const isLive = (inv) => inv && !inv.usedAt && !inv.revokedAt && new Date(inv.expiresAt) > new Date();
 
@@ -293,10 +302,10 @@ class ApplicationService {
         if (resend) {
           const fresh = await resendWithClan(existing);
           await app.update({ inviteId: fresh.id });
-          return { application: app, invite: fresh, resent: true };
+          return { application: app, invite: fresh, resent: true, existingAccount: Boolean(existingUser) };
         }
         if (clanId && existing.clanId !== clanId) await existing.update({ clanId });
-        return { application: app, invite: existing, reused: true };
+        return { application: app, invite: existing, reused: true, existingAccount: Boolean(existingUser) };
       }
     }
 
@@ -327,7 +336,16 @@ class ApplicationService {
         invite = await adminService.createRegistrationInvite({
           email: app.email, role: 'mentee', programId: cohort.programId,
           clanId: clanId || undefined, cohortId: cohort.id,
-        }, acceptedBy);
+        }, acceptedBy, {
+          /*
+           * An applicant who already has a Pathment account is accepted like
+           * anyone else — the public form never asked them to log in, so being
+           * known to us is not a reason to refuse their place. They get the
+           * "you're in, sign in and join" email instead of "set up your
+           * account", and the same link places them in one click once signed in.
+           */
+          allowExistingUser: true,
+        });
       } catch (e) {
         if (e instanceof ConflictError) {
           const raced = await models.RegistrationInvite.findOne({
@@ -349,7 +367,9 @@ class ApplicationService {
       inviteId: invite.id,
     });
 
-    return { application: app, invite };
+    // Whether they were already on the platform decides which email they got,
+    // so the admin's result says it rather than leaving them to guess.
+    return { application: app, invite, existingAccount: Boolean(existingUser) };
   }
 
   /**
@@ -380,8 +400,8 @@ class ApplicationService {
       if (app.status === 'accepted') { skipped.push({ id, email: app.email, reason: 'already accepted' }); continue; }
       if (app.status === 'withdrawn' || app.status === 'removed') { skipped.push({ id, email: app.email, reason: app.status }); continue; }
       try {
-        const { invite } = await this.acceptApplication(id, { clanId }, acceptedBy);
-        invited.push({ id, email: app.email, inviteId: invite.id });
+        const { invite, existingAccount } = await this.acceptApplication(id, { clanId }, acceptedBy);
+        invited.push({ id, email: app.email, inviteId: invite.id, existingAccount: Boolean(existingAccount) });
       } catch (e) {
         // createRegistrationInvite throws ConflictError when the person already
         // has an account or a live invite — a skip, not a failure.

@@ -34,8 +34,18 @@ placement. See migration 031/043.
 
 ## Rules & edge cases
 - A link only accepts applications while the cohort is `open`, inside its window, and under its cap.
-- One application per (cohort, email); re-applying resumes a pending one; decided ones are locked. Existing-user emails are told to log in.
+- One application per (cohort, email); re-applying resumes a pending one; decided ones are locked.
+- An email that already has a Pathment account applies like any other: the form is public and
+  nobody can know which addresses we hold, so it is never refused at the last step. Accepting
+  them issues the same placement invite, but the email says "you're in, sign in and join"
+  (`notificationOrchestrator.sendProgramAcceptedEmail`) instead of "set up your account"; opening
+  it while signed in places them (`authService.acceptRegistrationInvite`).
 - MCQ/multi-select auto-grade; text/file/link need manual grading; `assessmentScore` mirrors onto the application.
+- Levels: `selfSelectedLevel` is what the applicant picked and never changes; `level` is what they
+  are treated as and is overwritten by the automatic review; `recommendedLevel` is the review's own
+  answer. The review is decided on the self-selected value, never on its own previous output, and it
+  is skipped when the evidence behind the last run is unchanged (`levelEvidence.fingerprint`) — a
+  re-rolled level swaps the candidate's level-targeted pool work and emails them about it.
 - The standalone Assessments library lets you reuse an assessment across cohorts.
 
 ## Related

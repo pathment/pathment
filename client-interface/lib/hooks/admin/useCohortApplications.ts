@@ -125,8 +125,13 @@ export function useCohortApplications(cohortId: string) {
 
   const acceptApplication = useCallback(async (id: string, clanId?: string) => {
     try {
-      await applicationApi.accept(id, clanId);
-      toast.success('Accepted - invite issued to the applicant');
+      // An applicant who already has a Pathment account is accepted like anyone
+      // else; they are emailed "you're in, sign in and join" rather than an
+      // invitation to create an account. Say which one went out.
+      const res = await applicationApi.accept(id, clanId) as { data?: { existingAccount?: boolean } };
+      toast.success(res?.data?.existingAccount
+        ? 'Accepted - they already have an account, so they were emailed to sign in and join'
+        : 'Accepted - invite issued to the applicant');
       await refetch();
     } catch (err) {
       toast.error(extractApiErrorMessage(err, 'Failed to accept application'));

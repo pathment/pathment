@@ -71,10 +71,28 @@ class AdminService {
     const ttlHours = Math.max(1, Math.min(24 * 30, Number(expiresInHours) || defaultInviteTtl));
     const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000);
 
-    const existingUser = await models.User.findOne({ where: { email: normalizedEmail } });
-    if (existingUser && !(inviteData.clanId || inviteData.clan)) {
+    /*
+     * Already a member HERE. Kept as a refusal for the hand-typed admin invite,
+     * where "this person is already in your workspace" is the useful answer.
+     * Callers that mean to place someone who has an account — intake accept, a
+     * resend — opt in: they accept the invitation while signed in
+     * (authService.acceptRegistrationInvite) rather than creating an account.
+     */
+    const inThisWorkspace = await models.User.findOne({ where: { email: normalizedEmail } });
+    if (inThisWorkspace && !options.allowExistingUser && !(inviteData.clanId || inviteData.clan)) {
       throw new ConflictError('User already exists for this email');
     }
+    /*
+     * Which email to send is a question about the ACCOUNT, not this workspace:
+     * one Pathment account is one global identity, so someone who holds one in
+     * another workspace also signs in rather than creating a second. Scope-free
+     * on purpose; the refusal above deliberately stays workspace-scoped.
+     */
+    const existingUser = inThisWorkspace || await models.User.findOne({
+      where: { email: normalizedEmail },
+      attributes: ['id', 'firstName'],
+      skipOrganizationScope: true,
+    });
 
     const existingActiveInvite = await models.RegistrationInvite.findOne({
       where: {
@@ -154,12 +172,22 @@ class AdminService {
       whatsappLink = clan?.whatsappGroupLink || null;
     }
 
-    const emailDelivery = await notificationOrchestrator.sendRegistrationInviteEmail({
-      email: invite.email,
-      role: invite.role,
-      inviteUrl,
-      whatsappLink
-    });
+    const emailDelivery = existingUser
+      ? await notificationOrchestrator.sendProgramAcceptedEmail({
+        email: invite.email,
+        firstName: existingUser.firstName,
+        role: invite.role,
+        inviteUrl,
+        programName: placement.programName,
+        clanName: placement.clanName,
+        whatsappLink
+      })
+      : await notificationOrchestrator.sendRegistrationInviteEmail({
+        email: invite.email,
+        role: invite.role,
+        inviteUrl,
+        whatsappLink
+      });
 
     if (!emailDelivery?.queued && !emailDelivery?.sent && !emailDelivery?.deduped) {
       console.warn('registration invite email not enqueued:', emailDelivery?.reason || 'unknown_reason');
@@ -184,6 +212,9 @@ class AdminService {
       role: invite.role,
       expiresAt: invite.expiresAt,
       createdAt: invite.createdAt,
+      // They already had an account, so they were emailed "you're in, sign in"
+      // rather than "set up your account". Callers surface this to the admin.
+      existingAccount: Boolean(existingUser),
       programId: invite.programId,
       clanId: invite.clanId,
       programName: placement.programName,
@@ -385,7 +416,9 @@ class AdminService {
           cohortId: invite.cohortId
         },
         resentBy,
-        { notifyClanMentors: false }
+        // A resend is a rotation of an invitation that already exists; whether
+        // the person has an account since is not a reason to refuse it.
+        { notifyClanMentors: false, allowExistingUser: true }
       );
     } catch (e) {
       // Reissue failed (e.g. a newer active invite exists, or they registered in

@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const { models } = require('../db');
 const { NotFoundError, ValidationError } = require('../utils/errors/errorTypes');
 const { labelledResponses } = require('../utils/intakeResponses');
@@ -253,6 +254,41 @@ class LevelRecommendationService {
       : `${via} ${nameOf(decision.levelKey)}.`;
   }
 
+  // ── Has anything new happened? ───────────────────────────────────────────
+  /**
+   * Everything a review is decided on, as one short string: their own pick,
+   * their form answers, and the state of their assessment attempt.
+   *
+   * The automatic review runs again on every re-save of the form and every
+   * assessment revision. The model extracts evidence rather than inventing a
+   * level, but it is not perfectly deterministic, so re-running it on the SAME
+   * evidence could land somewhere else — and a moved level cancels the
+   * candidate's level-targeted work, hands out the new level's, and emails
+   * them about it. Equal fingerprints mean there is nothing new to judge.
+   */
+  fingerprintOf(application, submission = null) {
+    const answers = crypto.createHash('sha1')
+      .update(JSON.stringify(application.responses || {}))
+      .digest('hex').slice(0, 12);
+    const attempt = submission
+      ? `${submission.id}:${submission.submittedAt ? new Date(submission.submittedAt).toISOString() : 'open'}:${submission.submissionCount || 0}`
+      : 'none';
+    // Same chain `recommendForApplication` reads their pick from, so a row that
+    // predates the column fingerprints the same value it is about to be pinned to.
+    const pick = application.selfSelectedLevel || application.levelEvidence?.selfSelected || application.level || '-';
+    return [pick, answers, attempt].join('|');
+  }
+
+  /** `fingerprintOf` for an application, reading its latest attempt. */
+  async evidenceFingerprint(application) {
+    const submission = await models.AssessmentSubmission.findOne({
+      where: { applicationId: application.id },
+      order: [['submittedAt', 'DESC']],
+      attributes: ['id', 'submittedAt', 'submissionCount'],
+    });
+    return this.fingerprintOf(application, submission);
+  }
+
   // ── The AI evidence pass ─────────────────────────────────────────────────
   /** Everything the applicant actually wrote, as grading context. */
   async _evidenceFor(application, { readGithub = true } = {}) {
@@ -312,13 +348,27 @@ class LevelRecommendationService {
     const { profileLines, answerBlock, submission, github } = await this._evidenceFor(application, { readGithub: rules.readGithub !== false });
     const labelFor = (key) => (rules.cohortLevels || []).find((l) => l.key === key)?.label || key;
 
+    /*
+     * The applicant's OWN pick, never the level we last decided for them.
+     * `level` is overwritten with the review's own answer (that is what applying
+     * a recommendation means), so reading it here would feed this pass its
+     * previous output: the base-track lock and the fall-through both branch on
+     * it, so a second run could land somewhere else, swap the candidate's
+     * level-targeted work and email them about it. Older rows have no column
+     * value — fall back to what the first review recorded, then to `level`.
+     */
+    const selfSelected = application.selfSelectedLevel
+      || application.levelEvidence?.selfSelected
+      || application.level
+      || null;
+
     const criteriaBlock = allCriteria
       .map((c) => `- key: ${c.key}\n  criterion: ${c.label}\n  how to judge: ${c.how || '(judge on the plain meaning of the criterion)'}`)
       .join('\n');
 
     const prompt = [
       `LEVELS AVAILABLE: ${(rules.cohortLevels || []).map((l) => l.label).join(' · ') || '(none)'}`,
-      `APPLICANT SELF-SELECTED: ${labelFor(application.level) || '(none)'}`,
+      `APPLICANT SELF-SELECTED: ${labelFor(selfSelected) || '(none)'}`,
       application.assessmentScore != null ? `ASSESSMENT SCORE: ${application.assessmentScore}` : '',
       '',
       'CRITERIA TO VERIFY:',
@@ -384,7 +434,7 @@ class LevelRecommendationService {
      * as everyone else, so the criteria decide for them too.
      */
     const effectiveRules = submission ? rules : { ...rules, baseLevelLocked: false };
-    const decision = this.decide(effectiveRules, verdicts, application.level || null);
+    const decision = this.decide(effectiveRules, verdicts, selfSelected);
     const reason = this.buildReason(effectiveRules, decision, verdicts, labelFor);
 
     // If nothing could be judged, the criteria don't match what this cohort's
@@ -402,14 +452,23 @@ class LevelRecommendationService {
       decision: { via: decision.via, metKeys: decision.metKeys, trail: decision.trail },
       reason,
       coherence: parsed.coherence ? String(parsed.coherence).slice(0, 300) : '',
-      selfSelected: application.level || null,
+      selfSelected,
+      // What this verdict was reached on — so the automatic review can tell
+      // that nothing has changed and leave the applicant's level alone.
+      fingerprint: this.fingerprintOf(application, submission),
       github: github ? { username: github.username, read: !/could not be read|does not exist/.test(github.lines[0] || '') } : null,
-      matchesSelfSelected: (application.level || null) === (decision.levelKey || null),
+      matchesSelfSelected: selfSelected === (decision.levelKey || null),
       submissionId: submission ? submission.id : null,
       at: new Date().toISOString(),
     };
 
-    await application.update({ recommendedLevel: decision.levelKey, levelEvidence: evidence });
+    await application.update({
+      recommendedLevel: decision.levelKey,
+      levelEvidence: evidence,
+      // Pin the applicant's own pick the first time anything reviews them, so a
+      // row created before the column existed can never lose it to the review.
+      ...(application.selfSelectedLevel ? {} : { selfSelectedLevel: selfSelected }),
+    });
     return { applicationId, recommended: true, recommendedLevel: decision.levelKey, evidence };
   }
 

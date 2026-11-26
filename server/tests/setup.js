@@ -19,6 +19,10 @@ jest.mock('../src/services/notificationOrchestrator', () => {
     pushOnly: jest.fn().mockResolvedValue({ sent: 0 }),
     sendWelcomeEmail: jest.fn().mockResolvedValue({ sent: true }),
     sendRegistrationInviteEmail: jest.fn().mockResolvedValue({ sent: true }),
+    // What an applicant who ALREADY has an account gets instead of the
+    // "set up your account" invitation (adminService.createRegistrationInvite).
+    sendProgramAcceptedEmail: jest.fn().mockResolvedValue({ sent: true }),
+    sendApplicationRejectedEmail: jest.fn().mockResolvedValue({ sent: true }),
     sendPasswordResetEmail: jest.fn().mockResolvedValue({ sent: true }),
     sendEmailVerificationEmail: jest.fn().mockResolvedValue({ sent: true }),
     sendSignInLinkEmail: jest.fn().mockResolvedValue({ sent: true }),

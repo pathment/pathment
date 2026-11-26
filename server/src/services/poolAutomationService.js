@@ -101,10 +101,22 @@ class PoolAutomationService {
   async autoLevel(applicationId, { force = false } = {}) {
     const levelRecommendationService = require('./levelRecommendationService');
     if (!force) {
-      const app = await models.Application.findByPk(applicationId, { attributes: ['cohortId'] });
+      const app = await models.Application.findByPk(applicationId);
       const rules = app ? await levelRecommendationService.getRules(app.cohortId) : null;
       // The intake's switch: off, nothing reviews on its own.
       if (!rules || rules.autoReview === false) return { applicationId, recommended: false, reason: 'auto_review_off' };
+      /*
+       * Nothing new to judge → leave their level where it is. This path runs
+       * again on every re-save of the form and every assessment revision, and
+       * a second verdict on identical evidence is not a better one: it moves
+       * the candidate's level, cancels the work aimed at the old one, hands out
+       * the new one's and emails them about it. An admin asking for a review
+       * (force) is never short-circuited.
+       */
+      const fingerprint = await levelRecommendationService.evidenceFingerprint(app);
+      if (app.levelEvidence?.fingerprint && app.levelEvidence.fingerprint === fingerprint) {
+        return { applicationId, recommended: false, reason: 'nothing_new_to_review', recommendedLevel: app.recommendedLevel || null };
+      }
     }
     const result = await levelRecommendationService.recommendForApplication(applicationId, null);
     if (!result?.recommended || !result.recommendedLevel) return result;

@@ -151,9 +151,15 @@ class PublicIntakeService {
       if (formatError) throw new ValidationError(`${field.label || field.key}: ${formatError}`);
     }
 
-    // If they already have a real account, they should log in, not apply.
-    const existingUser = await models.User.findOne({ where: { email } });
-    if (existingUser) throw new ConflictError('An account already exists for this email - please log in instead');
+    /*
+     * Someone who already has a Pathment account may apply like anyone else.
+     * The form is public and an applicant has no way of knowing which address
+     * we already hold, so turning them away at the end — after they filled the
+     * whole thing in — lost the application and the person. Their account is
+     * reconciled when the application is ACCEPTED (applicationService), where
+     * the workspace is known: the lookup here is unauthenticated, so a match
+     * may be an account in a completely different workspace and proves nothing.
+     */
 
     // Level: required only when the cohort defines levels, and must be one of them.
     const levels = Array.isArray(cohort.levels) ? cohort.levels : [];
@@ -174,6 +180,9 @@ class PublicIntakeService {
       lastName: data.lastName || null,
       phone: data.phone || null,
       level,
+      // Their own pick, kept apart from `level`, which the automatic review
+      // overwrites with the level it decides on.
+      selfSelectedLevel: level,
       programPreference: data.programPreference || cohort.program?.name || null,
       source: 'public_link',
       responses: data.responses && typeof data.responses === 'object' ? data.responses : {},
@@ -405,6 +414,7 @@ class PublicIntakeService {
       lastName: data.lastName || null,
       phone: data.phone || null,
       level,
+      ...(levelChanged ? { selfSelectedLevel: level } : {}),
       responses
     });
 

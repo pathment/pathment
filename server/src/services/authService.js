@@ -179,6 +179,10 @@ class AuthService {
       } else if (invite.role === 'mentor') {
         throw new ValidationError('A mentor invite must specify a clan');
       }
+      // An invitation issued from an intake application belongs to this account
+      // now, so the applicant row points at it (the admin's intake list reads
+      // the account from there, as it does for someone who registers fresh).
+      await require('./applicationService').linkUserByInvite(invite.id, actor.id, transaction);
       // Any invitation proves the address: link every pool membership waiting on it.
       const poolMemberIds = await poolMemberService.activateForUser(actor, { organizationId, transaction });
       // Consume the invitation in the same transaction as membership/placement.

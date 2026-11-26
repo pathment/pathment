@@ -527,6 +527,58 @@ class NotificationOrchestrator {
     });
   }
 
+  /**
+   * Accepted into a programme by someone who ALREADY has a Pathment account.
+   *
+   * The registration invitation ("set up your account", "create your password")
+   * is wrong for them and reads as a mistake — they have an account. This is the
+   * same one-time link, said properly: you are in, sign in and open it to join.
+   * The link still carries the placement; opening it while signed in is the
+   * single click that places them (authService.acceptRegistrationInvite).
+   */
+  async sendProgramAcceptedEmail({ email, firstName, role, inviteUrl, programName, clanName, whatsappLink }) {
+    const name = firstName ? String(firstName).trim() : 'there';
+    const isMentor = role === 'mentor';
+    const place = programName
+      ? `${programName}${clanName ? ` (clan ${clanName})` : ''}`
+      : (clanName ? `clan ${clanName}` : 'the programme');
+    const heading = isMentor ? `You're mentoring on ${programName || 'Pathment'}` : `You're in: ${programName || 'Pathment'}`;
+    const ctaLabel = 'Sign in and join';
+    const whatsappText = whatsappLink ? `\nOnce you're in, join your clan's WhatsApp group:\n${whatsappLink}\n\n` : '';
+    const text =
+      `Hi ${name},\n\n` +
+      `Good news: your application to ${place} was accepted.\n\n` +
+      `You already have a Pathment account, so there is nothing to set up: sign in with this address (${email}) and open the link below to join. ` +
+      `Anything still waiting for you, an assessment or your roadmap, is there once you're in.\n\n` +
+      `${ctaLabel}:\n${inviteUrl}\n\n` +
+      whatsappText +
+      `This link is for you only and can be used once.\n\n` +
+      `- The Pathment team`;
+
+    return emailService.enqueue({
+      to: email,
+      // Same class as an invitation: it is the only way into their placement.
+      emailType: 'registration_invite',
+      priority: 1,
+      idempotencyKey: `accepted:${String(email).toLowerCase()}:${inviteUrl.split('invite=')[1] || inviteUrl}`,
+      subject: programName ? `You've been accepted: ${programName}` : "You've been accepted on Pathment",
+      text,
+      html: renderEmail({
+        heading,
+        preheader: `Your application to ${place} was accepted`,
+        bodyHtml: `
+          <p style="margin:0 0 14px;">Hi ${escHtml(name)},</p>
+          <p style="margin:0 0 14px;">Good news: your application to <strong>${escHtml(place)}</strong> was accepted.</p>
+          <p style="margin:0 0 14px;">You already have a Pathment account, so there is nothing to set up. Sign in with <strong>${escHtml(email)}</strong> and open the link below to join. Anything still waiting for you, an assessment or your roadmap, is there once you&rsquo;re in.</p>
+          ${whatsappLink ? `<p style="margin:14px 0 0;">Once you&rsquo;re in, <a href="${escHtml(whatsappLink)}" style="color:#00796b;font-weight:600;">join your clan&rsquo;s WhatsApp group</a>.</p>` : ''}
+          <p style="margin:18px 0 0;font-size:13px;">Button not working? Copy this link into your browser:<br><a href="${escHtml(inviteUrl)}" style="color:#00796b;word-break:break-all;overflow-wrap:anywhere;">${escHtml(inviteUrl)}</a></p>
+        `,
+        cta: { label: ctaLabel, url: inviteUrl },
+        footerNote: "This link works once. Didn't expect this? You can ignore this email and nothing changes on your account.",
+      })
+    });
+  }
+
   async sendRegistrationInviteEmail({ email, role, inviteUrl, whatsappLink }) {
     const isMentor = role === 'mentor';
     const roleName = isMentor ? 'mentor' : 'mentee';
