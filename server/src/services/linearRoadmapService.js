@@ -9,6 +9,7 @@ const taskService = require('./taskService');
 const { pointsForDifficulty } = require('../config/points');
 const { resolveMenteeClanId, listMenteeClans, clanScopedWhere } = require('./menteeClanScope');
 const clanLifecycleService = require('./clanLifecycleService');
+const { isNonProgrammeClan } = require('../config/clanKinds');
 
 /**
  * linearRoadmapService - the new design's linear roadmap flow for mentors:
@@ -868,7 +869,7 @@ class LinearRoadmapService {
     // Standing mirrors cohort assign (same steps/progress), but never attaches a
     // program enrollment — that would mix Standee work into cohort stats.
     let enrollmentId = null;
-    if (actualClan?.kind === 'standing') {
+    if (isNonProgrammeClan(actualClan)) {
       enrollmentId = null;
     } else {
       let enrollment = actualClan
@@ -1110,7 +1111,7 @@ class LinearRoadmapService {
     if (!steps.length) return false;
     const clan = prevAssignment?.clanId && await models.Clan.findByPk(prevAssignment.clanId);
     // Standing keeps enrollment null (same as assignToMentee); cohort keeps the prior enrollment.
-    const enrollmentId = clan?.kind === 'standing'
+    const enrollmentId = isNonProgrammeClan(clan)
       ? null
       : (prevAssignment?.enrollmentId
         ? (await models.Enrollment.findByPk(prevAssignment.enrollmentId))?.id

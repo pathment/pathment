@@ -1,5 +1,6 @@
 const { models } = require('../db');
 const { ClanFrozenError, NotFoundError, ForbiddenError } = require('../utils/errors/errorTypes');
+const { isProgrammeClan } = require('../config/clanKinds');
 
 /**
  * The single write boundary for completed programme clans.
@@ -17,7 +18,7 @@ class ClanLifecycleService {
       transaction,
     });
     if (!clan) throw new NotFoundError('Clan not found');
-    if (clan.kind !== 'standing' && clan.frozenAt) {
+    if (isProgrammeClan(clan) && clan.frozenAt) {
       throw new ClanFrozenError(`${clan.name} is read-only because its programme has closed. Request a standing clan to continue mentoring.`);
     }
     return clan;

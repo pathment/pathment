@@ -139,6 +139,12 @@ export const applicationApi = {
     apiClient.put(`/intake/cohorts/${cohortId}/pools/${poolId}`, { attached }),
   /** Set the applicant's level to the recommendation (explicit admin action). */
   applyLevel: (id: string) => apiClient.post(`/intake/applications/${id}/apply-level`, {}),
+  /**
+   * A human settles the level. Omit `level` to confirm the one they hold.
+   * This is what placement and level-based work wait for.
+   */
+  confirmLevel: (id: string, level?: string) =>
+    apiClient.post(`/intake/applications/${id}/confirm-level`, level === undefined ? {} : { level }),
 
   // ── CSV score round-trip ────────────────────────────────────────────────
   /** Download the applications sheet (auth'd) and trigger a browser save. */

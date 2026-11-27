@@ -12,6 +12,7 @@ const { mirrorPriorWork } = require('./standingWorkMirror');
 const clanGroupChat = require('./clanGroupChat');
 const avatarService = require('./clanAvatarService');
 const gamificationService = require('./gamificationService');
+const { isProgrammeClan, isNonProgrammeClan, isPoolClan, isStandingClan } = require('../config/clanKinds');
 
 // The permissions a co-mentor holds by default — and therefore the exact set a
 // lead mentor / admin may toggle on or off for an individual co-mentor. Derived
@@ -47,12 +48,21 @@ class ClanService {
    * Ensure a user holds a platform capability (adds it if missing). Used when
    * an admin/lead assigns a clan role, so the user can switch into that view.
    */
-  async ensureCapability(user, capability, transaction) {
+  async ensureCapability(user, capability, transaction, { clan = null } = {}) {
     // Roles are derived from workspace grants. Never edit the account-wide
     // capability array when somebody joins a clan in just one workspace.
     if (capability === 'mentor') {
       await models.MentorProfile.findOrCreate({ where: { userId: user.id }, transaction });
     } else if (capability === 'mentee') {
+      /*
+       * A selection round's members are candidates, not mentees, so they get
+       * no mentee profile until they are placed out of it. The profile is what
+       * `authzService.isPoolCandidateOnly` reads, and creating one opens the
+       * whole learner portal — community, announcements, the directory — to
+       * somebody who has only applied. Mentors running the round are
+       * unaffected: a pool clan still needs its mentor profiles.
+       */
+      if (isPoolClan(clan)) return user;
       await ensureMenteeProfile(user.id, { transaction });
     }
     return user;
@@ -389,7 +399,7 @@ class ClanService {
    * tasks). Only the mentor roles are mutually exclusive with each other, so
    * lead_mentor / co_mentor / core_team reuse the one mentor row.
    */
-  async addMember(clanId, { userId, role, enrollmentId }, actor = null, { transaction: outerTransaction } = {}) {
+  async addMember(clanId, { userId, role, enrollmentId, level = null }, actor = null, { transaction: outerTransaction } = {}) {
     const { Op } = require('sequelize');
     if (!userId || !role) throw new ValidationError('userId and role are required');
     if (!CAPABILITY_FOR_CLAN_ROLE[role]) throw new ValidationError(`Invalid clan role: ${role}`);
@@ -405,9 +415,10 @@ class ClanService {
 
     const clan = await models.Clan.findByPk(clanId, { transaction: outerTransaction });
     if (!clan) throw new NotFoundError('Clan not found');
-    if (clan.frozenAt && clan.kind !== 'standing') throw new ForbiddenError('This cohort clan is historical. Reopen its program to change the roster.');
-    if (clan.kind === 'standing') enrollmentId = null;
-    if (clan.kind === 'standing' && role === 'mentee' && actor && !outerTransaction) {
+    if (clan.frozenAt && isProgrammeClan(clan)) throw new ForbiddenError('This cohort clan is historical. Reopen its program to change the roster.');
+    // Nothing outside the programme carries a programme enrollment.
+    if (isNonProgrammeClan(clan)) enrollmentId = null;
+    if (isStandingClan(clan) && role === 'mentee' && actor && !outerTransaction) {
       return (await standingClanService.addMenteesToStandingClan(clanId, [userId], actor))[0];
     }
 
@@ -430,7 +441,7 @@ class ClanService {
     }
 
     const place = async (transaction) => {
-      await this.ensureCapability(user, CAPABILITY_FOR_CLAN_ROLE[role], transaction);
+      await this.ensureCapability(user, CAPABILITY_FOR_CLAN_ROLE[role], transaction, { clan });
 
       // The row this grant occupies: the person's mentor row (whatever role it
       // currently names) for a mentor role, or their mentee row for 'mentee'.
@@ -445,7 +456,9 @@ class ClanService {
         membership.role = role;
         membership.status = 'active';
         membership.leftAt = null;
-        if (clan.kind === 'standing') { membership.enrollmentId = null; membership.joinedAt = new Date(); }
+        if (isNonProgrammeClan(clan)) { membership.enrollmentId = null; membership.joinedAt = new Date(); }
+        // The level a candidate joins a round at decides their work.
+        if (isPoolClan(clan) && role === 'mentee') membership.level = level;
         if (enrollmentId) membership.enrollmentId = enrollmentId;
         await membership.save({ transaction });
       } else {
@@ -454,7 +467,8 @@ class ClanService {
           userId,
           role,
           status: 'active',
-          enrollmentId: enrollmentId || null
+          enrollmentId: enrollmentId || null,
+          level: isPoolClan(clan) && role === 'mentee' ? level : null,
         }, { transaction });
       }
 
@@ -468,6 +482,21 @@ class ClanService {
       // active enrollment in the clan's program so the mentee dashboard reflects
       // it and tasks (which require an enrollment) can be assigned to them.
       if (role === 'mentee') {
+        /*
+         * A selection round is a trial: its members are CANDIDATES, and nobody
+         * in it is a mentee of the programme until they are selected and placed
+         * out. So it stops here — no mentee profile, no enrollment.
+         *
+         * The profile is not a cosmetic difference. It is what
+         * `authzService.isPoolCandidateOnly` reads, and creating one hands
+         * somebody the whole mentee portal — community, announcements, the
+         * directory — on the strength of having applied. They get it at
+         * placement, which is the moment they actually become a mentee.
+         */
+        // Candidates stop here: no enrollment, and no profile (ensureCapability
+        // above already declined to make one for a round).
+        if (isPoolClan(clan)) return membership;
+
         // ...and a mentee profile, which is what points, badges and the
         // leaderboard hang off. Registration only creates one for somebody who
         // signed up AS a mentee, so a mentor placed in a clan as a learner had
@@ -477,7 +506,9 @@ class ClanService {
         // the moment they become a mentee.
         await ensureMenteeProfile(userId, { transaction });
 
-        if (clan.kind === 'standing') return membership;
+        // A standing clan has a profile but no enrollment: it outlived its
+        // programme, so there is no programme left to enrol in.
+        if (isNonProgrammeClan(clan)) return membership;
         let enrollment = await models.Enrollment.findOne({
           where: { menteeId: userId, programId: clan.programId },
           transaction
@@ -522,6 +553,17 @@ class ClanService {
         }, transaction);
         return row;
       });
+    }
+
+    /*
+     * A round hands out the work for the level they joined at, once the
+     * membership is committed. Best-effort on purpose: a membership with no
+     * work yet is visible and fixable, a placement that rolled back because a
+     * roadmap was missing is neither. A member with no level, or a level the
+     * round has no rule for, gets nothing — and is told nothing.
+     */
+    if (isPoolClan(clan) && role === 'mentee' && !outerTransaction) {
+      await require('./poolClanService').afterJoin(clanId, userId, { actorId: actor?.id || null });
     }
 
     // Audit who added whom — especially a co-mentor using mentee.add — so leads
@@ -636,7 +678,7 @@ class ClanService {
     }));
 
     const clan = await models.Clan.findByPk(clanId, { attributes: ['kind', 'frozenAt'] });
-    const readOnly = clan?.kind !== 'standing' && Boolean(clan?.frozenAt);
+    const readOnly = isProgrammeClan(clan) && Boolean(clan?.frozenAt);
     const canEditAvatar = !readOnly && await avatarService.canEditAvatar(clanId, user);
 
     /**
@@ -763,7 +805,9 @@ class ClanService {
     await clanLifecycleService.assertClanWritable(toClanId);
     const toClan = await models.Clan.findByPk(toClanId, { attributes: ['id', 'programId', 'kind'] });
     if (!toClan) throw new NotFoundError('Target clan not found');
-    if (toClan.kind === 'standing') throw new ValidationError('Add mentees to this standing clan without transferring them');
+    // Transferring is a move between programme clans. Adding somebody to a
+    // standing clan or a selection round is its own action, not a transfer.
+    if (isNonProgrammeClan(toClan)) throw new ValidationError('Add mentees to this clan without transferring them');
     const mentee = await models.User.findByPk(menteeId, { attributes: ['id'] });
     if (!mentee) throw new NotFoundError('Mentee not found');
 
@@ -855,7 +899,7 @@ class ClanService {
   async listAvailableMembers({ q, clanId = null, includePlaced = false } = {}) {
     const { Op } = require('sequelize');
     const selectedClan = clanId && await models.Clan.findByPk(clanId);
-    if (selectedClan?.kind === 'standing') {
+    if (isNonProgrammeClan(selectedClan)) {
       const current = await models.ClanMembership.findAll({ where: { clanId, role: 'mentee', status: { [Op.in]: ['active', 'paused'] } }, attributes: ['userId'] });
       const profiles = await models.MenteeProfile.findAll({ attributes: ['userId'] });
       const workspaceMembers = await models.OrganizationMembership.findAll({ where: { organizationId: selectedClan.organizationId, status: 'active' }, attributes: ['userId'] });
@@ -984,7 +1028,7 @@ class ClanService {
     if (!clan) throw new NotFoundError('Clan not found');
     // Standing invites reuse the same registration-invite path; addMember keeps
     // enrollmentId null for standing so completed-cohort enrollments stay untouched.
-    if (clan.frozenAt && clan.kind !== 'standing') throw new ValidationError('This completed cohort clan is read-only');
+    if (clan.frozenAt && isProgrammeClan(clan)) throw new ValidationError('This completed cohort clan is read-only');
     const adminService = require('./adminService');
     return adminService.createRegistrationInvite(
       { email: email.trim(), role: 'mentee', clanId, programId: clan.programId },

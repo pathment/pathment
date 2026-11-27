@@ -13,6 +13,7 @@ const { requireWorkspaceId } = require('../utils/workspaceExecution');
 const logger = require('../utils/logger');
 const { resolveMenteeClanId } = require('./menteeClanScope');
 const clanLifecycleService = require('./clanLifecycleService');
+const { isNonProgrammeClan } = require('../config/clanKinds');
 // gamificationService is required lazily below — a top-level require cycles
 // cohortService → gamificationService → performanceService → cohortService and
 // leaves cohortService as an empty export (preloadMenteeData is not a function).
@@ -916,7 +917,9 @@ class CohortService {
     if (!clanId) return {};
     const clan = await models.Clan.findByPk(clanId, { attributes: ['id', 'programId', 'kind'] });
     if (!clan) return { clanId };
-    if (clan.kind === 'standing') return { clanId, standing: true };
+    // `standing` here means "scope this by clanId alone" — true for every
+    // clan outside the programme's accounting, a selection round included.
+    if (isNonProgrammeClan(clan)) return { clanId, standing: true };
     return { clanId, programId: clan.programId || null };
   }
 

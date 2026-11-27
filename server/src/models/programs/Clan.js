@@ -1,3 +1,4 @@
+const { CLAN_KINDS } = require('../../config/clanKinds');
 module.exports = (sequelize, DataTypes) => {
   /**
    * Clan - a mentor-led group of mentees inside a Program (the org runs one
@@ -18,7 +19,17 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       field: 'program_id'
     },
-    kind: { type: DataTypes.STRING(20), allowNull: false, defaultValue: 'cohort', validate: { isIn: [['cohort', 'standing']] } },
+    /*
+     * What this clan IS, which decides whether its work counts towards the
+     * programme. See `config/clanKinds.js` — ask `isProgrammeClan`, don't
+     * compare this directly unless you mean one specific kind.
+     */
+    /*
+     * A selection round's work, per level: [{ level, roadmapId, stepIndexes? }].
+     * Empty on every other kind of clan. See poolClanService.
+     */
+    levelRules: { type: DataTypes.JSONB, allowNull: false, defaultValue: [], field: 'level_rules' },
+    kind: { type: DataTypes.STRING(20), allowNull: false, defaultValue: CLAN_KINDS[0], validate: { isIn: [CLAN_KINDS] } },
     frozenAt: { type: DataTypes.DATE, field: 'frozen_at' },
     /**
      * Does joining this standing clan carry the mentee's work across with them?

@@ -8,6 +8,7 @@ const { NOTIFICATION_EVENTS } = require('../config/notificationMatrix');
 const { PERMISSIONS: P } = require('../config/permissions');
 const featureGate = require('../config/menteeTransfer');
 const { createAuditLog } = require('../utils/auditContext');
+const { isProgrammeClan, isNonProgrammeClan, isStandingClan } = require('../config/clanKinds');
 
 const fullName = (u) => (u ? `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'Someone' : 'Someone');
 
@@ -192,7 +193,9 @@ class MenteeTransferService {
     if (!mentee) throw new NotFoundError('Mentee not found');
     if (!toClan) throw new NotFoundError('Target clan not found');
     const takesPeople = toClan.status !== 'archived'
-      && (toClan.kind === 'standing' || (!toClan.frozenAt && !toClan.program?.closedAt));
+      // A selection round is not a transfer destination: candidates are
+      // invited into a trial, not moved into one.
+      && (isStandingClan(toClan) || (isProgrammeClan(toClan) && !toClan.frozenAt && !toClan.program?.closedAt));
     if (!takesPeople) throw new ValidationError('That clan has closed and isn’t taking people — its standing clan is usually the right place');
 
     const current = await this._currentClanOf(menteeId);
@@ -374,7 +377,7 @@ class MenteeTransferService {
       // gone), the request stays pending rather than claiming a move that
       // never happened.
       const target = await models.Clan.findByPk(request.toClanId, { attributes: ['id', 'kind'] });
-      if (target?.kind === 'standing') {
+      if (isNonProgrammeClan(target)) {
         // Joined, not transferred into: their current clan stays as it is.
         await clanService.addMember(request.toClanId, { userId: request.menteeId, role: 'mentee' }, user);
       } else {

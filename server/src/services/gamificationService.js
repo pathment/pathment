@@ -8,6 +8,7 @@ const logger = require('../utils/logger');
 const { ensureMenteeProfile } = require('./menteeProfile');
 const performanceService = require('./performanceService');
 const { runWithRequestContext } = require('../utils/auditContext');
+const { isNonProgrammeClan } = require('../config/clanKinds');
 const {
   currentStreak,
   longestStreak,
@@ -309,9 +310,10 @@ class GamificationService {
     if (!clan || clan.organizationId !== badge.organizationId) {
       throw new ValidationError('Clan is not in this workspace');
     }
-    // Cohort: stamp original program. Standing: leave program_id null.
-    // Closed program does not block clan-scoped awards; program_id is context only.
-    programId = clan.kind === 'standing' ? null : clan.programId;
+    // A programme clan stamps its programme. A clan outside the programme's
+    // accounting (standing, or a selection round) leaves program_id null, so
+    // its points never land on a programme leaderboard.
+    programId = isNonProgrammeClan(clan) ? null : clan.programId;
     return { programId, clanId };
   }
 
@@ -338,7 +340,7 @@ class GamificationService {
             :clanId::uuid IS NULL
             AND :programId::uuid IS NOT NULL
             AND e.program_id = :programId
-            AND (c.id IS NULL OR c.kind IS DISTINCT FROM 'standing')
+            AND (c.id IS NULL OR c.kind = 'cohort')
           )
           OR (
             :clanId::uuid IS NULL
@@ -528,7 +530,7 @@ class GamificationService {
           skipOrganizationScope: true,
         });
         if (clan) {
-          push(clan.kind === 'standing' ? null : clan.programId, clan.id);
+          push(isNonProgrammeClan(clan) ? null : clan.programId, clan.id);
         }
       }
       for (const row of rows) {
@@ -581,7 +583,7 @@ class GamificationService {
                   :clanId::uuid IS NULL AND :programId::uuid IS NOT NULL
                   AND e.program_id = :programId
                   AND p.closed_at IS NULL
-                  AND (c.id IS NULL OR c.kind IS DISTINCT FROM 'standing')
+                  AND (c.id IS NULL OR c.kind = 'cohort')
                 )
                 OR (:clanId::uuid IS NULL AND :programId::uuid IS NULL)
               )

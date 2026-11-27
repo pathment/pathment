@@ -96,6 +96,12 @@ module.exports = (sequelize, DataTypes) => {
       field: 'intake_form_schema'
     },
     // Optional assessment an applicant must/may complete before review.
+    /*
+     * The selection round this intake feeds. Applicants whose level has been
+     * confirmed join that clan at their level, which decides their work.
+     * Replaces the round-side `settings.autoAddFromCohortIds` list.
+     */
+    poolClanId: { type: DataTypes.UUID, allowNull: true, field: 'pool_clan_id' },
     assessmentId: {
       type: DataTypes.UUID,
       field: 'assessment_id'

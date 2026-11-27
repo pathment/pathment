@@ -4,6 +4,7 @@ const { TASK_TYPES } = require('../utils/taskSchedule');
 const { zonedWallClockToUtc } = require('../utils/timezone');
 const { nextOccurrences } = require('../utils/reviewRecurrence');
 const { VISIBLE_MEMBERSHIP_STATUSES, CLAN_ROLE_RANK } = require('../config/membership');
+const { isProgrammeClan } = require('../config/clanKinds');
 
 /**
  * How far ahead a repeat is allowed to materialise. Was 14 days, which for a
@@ -216,7 +217,7 @@ class RecurringSlotMaterializer {
 
   async _materialize(menteeId, mentorId, slotId, recConfig, clanId = null) {
     const clan = clanId && await models.Clan.findByPk(clanId);
-    if (clan?.kind !== 'standing' && clan?.frozenAt) return { createdForSlot: 0, updatedForSlot: 0 };
+    if (isProgrammeClan(clan) && clan?.frozenAt) return { createdForSlot: 0, updatedForSlot: 0 };
 
     const assigningMentorId = await this._responsibleMentorId(menteeId, mentorId, clanId);
     if (!assigningMentorId) {

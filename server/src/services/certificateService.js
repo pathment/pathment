@@ -29,6 +29,7 @@ const authzService = require('./authzService');
 const certificateVerificationService = require('./certificateVerificationService');
 const { VISIBLE_MEMBERSHIP_STATUSES, strongestClanRole } = require('../config/membership');
 const { PERMISSIONS } = require('../config/permissions');
+const { isNonProgrammeClan, isStandingClan } = require('../config/clanKinds');
 
 // A per-tier value is either a line of certificate wording or an image URL.
 // Generous enough for a paragraph or a signed Cloudinary URL, bounded so a
@@ -109,10 +110,11 @@ class CertificateService {
     let clanIds = await authzService.clansWhereCan(user, PERMISSIONS.MENTEE_VIEW);
     if (!clanIds.length) return [];
 
-    // Standee selected: that clan only (never cohort clans of the same program).
+    // A clan outside the programme's accounting (standing, or a selection
+    // round): that clan only, never cohort clans of the same program.
     if (clanId) {
       const picked = await models.Clan.findByPk(clanId, { attributes: ['id', 'kind'] });
-      if (picked?.kind === 'standing') {
+      if (isNonProgrammeClan(picked)) {
         return clanIds.includes(clanId) ? [clanId] : [];
       }
     }
@@ -189,10 +191,10 @@ class CertificateService {
     const activeMentees = [];
     const pausedMentees = [];
 
-    // Standee path: roster = that standing clan only (no enrollments / no cohort).
+    // Outside the programme: roster = that clan only (no enrollments / no cohort).
     if (clanId) {
       const picked = await models.Clan.findByPk(clanId, { attributes: ['id', 'name', 'kind'] });
-      if (picked?.kind === 'standing') {
+      if (isNonProgrammeClan(picked)) {
         const isAdmin = await authzService.actsAsAdmin(user);
         if (!isAdmin) {
           const allowed = await this.getMentorScopedMenteeClans(user, programId, { clanId });
@@ -469,7 +471,7 @@ class CertificateService {
     let selectedClan = null;
     if (preferredClanId) {
       const preferred = await models.Clan.findByPk(preferredClanId, { attributes: ['id', 'name', 'kind'] });
-      if (preferred?.kind === 'standing') {
+      if (isNonProgrammeClan(preferred)) {
         const mem = await models.ClanMembership.findOne({
           where: {
             userId: menteeId,
@@ -1715,7 +1717,9 @@ class CertificateService {
         const ids = [...new Set(verifClans.map((r) => r.clanId).filter(Boolean))];
         if (ids.length === 1) {
           const c = await models.Clan.findByPk(ids[0], { attributes: ['id', 'kind'], transaction: t });
-          if (c?.kind === 'standing') standingClanId = c.id;
+          // Standing specifically: only a clan CONTINUING a closed programme
+          // earns the exemption below. A selection round must not inherit it.
+          if (isStandingClan(c)) standingClanId = c.id;
         }
       }
       if (!standingClanId && template.program?.closedAt && !await authzService.hasAdminAccess(user)) {

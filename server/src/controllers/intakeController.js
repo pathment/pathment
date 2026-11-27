@@ -6,6 +6,7 @@ const assessmentService = require('../services/assessmentService');
 const intakeExportService = require('../services/intakeExportService');
 const levelRecommendationService = require('../services/levelRecommendationService');
 const { models } = require('../db');
+const { NotFoundError } = require('../utils/errors/errorTypes');
 const clanAssignmentService = require('../services/clanAssignmentService');
 const { parseCsv } = require('../utils/csv');
 
@@ -245,10 +246,27 @@ const setIntakePool = catchAsync(async (req, res) => {
 });
 
 const applyLevelRecommendation = catchAsync(async (req, res) => {
-  const application = await levelRecommendationService.applyRecommendation(req.params.id);
+  const application = await levelRecommendationService.applyRecommendation(req.params.id, req.user.id);
   // The pool member follows, with their level-specific work swapped to match.
   await require('../services/poolAutomationService').syncLevelFromApplication(application.id).catch(() => {});
   res.status(200).json(successResponse('Level applied', { application }));
+});
+
+/**
+ * POST /applications/:id/confirm-level  { level? }
+ *
+ * A human settles the applicant's level. With no `level` it confirms the one
+ * they already hold; with one, it overrides first. Confirmation is what lets
+ * the level drive placement and level-based work — it deliberately does not
+ * gate the assessment, which went out on the review's answer.
+ */
+const confirmApplicationLevel = catchAsync(async (req, res) => {
+  const current = await models.Application.findByPk(req.params.id, { attributes: ['id', 'level'] });
+  if (!current) throw new NotFoundError('Application not found');
+  const level = req.body?.level !== undefined ? req.body.level : current.level;
+  const application = await levelRecommendationService.confirmLevel(req.params.id, level, req.user.id);
+  await require('../services/poolAutomationService').syncLevelFromApplication(application.id).catch(() => {});
+  res.status(200).json(successResponse('Level confirmed', { application }));
 });
 
 // ─── CSV export / import (score round-trip) ──────────────────────────────────
@@ -400,6 +418,7 @@ module.exports = {
   listIntakePools,
   setIntakePool,
   applyLevelRecommendation,
+  confirmApplicationLevel,
   aiGradeSubmission,
   applyAiScores,
   exportApplicationsCsv,

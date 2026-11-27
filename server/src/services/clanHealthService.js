@@ -3,6 +3,7 @@ const { VISIBLE_MEMBERSHIP_STATUSES } = require('../config/membership');
 const { models, sequelize } = require('../db');
 const clanService = require('./clanService');
 const cohortService = require('./cohortService');
+const { isProgrammeClan } = require('../config/clanKinds');
 
 const MENTOR_ROLES = ['lead_mentor', 'co_mentor'];
 
@@ -121,7 +122,9 @@ async function loadSnapshot(programIds = null, options = {}) {
   const entry = { expires: Infinity };
   entry.promise = (async () => {
     const clans = (await clanService.listClans({ programIds }))
-      .filter(c => includeStanding || c.kind !== 'standing');
+      // Programme clan health. `includeStanding` opts the others back in —
+      // a selection round is not a programme clan either.
+      .filter(c => includeStanding || isProgrammeClan(c));
     const byClan = await membershipsByClan(clans, statuses);
     const rowById = new Map();
     const rowByClan = new Map();

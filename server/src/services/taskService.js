@@ -15,6 +15,7 @@ const courseService = require('./courseService');
 const logger = require('../utils/logger');
 const { resolveMenteeClanId, listMenteeClans, clanScopedWhere } = require('./menteeClanScope');
 const { toStringList } = require('../utils/multipartFields');
+const { isProgrammeClan, isNonProgrammeClan } = require('../config/clanKinds');
 
 /**
  * The statuses a mentee may set on their own task.
@@ -135,14 +136,14 @@ class TaskService {
     await clanLifecycleService.assertClanWritable(clanId);
     const actor = await models.User.findByPk(mentorId);
     if (!await authzService.can(actor, PERMISSIONS.TASK_ASSIGN, await authzService.scopeOfClan(clanId))) throw new ForbiddenError('You cannot assign work in this clan');
-    if (taskClan?.kind === 'standing') {
-      if (enrollmentId) throw new ValidationError('Standing clan tasks cannot use a program enrollment');
+    if (isNonProgrammeClan(taskClan)) {
+      if (enrollmentId) throw new ValidationError('Work in this clan cannot use a program enrollment');
       enrollmentId = null;
     }
 
     // Resolve the active enrollment if the caller didn't supply one (the assign
     // drawer only knows the mentee). Falls back to most-recent enrollment.
-    if (!enrollmentId && taskClan?.kind !== 'standing') {
+    if (!enrollmentId && isProgrammeClan(taskClan)) {
       const membership = await models.ClanMembership.findOne({
         where: { userId: menteeId, clanId, role: 'mentee' },
         attributes: ['enrollmentId']

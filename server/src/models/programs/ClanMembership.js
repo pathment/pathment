@@ -45,6 +45,12 @@ module.exports = (sequelize, DataTypes) => {
       }
     },
     // Pause + re-engagement bookkeeping (see migration 065).
+    /*
+     * The level this member joined a selection round at. Null everywhere else —
+     * an ordinary clan has no levels — and null for a candidate nobody has
+     * levelled yet, who therefore gets no work rather than every level's.
+     */
+    level: { type: DataTypes.STRING(40), allowNull: true },
     pausedAt: { type: DataTypes.DATE, allowNull: true, field: 'paused_at' },
     pausedReason: { type: DataTypes.TEXT, allowNull: true, field: 'paused_reason' },
     pausedBy: { type: DataTypes.STRING(20), allowNull: true, field: 'paused_by' },

@@ -2,6 +2,7 @@ const { Op } = require('sequelize');
 const { models } = require('../db');
 const cohortService = require('../services/cohortService');
 const { sortCriteriaByPriority } = require('./criteriaUtils');
+const { isNonProgrammeClan } = require('../config/clanKinds');
 
 // ==================== HARD CONSTRAINTS PRE-CHECK ====================
 
@@ -316,8 +317,8 @@ async function aggregateMenteeData(menteeIds, clanId = null, programId = null) {
   let standing = false;
   if (clanId) {
     const clan = await models.Clan.findByPk(clanId, { attributes: ['kind', 'programId'] });
-    if (clan?.kind === 'standing') {
-      // Standee certificates: evidence from this clan only — never empty, never cohort mix.
+    if (isNonProgrammeClan(clan)) {
+      // Outside the programme: evidence from this clan only — never a cohort mix.
       standing = true;
       programId = null;
     } else {

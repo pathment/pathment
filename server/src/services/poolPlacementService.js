@@ -22,6 +22,7 @@ const { NOTIFICATION_EVENTS } = require('../config/notificationMatrix');
 const poolService = require('./poolService');
 const { OPERATIONAL_CLAN_STATUSES, isClanOperational, isClanSuggestable } = require('../config/clanStatus');
 const { menteeLoad, pickLeastLoaded, loadReason } = require('./clanDistribution');
+const { isProgrammeClan, isNonProgrammeClan } = require('../config/clanKinds');
 
 class PlacementProblem extends Error {
   constructor(code, message) {
@@ -73,7 +74,7 @@ class PoolPlacementService {
         levels: Array.isArray(c.levels) ? c.levels : [],
         lead: lead?.user ? { id: lead.user.id, name: `${lead.user.firstName || ''} ${lead.user.lastName || ''}`.trim() } : null,
         coMentorCount: mine.filter((m) => m.role === 'co_mentor' && m.status === 'active').length,
-        placeable: isClanOperational(c.status) && c.kind !== 'standing' && !c.frozenAt,
+        placeable: isClanOperational(c.status) && isProgrammeClan(c) && !c.frozenAt,
       });
     }
     return state;
@@ -219,7 +220,9 @@ class PoolPlacementService {
         if (clan.programId !== pool.programId) throw new PlacementProblem('wrong_program', `${clan.name} is in a different programme`);
         // An inactive clan still takes someone the admin chose for it: inactive
         // only keeps the SYSTEM from proposing it.
-        if (!isClanOperational(clan.status) || clan.kind === 'standing' || clan.frozenAt) {
+        // Selected candidates are placed into a real programme clan — never
+        // into a standing clan, and never into another selection round.
+        if (!isClanOperational(clan.status) || isNonProgrammeClan(clan) || clan.frozenAt) {
           throw new PlacementProblem('clan_closed', `${clan.name} is not open for placement`);
         }
         const lead = await models.ClanMembership.findOne({

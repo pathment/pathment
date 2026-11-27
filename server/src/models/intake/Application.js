@@ -79,6 +79,37 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.DECIMAL(5, 2),
       field: 'assessment_score'
     },
+    // Where `level` came from: the applicant's own pick, the automatic review,
+    // or an admin. The level decides which assessment they sit, so a score is
+    // only readable next to how the level was arrived at.
+    levelSource: {
+      type: DataTypes.STRING(10),
+      allowNull: true,
+      field: 'level_source',
+      validate: { isIn: [['self', 'ai', 'admin']] }
+    },
+    // A human accepted the level. Confirmation is what lets the level drive
+    // placement and level-based work; it deliberately does NOT gate the paper,
+    // or a public form would stall until an admin was at their desk.
+    levelConfirmedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      field: 'level_confirmed_at'
+    },
+    levelConfirmedBy: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      field: 'level_confirmed_by'
+    },
+    // An admin moved the level after the paper was already sat, so the score
+    // belongs to a paper written for a different level. Raised for a human
+    // rather than silently re-papering someone who has finished.
+    levelChangedAfterAssessment: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+      field: 'level_changed_after_assessment'
+    },
     // Level the rules landed on from evidence (may differ from the applicant's
     // self-selected `level`), plus the per-criterion proof behind it.
     recommendedLevel: {

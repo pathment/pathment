@@ -121,8 +121,28 @@ class PoolAutomationService {
     const result = await levelRecommendationService.recommendForApplication(applicationId, null);
     if (!result?.recommended || !result.recommendedLevel) return result;
     const application = await models.Application.findByPk(applicationId);
-    if (application && application.level !== result.recommendedLevel) {
-      await application.update({ level: result.recommendedLevel });
+    if (application) {
+      /*
+       * A level both sides arrived at independently needs no adjudication.
+       *
+       * When the review lands on the same level the applicant chose for
+       * themselves, two judgements already agree — there is nothing for a
+       * human to weigh, and queueing it only means somebody clicking to agree
+       * with an agreement. So it confirms itself, with no confirming user on
+       * it, which is how an auto-confirmation is told from a human one.
+       *
+       * A DISAGREEMENT is exactly the case a human should see, and it waits.
+       */
+      const agreed = result.recommendedLevel === (application.selfSelectedLevel || application.level || null);
+      const patch = { levelSource: 'ai' };
+      if (application.level !== result.recommendedLevel) patch.level = result.recommendedLevel;
+      if (agreed && !application.levelConfirmedAt) {
+        patch.levelConfirmedAt = new Date();
+        patch.levelConfirmedBy = null;
+      } else if (!agreed) {
+        patch.levelConfirmedAt = null;
+      }
+      await application.update(patch);
     }
     await this.syncLevelFromApplication(applicationId);
     return result;
@@ -147,6 +167,60 @@ class PoolAutomationService {
     if (!application || application.status === 'removed') return;
     await safely('add to attached pools', () => this.onApplication(application));
     await safely('pool level follows', () => this.syncLevelFromApplication(applicationId));
+    // The selection round the intake feeds, if the level has been settled.
+    await safely('place into the attached round', () => this.placeIntoPoolClan(applicationId));
+  }
+
+  /**
+   * A confirmed applicant joins the selection round their intake feeds.
+   *
+   * Confirmation is the gate, not the paper: the assessment went out on the
+   * review's answer so nobody was blocked, but nobody is PLACED on a level no
+   * one has examined — unless the review and the applicant already agreed, in
+   * which case it confirmed itself.
+   *
+   * Safe to run again. Joining is idempotent (one membership per person per
+   * clan) and the work handed out with it is too, so a retry neither doubles
+   * the roster nor the emails.
+   */
+  async placeIntoPoolClan(applicationId) {
+    const application = await models.Application.findByPk(applicationId);
+    if (!application) return { placed: false, reason: 'no_application' };
+    if (['withdrawn', 'removed', 'rejected'].includes(application.status)) {
+      return { placed: false, reason: application.status };
+    }
+
+    const cohort = await models.Cohort.findByPk(application.cohortId, { attributes: ['id', 'poolClanId'] });
+    if (!cohort?.poolClanId) return { placed: false, reason: 'no_round_attached' };
+    if (!application.levelConfirmedAt) return { placed: false, reason: 'level_not_confirmed' };
+
+    // They need an account before they can be a member of anything. An
+    // applicant who has not registered yet is placed when they do.
+    const user = await models.User.findOne({
+      where: { email: (application.email || '').trim().toLowerCase() },
+      attributes: ['id'],
+    });
+    if (!user) return { placed: false, reason: 'no_account_yet' };
+
+    const clan = await models.Clan.findByPk(cohort.poolClanId, { attributes: ['id', 'kind'] });
+    if (!clan) return { placed: false, reason: 'round_missing' };
+
+    const existing = await models.ClanMembership.findOne({
+      where: { clanId: clan.id, userId: user.id, role: 'mentee' },
+    });
+    if (existing) {
+      // Already in: keep their level in step, which re-aims their work.
+      if ((existing.level || null) !== (application.level || null)) {
+        await require('./poolClanService').setMemberLevel(clan.id, user.id, application.level, null);
+      }
+      return { placed: true, reason: 'already_a_member', clanId: clan.id };
+    }
+
+    await require('./clanService').addMember(
+      clan.id, { userId: user.id, role: 'mentee', level: application.level || null }, null,
+    );
+    if (!application.userId) await application.update({ userId: user.id });
+    return { placed: true, clanId: clan.id, level: application.level || null };
   }
 
   /** The application's level → every undecided pool member made from it. */

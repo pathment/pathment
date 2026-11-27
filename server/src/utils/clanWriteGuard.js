@@ -1,5 +1,6 @@
 const { models } = require('../db');
 const { ForbiddenError } = require('./errors/errorTypes');
+const { isProgrammeClan } = require('../config/clanKinds');
 
 /**
  * Block mentor writes against a frozen cohort clan.
@@ -8,7 +9,8 @@ const { ForbiddenError } = require('./errors/errorTypes');
 async function assertClanWritableForMentor(clanId) {
   if (!clanId) return;
   const clan = await models.Clan.findByPk(clanId, { attributes: ['kind', 'frozenAt'] });
-  if (clan && clan.kind !== 'standing' && clan.frozenAt) {
+  // Only a programme clan freezes when its programme closes.
+  if (clan && isProgrammeClan(clan) && clan.frozenAt) {
     throw new ForbiddenError('This cohort clan is historical. Reviews are view-only.');
   }
 }

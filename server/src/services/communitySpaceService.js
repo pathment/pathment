@@ -1,5 +1,6 @@
 const { Op } = require('sequelize');
 const { models } = require('../db');
+const { isProgrammeClan } = require('../config/clanKinds');
 
 const fullName = (u) => (u ? `${u.firstName} ${u.lastName}`.trim() : null);
 
@@ -113,9 +114,11 @@ class CommunitySpaceService {
         isModerator: moderator,
         readOnly: isSpaceArchived(),
         /** The work is closed even though the conversation is not — the UI says so. */
-        workClosed: m.clan.kind !== 'standing' && Boolean(m.clan.frozenAt),
+        workClosed: isProgrammeClan(m.clan) && Boolean(m.clan.frozenAt),
       });
-      if (m.clan.programId && m.clan.kind !== 'standing') {
+      // A clan outside the programme's accounting does not put its programme
+      // on somebody's community sidebar — a trial round is not a programme.
+      if (m.clan.programId && isProgrammeClan(m.clan)) {
         programNames.set(m.clan.programId, m.clan.program?.name || 'Program');
         if (MENTOR_CLAN_ROLES.includes(m.role)) mentorProgramIds.add(m.clan.programId);
       }
@@ -221,7 +224,7 @@ class CommunitySpaceService {
           role: 'admin',
           isModerator: true,
           readOnly: isSpaceArchived(),
-          workClosed: c.kind !== 'standing' && Boolean(c.frozenAt),
+          workClosed: isProgrammeClan(c) && Boolean(c.frozenAt),
         });
       }
       for (const prog of adminPrograms) {
@@ -294,7 +297,7 @@ class CommunitySpaceService {
         role: 'admin',
         readOnly: isSpaceArchived(),
         workClosed:
-          (scopeType === 'clan' && space.kind !== 'standing' && Boolean(space.frozenAt)) ||
+          (scopeType === 'clan' && isProgrammeClan(space) && Boolean(space.frozenAt)) ||
           (scopeType === 'cohort' && space.status === 'completed'),
       };
     }

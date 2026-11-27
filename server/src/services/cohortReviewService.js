@@ -8,6 +8,7 @@ const authzService = require('./authzService');
 const mentorshipPauseService = require('./mentorshipPauseService');
 const lockService = require('./cohortReviewLockService');
 const clanLifecycleService = require('./clanLifecycleService');
+const { isProgrammeClan } = require('../config/clanKinds');
 
 /**
  * Only daily reviews are made and shown here. Older discussion and presentation
@@ -64,7 +65,7 @@ class CohortReviewService {
    */
   async _reconcileEntries(session) {
     const clan = session.clanId && await models.Clan.findByPk(session.clanId);
-    if (clan?.kind !== 'standing' && clan?.frozenAt) return;
+    if (isProgrammeClan(clan) && clan?.frozenAt) return;
     // Clan-scoped: the cohort is everyone in THIS session's clan, so a lead and
     // a co-mentor of the clan reconcile to the exact same mentee set.
     const [menteeIds, joinDates] = await Promise.all([

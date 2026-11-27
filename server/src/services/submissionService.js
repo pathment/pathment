@@ -12,6 +12,7 @@ const { pointsForDifficulty } = require('../config/points');
 const { toStringList, toBoolean } = require('../utils/multipartFields');
 const clanLifecycleService = require('./clanLifecycleService');
 const gamificationService = require('./gamificationService');
+const { isProgrammeClan } = require('../config/clanKinds');
 
 /**
  * Max points for a review. Prefer the assignment's pointsBase when a mentor set
@@ -29,7 +30,8 @@ function taskStandardPoints(task) {
 async function assertWritableClanForMentorReview(clanId) {
   if (!clanId) return;
   const clan = await models.Clan.findByPk(clanId, { attributes: ['kind', 'frozenAt'] });
-  if (clan && clan.kind !== 'standing' && clan.frozenAt) {
+  // Only a programme clan freezes when its programme closes.
+  if (clan && isProgrammeClan(clan) && clan.frozenAt) {
     throw new ForbiddenError('This cohort clan is historical. Reviews are view-only.');
   }
 }

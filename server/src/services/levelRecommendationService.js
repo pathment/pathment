@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const { models } = require('../db');
 const { NotFoundError, ValidationError } = require('../utils/errors/errorTypes');
 const { labelledResponses } = require('../utils/intakeResponses');
+const { createAuditLog } = require('../utils/auditContext');
 
 /**
  * Evidence-based level placement for intake applicants.
@@ -473,11 +474,55 @@ class LevelRecommendationService {
   }
 
   /** Apply the recommendation as the applicant's actual level (admin action). */
-  async applyRecommendation(applicationId) {
+  async applyRecommendation(applicationId, actorId = null) {
     const application = await models.Application.findByPk(applicationId);
     if (!application) throw new NotFoundError('Application not found');
     if (!application.recommendedLevel) throw new ValidationError('No recommendation to apply — run level recommendation first');
-    await application.update({ level: application.recommendedLevel });
+    return this.confirmLevel(applicationId, application.recommendedLevel, actorId);
+  }
+
+  /**
+   * A human settles the level.
+   *
+   * This is what the rest of the intake waits for: the paper goes out on the
+   * review's answer so nobody is blocked, but placement and level-based work
+   * only move once somebody has accepted the level.
+   *
+   * An override that lands AFTER the applicant has sat their paper is flagged
+   * rather than acted on. Re-papering somebody who has finished would throw
+   * away work they have already done, and silently leaving it would score them
+   * against a paper written for another level — so a human is told instead.
+   */
+  async confirmLevel(applicationId, level, actorId = null) {
+    const application = await models.Application.findByPk(applicationId);
+    if (!application) throw new NotFoundError('Application not found');
+
+    const next = level ? String(level).trim() : null;
+    const cohort = await models.Cohort.findByPk(application.cohortId, { attributes: ['id', 'levels'] });
+    const known = Array.isArray(cohort?.levels) ? cohort.levels : [];
+    if (known.length && next && !known.some((l) => l.key === next)) {
+      throw new ValidationError('Choose one of this intake\'s levels');
+    }
+
+    const moved = next !== (application.level || null);
+    const sat = moved && Boolean(await models.AssessmentSubmission.findOne({
+      where: { applicationId: application.id }, attributes: ['id'],
+    }));
+
+    await application.update({
+      level: next,
+      levelSource: 'admin',
+      levelConfirmedAt: new Date(),
+      levelConfirmedBy: actorId,
+      ...(sat ? { levelChangedAfterAssessment: true } : {}),
+    });
+    await createAuditLog({
+      userId: actorId,
+      action: 'APPLICATION_LEVEL_CONFIRMED',
+      entityType: 'Application',
+      entityId: application.id,
+      newValues: { level: next, movedAfterAssessment: sat },
+    }).catch(() => {});
     return application;
   }
 }

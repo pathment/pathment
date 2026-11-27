@@ -35,6 +35,15 @@ export interface Application {
   assessmentInviteCount?: number;
   /** Evidence-based placement: the level the rules landed on + the proof. */
   recommendedLevel?: string | null;
+  /**
+   * Where the level they hold came from, and whether a human has settled it.
+   * The paper goes out on the review's answer so nobody is blocked; it is
+   * confirmation that lets the level drive placement and level-based work.
+   */
+  levelSource?: 'self' | 'ai' | 'admin' | null;
+  levelConfirmedAt?: string | null;
+  /** An admin moved the level after the paper was already sat. */
+  levelChangedAfterAssessment?: boolean;
   levelEvidence?: {
     /** True when NO criterion could be judged — the criteria don't match what
      *  this cohort actually asks, so the placement is a fallback not a finding. */

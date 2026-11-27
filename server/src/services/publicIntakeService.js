@@ -183,6 +183,8 @@ class PublicIntakeService {
       // Their own pick, kept apart from `level`, which the automatic review
       // overwrites with the level it decides on.
       selfSelectedLevel: level,
+      // Nobody has judged this yet; it is the applicant's own word.
+      levelSource: 'self',
       programPreference: data.programPreference || cohort.program?.name || null,
       source: 'public_link',
       responses: data.responses && typeof data.responses === 'object' ? data.responses : {},
@@ -203,9 +205,19 @@ class PublicIntakeService {
       application = await models.Application.create({ cohortId: cohort.id, email, status: 'pending', ...fields });
     }
 
-    // Assign this applicant's assessment (level-aware, random from the pool) and
-    // gate the status on it only when the cohort marks the assessment required.
-    const assignedAssessmentId = await assessmentService.ensureAssignedAssessment(application, cohort);
+    /*
+     * Which paper they sit depends on their LEVEL, and on an intake that
+     * reviews, the level they claimed is not yet the level they are. Papering
+     * them on the claim and reviewing afterwards is how a self-declared
+     * beginner came to sit the beginner paper and then be moved to senior —
+     * judged on a paper written for somebody else. So when a review is going
+     * to decide, the paper waits for it (seconds, by email); when there is
+     * nothing to decide, it goes out now exactly as it always did.
+     */
+    const decidedByReview = await this._levelDecidesTheAssessment(cohort);
+    const assignedAssessmentId = decidedByReview
+      ? null
+      : await assessmentService.ensureAssignedAssessment(application, cohort);
     // 'on_invite': the assessment comes later, by email, when an admin sends it.
     const onInvite = cohort.assessmentMode === 'on_invite';
     const requiresAssessment = Boolean(assignedAssessmentId && cohort.assessmentRequired && !onInvite);
@@ -220,10 +232,12 @@ class PublicIntakeService {
     // selection pool that takes this intake, and — when there is no assessment
     // to wait for — Pathment AI sets their level now (else on assessment submit).
     const automation = require('./poolAutomationService');
-    // One ordered pipeline: review (unless an assessment is still to come),
-    // then the attached pools at the reviewed level. Not awaited — the
-    // applicant's response does not wait on the AI.
-    automation.safely('process new application', () => automation.processApplication(application.id, { review: !assignedAssessmentId }));
+    // One ordered pipeline: review, then the attached pools at the reviewed
+    // level, then the paper for that level. Not awaited — the applicant's
+    // response does not wait on the AI.
+    automation.safely('process new application', () => this.afterApply(application.id, {
+      review: decidedByReview || !assignedAssessmentId,
+    }));
 
     // Admin alerts: a new applicant landed, and (separately) the cohort may have
     // just hit its application cap — both best-effort, never block the applicant.
@@ -671,6 +685,87 @@ class PublicIntakeService {
     const url = result.secure_url || result.url;
     if (!url) throw new ValidationError('Could not upload the file');
     return { url, fileName: file.originalname || 'upload', fileSizeBytes: file.size || 0 };
+  }
+
+  /**
+   * Is an automatic review going to decide this applicant's level?
+   *
+   * Only worth holding the paper back when all three are true: the intake has
+   * levels, it has criteria to judge them by with the review switched on, and
+   * its papers actually differ by level. Any one missing and there is nothing
+   * to wait for, so the paper goes out on the applicant's own pick — which is
+   * what every intake without level rules has always done.
+   */
+  async _levelDecidesTheAssessment(cohort) {
+    const levels = Array.isArray(cohort.levels) ? cohort.levels : [];
+    if (!levels.length) return false;
+    const rules = await require('./levelRecommendationService').getRules(cohort.id).catch(() => null);
+    if (!rules || rules.autoReview === false) return false;
+    if (!(rules.levels || []).some((r) => (r.criteria || []).length)) return false;
+    return (await models.CohortAssessment.count({
+      where: { cohortId: cohort.id, level: { [Op.ne]: null } },
+    })) > 0;
+  }
+
+  /**
+   * Everything that happens after an application lands, in order:
+   *   1. the review decides their level (and the pools attached to the intake
+   *      take them at THAT level),
+   *   2. the paper for that level is assigned and sent.
+   *
+   * Separate from `submitApplication` because the applicant's response must not
+   * wait on the model, and because the order is the whole point: step 2 reads
+   * what step 1 decided. Safe to run again — step 2 is idempotent.
+   */
+  async afterApply(applicationId, { review = true } = {}) {
+    const automation = require('./poolAutomationService');
+    // Never lets a failed review swallow the paper: processApplication wraps
+    // each of its own steps, so a model outage leaves the applicant at the
+    // level they picked and step 2 still papers them.
+    await automation.processApplication(applicationId, { review });
+    return this.issueAssessment(applicationId);
+  }
+
+  /**
+   * Assign the paper for the level this applicant now holds, and send it.
+   *
+   * Idempotent: an applicant who already has one keeps it, so re-running the
+   * chain never issues a second paper or a second email.
+   */
+  async issueAssessment(applicationId) {
+    const application = await models.Application.findByPk(applicationId, {
+      include: [{ model: models.Cohort, as: 'cohort', include: [{ model: models.Program, as: 'program', attributes: ['id', 'name'] }] }],
+    });
+    if (!application || !application.cohort) return null;
+    if (['withdrawn', 'removed', 'rejected'].includes(application.status)) return null;
+    if (application.assignedAssessmentId) return application.assignedAssessmentId;
+
+    const cohort = application.cohort;
+    const assessmentId = await assessmentService.ensureAssignedAssessment(application, cohort);
+    if (!assessmentId) return null;
+    // 'on_invite' means an admin chooses the moment; the paper is theirs, but
+    // it is not sent from here.
+    if (cohort.assessmentMode === 'on_invite') return assessmentId;
+
+    /*
+     * Claim the send before sending it. The chain can be entered more than once
+     * — a re-application, a retry — and two runs that both read "not sent yet"
+     * would both send. One conditional UPDATE can win, so exactly one caller
+     * mails the paper. Recording the send before making it is the house rule:
+     * a failed write costs one missing email, not a repeating one.
+     */
+    const [claimed] = await models.Application.update(
+      { assessmentInvitedAt: new Date() },
+      { where: { id: application.id, assessmentInvitedAt: null } },
+    );
+    if (claimed !== 1) return assessmentId;
+
+    try {
+      await require('./assessmentPipelineService').sendInvites(cohort.id, [application.id], null);
+    } catch (e) {
+      console.error('[intake] could not send the decided assessment (non-fatal):', e.message);
+    }
+    return assessmentId;
   }
 
   // ── helpers ──────────────────────────────────────────────────────────────────

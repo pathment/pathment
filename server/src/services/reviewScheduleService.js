@@ -26,6 +26,7 @@ const clanLifecycleService = require('./clanLifecycleService');
 
 const HORIZON_DAYS = 14;                     // materialise this far ahead
 const clientUrl = () => require('../utils/applicationUrl')();
+const { isProgrammeClan } = require('../config/clanKinds');
 const orgEmail = () => process.env.RESEND_FROM_EMAIL || 'noreply@pathment.me';
 const escHtml = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -95,7 +96,7 @@ class ReviewScheduleService {
   async _announceNext(schedule) {
     const clan = await models.Clan.findByPk(schedule.clanId);
     // Frozen cohort clans stay historical — do not create or announce sessions.
-    if (clan?.kind !== 'standing' && clan?.frozenAt) return;
+    if (isProgrammeClan(clan) && clan?.frozenAt) return;
     const occ = nextOccurrences(schedule, new Date(), 1);
     if (!occ.length) return;
     const session = await this._findOrCreateSession(schedule, occ[0]);
@@ -133,7 +134,7 @@ class ReviewScheduleService {
   async _materialize(schedule, sendInvites) {
     if (!schedule.active) return;
     const clan = await models.Clan.findByPk(schedule.clanId);
-    if (clan?.kind !== 'standing' && clan?.frozenAt) return;
+    if (isProgrammeClan(clan) && clan?.frozenAt) return;
     const horizon = new Date(Date.now() + HORIZON_DAYS * 86400000);
     const occ = nextOccurrences(schedule, new Date(), 4).filter((o) => o.start <= horizon);
     for (const o of occ) {
@@ -314,7 +315,7 @@ class ReviewScheduleService {
     });
     for (const session of due) {
       const clan = session.clanId && await models.Clan.findByPk(session.clanId);
-      if (clan?.kind !== 'standing' && clan?.frozenAt) continue;
+      if (isProgrammeClan(clan) && clan?.frozenAt) continue;
       const schedule = await models.ReviewSchedule.findByPk(session.reviewScheduleId);
       if (schedule && schedule.active) {
         await this._email(session, schedule, kind).catch((e) => console.error(`[reviewSchedule] ${kind} reminder failed:`, e.message));

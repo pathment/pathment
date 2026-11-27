@@ -5,6 +5,7 @@ const clanService = require('./clanService');
 const notificationOrchestrator = require('./notificationOrchestrator');
 const { NOTIFICATION_EVENTS } = require('../config/notificationMatrix');
 const { VISIBLE_MEMBERSHIP_STATUSES } = require('../config/membership');
+const { isProgrammeClan, isStandingClan } = require('../config/clanKinds');
 
 const fullName = (u) => (u ? `${u.firstName} ${u.lastName}`.trim() : null);
 
@@ -156,7 +157,7 @@ class ClanRequestsService {
          * offers a choice of destination instead.
          */
         toClanOpen: r.toClan
-          ? r.toClan.status !== 'archived' && (r.toClan.kind === 'standing' || (!r.toClan.frozenAt && !r.toClan.program?.closedAt))
+          ? r.toClan.status !== 'archived' && (isStandingClan(r.toClan) || (isProgrammeClan(r.toClan) && !r.toClan.frozenAt && !r.toClan.program?.closedAt))
           : null,
         at: r.createdAt
       })),
@@ -405,7 +406,7 @@ class ClanRequestsService {
       if (!target) throw new NotFoundError('That clan no longer exists');
       if (target.id === from.id) throw new ValidationError('That is the clan you are already in');
       const takesPeople = target.status !== 'archived'
-        && (target.kind === 'standing' || (!target.frozenAt && !target.program?.closedAt));
+        && (isStandingClan(target) || (isProgrammeClan(target) && !target.frozenAt && !target.program?.closedAt));
       if (!takesPeople) throw new ValidationError('That clan is not taking people');
       /*
        * Any programme. This is a PREFERENCE, not a move: nothing happens until
@@ -570,7 +571,7 @@ class ClanRequestsService {
           include: [{ model: models.Program, as: 'program', attributes: ['closedAt'] }],
         }) : null;
         const namedOpen = named && named.status !== 'archived'
-          && (named.kind === 'standing' || (!named.frozenAt && !named.program?.closedAt));
+          && (isStandingClan(named) || (isProgrammeClan(named) && !named.frozenAt && !named.program?.closedAt));
         if (namedOpen) {
           throw new ValidationError('This request names its own target clan. Deny it and raise a new one to send them elsewhere.');
         }

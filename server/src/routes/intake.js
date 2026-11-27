@@ -60,6 +60,8 @@ router.put('/cohorts/:id/review-automation', ...adminOnly, intakeController.setR
 router.get('/cohorts/:id/pools', ...adminOnly, intakeController.listIntakePools);
 router.put('/cohorts/:id/pools/:poolId', ...adminOnly, intakeController.setIntakePool);
 router.post('/applications/:id/apply-level', ...adminOnly, intakeController.applyLevelRecommendation);
+// A human settles the level. What placement and level-based work wait for.
+router.post('/applications/:id/confirm-level', ...adminOnly, intakeController.confirmApplicationLevel);
 router.post('/cohorts/:id/ai-grade', ...adminOnly, intakeController.aiGradeApplications);
 router.get('/cohorts/:id/applications/export', ...adminOnly, intakeController.exportApplicationsCsv);
 router.post('/cohorts/:id/applications/export', ...adminOnly, intakeController.exportApplicationsCsv);

@@ -182,6 +182,51 @@ describe('the pipeline', () => {
     expect((await applicationService.getApplication(app.id)).stage).toBe('programme_invited');
   });
 
+  it('still takes a submission that arrives in the grace after the buzzer', async () => {
+    /*
+     * The browser auto-submits at zero and the answers travel over whatever
+     * network the applicant has. A submission a few seconds past the deadline
+     * is that journey, not a cheat, so it lands — and required-answer
+     * validation is not held against somebody whose clock has run out.
+     */
+    await pipeline.sendInvites(ctx.cohort.id, [app.id], ctx.admin);
+    const token = tokenFor('sam@test.com');
+    const { assessment } = await publicIntake.getApplicationStatus(token);
+    const [mcq] = assessment.questions;
+    await publicIntake.startAssessment(token, { capabilities: ['screen', 'video'] });
+
+    // Thirty seconds past a thirty-minute limit: inside the ninety of grace.
+    const sub = await models.AssessmentSubmission.findOne({ where: { applicationId: app.id } });
+    await sub.update({ startedAt: new Date(Date.now() - (30 * 60 * 1000 + 30 * 1000)) });
+
+    // The video question is unanswered, which would normally be refused.
+    const res = await publicIntake.submitAssessment(token, { [mcq.id]: { optionIds: ['a'] } });
+
+    expect(res).toMatchObject({ autoScore: 5 });
+    await sub.reload();
+    expect(sub.status).toBe('submitted');
+    expect(sub.answers[mcq.id]).toEqual({ optionIds: ['a'] });
+  });
+
+  it('will not let one applicant\'s link write to another\'s attempt', async () => {
+    // The proctoring endpoints take a token, not an id. A token is the only
+    // thing standing between two applicants' recordings and snapshots.
+    await pipeline.sendInvites(ctx.cohort.id, [app.id], ctx.admin);
+    const mine = tokenFor('sam@test.com');
+    await publicIntake.startAssessment(mine, { capabilities: ['screen', 'video'] });
+
+    const stranger = 'not-a-real-token';
+    await expect(publicIntake.logAssessmentProctor(stranger, [{ type: 'focus_loss' }])).rejects.toThrow();
+    await expect(publicIntake.uploadAssessmentSnapshot(
+      stranger, { buffer: Buffer.from('j'), mimetype: 'image/jpeg' }, { source: 'screen' },
+    )).rejects.toThrow();
+
+    // Nothing reached the real attempt.
+    const detail = await applicationService.getApplication(app.id);
+    expect(detail.submission.proctor.snapshots).toEqual([]);
+    expect(detail.submission.proctor.flagCounts).toEqual({});
+  });
+
   it('submits a timed attempt as it stands once the clock has run out', async () => {
     await pipeline.sendInvites(ctx.cohort.id, [app.id], ctx.admin);
     const token = tokenFor('sam@test.com');

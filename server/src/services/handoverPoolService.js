@@ -15,6 +15,7 @@ const { PERMISSIONS: P } = require('../config/permissions');
 const { VISIBLE_MEMBERSHIP_STATUSES } = require('../config/membership');
 const { isClanOperational, isClanSuggestable } = require('../config/clanStatus');
 const { menteeLoad, pickLeastLoaded, loadReason } = require('./clanDistribution');
+const { isPoolClan } = require('../config/clanKinds');
 
 // 'active' and 'paused'. A paused mentee is still in their clan, so they can
 // still be handed over - being paused is often exactly why.
@@ -314,6 +315,16 @@ class HandoverPoolService {
   async claim(user, { entryId, toClanId }) {
     if (!entryId || !toClanId) throw new ValidationError('entryId and toClanId are required');
     await this._mayHandOver(user, toClanId);
+    /*
+     * A selection round is never a handover target, whichever entry is being
+     * claimed — so it is asked of the clan up front rather than halfway down.
+     * The suggestion list already leaves rounds out; this is the assertion on
+     * a clan somebody named directly. Handing a mentee from a closed
+     * programme into a trial would turn them back into a candidate.
+     */
+    if (isPoolClan(await models.Clan.findByPk(toClanId, { attributes: ['id', 'kind'] }))) {
+      throw new ValidationError('That is a selection round, not a clan a mentee can be handed over to');
+    }
 
     const entry = await models.HandoverPoolEntry.findByPk(entryId);
     if (!entry) throw new NotFoundError('Pool entry not found');

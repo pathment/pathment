@@ -4,6 +4,7 @@ const { models, sequelize } = require('../db');
 const cohortService = require('./cohortService');
 const scoringSettingsService = require('./scoringSettingsService');
 const { NotFoundError } = require('../utils/errors/errorTypes');
+const { isNonProgrammeClan } = require('../config/clanKinds');
 const {
   DIFFICULTY_WEIGHT,
   taskOutputWeight,
@@ -240,7 +241,7 @@ class PerformanceService {
     let standing = false;
     if (clanId) {
       const clan = await models.Clan.findByPk(clanId);
-      if (clan?.kind === 'standing') standing = true;
+      if (isNonProgrammeClan(clan)) standing = true;
       else programId = clan?.programId || programId;
     }
     const bounds = asOfDayEnd(asOf);
@@ -442,7 +443,9 @@ class PerformanceService {
   async clanStanding(clanId) {
     const clan = await models.Clan.findByPk(clanId, { attributes: ['id', 'programId', 'kind'] });
     if (!clan) throw new NotFoundError('Clan not found');
-    if (clan.kind === 'standing') return { average: null, band: null, rank: null, outOf: 0, ranked: 0 };
+    // Outside the programme (standing, or a selection round): nothing to rank
+    // against, and a trial must never place somebody on a programme ladder.
+    if (isNonProgrammeClan(clan)) return { average: null, band: null, rank: null, outOf: 0, ranked: 0 };
 
     const siblings = await models.Clan.findAll({
       where: { programId: clan.programId, kind: 'cohort' },

@@ -881,10 +881,21 @@ function LevelEvidencePanel({ app, levelLabel, onApplied }: { app: Application; 
   const mark = (v: boolean | null) => (v === true ? '✓' : v === false ? '✗' : '?');
   const tone = (v: boolean | null) => (v === true ? 'text-emerald-600' : v === false ? 'text-rose-500' : 'text-slate-400');
 
+  const confirmed = Boolean(app.levelConfirmedAt);
+
   const apply = async () => {
     setBusy(true);
-    try { await applicationApi.applyLevel(app.id); toast.success('Level updated'); onApplied(); }
+    // Applying the recommendation IS a human settling it, so it confirms too.
+    try { await applicationApi.applyLevel(app.id); toast.success('Level applied and confirmed'); onApplied(); }
     catch { toast.error('Could not apply the level'); }
+    finally { setBusy(false); }
+  };
+
+  /** Keep the level they already hold, and settle it. */
+  const keep = async () => {
+    setBusy(true);
+    try { await applicationApi.confirmLevel(app.id); toast.success('Level confirmed'); onApplied(); }
+    catch { toast.error('Could not confirm the level'); }
     finally { setBusy(false); }
   };
 
@@ -899,12 +910,41 @@ function LevelEvidencePanel({ app, levelLabel, onApplied }: { app: Application; 
             {differs ? ' ⚠' : ' ✓'}
           </p>
         </div>
-        {differs && (
-          <button onClick={apply} disabled={busy} className="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-50">
-            {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Apply {levelLabel(app.recommendedLevel || '') || app.recommendedLevel}
-          </button>
+        {/* Settling the level is what placement and level-based work wait for.
+            Either take the evidence's answer, or keep the one they hold. */}
+        {!confirmed && (
+          <div className="flex shrink-0 items-center gap-1.5">
+            {differs && (
+              <button onClick={apply} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-50">
+                {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Use {levelLabel(app.recommendedLevel || '') || app.recommendedLevel}
+              </button>
+            )}
+            <button onClick={keep} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+              {busy && !differs && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              Confirm {levelLabel(app.level || '') || app.level || 'no level'}
+            </button>
+          </div>
         )}
       </div>
+
+      <p className="mt-2 text-xs">
+        {confirmed ? (
+          <span className="text-emerald-700">
+            Confirmed{app.levelConfirmedAt ? ` on ${new Date(app.levelConfirmedAt).toLocaleDateString()}` : ''} · placement can proceed
+          </span>
+        ) : (
+          <span className="text-amber-800">
+            Not confirmed yet — they have their paper, but nothing places them until somebody settles the level.
+          </span>
+        )}
+      </p>
+
+      {app.levelChangedAfterAssessment && (
+        <p className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1.5 text-xs text-rose-800">
+          The level moved after this applicant had already sat their assessment, so their score belongs to a paper
+          written for a different level. Read the submission before trusting the score, or send them the right paper.
+        </p>
+      )}
 
       {ev.evidenceThin && (
         <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-800">

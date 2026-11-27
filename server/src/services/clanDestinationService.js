@@ -1,6 +1,7 @@
 const { Op } = require('sequelize');
 const { models, sequelize } = require('../db');
 const { VISIBLE_MEMBERSHIP_STATUSES } = require('../config/membership');
+const { isProgrammeClan, isNonProgrammeClan, isStandingClan } = require('../config/clanKinds');
 
 /**
  * Every clan a mentee could be sent to, in any programme, and how alive it is.
@@ -32,7 +33,10 @@ const activityOf = (weeks) => (weeks >= 3 ? 'regular' : weeks >= 1 ? 'irregular'
  *   join        into a standing clan: added, their current clan is unchanged
  */
 function effectOf(fromClan, dest) {
-  if (dest.kind === 'standing') return 'join';
+  // Added rather than moved: their current clan is left alone. True of a
+  // standing clan and of a selection round, neither of which is a programme
+  // placement.
+  if (isNonProgrammeClan(dest)) return 'join';
   const live = fromClan && fromClan.kind === 'cohort' && !fromClan.frozenAt;
   if (!live) return 'placement';
   return dest.programId === fromClan.programId ? 'move' : 'move_cross';
@@ -63,7 +67,11 @@ async function list({ fromClan = null, preferredClanId = null, excludeClanIds = 
   }))
     // A cohort clan of a closed programme is a record; its standing clan is
     // where that programme lives on.
-    .filter((c) => c.kind === 'standing' || !c.program?.closedAt);
+    // A selection round is not somewhere you move a mentee TO: it is a trial
+    // they are invited into. Without naming the kinds that may be a
+    // destination, a pool clan passed the "programme still open" test and was
+    // offered alongside real clans.
+    .filter((c) => isStandingClan(c) || (isProgrammeClan(c) && !c.program?.closedAt));
   if (!clans.length) return [];
 
   const ids = clans.map((c) => c.id);
