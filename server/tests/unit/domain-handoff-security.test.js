@@ -14,6 +14,9 @@ jest.mock('../../src/utils/logger', () => ({}));
 jest.mock('../../src/services/authzService', () => ({
   getAssignments: jest.fn(async () => []), getCapabilities: jest.fn(async () => []),
   getPermissionUnion: jest.fn(async () => []), hasAdminAccess: jest.fn(async () => false),
+  // The login response asks this too; without it on the mock the whole
+  // handoff throws "hasPoolAccess is not a function" before it is tested.
+  hasPoolAccess: jest.fn(async () => false),
 }));
 jest.mock('../../src/utils/jwt', () => ({
   hashToken: value => require('crypto').createHash('sha256').update(value).digest('hex'),
