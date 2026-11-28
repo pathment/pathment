@@ -230,7 +230,7 @@ class PoolService {
       where.archivedAt = null;
       if (status) where.status = status;
     }
-    const pools = await models.CandidatePool.findAll({
+    const found = await models.CandidatePool.findAll({
       where,
       include: [
         { model: models.Program, as: 'program', attributes: ['id', 'name'] },
@@ -238,6 +238,13 @@ class PoolService {
       ],
       order: [['createdAt', 'DESC']],
     });
+    /*
+     * A pool that has moved onto a clan (migration 163) is not a round any
+     * more — the clan is. Its row stays as history and as the rollback's
+     * footing, but listing it beside the round it became shows one round
+     * twice, the husk with none of the work.
+     */
+    const pools = found.filter((p) => !p.settings?.migratedToClanId);
     if (!pools.length) return [];
     const counts = await models.PoolMember.findAll({
       where: { poolId: { [Op.in]: pools.map((p) => p.id) } },

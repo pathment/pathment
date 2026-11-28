@@ -48,7 +48,7 @@ class PoolCandidateService {
     const members = await models.PoolMember.findAll({
       where: { userId },
       include: [
-        { model: models.CandidatePool, as: 'pool', required: false, attributes: ['id', 'name', 'description', 'status', 'qualificationDueAt', 'closesAt', 'archivedAt', 'avatarUrl', 'programId'],
+        { model: models.CandidatePool, as: 'pool', required: false, attributes: ['id', 'name', 'description', 'status', 'qualificationDueAt', 'closesAt', 'archivedAt', 'avatarUrl', 'programId', 'settings'],
           include: [{ model: models.Program, as: 'program', attributes: ['id', 'name'] }] },
         { model: models.Clan, as: 'placedClan', required: false, attributes: ['id', 'name'] },
       ],
@@ -58,7 +58,11 @@ class PoolCandidateService {
       where: { poolMemberId: { [Op.in]: members.map((m) => m.id) }, status: { [Op.ne]: 'cancelled' } },
       attributes: ['poolMemberId', 'status'],
     }) : [];
-    const fromPools = members.filter((m) => m.pool && !m.pool.archivedAt).map((m) => {
+    const fromPools = members
+      // A pool that has moved onto a clan is shown as that clan, below. Both
+      // would be the same round twice, and the old one has none of the work.
+      .filter((m) => m.pool && !m.pool.archivedAt && !m.pool.settings?.migratedToClanId)
+      .map((m) => {
       const mine = tasks.filter((t) => t.poolMemberId === m.id);
       return {
         memberId: m.id,

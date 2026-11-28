@@ -306,3 +306,52 @@ describe('answering a request for more time from the round', () => {
       .rejects.toThrow(/not part of this round/i);
   });
 });
+
+describe('a round that has moved is not two rounds', () => {
+  const poolCandidateService = require('../../src/services/poolCandidateService');
+  const poolService = require('../../src/services/poolService');
+
+  /** The old `CandidatePool` row, marked as having moved to a clan. */
+  async function movedPool(clan, user) {
+    const pool = await models.CandidatePool.create({
+      programId: ctx.program.id, name: clan.name, status: 'open', selectionQuota: 1,
+      createdById: ctx.admin.id, settings: { migratedToClanId: clan.id },
+    }, { validate: false });
+    // The migration does not make a second record: the one that exists gains a
+    // clan alongside the pool it came from. Mirroring that is the whole point.
+    await models.PoolMember.update({ poolId: pool.id }, { where: { clanId: clan.id, userId: user.id } });
+    return pool;
+  }
+
+  it('disappears from the candidate\'s own list once its work has moved', async () => {
+    const { clan, user } = await roundWithCandidate();
+    await movedPool(clan, user);
+
+    const mine = await poolCandidateService.myPools(user.id);
+
+    // One round, the one holding their work — not the husk beside it.
+    expect(mine).toHaveLength(1);
+    expect(mine[0].pool.id).toBe(clan.id);
+    expect(mine[0].progress.total).toBe(1);
+  });
+
+  it('disappears from the operator\'s list too', async () => {
+    const { clan, user } = await roundWithCandidate();
+    const pool = await movedPool(clan, user);
+
+    const listed = await poolService.listPools({});
+
+    expect(listed.map((p) => p.id)).not.toContain(pool.id);
+  });
+
+  it('leaves a pool that has not moved exactly where it is', async () => {
+    const { user } = await roundWithCandidate();
+    const pool = await models.CandidatePool.create({
+      programId: ctx.program.id, name: 'Still a pool', status: 'open', selectionQuota: 1, createdById: ctx.admin.id,
+    }, { validate: false });
+    await models.PoolMember.create({ poolId: pool.id, userId: user.id, email: user.email, status: 'active' });
+
+    expect((await poolService.listPools({})).map((p) => p.id)).toContain(pool.id);
+    expect((await poolCandidateService.myPools(user.id)).map((r) => r.pool.id)).toContain(pool.id);
+  });
+});
