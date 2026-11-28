@@ -660,8 +660,13 @@ class PoolService {
 
   /** Every pool event is logged against the pool, so one query reads its story. */
   async audit(poolId, userId, action, newValues = {}, oldValues = null) {
+    await this.auditOn('CandidatePool', poolId, userId, action, newValues, oldValues);
+  }
+
+  /** The same line against whatever the round is — a pool, or a clan. */
+  async auditOn(entityType, entityId, userId, action, newValues = {}, oldValues = null) {
     await createAuditLog({
-      userId, action, entityType: 'CandidatePool', entityId: poolId, newValues, ...(oldValues ? { oldValues } : {}),
+      userId, action, entityType, entityId, newValues, ...(oldValues ? { oldValues } : {}),
     });
   }
 
@@ -672,13 +677,27 @@ class PoolService {
    * a selection with no record of what it was based on.
    */
   async snapshot(poolId, userId, action, newValues) {
+    return this.snapshotOn('CandidatePool', poolId, userId, action, newValues);
+  }
+
+  /** Snapshots of one kind for this pool, oldest first. */
+  async snapshots(poolId, actions) {
+    return this.snapshotsOn('CandidatePool', poolId, actions);
+  }
+
+  /**
+   * The same record against whatever the round is. A selection round that is a
+   * clan writes its shortlists against `Clan`, and both shapes have to be
+   * readable from one place or a migrated round loses its history.
+   */
+  async snapshotOn(entityType, entityId, userId, action, newValues) {
     const { getRequestContext } = require('../utils/auditContext');
     const ctx = getRequestContext();
     return models.AuditLog.create({
       userId: userId || ctx.userId || null,
       action,
-      entityType: 'CandidatePool',
-      entityId: poolId,
+      entityType,
+      entityId,
       newValues,
       ipAddress: ctx.ip || null,
       userAgent: ctx.userAgent || null,
@@ -686,10 +705,9 @@ class PoolService {
     });
   }
 
-  /** Snapshots of one kind for this pool, oldest first. */
-  async snapshots(poolId, actions) {
+  async snapshotsOn(entityType, entityId, actions) {
     return models.AuditLog.findAll({
-      where: { entityType: 'CandidatePool', entityId: poolId, action: { [Op.in]: actions } },
+      where: { entityType, entityId, action: { [Op.in]: actions } },
       order: [['createdAt', 'ASC']],
     });
   }

@@ -208,17 +208,21 @@ class PoolAutomationService {
     const existing = await models.ClanMembership.findOne({
       where: { clanId: clan.id, userId: user.id, role: 'mentee' },
     });
+    const poolClanService = require('./poolClanService');
     if (existing) {
       // Already in: keep their level in step, which re-aims their work.
       if ((existing.level || null) !== (application.level || null)) {
-        await require('./poolClanService').setMemberLevel(clan.id, user.id, application.level, null);
+        await poolClanService.setMemberLevel(clan.id, user.id, application.level, null);
       }
+      await poolClanService.linkApplication(clan.id, user.id, application.id);
       return { placed: true, reason: 'already_a_member', clanId: clan.id };
     }
 
     await require('./clanService').addMember(
       clan.id, { userId: user.id, role: 'mentee', level: application.level || null }, null,
     );
+    // The selection record was opened by the join; this is where it came from.
+    await poolClanService.linkApplication(clan.id, user.id, application.id);
     if (!application.userId) await application.update({ userId: user.id });
     return { placed: true, clanId: clan.id, level: application.level || null };
   }

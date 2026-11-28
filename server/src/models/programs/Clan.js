@@ -29,6 +29,13 @@ module.exports = (sequelize, DataTypes) => {
      * Empty on every other kind of clan. See poolClanService.
      */
     levelRules: { type: DataTypes.JSONB, allowNull: false, defaultValue: [], field: 'level_rules' },
+    /*
+     * A selection round's terms: { quota, waitlistSize, scoringPolicy:
+     * { difficultyPoints }, qualificationDueAt }. What `CandidatePool`
+     * carried in columns of its own, on the round that is now a clan.
+     * Empty on every other kind of clan. See poolClanSelectionService.
+     */
+    selectionSettings: { type: DataTypes.JSONB, allowNull: false, defaultValue: {}, field: 'selection_settings' },
     kind: { type: DataTypes.STRING(20), allowNull: false, defaultValue: CLAN_KINDS[0], validate: { isIn: [CLAN_KINDS] } },
     frozenAt: { type: DataTypes.DATE, field: 'frozen_at' },
     /**

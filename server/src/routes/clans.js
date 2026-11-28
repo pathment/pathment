@@ -236,4 +236,40 @@ router.get('/:id/candidates', authenticate, requirePermission(PERMISSIONS.CLAN_M
 router.post('/:id/grants', authenticate, requirePermission(PERMISSIONS.CLAN_MANAGE_MEMBERS, scope.clan('id')), clanController.grantClanRole);
 router.delete('/:id/grants/:assignmentId', authenticate, requirePermission(PERMISSIONS.CLAN_MANAGE_MEMBERS, scope.clan('id')), clanController.revokeClanRole);
 
+// ─── A selection round (Clan.kind = 'pool') ───────────────────────────────────
+//
+// A round is a clan, so its roster, its work, its review and its chat are the
+// clan's own endpoints above. Only what is particular to SELECTING people is
+// here: the terms of the round, the work set per level, the ranking, the
+// shortlist and placement out of it.
+//
+// Every one of these is checked at the clan's PROGRAMME with the pool.*
+// permission it needs, exactly as /api/pools does — a reviewer for one
+// programme cannot read another programme's round.
+const poolClan = require('../controllers/poolClanController');
+
+const POOL_ANY = [
+  PERMISSIONS.POOL_MANAGE, PERMISSIONS.POOL_MEMBERS, PERMISSIONS.POOL_ASSIGN,
+  PERMISSIONS.POOL_REVIEW, PERMISSIONS.POOL_SELECT,
+];
+const atRound = scope.clan('id');
+const onRound = (permission) => requirePermission(permission, atRound);
+const readRound = requireAnyPermission(POOL_ANY, atRound);
+
+router.get('/:id/selection/settings', authenticate, readRound, poolClan.getSettings);
+router.put('/:id/selection/settings', authenticate, onRound(PERMISSIONS.POOL_MANAGE), poolClan.setSettings);
+router.put('/:id/selection/level-rules', authenticate, onRound(PERMISSIONS.POOL_ASSIGN), poolClan.setLevelRules);
+router.put('/:id/selection/members/:userId/level', authenticate, onRound(PERMISSIONS.POOL_ASSIGN), poolClan.setMemberLevel);
+
+router.get('/:id/selection/scores', authenticate, readRound, poolClan.scores);
+router.get('/:id/selection/shortlists', authenticate, readRound, poolClan.listShortlists);
+router.post('/:id/selection/shortlists', authenticate, onRound(PERMISSIONS.POOL_SELECT), poolClan.generateShortlist);
+router.get('/:id/selection/shortlists/:shortlistId', authenticate, readRound, poolClan.getShortlist);
+router.post('/:id/selection/shortlists/:shortlistId/confirm', authenticate, onRound(PERMISSIONS.POOL_SELECT), poolClan.confirmShortlist);
+router.post('/:id/selection/members/:memberId/decision', authenticate, onRound(PERMISSIONS.POOL_SELECT), poolClan.setDecision);
+
+router.get('/:id/selection/placement/preview', authenticate, onRound(PERMISSIONS.POOL_SELECT), poolClan.placementPreview);
+router.put('/:id/selection/placement/targets', authenticate, onRound(PERMISSIONS.POOL_SELECT), poolClan.setPlacementTargets);
+router.post('/:id/selection/placement/run', authenticate, onRound(PERMISSIONS.POOL_SELECT), poolClan.runPlacement);
+
 module.exports = router;

@@ -137,6 +137,14 @@ describe('a confirmed applicant lands in the round at their level', () => {
     expect(await workTitles(user.id)).toEqual(['Foundations']);
     // A candidate is not a mentee of the programme until they are selected.
     expect(await models.Enrollment.findOne({ where: { menteeId: user.id } })).toBeNull();
+
+    // And the round knows who they are: a selection record, tied back to the
+    // application they came in on, before they have done anything at all.
+    const record = await models.PoolMember.findOne({ where: { clanId: clan.id, userId: user.id } });
+    expect(record).toBeTruthy();
+    expect(record.applicationId).toBe(application.id);
+    expect(record.level).toBe('beginner');
+    expect(record.decision).toBeNull();
   });
 
   it('does not place an applicant whose level nobody has confirmed', async () => {

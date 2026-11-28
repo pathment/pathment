@@ -28,7 +28,17 @@ const SOURCES = ['import', 'invite', 'existing', 'application'];
 module.exports = (sequelize, DataTypes) => {
   const PoolMember = sequelize.define('PoolMember', {
     id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
-    poolId: { type: DataTypes.UUID, allowNull: false, field: 'pool_id' },
+    /*
+     * The round this record belongs to — exactly one of these two.
+     * `poolId` is the old `CandidatePool` round; `clanId` is a selection
+     * round that is a clan (migration 162). Both are readable for one
+     * release while the live rounds move across.
+     */
+    poolId: { type: DataTypes.UUID, allowNull: true, field: 'pool_id' },
+    clanId: { type: DataTypes.UUID, allowNull: true, field: 'clan_id' },
+    // The membership this record was opened from. NULL while the candidate
+    // is only invited and has no account to put in the clan yet.
+    clanMembershipId: { type: DataTypes.UUID, allowNull: true, field: 'clan_membership_id' },
     userId: { type: DataTypes.UUID, allowNull: true, field: 'user_id' },
     email: { type: DataTypes.STRING(255), allowNull: false, validate: { isEmail: true } },
     applicationId: { type: DataTypes.UUID, allowNull: true, field: 'application_id' },
@@ -61,6 +71,7 @@ module.exports = (sequelize, DataTypes) => {
     indexes: [
       { unique: true, fields: ['pool_id', 'email'] },
       { fields: ['pool_id'] },
+      { fields: ['clan_id'] },
       { fields: ['user_id'] },
     ],
   });
@@ -90,6 +101,8 @@ module.exports = (sequelize, DataTypes) => {
     PoolMember.belongsTo(models.CandidatePool, { foreignKey: 'pool_id', as: 'pool' });
     PoolMember.belongsTo(models.User, { foreignKey: 'user_id', as: 'user' });
     PoolMember.belongsTo(models.Clan, { foreignKey: 'placed_clan_id', as: 'placedClan' });
+    PoolMember.belongsTo(models.Clan, { foreignKey: 'clan_id', as: 'round' });
+    PoolMember.belongsTo(models.ClanMembership, { foreignKey: 'clan_membership_id', as: 'membership' });
     // No hasMany to AssignedTask on purpose: the task model's default scope hides
     // pool work, so such an association would always look empty. Pool code
     // queries `AssignedTask.scope('withPoolWork')` explicitly instead.

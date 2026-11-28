@@ -13,6 +13,14 @@
  * one transaction per person, holding a lock on the clan row so two runs can
  * never squeeze past its capacity. Retrying is always safe: a placed member is
  * skipped, and an existing membership counts as success rather than an error.
+ *
+ * It serves BOTH kinds of selection round. A round is either a `CandidatePool`
+ * or a clan of kind 'pool' (migration 160), and the only things placement
+ * needs of one are its programme, its name, the cohort an enrollment should
+ * land in, the clans it targets and how to find its selected candidates. So a
+ * round is resolved once into that handful of facts, and everything below is
+ * written against those rather than against either shape — one implementation,
+ * one audit trail, no second copy to drift.
  */
 const crypto = require('crypto');
 const { Op } = require('sequelize');
@@ -22,7 +30,7 @@ const { NOTIFICATION_EVENTS } = require('../config/notificationMatrix');
 const poolService = require('./poolService');
 const { OPERATIONAL_CLAN_STATUSES, isClanOperational, isClanSuggestable } = require('../config/clanStatus');
 const { menteeLoad, pickLeastLoaded, loadReason } = require('./clanDistribution');
-const { isProgrammeClan, isNonProgrammeClan } = require('../config/clanKinds');
+const { isProgrammeClan, isNonProgrammeClan, isPoolClan } = require('../config/clanKinds');
 
 class PlacementProblem extends Error {
   constructor(code, message) {
@@ -33,17 +41,58 @@ class PlacementProblem extends Error {
 
 const SEATED = ['active', 'paused'];
 // Selected and not placed yet: the people placement works on.
-const TO_PLACE = (poolId) => ({ poolId, decision: 'selected', placedAt: null });
+const TO_PLACE = (round) => ({ ...round.memberWhere, decision: 'selected', placedAt: null });
 
 class PoolPlacementService {
+  /**
+   * The round, reduced to what placement needs of it.
+   *
+   * A clan round is tried first and only accepted when it really is one, so a
+   * clan id can never be mistaken for a pool id or the other way round.
+   */
+  async _round(roundId) {
+    const clan = await models.Clan.findByPk(roundId, {
+      attributes: ['id', 'name', 'kind', 'programId', 'status', 'frozenAt', 'selectionSettings'],
+    });
+    if (clan && isPoolClan(clan)) {
+      const selection = require('./poolClanSelectionService');
+      // The intake this round feeds, which is where a placed candidate's
+      // enrollment belongs when their own application does not say.
+      const cohort = await models.Cohort.findOne({ where: { poolClanId: clan.id }, attributes: ['id'] });
+      return {
+        id: clan.id,
+        entityType: 'Clan',
+        name: clan.name,
+        programId: clan.programId,
+        cohortId: cohort?.id || null,
+        targetClanIds: clan.selectionSettings?.targetClanIds || [],
+        memberWhere: { clanId: clan.id },
+        assertActive: (what) => selection.assertActive(clan, what),
+        notifyOperators: (args) => selection._notifyOperators(clan, args),
+      };
+    }
+    const pool = await poolService.getPool(roundId);
+    return {
+      id: pool.id,
+      entityType: 'CandidatePool',
+      name: pool.name,
+      programId: pool.programId,
+      cohortId: pool.cohortId || null,
+      targetClanIds: pool.settings?.targetClanIds || [],
+      memberWhere: { poolId: pool.id },
+      assertActive: (what) => poolService.assertActive(pool, what),
+      notifyOperators: (args) => require('./poolScoringService')._notifyOperators(pool, args),
+    };
+  }
+
   /**
    * The clans a pool places into: its target list, else the programme's live
    * cohort clans. Inactive clans are included so an admin can still choose one
    * by hand; the preview never proposes them.
    */
-  async _clans(pool, clanIds = null) {
-    const ids = clanIds?.length ? clanIds : (pool.settings?.targetClanIds || []);
-    const where = { programId: pool.programId };
+  async _clans(round, clanIds = null) {
+    const ids = clanIds?.length ? clanIds : round.targetClanIds;
+    const where = { programId: round.programId };
     if (ids.length) where.id = { [Op.in]: ids };
     else Object.assign(where, { status: { [Op.in]: OPERATIONAL_CLAN_STATUSES }, kind: 'cohort', frozenAt: null });
     return models.Clan.findAll({ where, attributes: ['id', 'name', 'maxMentees', 'status', 'kind', 'frozenAt', 'programId', 'levels'], order: [['name', 'ASC']] });
@@ -97,12 +146,12 @@ class PoolPlacementService {
    * any level, which beats a clan for another level (used only when nothing
    * else has room, and said so). Load decides within a tier.
    */
-  async preview(poolId, { clanIds = null } = {}) {
-    const pool = await poolService.getPool(poolId);
-    const clans = await this._clans(pool, clanIds);
+  async preview(roundId, { clanIds = null } = {}) {
+    const round = await this._round(roundId);
+    const clans = await this._clans(round, clanIds);
     const state = await this._clanState(clans);
     const members = await models.PoolMember.findAll({
-      where: TO_PLACE(poolId),
+      where: TO_PLACE(round),
       include: [{ model: models.User, as: 'user', attributes: ['id', 'firstName', 'lastName'] }],
       order: [['rank', 'ASC'], ['createdAt', 'ASC']],
     });
@@ -153,21 +202,21 @@ class PoolPlacementService {
   }
 
   /** Save the chosen clan for each selected candidate (from the preview, edited or not). */
-  async setTargets(poolId, targets, actor) {
-    const pool = await poolService.getPool(poolId);
-    poolService.assertActive(pool, 'plan placements');
+  async setTargets(roundId, targets, actor) {
+    const round = await this._round(roundId);
+    round.assertActive('plan placements');
     if (!Array.isArray(targets) || !targets.length) throw new ValidationError('Nothing to plan');
     const clanIds = [...new Set(targets.map((t) => t.clanId).filter(Boolean))];
     const clans = clanIds.length ? await models.Clan.findAll({ where: { id: { [Op.in]: clanIds } }, attributes: ['id', 'programId'] }) : [];
-    if (clans.length !== clanIds.length || clans.some((c) => c.programId !== pool.programId)) {
+    if (clans.length !== clanIds.length || clans.some((c) => c.programId !== round.programId)) {
       throw new ValidationError('Every clan must belong to the pool\'s programme');
     }
-    const members = await models.PoolMember.findAll({ where: { ...TO_PLACE(poolId), id: { [Op.in]: targets.map((t) => t.memberId) } } });
+    const members = await models.PoolMember.findAll({ where: { ...TO_PLACE(round), id: { [Op.in]: targets.map((t) => t.memberId) } } });
     for (const member of members) {
       const t = targets.find((x) => x.memberId === member.id);
       await member.update({ placement: { ...(member.placement || {}), targetClanId: t.clanId || null } });
     }
-    await poolService.audit(pool.id, actor.id, 'POOL_PLACEMENT_PLANNED', { saved: members.length });
+    await poolService.auditOn(round.entityType, round.id, actor.id, 'POOL_PLACEMENT_PLANNED', { saved: members.length });
     return { saved: members.length };
   }
 
@@ -175,23 +224,23 @@ class PoolPlacementService {
    * Place every selected candidate who is not placed yet (or just the ones
    * named). One transaction per person; one failure never stops the others.
    */
-  async place(poolId, { memberIds = null } = {}, actor) {
-    const pool = await poolService.getPool(poolId);
-    poolService.assertActive(pool, 'place candidates');
-    const where = TO_PLACE(poolId);
+  async place(roundId, { memberIds = null } = {}, actor) {
+    const round = await this._round(roundId);
+    round.assertActive('place candidates');
+    const where = TO_PLACE(round);
     if (Array.isArray(memberIds)) where.id = { [Op.in]: memberIds };
     const members = await models.PoolMember.findAll({ where, attributes: ['id'], order: [['rank', 'ASC'], ['createdAt', 'ASC']] });
     const results = [];
-    for (const { id } of members) results.push(await this._placeOne(pool, id));
+    for (const { id } of members) results.push(await this._placeOne(round, id));
 
     const summary = { placed: 0, alreadyPlaced: 0, failed: 0 };
     for (const r of results) summary[r.result] += 1;
-    await poolService.audit(pool.id, actor.id, 'POOL_PLACEMENT_RUN', {
+    await poolService.auditOn(round.entityType, round.id, actor.id, 'POOL_PLACEMENT_RUN', {
       ...summary, failures: results.filter((r) => r.result === 'failed').map((r) => ({ memberId: r.memberId, code: r.code, reason: r.reason })),
     });
     if (summary.failed) {
-      await require('./poolScoringService')._notifyOperators(pool, {
-        title: `${pool.name}: ${summary.failed} placement${summary.failed === 1 ? '' : 's'} failed`,
+      await round.notifyOperators({
+        title: `${round.name}: ${summary.failed} placement${summary.failed === 1 ? '' : 's'} failed`,
         message: [...new Set(results.filter((r) => r.result === 'failed').map((r) => r.reason))].slice(0, 3).join(' · '),
         relatedEntityId: crypto.randomUUID(),
         dedupeType: 'pool_placement_failed',
@@ -202,7 +251,7 @@ class PoolPlacementService {
     return { summary, results };
   }
 
-  async _placeOne(pool, memberId) {
+  async _placeOne(round, memberId) {
     const clanService = require('./clanService');
     let outcome;
     try {
@@ -217,7 +266,7 @@ class PoolPlacementService {
 
         const clan = await models.Clan.findByPk(targetClanId, { transaction, lock: transaction.LOCK.UPDATE });
         if (!clan) throw new PlacementProblem('clan_missing', 'The chosen clan no longer exists');
-        if (clan.programId !== pool.programId) throw new PlacementProblem('wrong_program', `${clan.name} is in a different programme`);
+        if (clan.programId !== round.programId) throw new PlacementProblem('wrong_program', `${clan.name} is in a different programme`);
         // An inactive clan still takes someone the admin chose for it: inactive
         // only keeps the SYSTEM from proposing it.
         // Selected candidates are placed into a real programme clan — never
@@ -246,7 +295,7 @@ class PoolPlacementService {
         }
 
         const enrollment = await models.Enrollment.findOne({
-          where: { menteeId: member.userId, programId: pool.programId }, transaction,
+          where: { menteeId: member.userId, programId: round.programId }, transaction,
         });
         if (!enrollment) throw new PlacementProblem('no_enrollment', 'The enrollment was not created');
         const patch = {};
@@ -254,12 +303,12 @@ class PoolPlacementService {
           // A pool can draw from several cohorts, so the enrollment takes the
           // cohort the candidate applied through — when it is this programme's.
           // (Older pools pinned one cohort; that still wins.)
-          let cohortId = pool.cohortId || null;
+          let cohortId = round.cohortId || null;
           if (!cohortId && member.applicationId) {
             const application = await models.Application.findByPk(member.applicationId, {
               attributes: ['id'], include: [{ model: models.Cohort, as: 'cohort', attributes: ['id', 'programId'] }], transaction,
             });
-            if (application?.cohort?.programId === pool.programId) cohortId = application.cohort.id;
+            if (application?.cohort?.programId === round.programId) cohortId = application.cohort.id;
           }
           if (cohortId) patch.cohortId = cohortId;
         }
@@ -285,12 +334,12 @@ class PoolPlacementService {
       return { memberId, result: 'failed', code, reason };
     }
 
-    if (outcome.result === 'placed') await this._announce(pool, outcome.member, outcome.clan);
+    if (outcome.result === 'placed') await this._announce(round, outcome.member, outcome.clan);
     return { memberId, result: outcome.result, clanId: outcome.clan?.id || outcome.member.placedClanId };
   }
 
   /** Only after the placement has committed: the candidate and the clan's mentor team hear. */
-  async _announce(pool, member, clan) {
+  async _announce(round, member, clan) {
     try {
       const user = await models.User.findByPk(member.userId, { attributes: ['id', 'firstName', 'lastName', 'email'] });
       await require('./notificationOrchestrator').dispatch({
@@ -298,7 +347,7 @@ class PoolPlacementService {
         recipients: [{ userId: member.userId }],
         payload: {
           title: `Welcome to ${clan.name}`,
-          message: `You were selected in ${pool.name} and placed in ${clan.name}. Your mentors will be in touch.`,
+          message: `You were selected in ${round.name} and placed in ${clan.name}. Your mentors will be in touch.`,
           actionUrl: '/mentee/dashboard',
           actionLabel: 'Go to my dashboard',
           relatedEntityType: 'pool_placement',

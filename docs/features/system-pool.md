@@ -188,6 +188,40 @@ candidate earned for a project could not be read off the project. Older pools ke
 - Reminders stop at send time when work is handed in, the candidate exits or is decided, or the
   pool closes. Invitation reminders reissue the link (only its hash is stored).
 
+## The round as a clan (`Clan.kind = 'pool'`)
+
+Everything above describes the `CandidatePool` round. It is being replaced by a round that is a
+**clan**, because a selection round already is one — mentors, members, work, review and a group
+chat — and rebuilding all of that is why bugs kept landing here that clans never had. Both shapes
+run side by side until the live rounds are migrated; then the old one goes.
+
+| | `CandidatePool` round | clan round |
+| --- | --- | --- |
+| The round | `candidate_pools` row | `clans` row, `kind = 'pool'` (migration 160) |
+| Who is in it | `PoolMember` | `ClanMembership` + a `PoolMember` **selection record** (migration 162) |
+| What the work is | `pool.workItems` JSONB | `clan.levelRules` → roadmap steps (`poolClanService.workItems`) |
+| The terms | columns on the pool | `clan.selectionSettings` — quota, waitlist, curve, deadline, target clans |
+| Its tasks | `AssignedTask.poolMemberId` | `AssignedTask.clanId` |
+| Fed by an intake | `settings.autoAddFromCohortIds` | `cohorts.pool_clan_id` (migration 161) |
+| Shortlists | audit snapshots on `CandidatePool` | the same snapshots on `Clan` |
+| Scoring | `poolScoringService` | `poolClanSelectionService` |
+| Placement | `poolPlacementService` | the same service — a round is resolved to the few facts it needs |
+
+- **The arithmetic is shared.** `selectionMath` holds what a piece of work is worth, what blocks a
+  shortlist, how a tie is handled and the fingerprint. Both services call it, so two rounds running
+  side by side rank identical work identically.
+- **`PoolMember` survives on purpose.** It is the selection record — decision, reason, confirmed
+  score, rank, placement attempt — none of which belongs on a clan membership. It points at the
+  clan (`clan_id`) and the membership (`clan_membership_id`), and `pool_id` is nullable.
+- **Points come from difficulty, through the round's curve** (`poolClanService.pointsOf`),
+  deliberately not from `RoadmapTask.pointsBase`, which defaults to 10 on every step and would make
+  the curve a setting that silently did nothing.
+- **A level either has a rule or it does not.** No rule means no work and no email — the opposite
+  of the old round's empty `levels` list, which read as "everyone".
+- **Endpoints** live under the clan: `/api/clans/:id/selection/*`, each checked with the `pool.*`
+  permission it needs at the clan's programme (`routes/clans.js`). The roster, the work, the review
+  and the chat are the clan's own endpoints, which is the whole point.
+
 ## Related
 [Intake & Assessments](./intake-and-assessments.md) · [Roadmaps & Tasks](./roadmaps-and-tasks.md) ·
 [Authorization](./authorization-rbac.md) · [Programs, Cohorts & Clans](./programs-cohorts-clans.md) ·

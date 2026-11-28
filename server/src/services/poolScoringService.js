@@ -48,7 +48,6 @@
  * confirmed result itself is written onto each PoolMember (decision, score
  * components, total, rank) — the spec's auditable record.
  */
-const crypto = require('crypto');
 const { Op } = require('sequelize');
 const { models, sequelize } = require('../db');
 const { NotFoundError, ValidationError } = require('../utils/errors/errorTypes');
@@ -57,27 +56,11 @@ const { PERMISSIONS: P } = require('../config/permissions');
 const poolService = require('./poolService');
 const { ADJUSTMENT_KEY } = poolService;
 const poolWorkEvents = require('./poolWorkEvents');
+const selectionMath = require('./selectionMath');
 
-const OUTCOMES = ['selected', 'waitlisted', 'not_selected'];
+const { OUTCOMES, HARD_BLOCKERS, round2, courseProgress } = selectionMath;
 const GENERATED = 'POOL_SHORTLIST_GENERATED';
 const CONFIRMED = 'POOL_SELECTION_CONFIRMED';
-const round2 = (n) => Math.round(n * 100) / 100;
-
-/**
- * How far through a course the candidate is, 0–100. A finished course counts
- * as 100 even if the provider's percentage lags behind its own completion
- * flag, so completing a course can never be worth less than almost finishing it.
- */
-const courseProgress = (enrollment) => {
-  if (!enrollment) return 0;
-  if (enrollment.progressStatus === 'COMPLETED' || enrollment.lifecycle === 'COMPLETED') return 100;
-  const pct = Number(enrollment.overallProgress);
-  return Number.isFinite(pct) ? Math.max(0, Math.min(100, pct)) : 0;
-};
-
-// Blockers that only a change to the work can clear (add some, review it)
-// versus one a person clears by deciding (a tie at the cutoff).
-const HARD_BLOCKERS = ['no_work', 'reviews_outstanding'];
 
 class PoolScoringService {
   /**
@@ -145,36 +128,16 @@ class PoolScoringService {
       const parts = workItems.map((w) => {
         const worth = poolService.pointsOf(pool, w, difficultyOf.get(w.roadmapTaskId));
         const t = taskFor.get(`${member.id}:${w.roadmapTaskId}`);
-        let earned = 0;
-        let status = 'missing';
-        if (!poolService.targetsMember(w, member, roundLevels)) {
-          // Deliberately not theirs: not missing, not owed, not a warning.
-          status = 'not_targeted';
-        } else if (!t) status = 'not_assigned';
-        else if (w.kind === 'course') {
-          // The provider's figure, not the task's status: a course that was
-          // auto-approved on completion and one still at 60% are both read the
-          // same way, so the score never depends on whether the auto-review ran.
-          const e = courseFor.get(t.id);
-          const pct = e ? courseProgress(e) : 0;
-          earned = (worth * pct) / 100;
-          status = pct >= 100 ? 'scored' : pct > 0 ? 'in_progress' : 'missing';
-        } else if (t.status === 'completed') {
-          const f = latestApproved.get(t.id);
-          const rating = f ? Number(f.rating) : NaN;
-          if (f && !Number.isFinite(rating)) {
-            // Approved with no rating: the reviewer said yes, so the work is
-            // worth what it is worth. Scoring it 0 would punish the candidate
-            // for how the review was filled in.
-            earned = worth;
-            status = 'scored';
-          } else if (Number.isFinite(rating)) {
-            earned = (worth * Math.max(0, Math.min(5, rating))) / 5;
-            status = 'scored';
-          } else status = 'pending_review';
-        } else if (t.status === 'submitted') status = 'pending_review';
-        else if (t.status === 'revision_needed') status = 'changes_requested';
-        else status = 'missing';
+        // The rule itself lives in selectionMath, so a pool round and a clan
+        // round cannot drift into scoring the same work differently.
+        const { earned, status } = selectionMath.scorePart({
+          worth,
+          kind: w.kind,
+          targeted: poolService.targetsMember(w, member, roundLevels),
+          task: t,
+          approval: t ? latestApproved.get(t.id) : null,
+          enrollment: t ? courseFor.get(t.id) : null,
+        });
         total += earned;
         if (status !== 'not_targeted') {
           possibleForMember += worth;
@@ -214,94 +177,22 @@ class PoolScoringService {
       };
     });
 
-    rows.sort((a, b) => (b.total - a.total)
-      || (new Date(a.createdAt) - new Date(b.createdAt))
-      || a.memberId.localeCompare(b.memberId));
-    // Competition ranking: equal totals share a rank (1, 2, 2, 4).
-    rows.forEach((r, i) => { r.rank = i > 0 && r.total === rows[i - 1].total ? rows[i - 1].rank : i + 1; });
+    selectionMath.rankRows(rows);
     return { pool, policy: pool.scoringPolicy || {}, workItems, possible, rows };
   }
 
   /** The blockers and warnings for a computed ranking, plus proposed outcomes. */
   _propose(pool, policy, workItems, rows) {
-    const quota = pool.selectionQuota;
-    const waitlistSize = pool.settings?.waitlistSize ?? quota;
-    const undecided = rows.filter((r) => !r.decision);
-    const blockers = [];
-    const warnings = [];
-
-    if (!workItems.length) {
-      blockers.push({ code: 'no_work', message: 'Add some qualifying work before generating a shortlist — there is nothing to rank on' });
-    }
-    const outstanding = undecided.filter((r) => r.components.some((c) => c.required && c.status === 'pending_review'));
-    if (outstanding.length) {
-      blockers.push({
-        code: 'reviews_outstanding',
-        message: `${outstanding.length} candidate${outstanding.length === 1 ? ' has' : 's have'} required work waiting for review`,
-        memberIds: outstanding.map((r) => r.memberId),
-      });
-    }
-    const missing = undecided.filter((r) => r.components.some((c) => c.required && ['missing', 'changes_requested'].includes(c.status)));
-    if (missing.length) {
-      warnings.push({
-        code: 'missing_work',
-        message: `${missing.length} candidate${missing.length === 1 ? ' is' : 's are'} missing required work; it earns 0 points`,
-        memberIds: missing.map((r) => r.memberId),
-      });
-    }
-    // Unfinished course work is its own case: it has earned part of its points
-    // already, and no reviewer can move it along — only the candidate or the
-    // deadline can. So it warns, and never blocks.
-    const unfinishedCourses = undecided.filter((r) => r.components.some((c) => c.required && c.kind === 'course' && c.status === 'in_progress'));
-    if (unfinishedCourses.length) {
-      warnings.push({
-        code: 'courses_unfinished',
-        message: `${unfinishedCourses.length} candidate${unfinishedCourses.length === 1 ? ' has' : 's have'} a required course still in progress; it is scored on the progress so far`,
-        memberIds: unfinishedCourses.map((r) => r.memberId),
-      });
-    }
-    const unassigned = undecided.filter((r) => r.components.some((c) => c.required && c.status === 'not_assigned'));
-    if (unassigned.length) {
-      warnings.push({
-        code: 'work_not_given',
-        message: `${unassigned.length} candidate${unassigned.length === 1 ? ' was' : 's were'} never given some required work, so they cannot earn its points`,
-        memberIds: unassigned.map((r) => r.memberId),
-      });
-    }
-    if (pool.qualificationDueAt && new Date(pool.qualificationDueAt) > new Date()) {
-      warnings.push({ code: 'deadline_not_passed', message: 'The qualification deadline has not passed yet' });
-    }
-    if (undecided.length < quota) {
-      warnings.push({ code: 'fewer_candidates_than_quota', message: `Only ${undecided.length} candidate${undecided.length === 1 ? '' : 's'} for a quota of ${quota}` });
-    }
-
-    const proposed = new Map();
-    undecided.forEach((r, i) => {
-      proposed.set(r.memberId, i < quota ? 'selected' : i < quota + waitlistSize ? 'waitlisted' : 'not_selected');
-    });
-    if (undecided.length > quota) {
-      const cutoff = undecided[quota - 1].total;
-      if (undecided[quota].total === cutoff) {
-        const tied = undecided.filter((r) => r.total === cutoff).map((r) => r.memberId);
-        blockers.push({
-          code: 'tie_at_cutoff',
-          message: `${tied.length} candidates are tied on ${cutoff} at the cutoff — decide each of them`,
-          memberIds: tied,
-          total: cutoff,
-        });
-      }
-    }
-    return { quota, waitlistSize, blockers, warnings, proposed, undecided };
+    return selectionMath.propose({
+      quota: pool.selectionQuota,
+      waitlistSize: pool.settings?.waitlistSize,
+      qualificationDueAt: pool.qualificationDueAt,
+    }, workItems, rows);
   }
 
   /** A hash of everything the ranking is built from. Same inputs → same fingerprint. */
   _fingerprint(policy, quota, waitlistSize, undecided) {
-    const payload = JSON.stringify({
-      policy, quota, waitlistSize,
-      rows: [...undecided].sort((a, b) => a.memberId.localeCompare(b.memberId))
-        .map((r) => [r.memberId, r.total, r.adjustment, r.components.map((c) => [c.key, c.points, c.earned, c.status])]),
-    });
-    return crypto.createHash('sha256').update(payload).digest('hex');
+    return selectionMath.fingerprint(policy, quota, waitlistSize, undecided);
   }
 
   /** The current ranking, with what would block or warn a shortlist made from it. */
