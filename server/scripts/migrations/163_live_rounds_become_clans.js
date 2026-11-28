@@ -149,6 +149,15 @@ async function up({ dryRun = false } = {}) {
 
     await sequelize.transaction(async (transaction) => {
       const opts = { transaction };
+      /*
+       * A data migration on a live database must never be able to sit there
+       * holding row locks. Without these, a lock another connection happens to
+       * hold turns into an open transaction waiting forever, with the rows it
+       * already touched locked behind it — which is exactly what happened the
+       * first time this was run against production.
+       */
+      await sequelize.query("SET LOCAL lock_timeout = '15s'", opts);
+      await sequelize.query("SET LOCAL statement_timeout = '120s'", opts);
       const policy = pool.scoring_policy || {};
       const selection = {
         quota: pool.selection_quota || 1,
@@ -162,6 +171,7 @@ async function up({ dryRun = false } = {}) {
       const levelRules = [];
       for (const [level, list] of byLevel) {
         const roadmapId = randomUUID();
+        console.log(`     building ${level}…`);
         await sequelize.query(`
           INSERT INTO roadmaps (id, organization_id, program_id, name, description, source, published, skill_tags, owner_mentor_id, created_at, updated_at)
           VALUES (:id, :org, :program, :name, :description, 'org', true, ARRAY[]::text[], :createdBy, NOW(), NOW())`,
@@ -205,8 +215,10 @@ async function up({ dryRun = false } = {}) {
       }
 
       const movedTaskIds = [];
+      let done = 0;
       for (const member of seated) {
         const membershipId = randomUUID();
+        process.stdout.write(`\r     seating ${++done}/${seated.length}`);
         await sequelize.query(`
           INSERT INTO clan_memberships (id, organization_id, clan_id, user_id, enrollment_id, role, status, level, joined_at, created_at, updated_at)
           VALUES (:id, :org, :clan, :user, NULL, 'mentee', 'active', :level, NOW(), NOW(), NOW())
@@ -226,6 +238,7 @@ async function up({ dryRun = false } = {}) {
         for (const row of (moved && moved[0]) || []) movedTaskIds.push({ taskId: row.id, memberId: member.id });
       }
 
+      if (seated.length) process.stdout.write('\n');
       // Members with no account keep their selection record on the clan so the
       // round still lists them; they have no membership until they register.
       await sequelize.query(
