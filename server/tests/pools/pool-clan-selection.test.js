@@ -102,6 +102,60 @@ beforeEach(async () => {
   ctx = { admin, mentor, program };
 });
 
+describe('making a round', () => {
+  it('is a clan of kind pool, with its lead mentor and no cap', async () => {
+    const created = await poolClanService.createRound({
+      programId: ctx.program.id, name: 'Autumn round', leadMentorId: ctx.mentor.id,
+    }, ctx.admin);
+
+    const clan = await models.Clan.findByPk(created.id);
+    expect(clan.kind).toBe('pool');
+    // A round takes everyone who applies; a cohort's 25 is not its number.
+    expect(clan.maxMentees).toBeNull();
+    const lead = await models.ClanMembership.findOne({ where: { clanId: clan.id, role: 'lead_mentor' } });
+    expect(lead.userId).toBe(ctx.mentor.id);
+    // Nobody in a round is enrolled in the programme.
+    expect(await models.Enrollment.findOne({ where: { menteeId: ctx.mentor.id } })).toBeNull();
+  });
+
+  it('can be attached to an intake, and moved off it again', async () => {
+    const cohort = await models.Cohort.create({
+      programId: ctx.program.id, name: 'Autumn intake', status: 'open', levels: [], intakeFormSchema: [],
+    });
+    const created = await poolClanService.createRound({
+      programId: ctx.program.id, name: 'Autumn round', leadMentorId: ctx.mentor.id, cohortId: cohort.id,
+    }, ctx.admin);
+
+    expect((await cohort.reload()).poolClanId).toBe(created.id);
+
+    await poolClanService.attachToIntake(created.id, null, ctx.admin);
+    expect((await cohort.reload()).poolClanId).toBeNull();
+  });
+
+  it('refuses an intake from another programme', async () => {
+    const other = await seed.createProgram({ createdBy: ctx.admin.id, name: 'Other' });
+    const cohort = await models.Cohort.create({
+      programId: other.id, name: 'Elsewhere', status: 'open', levels: [], intakeFormSchema: [],
+    });
+    await expect(poolClanService.createRound({
+      programId: ctx.program.id, name: 'Autumn round', leadMentorId: ctx.mentor.id, cohortId: cohort.id,
+    }, ctx.admin)).rejects.toThrow();
+  });
+
+  it('lists the rounds of the programmes you can see, with their numbers', async () => {
+    const clan = await round({ quota: 3 });
+    await candidate(clan, 'ada@test.com', 'level-1');
+
+    const rounds = await selection.listRounds({ programIds: [ctx.program.id] });
+    expect(rounds).toHaveLength(1);
+    expect(rounds[0]).toMatchObject({ id: clan.id, name: 'Spring round', quota: 3, memberCount: 1, selectedCount: 0 });
+
+    // Another programme's rounds are not yours to see.
+    const other = await seed.createProgram({ createdBy: ctx.admin.id, name: 'Other' });
+    expect(await selection.listRounds({ programIds: [other.id] })).toHaveLength(0);
+  });
+});
+
 describe('the selection record', () => {
   it('is opened by joining, and points at the round and the membership', async () => {
     const clan = await round();
@@ -226,6 +280,53 @@ describe('what stops a shortlist', () => {
 
     const scores = await selection.liveScores(clan.id);
     expect(scores.blockers.map((b) => b.code)).toContain('no_work');
+  });
+});
+
+describe('the roster', () => {
+  it('lists who is in the running, at what level, and how far they have got', async () => {
+    const one = await work('L1', 'Foundations', 'hard');
+    const clan = await round({ rules: [{ level: 'level-1', roadmapId: one.roadmap.id }] });
+    const user = await candidate(clan, 'ada@test.com', 'level-1');
+    await awaitingReview(user);
+
+    const { candidates } = await selection.roster(clan.id);
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]).toMatchObject({
+      userId: user.id,
+      email: 'ada@test.com',
+      level: 'level-1',
+      decision: null,
+      work: { assigned: 1, awaitingReview: 1, scored: 0 },
+    });
+  });
+
+  it('counts a mentor out of it — they are reviewing the round, not in it', async () => {
+    const clan = await round();
+    const { candidates } = await selection.roster(clan.id);
+    expect(candidates.map((c) => c.userId)).not.toContain(ctx.mentor.id);
+  });
+
+  it('shows what somebody with no level is waiting for', async () => {
+    const one = await work('L1', 'Foundations');
+    const clan = await round({ rules: [{ level: 'level-1', roadmapId: one.roadmap.id }] });
+    const user = await candidate(clan, 'nolevel@test.com', null);
+
+    const { candidates } = await selection.roster(clan.id);
+    const row = candidates.find((c) => c.userId === user.id);
+    expect(row.level).toBeNull();
+    expect(row.work.assigned).toBe(0);
+    // The round has rules but none for them, so there is a reason to show.
+    expect(row.noWorkReason).toBe('no_level');
+  });
+
+  it('says when a level has no work set for it', async () => {
+    const one = await work('L1', 'Foundations');
+    const clan = await round({ rules: [{ level: 'level-1', roadmapId: one.roadmap.id }] });
+    const user = await candidate(clan, 'four@test.com', 'level-4');
+
+    const { candidates } = await selection.roster(clan.id);
+    expect(candidates.find((c) => c.userId === user.id).noWorkReason).toBe('no_rule_for_level');
   });
 });
 

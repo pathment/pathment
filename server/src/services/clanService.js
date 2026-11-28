@@ -273,6 +273,10 @@ class ClanService {
     const program = await models.Program.findByPk(programId, { transaction: outerTransaction });
     if (!program) throw new NotFoundError('Program not found');
     const wantsStanding = data.kind === 'standing';
+    // A selection round. Like a standing clan it enrols nobody, so it skips
+    // the cohort checks; unlike one it needs no plan entitlement, because it
+    // is a stage of admission rather than a space that outlives a programme.
+    const wantsPool = data.kind === 'pool';
     const adminCreating = wantsStanding && !standingApproval && actor
       ? await require('./authzService').hasAdminAccess(actor)
       : false;
@@ -284,14 +288,14 @@ class ClanService {
       // the request flow must not also bypass the entitlement.
       await require('./standingClanService').assertStandingClanPlan(program.organizationId);
     }
-    if (!wantsStanding && program.status === 'completed') throw new ValidationError('Reopen the program before creating a cohort clan');
+    if (!wantsStanding && !wantsPool && program.status === 'completed') throw new ValidationError('Reopen the program before creating a cohort clan');
 
     const create = async (transaction) => {
       await require('./organizationService').assertLimit(program.organizationId, 'clans', null, { transaction });
       const clan = await models.Clan.create({
         organizationId: program.organizationId,
         programId,
-        kind: wantsStanding ? 'standing' : 'cohort',
+        kind: wantsPool ? 'pool' : wantsStanding ? 'standing' : 'cohort',
         name,
         description: data.description || null,
         whatsappGroupLink: data.whatsappGroupLink || null,
@@ -307,7 +311,7 @@ class ClanService {
          * its capacity", from a screen with no way to do that. Uncapped unless
          * somebody asks for a cap.
          */
-        maxMentees: data.maxMentees ?? (wantsStanding ? null : 25),
+        maxMentees: data.maxMentees ?? (wantsStanding || wantsPool ? null : 25),
         status: data.status || 'active',
         createdBy
       }, { transaction });

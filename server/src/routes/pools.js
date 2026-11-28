@@ -48,6 +48,12 @@ pools.get('/', inPoolArea, pool.listPools);
 pools.get('/options', inPoolArea, pool.options);
 pools.post('/', requirePermission(P.POOL_MANAGE, (req) => ({ programId: req.body.programId })), pool.createPool);
 
+// Selection rounds that are clans. Static segment, so it is matched before
+// '/:id' and a round id is never read as a pool id.
+const poolClan = require('../controllers/poolClanController');
+pools.get('/rounds', inPoolArea, poolClan.listRounds);
+pools.post('/rounds', requirePermission(P.POOL_MANAGE, (req) => ({ programId: req.body.programId })), poolClan.createRound);
+
 pools.get('/:id', canRead, pool.getPool);
 pools.patch('/:id', can(P.POOL_MANAGE), pool.updatePool);
 pools.post('/:id/status', can(P.POOL_MANAGE), pool.setStatus);

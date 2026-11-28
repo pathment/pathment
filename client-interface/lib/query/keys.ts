@@ -122,6 +122,22 @@ export const qk = {
     scores: (id: string) => ['pools', id, 'scores'] as const,
   },
 
+  /**
+   * A selection round that is a clan. Keyed under 'rounds' rather than
+   * 'pools', so invalidating one kind of round never quietly refetches the
+   * other's screens.
+   */
+  round: {
+    all: ['rounds'] as const,
+    list: (programId?: string | null) => ['rounds', 'list', programId ?? ''] as const,
+    detail: (id: string) => ['rounds', id] as const,
+    settings: (id: string) => ['rounds', id, 'settings'] as const,
+    scores: (id: string) => ['rounds', id, 'scores'] as const,
+    shortlists: (id: string) => ['rounds', id, 'shortlists'] as const,
+    shortlist: (id: string, shortlistId: string) => ['rounds', id, 'shortlist', shortlistId] as const,
+    placement: (id: string) => ['rounds', id, 'placement'] as const,
+  },
+
   /** What a candidate sees of their own selection round. */
   candidate: {
     all: ['candidate'] as const,

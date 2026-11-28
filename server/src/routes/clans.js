@@ -256,6 +256,9 @@ const atRound = scope.clan('id');
 const onRound = (permission) => requirePermission(permission, atRound);
 const readRound = requireAnyPermission(POOL_ANY, atRound);
 
+router.get('/:id/selection', authenticate, readRound, poolClan.getRound);
+router.get('/:id/selection/members', authenticate, readRound, poolClan.roster);
+router.put('/:id/selection/intake', authenticate, onRound(PERMISSIONS.POOL_MANAGE), poolClan.attachIntake);
 router.get('/:id/selection/settings', authenticate, readRound, poolClan.getSettings);
 router.put('/:id/selection/settings', authenticate, onRound(PERMISSIONS.POOL_MANAGE), poolClan.setSettings);
 router.put('/:id/selection/level-rules', authenticate, onRound(PERMISSIONS.POOL_ASSIGN), poolClan.setLevelRules);

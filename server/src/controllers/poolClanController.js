@@ -17,6 +17,35 @@ const poolPlacementService = require('../services/poolPlacementService');
 
 const ok = (res, message, data, status = 200) => res.status(status).json(successResponse(message, data, status));
 
+// ─── The rounds themselves ────────────────────────────────────────────────────
+
+/** The selection rounds of the programmes this caller can see. */
+exports.listRounds = catchAsync(async (req, res) => {
+  const authzService = require('../services/authzService');
+  const programIds = await authzService.poolProgramScope(req.user, {
+    assignments: req.loadAssignments ? await req.loadAssignments() : undefined,
+  });
+  const rounds = await selection.listRounds({ programIds, programId: req.query.programId || null });
+  ok(res, 'Rounds retrieved', { rounds });
+});
+
+exports.createRound = catchAsync(async (req, res) => {
+  const clan = await poolClanService.createRound(req.body, req.user);
+  ok(res, 'Round created', { round: { id: clan.id, name: clan.name } }, 201);
+});
+
+exports.getRound = catchAsync(async (req, res) => {
+  ok(res, 'Round', await selection.detail(req.params.id));
+});
+
+exports.attachIntake = catchAsync(async (req, res) => {
+  ok(res, 'Intake attached', await poolClanService.attachToIntake(req.params.id, req.body.cohortId || null, req.user));
+});
+
+exports.roster = catchAsync(async (req, res) => {
+  ok(res, 'Candidates', await selection.roster(req.params.id));
+});
+
 /** The round's terms and the work each level is set to do. */
 exports.getSettings = catchAsync(async (req, res) => {
   const clan = await selection.round(req.params.id);

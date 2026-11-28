@@ -9,12 +9,143 @@ import { toast } from 'sonner';
 import { Loader2, Plus, Settings2, UsersRound } from 'lucide-react';
 import { EntityCard, entityCardSecondaryBtn, formatDateRange } from '@/components/admin/EntityCard';
 import { Drawer } from '@/components/shared/Drawer';
-import { useApiQuery } from '@/lib/query';
+import { qk, useApiQuery } from '@/lib/query';
 import { usePermissions } from '@/lib/hooks/usePermissions';
 import { poolApi, type Pool } from '@/lib/services/pool-api';
+import { roundApi, type RoundSummary } from '@/lib/services/round-api';
+import { mentorApi } from '@/lib/services/mentor-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
-import { EmptyState, ErrorNote, POOL_STATUS, Spinner, field, fmtDate, fromLocalInput, label, panel, primaryBtn } from '@/components/admin/pools/poolUi';
+import { EmptyState, ErrorNote, POOL_STATUS, Spinner, field, fmtDate, fromLocalInput, label, panel, primaryBtn, secondaryBtn } from '@/components/admin/pools/poolUi';
 import { byLifecycle } from '@/lib/utils/lifecycleOrder';
+
+/**
+ * A selection round that is a clan.
+ *
+ * The new shape of this screen's one idea: a round IS a clan, so it comes with
+ * mentors, a roster, work, review and a group chat rather than rebuilding
+ * them. The pools below are the older shape and are on their way out; both are
+ * listed here until the live ones have moved.
+ */
+function CreateRoundDrawer({ onClose }: { onClose: () => void }) {
+  const router = useRouter();
+  const [form, setForm] = useState({ programId: '', name: '', description: '', leadMentorId: '', cohortId: '' });
+  const [saving, setSaving] = useState(false);
+  const { data: options } = useApiQuery({
+    queryKey: ['pools', 'options', form.programId || 'none'],
+    queryFn: () => poolApi.options(form.programId || undefined),
+  });
+  const { data: mentors } = useApiQuery({
+    queryKey: ['mentors', 'all'],
+    queryFn: () => mentorApi.getAll().then((r: { data?: { mentors?: { id: string; firstName: string; lastName: string }[] } }) => r?.data?.mentors ?? []),
+  });
+  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
+    setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  const submit = async () => {
+    if (!form.programId || !form.name.trim()) {
+      toast.error('Choose a programme and give the round a name');
+      return;
+    }
+    setSaving(true);
+    try {
+      const round = await roundApi.create({
+        programId: form.programId,
+        name: form.name.trim(),
+        description: form.description.trim() || undefined,
+        leadMentorId: form.leadMentorId || null,
+        cohortId: form.cohortId || null,
+      });
+      toast.success('Round created. Set the work for each level next.');
+      router.push(workspacePath(`/admin/pools/rounds/${round.id}`));
+    } catch (e) {
+      toast.error(extractApiErrorMessage(e, 'Could not create the round'));
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Drawer
+      open
+      onClose={onClose}
+      title="New selection round"
+      subtitle="A trial clan: candidates do work and are reviewed in it, and nobody is a mentee of the programme until they are selected."
+      footer={(dismiss) => (
+        <div className="flex justify-end gap-2">
+          <button onClick={dismiss} className="rounded-lg px-4 py-2 text-sm text-slate-600 hover:bg-muted">Cancel</button>
+          <button onClick={submit} disabled={saving} className={primaryBtn}>
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Create round
+          </button>
+        </div>
+      )}
+    >
+      <div className="space-y-4">
+        <div>
+          <label className={label} htmlFor="round-program">Programme</label>
+          <select id="round-program" value={form.programId} onChange={set('programId')} className={field}>
+            <option value="">Choose a programme</option>
+            {(options?.programs || []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className={label} htmlFor="round-name">Name</label>
+          <input id="round-name" value={form.name} onChange={set('name')} placeholder="Spring 2027 selection" className={field} />
+        </div>
+        <div>
+          <label className={label} htmlFor="round-desc">Description</label>
+          <textarea id="round-desc" value={form.description} onChange={set('description')} rows={2} className={field} />
+        </div>
+        <div>
+          <label className={label} htmlFor="round-lead">Lead mentor</label>
+          <select id="round-lead" value={form.leadMentorId} onChange={set('leadMentorId')} className={field}>
+            <option value="">Choose later</option>
+            {(mentors || []).map((m) => <option key={m.id} value={m.id}>{`${m.firstName} ${m.lastName}`.trim()}</option>)}
+          </select>
+          <p className="mt-1 text-xs text-muted-foreground">Whoever reviews the work candidates hand in. You can add more mentors from the clan.</p>
+        </div>
+        <div>
+          <label className={label} htmlFor="round-intake">Intake</label>
+          <select id="round-intake" value={form.cohortId} onChange={set('cohortId')} disabled={!form.programId} className={field}>
+            <option value="">Not attached — add candidates by hand</option>
+            {(options?.cohorts || []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Applicants to this intake arrive in the round once their level is confirmed, and are given that level&apos;s work.
+          </p>
+        </div>
+      </div>
+    </Drawer>
+  );
+}
+
+function RoundCard({ round }: { round: RoundSummary }) {
+  const href = `/admin/pools/rounds/${round.id}`;
+  return (
+    <EntityCard
+      href={href}
+      status={round.status === 'archived' || round.frozenAt
+        ? { label: 'Closed', cls: 'bg-slate-100 text-slate-500 border-slate-200' }
+        : { label: 'Round', cls: 'bg-brand-50 text-brand-700 border-brand-200' }}
+      icon={<ClanAvatar name={round.name} src={round.avatarUrl} size="md" />}
+      title={round.name}
+      description={round.description || round.program?.name}
+      tags={[round.description ? round.program?.name : null, round.cohort?.name].filter(Boolean) as string[]}
+      stats={[
+        { label: 'Candidates', value: round.memberCount },
+        { label: 'To select', value: round.quota },
+        { label: 'Selected', value: round.selectedCount, tone: round.selectedCount ? 'good' : 'default' },
+        { label: 'Deadline', value: round.qualificationDueAt ? fmtDate(round.qualificationDueAt) : 'Not set' },
+      ]}
+      footer={round.levelRules
+        ? `Work set for ${round.levelRules} level${round.levelRules === 1 ? '' : 's'}`
+        : 'No work set yet — nobody is being given anything'}
+      actions={(
+        <Link href={workspacePath(`/admin/clans?clan=${round.id}`)} className={entityCardSecondaryBtn}>
+          <UsersRound className="h-4 w-4" /> The clan
+        </Link>
+      )}
+    />
+  );
+}
 
 function CreatePoolDrawer({ onClose }: { onClose: () => void }) {
   const router = useRouter();
@@ -147,13 +278,23 @@ const FILTERS: [string, string][] = [['', 'All live'], ...Object.entries(POOL_ST
 
 export default function PoolsPage() {
   const { can } = usePermissions();
-  const [creating, setCreating] = useState(false);
+  /** 'round' is the current shape; 'pool' is the older one, kept until the live pools move. */
+  const [creating, setCreating] = useState<null | 'round' | 'pool'>(null);
   const [status, setStatus] = useState('');
   const { data: pools, loading, error } = useApiQuery({
     queryKey: ['pools', 'list', status],
     queryFn: () => poolApi.list(status ? { status } : undefined),
     errorMessage: 'Could not load pools',
   });
+  const { data: rounds, loading: roundsLoading } = useApiQuery({
+    queryKey: qk.round.list(),
+    queryFn: () => roundApi.list(),
+    errorMessage: 'Could not load the selection rounds',
+  });
+  // A pool's statuses are not a round's, so filtering by one hides the other
+  // rather than pretending a round has a stage it does not have.
+  const shownRounds = status ? [] : (rounds || []);
+  const nothing = !(pools || []).length && !shownRounds.length;
 
   return (
     <div className="space-y-6">
@@ -165,9 +306,14 @@ export default function PoolsPage() {
           </p>
         </div>
         {can('pool.manage') && (
-          <button onClick={() => setCreating(true)} className={`${primaryBtn} shrink-0`}>
-            <Plus className="w-4 h-4" /> New pool
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            <button onClick={() => setCreating('pool')} className={secondaryBtn}>
+              New pool
+            </button>
+            <button onClick={() => setCreating('round')} className={primaryBtn}>
+              <Plus className="w-4 h-4" /> New round
+            </button>
+          </div>
         )}
       </div>
 
@@ -184,26 +330,30 @@ export default function PoolsPage() {
         ))}
       </div>
 
-      {loading && <Spinner />}
+      {(loading || roundsLoading) && <Spinner />}
       {error && <ErrorNote>{error}</ErrorNote>}
-      {!loading && !error && (pools || []).length === 0 && (
+      {!loading && !roundsLoading && !error && nothing && (
         <div className={panel}>
           <EmptyState
             icon={UsersRound}
-            title={status ? 'No pools with this status' : 'No pools yet'}
-            text={status ? 'Choose another filter to see the rest.' : 'Create a pool for a programme, add candidates and give them qualifying work.'}
+            title={status ? 'Nothing with this status' : 'No selection rounds yet'}
+            text={status
+              ? 'Choose another filter to see the rest.'
+              : 'A round is a trial clan: candidates do its work and are reviewed in it, and nobody joins the programme until they are selected.'}
             action={!status && can('pool.manage') && (
-              <button onClick={() => setCreating(true)} className={primaryBtn}><Plus className="w-4 h-4" /> New pool</button>
+              <button onClick={() => setCreating('round')} className={primaryBtn}><Plus className="w-4 h-4" /> New round</button>
             )}
           />
         </div>
       )}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {/* Live rounds first, closed ones last. */}
+        {shownRounds.map((round) => <RoundCard key={round.id} round={round} />)}
+        {/* Live pools first, closed ones last. */}
         {[...(pools || [])].sort(byLifecycle((p) => p.status)).map((pool) => <PoolCard key={pool.id} pool={pool} />)}
       </div>
 
-      {creating && <CreatePoolDrawer onClose={() => setCreating(false)} />}
+      {creating === 'pool' && <CreatePoolDrawer onClose={() => setCreating(null)} />}
+      {creating === 'round' && <CreateRoundDrawer onClose={() => setCreating(null)} />}
     </div>
   );
 }

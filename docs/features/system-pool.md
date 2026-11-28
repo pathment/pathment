@@ -220,7 +220,26 @@ run side by side until the live rounds are migrated; then the old one goes.
   of the old round's empty `levels` list, which read as "everyone".
 - **Endpoints** live under the clan: `/api/clans/:id/selection/*`, each checked with the `pool.*`
   permission it needs at the clan's programme (`routes/clans.js`). The roster, the work, the review
-  and the chat are the clan's own endpoints, which is the whole point.
+  and the chat are the clan's own endpoints, which is the whole point. The rounds themselves are
+  listed and created at `/api/pools/rounds`, so both kinds appear in one place.
+
+### The screens
+
+A round is managed in the same place as a pool — **Selection pools** — and at
+`/admin/pools/rounds/[id]`, which is deliberately the same page as a pool's: the same header, the
+same three tabs (Overview, Candidates, Selection) and the same Manage drawer.
+
+- **Selection is literally the same component.** `SelectionTab` takes a round (`{ id, scope, quota,
+  closed, members }`) and an `api`, so it serves both kinds. `scope` is the first segment of its
+  query keys, so invalidating one kind never refetches the other's screens.
+  `tests/one-selection-screen.test.cjs` pins that arrangement.
+- **Candidates** is the roster: a candidate's level is the one thing changed here, and a row for
+  somebody given nothing says which of the two silent causes it is (`no_level`,
+  `no_rule_for_level`) rather than showing an empty progress bar.
+- **Work by level** (Manage round) is one roadmap per level. A level left on *No work* gives its
+  candidates nothing and tells them nothing, and the screen says so in those words.
+- What a clan already does is **not** rebuilt: the mentors, the roster, the group chat and
+  reviewing handed-in work are the clan's own screens, linked to from here.
 
 ## Related
 [Intake & Assessments](./intake-and-assessments.md) · [Roadmaps & Tasks](./roadmaps-and-tasks.md) ·

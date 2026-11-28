@@ -38,6 +38,70 @@ const MAX_WORK_POINTS = 1000;
 const SELECTION_DEFAULTS = Object.freeze({ quota: 1, waitlistSize: 0, qualificationDueAt: null });
 
 class PoolClanService {
+  /**
+   * Open a selection round: a clan of kind 'pool'.
+   *
+   * It goes through the ordinary clan path, so it gets its organisation's clan
+   * limit, its lead mentor's membership and everything else a clan has. The
+   * only round-specific parts are the kind and, optionally, the intake it
+   * feeds.
+   */
+  async createRound({ programId, name, description = null, leadMentorId = null, cohortId = null, levels = [] }, actor) {
+    const clanService = require('./clanService');
+    const clan = await clanService.createClan(
+      { programId, name, description, leadMentorId, levels, kind: 'pool' },
+      actor?.id || null,
+      { actor },
+    );
+    if (cohortId) await this.attachToIntake(clan.id, cohortId, actor);
+    await createAuditLog({
+      userId: actor?.id || null,
+      action: 'POOL_CLAN_CREATED',
+      entityType: 'Clan',
+      entityId: clan.id,
+      newValues: { name, programId, cohortId },
+    }).catch(() => {});
+    return clan;
+  }
+
+  /**
+   * Point an intake at this round, or take the round off the one it is on.
+   *
+   * The link lives on the COHORT (`cohorts.pool_clan_id`), so one intake feeds
+   * at most one round — which is the shape that stopped the levels going
+   * missing, when the attachment used to hide in the round's settings JSON.
+   */
+  async attachToIntake(clanId, cohortId, actor) {
+    const clan = await models.Clan.findByPk(clanId);
+    if (!clan) throw new NotFoundError('Clan not found');
+    if (!isPoolClan(clan)) throw new ValidationError('Only a selection round is fed by an intake');
+
+    // Whatever intake pointed here before stops doing so: one round per intake,
+    // and a round that moved must not still be fed by the old one.
+    const previous = await models.Cohort.findAll({ where: { poolClanId: clan.id }, attributes: ['id'] });
+    for (const row of previous) {
+      if (row.id !== cohortId) await models.Cohort.update({ poolClanId: null }, { where: { id: row.id } });
+    }
+    if (!cohortId) return { attached: null };
+
+    // organizationId is read with it deliberately: saving a row loaded without
+    // it reads as a change of workspace ownership to the scoping hook.
+    const cohort = await models.Cohort.findByPk(cohortId, {
+      attributes: ['id', 'organizationId', 'programId', 'name', 'poolClanId'],
+    });
+    if (!cohort) throw new NotFoundError('Intake not found');
+    if (cohort.programId !== clan.programId) throw new ValidationError('That intake belongs to another programme');
+    await cohort.update({ poolClanId: clan.id });
+    await createAuditLog({
+      userId: actor?.id || null,
+      action: 'POOL_CLAN_INTAKE_ATTACHED',
+      entityType: 'Clan',
+      entityId: clan.id,
+      newValues: { cohortId: cohort.id, cohortName: cohort.name },
+    }).catch(() => {});
+    return { attached: { id: cohort.id, name: cohort.name } };
+  }
+
   /** The rules as stored, cleaned of anything malformed. */
   levelRules(clan) {
     const raw = Array.isArray(clan?.levelRules) ? clan.levelRules : [];
@@ -195,6 +259,9 @@ class PoolClanService {
       waitlistSize,
       qualificationDueAt: stored.qualificationDueAt || null,
       scoringPolicy: { difficultyPoints: this.difficultyPoints(clan) },
+      // Read back as well as written: a settings screen that could not see the
+      // chosen clans would blank them the first time anybody pressed Save.
+      targetClanIds: Array.isArray(stored.targetClanIds) ? stored.targetClanIds : [],
     };
   }
 

@@ -6,10 +6,11 @@ import {
   CheckCircle2, ChevronDown, ChevronRight, ClipboardList, Info, ListOrdered, Loader2, Lock,
   RotateCcw, Search, ShieldCheck, Sparkles, Target, Users, Waypoints,
 } from 'lucide-react';
-import { qk, useApiQuery } from '@/lib/query';
+import { useApiQuery } from '@/lib/query';
 import { useConfirm } from '@/lib/context/ConfirmContext';
 import { AvatarWithInitials } from '@/components/admin/ui';
-import { poolApi, type Blocker, type PoolDashboard, type ScoredWork } from '@/lib/services/pool-api';
+import type { Blocker, ScoredWork } from '@/lib/services/pool-api';
+import type { SelectionApi } from '@/lib/services/round-api';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { ClanStatusBadge } from '@/components/shared/ClanStatusBadge';
 import {
@@ -150,24 +151,50 @@ function Breakdown({ row }: { row: Row }) {
   );
 }
 
-export function SelectionTab({ data, onChange, canSelect, canPlace }: {
-  data: PoolDashboard; onChange: () => void; canSelect: boolean; canPlace: boolean;
+/**
+ * The round this screen is ranking, in the few facts it needs.
+ *
+ * Two kinds of round answer to it: a `CandidatePool` and a clan of kind
+ * 'pool'. They gather their work and their people differently and the server
+ * already settles that, returning identical shapes from both — so this screen
+ * takes the round's id, its terms and an `api`, and never knows which it is
+ * looking at. `scope` is the first segment of its query keys, so invalidating
+ * one kind never refetches the other's screens.
+ */
+export interface SelectionRound {
+  id: string;
+  scope: 'pools' | 'rounds';
+  /** How many places there are. */
+  quota: number;
+  /** No more decisions: a closed pool, or an archived or frozen round. */
+  closed: boolean;
+  /**
+   * Who is in it. Placement state for people already placed, which the
+   * placement preview cannot carry — it only lists those still to place.
+   */
+  members: { id: string; placementStatus: string | null; placedClan?: { name: string } | null }[];
+  /** Where to go to add work, named for the kind of round this is. */
+  workHint?: string;
+}
+
+export function SelectionTab({ round, api, onChange, canSelect, canPlace }: {
+  round: SelectionRound; api: SelectionApi; onChange: () => void; canSelect: boolean; canPlace: boolean;
 }) {
-  const { pool, members } = data;
+  const { members } = round;
   const confirm = useConfirm();
 
-  const scores = useApiQuery({ queryKey: qk.pool.scores(pool.id), queryFn: () => poolApi.scores(pool.id) });
-  const lists = useApiQuery({ queryKey: [...qk.pool.detail(pool.id), 'shortlists'], queryFn: () => poolApi.shortlists(pool.id) });
+  const scores = useApiQuery({ queryKey: [round.scope, round.id, 'scores'], queryFn: () => api.scores(round.id) });
+  const lists = useApiQuery({ queryKey: [round.scope, round.id, 'shortlists'], queryFn: () => api.shortlists(round.id) });
   const current = (lists.data || []).find((s) => s.status !== 'superseded');
   const shortlist = useApiQuery({
-    queryKey: [...qk.pool.detail(pool.id), 'shortlist', current?.id || 'none'],
-    queryFn: () => poolApi.shortlist(pool.id, current!.id),
+    queryKey: [round.scope, round.id, 'shortlist', current?.id || 'none'],
+    queryFn: () => api.shortlist(round.id, current!.id),
     enabled: Boolean(current),
   });
   const confirmed = (lists.data || []).some((s) => s.status === 'confirmed');
   const placement = useApiQuery({
-    queryKey: ['pools', pool.id, 'placement'],
-    queryFn: () => poolApi.placementPreview(pool.id),
+    queryKey: [round.scope, round.id, 'placement'],
+    queryFn: () => api.placementPreview(round.id),
     enabled: confirmed && canPlace,
   });
 
@@ -251,7 +278,7 @@ export function SelectionTab({ data, onChange, canSelect, canPlace }: {
   const generate = async () => {
     setGenerating(true);
     try {
-      const out = await poolApi.generateShortlist(pool.id);
+      const out = await api.generateShortlist(round.id);
       toast.success(out.reused ? 'Nothing has changed since the last shortlist' : `Shortlist v${out.shortlist.version} generated`);
       await refresh();
     } catch (e) {
@@ -277,7 +304,7 @@ export function SelectionTab({ data, onChange, canSelect, canPlace }: {
     if (!ok) return;
     setBusy(true);
     try {
-      await poolApi.confirm(pool.id, list.id, changes);
+      await api.confirm(round.id, list.id, changes);
       toast.success('Selection confirmed. You can place people in clans below.');
       setOverrides({});
       await refresh();
@@ -301,8 +328,8 @@ export function SelectionTab({ data, onChange, canSelect, canPlace }: {
     if (!ok) return;
     setPlacing(true);
     try {
-      if (dirtyPlan) await poolApi.setTargets(pool.id, Object.entries(plan).map(([memberId, clanId]) => ({ memberId, clanId: clanId || null })));
-      const out = await poolApi.place(pool.id, memberIds);
+      if (dirtyPlan) await api.setTargets(round.id, Object.entries(plan).map(([memberId, clanId]) => ({ memberId, clanId: clanId || null })));
+      const out = await api.place(round.id, memberIds);
       if (out.summary.failed) toast.warning(`${out.summary.placed} placed, ${out.summary.failed} failed. The reason is on each row.`);
       else toast.success(`${out.summary.placed} placed`);
       await refresh();
@@ -322,7 +349,7 @@ export function SelectionTab({ data, onChange, canSelect, canPlace }: {
         <EmptyState
           icon={ClipboardList}
           title="No qualifying work yet"
-          text="A score is the points a candidate earned, so there is nothing to rank until this round has work. Add it from Manage pool."
+          text={`A score is the points a candidate earned, so there is nothing to rank until this round has work. ${round.workHint || 'Add it from Manage pool.'}`}
         />
       </section>
     );
@@ -351,24 +378,24 @@ export function SelectionTab({ data, onChange, canSelect, canPlace }: {
             <p className="mt-0.5 text-sm text-muted-foreground">
               {stage === 'placing'
                 ? `${placedCount} of ${counts.selected} placed in a clan.`
-                : `Ranked on points earned from reviewed work${possible ? `. A perfect round is worth ${pts(possible)}` : ''}. Selecting ${pool.selectionQuota}.`}
+                : `Ranked on points earned from reviewed work${possible ? `. A perfect round is worth ${pts(possible)}` : ''}. Selecting ${round.quota}.`}
             </p>
             <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
               <Chip cls={DECISION.selected.cls}>{counts.selected} selected</Chip>
               <Chip cls={DECISION.waitlisted.cls}>{counts.waitlisted} waitlisted</Chip>
               <Chip cls={DECISION.not_selected.cls}>{counts.not_selected} not selected</Chip>
-              {stage !== 'scoring' && <span className="text-xs text-slate-400">of a quota of {pool.selectionQuota}</span>}
+              {stage !== 'scoring' && <span className="text-xs text-slate-400">of a quota of {round.quota}</span>}
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {stage === 'scoring' && canSelect && pool.status !== 'closed' && (
+            {stage === 'scoring' && canSelect && !round.closed && (
               <button onClick={generate} disabled={generating} className={primaryBtn}>
                 {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} Generate shortlist
               </button>
             )}
             {stage === 'deciding' && (
               <>
-                {canSelect && pool.status !== 'closed' && (
+                {canSelect && !round.closed && (
                   <button onClick={generate} disabled={generating} className={secondaryBtn}>
                     {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />} Regenerate
                   </button>

@@ -62,6 +62,155 @@ class PoolClanSelectionService {
     return found.length > 0;
   }
 
+  /** Everything one round's screens open with: the round, its terms and its roster. */
+  async detail(clanId) {
+    const clan = await this.round(clanId);
+    const intake = await models.Cohort.findOne({
+      where: { poolClanId: clan.id }, attributes: ['id', 'name', 'levels'],
+    });
+    return {
+      round: {
+        id: clan.id,
+        name: clan.name,
+        description: clan.description,
+        avatarUrl: clan.avatarUrl || null,
+        status: clan.status,
+        frozenAt: clan.frozenAt,
+        programId: clan.programId,
+        cohort: intake ? { id: intake.id, name: intake.name, levels: intake.levels || [] } : null,
+        settings: poolClanService.selectionSettings(clan),
+        levelRules: poolClanService.levelRules(clan),
+      },
+      ...(await this.roster(clan.id)),
+    };
+  }
+
+  /**
+   * The selection rounds of the programmes this caller can see.
+   *
+   * Shaped like a pool row where the two overlap, so the Selection pools list
+   * can show both kinds side by side while the live rounds move across.
+   */
+  async listRounds({ programIds = null, programId = null } = {}) {
+    if (Array.isArray(programIds) && (!programIds.length || (programId && !programIds.includes(programId)))) return [];
+    const where = { kind: 'pool' };
+    if (programId) where.programId = programId;
+    else if (Array.isArray(programIds)) where.programId = { [Op.in]: programIds };
+
+    const clans = await models.Clan.findAll({
+      where,
+      include: [{ model: models.Program, as: 'program', attributes: ['id', 'name'] }],
+      order: [['createdAt', 'DESC']],
+    });
+    if (!clans.length) return [];
+    const ids = clans.map((c) => c.id);
+
+    const counts = await models.PoolMember.findAll({
+      where: { clanId: { [Op.in]: ids } },
+      attributes: ['clanId', 'decision'],
+      raw: true,
+    });
+    const intakes = await models.Cohort.findAll({
+      where: { poolClanId: { [Op.in]: ids } },
+      attributes: ['id', 'name', 'poolClanId'],
+    });
+
+    return clans.map((clan) => {
+      const mine = counts.filter((c) => c.clanId === clan.id);
+      const terms = poolClanService.selectionSettings(clan);
+      const intake = intakes.find((c) => c.poolClanId === clan.id);
+      return {
+        id: clan.id,
+        name: clan.name,
+        description: clan.description,
+        avatarUrl: clan.avatarUrl || null,
+        status: clan.status,
+        frozenAt: clan.frozenAt,
+        programId: clan.programId,
+        program: clan.program ? { id: clan.program.id, name: clan.program.name } : null,
+        cohort: intake ? { id: intake.id, name: intake.name } : null,
+        quota: terms.quota,
+        qualificationDueAt: terms.qualificationDueAt,
+        levelRules: poolClanService.levelRules(clan).length,
+        memberCount: mine.filter((m) => !['withdrawn', 'disqualified'].includes(m.decision)).length,
+        selectedCount: mine.filter((m) => m.decision === 'selected').length,
+        createdAt: clan.createdAt,
+      };
+    });
+  }
+
+  /**
+   * Who is in the round, at what level, and how far they have got.
+   *
+   * The roster screen's one question. It deliberately includes candidates with
+   * no work: somebody who has been given nothing is the case most worth
+   * seeing, and `noWorkReason` says why rather than leaving an operator to
+   * guess at an empty row.
+   */
+  async roster(clanId) {
+    const clan = await this.round(clanId);
+    const rules = poolClanService.levelRules(clan);
+    const ruleLevels = new Set(rules.map((r) => r.level));
+
+    const members = await models.PoolMember.findAll({
+      where: { clanId },
+      include: [
+        { model: models.User, as: 'user', attributes: ['id', 'firstName', 'lastName', 'email'] },
+        { model: models.Clan, as: 'placedClan', attributes: ['id', 'name'] },
+      ],
+      order: [['rank', 'ASC'], ['createdAt', 'ASC']],
+    });
+    const userIds = members.map((m) => m.userId).filter(Boolean);
+
+    const tasks = userIds.length ? await models.AssignedTask.scope('withPoolWork').findAll({
+      where: { clanId, menteeId: { [Op.in]: userIds }, status: { [Op.ne]: 'cancelled' } },
+      attributes: ['id', 'menteeId', 'status'],
+    }) : [];
+    const approvedIds = tasks.length ? new Set((await models.TaskFeedback.findAll({
+      where: { assignedTaskId: { [Op.in]: tasks.map((t) => t.id) }, isApproved: true },
+      attributes: ['assignedTaskId'],
+    })).map((f) => f.assignedTaskId)) : new Set();
+
+    const candidates = members.map((member) => {
+      const mine = member.userId ? tasks.filter((t) => t.menteeId === member.userId) : [];
+      const awaitingReview = mine.filter((t) => t.status === 'submitted' || (t.status === 'completed' && !approvedIds.has(t.id))).length;
+      const scored = mine.filter((t) => t.status === 'completed' && approvedIds.has(t.id)).length;
+
+      // Why somebody has nothing. Only worth saying when the round sets work
+      // by level at all — otherwise an empty roster row means the round is
+      // empty, which is obvious from the screen.
+      let noWorkReason = null;
+      if (!mine.length && rules.length) {
+        if (!member.level) noWorkReason = 'no_level';
+        else if (!ruleLevels.has(member.level)) noWorkReason = 'no_rule_for_level';
+      }
+
+      return {
+        memberId: member.id,
+        userId: member.userId,
+        name: models.PoolMember.displayName(member),
+        email: member.email,
+        level: member.level || null,
+        joinedAt: member.createdAt,
+        decision: member.decision,
+        decisionReason: member.decisionReason,
+        totalScore: member.totalScore === null ? null : Number(member.totalScore),
+        rank: member.rank,
+        placementStatus: models.PoolMember.placementStatus(member),
+        placementError: member.placement?.error || null,
+        placedClan: member.placedClan ? { id: member.placedClan.id, name: member.placedClan.name } : null,
+        work: { assigned: mine.length, awaitingReview, scored },
+        noWorkReason,
+      };
+    });
+
+    return {
+      candidates,
+      levels: poolClanService.roundLevels(clan),
+      awaitingReview: candidates.reduce((n, c) => n + c.work.awaitingReview, 0),
+    };
+  }
+
   /**
    * Score every candidate still in the running. Pure read — nothing is saved.
    * Returns rows sorted for display (highest first; ties in a stable order).

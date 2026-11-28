@@ -313,8 +313,24 @@ export default function PoolDetailPage({ params }: { params: Promise<{ id: strin
           is set up once; handing it out happens where the people are. */}
       {tab === 'work' && <WorkTab data={data} onChange={reload} canAssign={can('pool.assign')} />}
 
-      {/* Selection: rank, decide and place, in that order, on one screen. */}
-      {tab === 'selection' && <SelectionTab data={data} onChange={reload} canSelect={can('pool.select')} canPlace={canPlace} />}
+      {/* Selection: rank, decide and place, in that order, on one screen. The
+          same screen serves a selection round that is a clan; it is given the
+          round's terms and an api rather than this pool. */}
+      {tab === 'selection' && (
+        <SelectionTab
+          round={{
+            id: pool.id,
+            scope: 'pools',
+            quota: pool.selectionQuota,
+            closed: pool.status === 'closed',
+            members: data.members,
+          }}
+          api={poolApi}
+          onChange={reload}
+          canSelect={can('pool.select')}
+          canPlace={canPlace}
+        />
+      )}
 
       {tab === 'history' && <HistoryTab poolId={pool.id} data={data} />}
     </div>
