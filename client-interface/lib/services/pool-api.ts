@@ -483,6 +483,11 @@ export interface CandidateTaskDetail extends CandidateTask {
     submissionText: string | null;
     submissionUrls: string[];
     submittedAt: string;
+    /** An extension request is a submission row; these say which it is. */
+    extensionRequested?: boolean;
+    extensionReason?: string | null;
+    extensionDays?: number | null;
+    extensionStatus?: 'pending' | 'approved' | 'rejected' | null;
     files: { id: string; fileName: string; fileUrl: string }[];
     feedback: { id: string; feedbackText: string | null; isApproved: boolean; decision: string | null; revisionNotes: string | null; checkedCriteria: unknown; createdAt: string }[];
   }[];

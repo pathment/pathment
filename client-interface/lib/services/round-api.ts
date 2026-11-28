@@ -90,6 +90,32 @@ export interface RoundDetail {
   /** The levels this round aims work at. */
   levels: string[];
   awaitingReview: number;
+  /** Requests for more time nobody has answered yet. */
+  extensions: RoundExtension[];
+}
+
+/** One piece of a candidate's work in the round. */
+export interface RoundWork {
+  id: string;
+  title: string;
+  kind: string;
+  difficulty: string | null;
+  points: number | null;
+  status: string;
+  dueDate: string | null;
+}
+
+/** A request for more time, as the round's screens read it. */
+export interface RoundExtension {
+  id: string;
+  taskId: string;
+  taskTitle?: string;
+  dueDate?: string | null;
+  days: number | null;
+  reason: string | null;
+  status: 'pending' | 'approved' | 'rejected' | null;
+  askedAt: string | null;
+  candidate?: { id: string | null; name: string; email: string };
 }
 
 /** The round's work, flattened across its levels — one entry per step. */
@@ -149,6 +175,18 @@ export const roundApi = {
     apiClient.put<Envelope<{ level: string | null; assigned: number; reason: string | null }>>(
       `${at(id)}/members/${userId}/level`, { level },
     ).then((r) => r.data),
+
+  // ── One candidate: their work, and the time they ask for ───────────────────
+  candidateWork: (id: string, userId: string) =>
+    apiClient.get<Envelope<{ work: RoundWork[]; extensions: RoundExtension[] }>>(`${at(id)}/members/${userId}/work`).then((r) => r.data),
+  /** Give one candidate a roadmap's work on top of whatever their level gave them. */
+  giveWork: (id: string, userId: string, body: { roadmapId: string; stepIndexes?: number[] | null }) =>
+    apiClient.post<Envelope<{ assigned: number; reason?: string }>>(`${at(id)}/members/${userId}/work`, body).then((r) => r.data),
+  takeWorkBack: (id: string, taskId: string) => apiClient.delete(`${at(id)}/work/${taskId}`),
+  openExtensions: (id: string) =>
+    apiClient.get<Envelope<{ extensions: RoundExtension[] }>>(`${at(id)}/extensions`).then((r) => r.data.extensions ?? []),
+  answerExtension: (id: string, submissionId: string, approved: boolean, newDueDate?: string | null) =>
+    apiClient.post(`${at(id)}/extensions/${submissionId}`, { approved, newDueDate: newDueDate || null }),
 
   // ── The shared selection contract ──────────────────────────────────────────
   scores: (id: string) =>

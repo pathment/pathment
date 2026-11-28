@@ -1055,7 +1055,21 @@ class ClanService {
       }],
       order: [['joinedAt', 'DESC']]
     });
-    const out = direct.map((m) => m.toJSON());
+    /*
+     * A candidate's selection round is NOT one of their clans.
+     *
+     * It is a clan in every other sense, but the learner workspace asks a
+     * different question of a clan than a round: the clan home is built on an
+     * enrollment, a mentor and a roadmap, and a candidate has none of those
+     * until they are selected. The round scope exists for exactly that, and
+     * `poolCandidateService.myPools` is what fills it.
+     *
+     * Only the MENTEE side is held back. A mentor's round is one of their
+     * clans, because reviewing it is the same job as reviewing any other.
+     */
+    const out = direct
+      .map((m) => m.toJSON())
+      .filter((m) => !(m.role === 'mentee' && isPoolClan(m.clan)));
     const seen = new Set(out.map((m) => m.clanId));
 
     // Clans the user mentors via a scoped-RBAC grant (Roles & Access) but has no

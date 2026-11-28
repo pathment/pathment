@@ -20,7 +20,7 @@ export function RoundOverview({ data, onGo, onManage }: {
   onGo: (tab: string) => void;
   onManage: (panel: 'work' | 'settings' | 'intake') => void;
 }) {
-  const { round, candidates, awaitingReview } = data;
+  const { round, candidates, awaitingReview, extensions } = data;
   const live = candidates.filter((c) => !['withdrawn', 'disqualified'].includes(c.decision || ''));
   const selected = candidates.filter((c) => c.decision === 'selected').length;
   const placed = candidates.filter((c) => c.placementStatus === 'placed').length;
@@ -47,6 +47,10 @@ export function RoundOverview({ data, onGo, onManage }: {
     noRule > 0 && {
       text: `${noRule} candidate${noRule === 1 ? ' is' : 's are'} at a level this round sets no work for`,
       go: () => onManage('work'),
+    },
+    (extensions || []).length > 0 && {
+      text: `${extensions.length} candidate${extensions.length === 1 ? ' has' : 's have'} asked for more time`,
+      go: () => onGo('candidates'),
     },
     awaitingReview > 0 && {
       text: `${awaitingReview} piece${awaitingReview === 1 ? ' of work is' : 's of work are'} waiting for a review`,

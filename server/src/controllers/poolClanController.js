@@ -73,6 +73,36 @@ exports.setMemberLevel = catchAsync(async (req, res) => {
   ok(res, 'Level set', { level: result.membership.level, assigned: result.assigned || 0, reason: result.reason || null });
 });
 
+// ─── One candidate's work, and the time they ask for ──────────────────────────
+
+exports.candidateWork = catchAsync(async (req, res) => {
+  ok(res, 'Candidate work', await poolClanService.candidateWork(req.params.id, req.params.userId));
+});
+
+exports.giveWork = catchAsync(async (req, res) => {
+  const out = await poolClanService.giveWork(req.params.id, req.params.userId, {
+    roadmapId: req.body.roadmapId,
+    stepIndexes: req.body.stepIndexes || null,
+  }, req.user);
+  ok(res, out.assigned ? 'Work given' : 'They already hold that work', out);
+});
+
+exports.takeWorkBack = catchAsync(async (req, res) => {
+  ok(res, 'Work taken back', await poolClanService.takeWorkBack(req.params.id, req.params.taskId, req.user));
+});
+
+exports.openExtensions = catchAsync(async (req, res) => {
+  ok(res, 'Requests for more time', { extensions: await poolClanService.openExtensions(req.params.id) });
+});
+
+exports.answerExtension = catchAsync(async (req, res) => {
+  await poolClanService.answerExtension(req.params.id, req.params.submissionId, {
+    approved: req.body.approved === true || req.body.approved === 'true',
+    newDueDate: req.body.newDueDate || null,
+  }, req.user);
+  ok(res, req.body.approved ? 'More time granted' : 'Request declined', {});
+});
+
 // ─── Scores, shortlist, decisions ─────────────────────────────────────────────
 
 exports.scores = catchAsync(async (req, res) => {

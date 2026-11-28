@@ -204,6 +204,7 @@ run side by side until the live rounds are migrated; then the old one goes.
 | Its tasks | `AssignedTask.poolMemberId` | `AssignedTask.clanId` |
 | Fed by an intake | `settings.autoAddFromCohortIds` | `cohorts.pool_clan_id` (migration 161) |
 | Shortlists | audit snapshots on `CandidatePool` | the same snapshots on `Clan` |
+| Moving across | — | migration `163_live_rounds_become_clans` (idempotent, `--dry-run`, reversible) |
 | Scoring | `poolScoringService` | `poolClanSelectionService` |
 | Placement | `poolPlacementService` | the same service — a round is resolved to the few facts it needs |
 
@@ -240,6 +241,22 @@ same three tabs (Overview, Candidates, Selection) and the same Manage drawer.
   candidates nothing and tells them nothing, and the screen says so in those words.
 - What a clan already does is **not** rebuilt: the mentors, the roster, the group chat and
   reviewing handed-in work are the clan's own screens, linked to from here.
+- **Opening a candidate** (Candidates → their name) is where the three per-person actions live:
+  give them work on top of their level's, take a piece back, and grant or decline a request for
+  more time. All three are the ordinary task machinery — a round only had to be able to reach it.
+
+### A candidate's own side
+
+- A round is **not** one of their clans. `getMembershipsForUser` holds back a pool clan's *mentee*
+  memberships (a mentor's are kept — reviewing a round is the same job), because the clan home is
+  built on an enrollment a candidate does not have. It is a round in the learner workspace, which
+  `useMenteeScope` already has a scope for, and `poolCandidateService` fills from both shapes.
+- They can **ask for more time** on their work: the clan's own `FrictionPanel`, with only the
+  extension action, because a roadblock or a delay feeds the fairness read on programme progress
+  that a candidate has not got yet. `POST /submissions/:taskId/extension` names `candidate`
+  alongside `mentee` for that reason; ownership is still checked in the service.
+- An extension request **is a submission row**, so the two are told apart on every screen that
+  lists them — otherwise "asked for five more days" reads as a hand-in.
 
 ## Related
 [Intake & Assessments](./intake-and-assessments.md) · [Roadmaps & Tasks](./roadmaps-and-tasks.md) ·

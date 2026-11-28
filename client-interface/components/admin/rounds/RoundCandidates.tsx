@@ -8,6 +8,7 @@ import { AvatarWithInitials } from '@/components/admin/ui';
 import { workspacePath } from '@/lib/services/workspace-scope';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { roundApi, type RoundCandidate, type RoundDetail } from '@/lib/services/round-api';
+import { RoundCandidateDrawer } from './RoundCandidateDrawer';
 import { Chip, DECISION, EmptyState, PanelHeader, field, nameParts, panel, pts } from '@/components/admin/pools/poolUi';
 
 /**
@@ -52,13 +53,17 @@ function Progress({ work }: { work: RoundCandidate['work'] }) {
   );
 }
 
-export function RoundCandidates({ data, onChange, canAssign }: {
-  data: RoundDetail; onChange: () => void; canAssign: boolean;
+export function RoundCandidates({ data, onChange, canAssign, canReview }: {
+  data: RoundDetail; onChange: () => void; canAssign: boolean; canReview: boolean;
 }) {
   const { round, candidates } = data;
+  /** Who is waiting on an answer about more time, by user id. */
+  const waitingOnTime = new Set((data.extensions || []).map((e) => e.candidate?.id).filter(Boolean));
   const [search, setSearch] = useState('');
   const [onlyLevel, setOnlyLevel] = useState('all');
   const [busy, setBusy] = useState<string | null>(null);
+  /** Who is open up close: their work, what to give or take back, their requests. */
+  const [open, setOpen] = useState<RoundCandidate | null>(null);
 
   /**
    * The levels you may put somebody at: the intake's, which is where a level
@@ -107,7 +112,7 @@ export function RoundCandidates({ data, onChange, canAssign }: {
         count={candidates.length}
         subtitle={withoutWork
           ? `${withoutWork} of them have been given nothing — the reason is on their row.`
-          : 'Everyone in the running, and what each of them is waiting on.'}
+          : 'Everyone in the running. Open one to give them work, take a piece back, or answer a request for more time.'}
         actions={(
           <Link href={workspacePath(`/admin/clans?clan=${round.id}`)} className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-700 hover:text-brand-800">
             Open the clan <ExternalLink className="h-3.5 w-3.5" />
@@ -148,13 +153,17 @@ export function RoundCandidates({ data, onChange, canAssign }: {
             const reason = c.noWorkReason ? NO_WORK[c.noWorkReason] : null;
             return (
               <li key={c.memberId} className="flex flex-wrap items-center gap-x-4 gap-y-3 px-5 py-3.5 sm:px-6">
-                <div className="flex min-w-48 flex-1 items-center gap-2.5">
+                <button
+                  onClick={() => setOpen(c)}
+                  disabled={!c.userId}
+                  className="flex min-w-48 flex-1 items-center gap-2.5 rounded-lg text-left transition-opacity hover:opacity-80 disabled:cursor-default"
+                >
                   <AvatarWithInitials {...nameParts(c.name, c.email)} email={c.email} size="sm" colorClass="bg-brand-100 text-brand-700" />
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-slate-900">{c.name || c.email}</p>
                     <p className="truncate text-xs text-muted-foreground">{c.email}</p>
                   </div>
-                </div>
+                </button>
 
                 {canAssign && c.userId ? (
                   <div className="flex items-center gap-1.5">
@@ -187,6 +196,9 @@ export function RoundCandidates({ data, onChange, canAssign }: {
                 </div>
 
                 <div className="flex items-center gap-2">
+                  {c.userId && waitingOnTime.has(c.userId) && (
+                    <Chip cls="bg-amber-50 text-amber-700 border-amber-200">Asked for more time</Chip>
+                  )}
                   {c.totalScore !== null && (
                     <span className="text-sm font-medium text-slate-700 tabular-nums">{pts(c.totalScore)}</span>
                   )}
@@ -204,6 +216,16 @@ export function RoundCandidates({ data, onChange, canAssign }: {
             );
           })}
         </ul>
+      )}
+      {open && open.userId && (
+        <RoundCandidateDrawer
+          round={round}
+          candidate={open}
+          onClose={() => setOpen(null)}
+          onChange={onChange}
+          canAssign={canAssign}
+          canReview={canReview}
+        />
       )}
     </section>
   );

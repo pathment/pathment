@@ -200,7 +200,7 @@ export default function RoundDetailPage({ params }: { params: Promise<{ id: stri
           onManage={(p) => setManage(p === 'intake' ? 'settings' : p)}
         />
       )}
-      {tab === 'candidates' && <RoundCandidates data={data} onChange={reload} canAssign={canAssign} />}
+      {tab === 'candidates' && <RoundCandidates data={data} onChange={reload} canAssign={canAssign} canReview={can('pool.review')} />}
       {tab === 'selection' && (
         <SelectionTab
           round={{

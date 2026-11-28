@@ -11,6 +11,7 @@ import { candidateApi } from '@/lib/services/pool-api';
 import { workspacePath } from '@/lib/services/workspace-scope';
 import { extractApiErrorMessage } from '@/lib/utils/api-error';
 import { CourseProgressCard } from '@/components/shared/CourseProgressCard';
+import { FrictionPanel } from '@/components/mentee/FrictionPanel';
 import { POOL_WORK_STATUS, poolField as field } from './poolUi';
 
 /**
@@ -47,7 +48,15 @@ export function PoolTaskDetail({ id }: { id: string }) {
   if (loading) return <div className="flex justify-center py-24"><Loader2 className="h-6 w-6 animate-spin text-brand-600" /></div>;
   if (error || !task) return <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error || 'Not found'}</p>;
 
-  const latest = task.submissions[0];
+  /*
+   * An extension request is stored as a submission row, so the two have to be
+   * told apart here: "I handed this in" and "I asked for five more days" are
+   * different events and reading them in one list is nonsense.
+   */
+  const handIns = task.submissions.filter((s) => !s.extensionRequested);
+  const extensions = task.submissions.filter((s) => s.extensionRequested);
+  const pendingExtension = extensions.some((s) => s.extensionStatus === 'pending');
+  const latest = handIns[0];
   const latestFeedback = latest?.feedback?.[0];
   const canSubmit = task.kind === 'task' && !task.readOnly && ['assigned', 'not_started', 'in_progress', 'revision_needed'].includes(task.status);
 
@@ -201,11 +210,11 @@ export function PoolTaskDetail({ id }: { id: string }) {
         </div>
       )}
 
-      {task.submissions.length > 0 && (
+      {handIns.length > 0 && (
         <div className="mentee-page-heading">
           <h2 className="text-base font-semibold text-slate-900">History</h2>
           <ol className="mt-4 space-y-4">
-            {task.submissions.map((s) => (
+            {handIns.map((s) => (
               <li key={s.id} className="rounded-2xl border border-slate-100 bg-slate-50/50 p-4">
                 <p className="text-xs text-slate-400">Version {s.version} · {new Date(s.submittedAt).toLocaleString()}</p>
                 {s.submissionText && <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">{s.submissionText}</p>}
@@ -226,6 +235,37 @@ export function PoolTaskDetail({ id }: { id: string }) {
                     {f.revisionNotes && f.revisionNotes !== f.feedbackText && <p className="mt-0.5 whitespace-pre-wrap">{f.revisionNotes}</p>}
                   </div>
                 ))}
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+      {/* Asking for more time. The same panel the clan task page uses, with
+          only the extension action: a roadblock or a delay feeds the fairness
+          read on programme progress, which a candidate does not have yet. */}
+      {!task.readOnly && task.kind === 'task' && task.status !== 'completed' && (
+        <div className="mentee-page-heading">
+          <FrictionPanel taskId={id} only="extension" hasPendingExtension={pendingExtension} />
+        </div>
+      )}
+
+      {extensions.length > 0 && (
+        <div className="mentee-page-heading">
+          <h2 className="text-base font-semibold text-slate-900">Requests for more time</h2>
+          <ol className="mt-4 space-y-3">
+            {extensions.map((e) => (
+              <li key={e.id} className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50/50 p-4">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-slate-800">{e.extensionDays} extra day{e.extensionDays === 1 ? '' : 's'}</p>
+                  {e.extensionReason && <p className="mt-0.5 text-sm text-slate-600">&ldquo;{e.extensionReason}&rdquo;</p>}
+                </div>
+                <span className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium ${
+                  e.extensionStatus === 'approved' ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                    : e.extensionStatus === 'rejected' ? 'border-rose-200 bg-rose-50 text-rose-700'
+                      : 'border-amber-200 bg-amber-50 text-amber-700'}`}
+                >
+                  {e.extensionStatus === 'approved' ? 'Granted' : e.extensionStatus === 'rejected' ? 'Not granted' : 'Waiting'}
+                </span>
               </li>
             ))}
           </ol>

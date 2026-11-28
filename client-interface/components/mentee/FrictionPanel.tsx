@@ -18,7 +18,21 @@ const FRICTION_KINDS = ['job', 'domestic', 'electricity', 'hardware', 'health', 
  * count in their favour). Three actions: log a blocker, log a delay, ask for
  * more time.
  */
-export function FrictionPanel({ taskId, hasPendingExtension = false, readOnly = false }: { taskId: string; hasPendingExtension?: boolean; readOnly?: boolean }) {
+export function FrictionPanel({ taskId, hasPendingExtension = false, readOnly = false, only = null }: {
+  taskId: string;
+  hasPendingExtension?: boolean;
+  readOnly?: boolean;
+  /**
+   * Show one action instead of all three.
+   *
+   * A selection round uses this for 'extension'. Roadblocks and delays feed
+   * the fairness read on PROGRAMME progress, which a candidate does not have
+   * yet — offering them there would log something nothing reads. Asking for
+   * more time on work you were given is not programme-specific, so it is
+   * offered everywhere.
+   */
+  only?: Panel;
+}) {
   const [open, setOpen] = useState<Panel>(null);
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState<Panel>(null);
@@ -86,17 +100,23 @@ export function FrictionPanel({ taskId, hasPendingExtension = false, readOnly = 
 
   const field = 'w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500';
 
+  const shows = (p: Panel) => !only || only === p;
+
   return (
     <div className="bg-card rounded-2xl border border-slate-200 p-6">
-      <h2 className="text-lg font-semibold text-slate-900">What&apos;s getting in the way?</h2>
+      <h2 className="text-lg font-semibold text-slate-900">
+        {only === 'extension' ? 'Need more time?' : 'What\u2019s getting in the way?'}
+      </h2>
       <p className="text-sm text-slate-500 mt-1">
-        Logging this helps your mentor support you - and real constraints count in your favour, not against you.
+        {only === 'extension'
+          ? 'Ask for more time and say why. Whoever runs this round decides, and you will see their answer here.'
+          : 'Logging this helps your mentor support you - and real constraints count in your favour, not against you.'}
       </p>
 
       <div className="flex flex-wrap gap-2 mt-4">
-        <Pill p="roadblock" icon={Flag} label="Log a roadblock" />
-        <Pill p="delay" icon={Clock} label="Log a delay" />
-        <Pill p="extension" icon={CalendarPlus} label="Request more time" />
+        {shows('roadblock') && <Pill p="roadblock" icon={Flag} label="Log a roadblock" />}
+        {shows('delay') && <Pill p="delay" icon={Clock} label="Log a delay" />}
+        {shows('extension') && <Pill p="extension" icon={CalendarPlus} label="Request more time" />}
       </div>
 
       {open === 'roadblock' && (

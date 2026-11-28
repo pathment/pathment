@@ -82,6 +82,10 @@ class PoolClanSelectionService {
         levelRules: poolClanService.levelRules(clan),
       },
       ...(await this.roster(clan.id)),
+      // Requests for more time that nobody has answered. On the round's first
+      // screen because they are the only thing here waiting on a person who
+      // is not the candidate.
+      extensions: await poolClanService.openExtensions(clan.id),
     };
   }
 

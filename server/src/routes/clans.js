@@ -264,6 +264,12 @@ router.put('/:id/selection/settings', authenticate, onRound(PERMISSIONS.POOL_MAN
 router.put('/:id/selection/level-rules', authenticate, onRound(PERMISSIONS.POOL_ASSIGN), poolClan.setLevelRules);
 router.put('/:id/selection/members/:userId/level', authenticate, onRound(PERMISSIONS.POOL_ASSIGN), poolClan.setMemberLevel);
 
+router.get('/:id/selection/members/:userId/work', authenticate, readRound, poolClan.candidateWork);
+router.post('/:id/selection/members/:userId/work', authenticate, onRound(PERMISSIONS.POOL_ASSIGN), poolClan.giveWork);
+router.delete('/:id/selection/work/:taskId', authenticate, onRound(PERMISSIONS.POOL_ASSIGN), poolClan.takeWorkBack);
+router.get('/:id/selection/extensions', authenticate, readRound, poolClan.openExtensions);
+router.post('/:id/selection/extensions/:submissionId', authenticate, onRound(PERMISSIONS.POOL_REVIEW), poolClan.answerExtension);
+
 router.get('/:id/selection/scores', authenticate, readRound, poolClan.scores);
 router.get('/:id/selection/shortlists', authenticate, readRound, poolClan.listShortlists);
 router.post('/:id/selection/shortlists', authenticate, onRound(PERMISSIONS.POOL_SELECT), poolClan.generateShortlist);

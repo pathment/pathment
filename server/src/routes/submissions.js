@@ -24,10 +24,14 @@ router.post(
  * @desc    Request extension for a task
  * @access  Mentee
  */
+// A selection-round candidate is deliberately not a mentee of the programme
+// until they are selected, so 'candidate' is named here too — asking for more
+// time on work you were given is not a thing only an enrolled mentee can do.
+// Ownership is checked in the service, which refuses anyone else's task.
 router.post(
   '/:taskId/extension',
   authenticate,
-  authorize(['mentee']),
+  authorize(['mentee', 'candidate']),
   submissionController.requestExtension
 );
 

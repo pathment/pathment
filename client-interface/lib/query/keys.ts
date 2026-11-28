@@ -136,6 +136,8 @@ export const qk = {
     shortlists: (id: string) => ['rounds', id, 'shortlists'] as const,
     shortlist: (id: string, shortlistId: string) => ['rounds', id, 'shortlist', shortlistId] as const,
     placement: (id: string) => ['rounds', id, 'placement'] as const,
+    candidateWork: (id: string, userId: string) => ['rounds', id, 'work', userId] as const,
+    extensions: (id: string) => ['rounds', id, 'extensions'] as const,
   },
 
   /** What a candidate sees of their own selection round. */

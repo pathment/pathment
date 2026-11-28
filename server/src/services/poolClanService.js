@@ -24,6 +24,7 @@
  * start, not from a date fixed when the round was written — which is what the
  * round needs, because candidates arrive one at a time.
  */
+const { Op } = require('sequelize');
 const { models } = require('../db');
 const { NotFoundError, ValidationError } = require('../utils/errors/errorTypes');
 const { isPoolClan } = require('../config/clanKinds');
@@ -450,6 +451,204 @@ class PoolClanService {
     );
 
     return { assigned: todo.length, level: membership.level, roadmapId: rule.roadmapId };
+  }
+
+  /**
+   * One candidate's work in this round, and anything they are waiting on.
+   *
+   * What the per-candidate drawer opens with. Their work is clan work, so it
+   * is read the way a clan reads it; the requests for more time are ordinary
+   * submission rows flagged as such, which is where the deadline machinery
+   * keeps them.
+   */
+  async candidateWork(clanId, userId) {
+    const clan = await models.Clan.findByPk(clanId);
+    if (!clan) throw new NotFoundError('Clan not found');
+    if (!isPoolClan(clan)) throw new ValidationError('That clan is not a selection round');
+
+    const tasks = await models.AssignedTask.scope('withPoolWork').findAll({
+      where: { clanId, menteeId: userId, status: { [Op.ne]: 'cancelled' } },
+      attributes: ['id', 'status', 'dueDate', 'createdAt', 'titleOverride', 'roadmapTaskId'],
+      include: [{ model: models.RoadmapTask, as: 'roadmapTask', attributes: ['id', 'title', 'type', 'difficulty'], required: false }],
+      order: [['dueDate', 'ASC'], ['createdAt', 'ASC']],
+    });
+
+    const submissions = tasks.length ? await models.TaskSubmission.findAll({
+      where: { assignedTaskId: { [Op.in]: tasks.map((t) => t.id) }, extensionRequested: true },
+      order: [['version', 'DESC']],
+    }) : [];
+
+    return {
+      work: tasks.map((t) => ({
+        id: t.id,
+        title: t.titleOverride || t.roadmapTask?.title || 'Work',
+        kind: t.roadmapTask?.type || 'task',
+        difficulty: t.roadmapTask?.difficulty || null,
+        points: t.roadmapTask ? this.pointsOf(clan, t.roadmapTask) : null,
+        status: t.status,
+        dueDate: t.dueDate,
+      })),
+      extensions: submissions.map((sub) => ({
+        id: sub.id,
+        taskId: sub.assignedTaskId,
+        days: sub.extensionDays,
+        reason: sub.extensionReason,
+        status: sub.extensionStatus,
+        askedAt: sub.submittedAt,
+      })),
+    };
+  }
+
+  /**
+   * Give one candidate a roadmap's work, on top of whatever their level
+   * already gave them.
+   *
+   * The level rules say what a level does; this is the exception an operator
+   * makes for one person. Each step keeps its own `dueOffsetDays` counted from
+   * now, exactly as a level's work does, and a step they already hold is left
+   * alone so pressing the button twice costs nothing.
+   */
+  async giveWork(clanId, userId, { roadmapId, stepIndexes = null }, actor) {
+    const clan = await models.Clan.findByPk(clanId);
+    if (!clan) throw new NotFoundError('Clan not found');
+    if (!isPoolClan(clan)) throw new ValidationError('Only a selection round gives work this way');
+
+    const membership = await models.ClanMembership.findOne({
+      where: { clanId, userId, role: 'mentee' }, attributes: ['id', 'status'],
+    });
+    if (!membership) throw new NotFoundError('That person is not a candidate in this round');
+
+    const linearRoadmapService = require('./linearRoadmapService');
+    const steps = await linearRoadmapService.getSteps(roadmapId);
+    if (!steps.length) throw new ValidationError('That work has no steps');
+
+    const wanted = Array.isArray(stepIndexes) && stepIndexes.length
+      ? stepIndexes.filter((i) => Number.isInteger(i) && i >= 0 && i < steps.length)
+      : steps.map((_, i) => i);
+    if (!wanted.length) throw new ValidationError('Choose at least one step');
+
+    const held = await models.AssignedTask.scope('withPoolWork').findAll({
+      where: {
+        menteeId: userId, clanId,
+        roadmapTaskId: wanted.map((i) => steps[i].id),
+        status: OPEN_OR_DONE,
+      },
+      attributes: ['roadmapTaskId'],
+    });
+    const already = new Set(held.map((t) => t.roadmapTaskId));
+    const todo = wanted.filter((i) => !already.has(steps[i].id));
+    if (!todo.length) return { assigned: 0, reason: 'already_assigned' };
+
+    await linearRoadmapService.assignToMentee(
+      actor?.id || clan.leadMentorId || clan.createdBy,
+      roadmapId, userId, todo[0], null, null, todo, null, clanId,
+    );
+    await createAuditLog({
+      userId: actor?.id || null,
+      action: 'POOL_CLAN_WORK_GIVEN',
+      entityType: 'Clan',
+      entityId: clan.id,
+      newValues: { userId, roadmapId, steps: todo.length },
+    }).catch(() => {});
+    return { assigned: todo.length };
+  }
+
+  /**
+   * Take one piece of work back from a candidate.
+   *
+   * Scoped to the round on purpose: the task id alone would let a round cancel
+   * work belonging to a clan, or to another round, which is the kind of reach
+   * a selection screen should not have.
+   */
+  async takeWorkBack(clanId, taskId, actor) {
+    const clan = await models.Clan.findByPk(clanId);
+    if (!clan) throw new NotFoundError('Clan not found');
+    if (!isPoolClan(clan)) throw new ValidationError('That clan is not a selection round');
+
+    const task = await models.AssignedTask.scope('withPoolWork').findOne({ where: { id: taskId, clanId } });
+    if (!task) throw new NotFoundError('That work is not part of this round');
+
+    const taskService = require('./taskService');
+    await taskService.unassignTask(task.id, actor?.id || clan.leadMentorId || clan.createdBy, 'mentor');
+    await createAuditLog({
+      userId: actor?.id || null,
+      action: 'POOL_CLAN_WORK_TAKEN_BACK',
+      entityType: 'Clan',
+      entityId: clan.id,
+      newValues: { taskId, menteeId: task.menteeId },
+    }).catch(() => {});
+    return { taken: 1 };
+  }
+
+  /**
+   * Grant or refuse one request for more time, from the round's own screen.
+   *
+   * The request is checked against THIS round first, so a round can only
+   * answer its own; the decision itself goes through the ordinary deadline
+   * machinery, which is what moves the date and records the answer.
+   */
+  async answerExtension(clanId, submissionId, { approved, newDueDate = null }, actor) {
+    const clan = await models.Clan.findByPk(clanId);
+    if (!clan) throw new NotFoundError('Clan not found');
+    if (!isPoolClan(clan)) throw new ValidationError('That clan is not a selection round');
+
+    const submission = await models.TaskSubmission.findByPk(submissionId, { attributes: ['id', 'assignedTaskId'] });
+    if (!submission) throw new NotFoundError('That request is not part of this round');
+    const task = await models.AssignedTask.scope('withPoolWork').findOne({
+      where: { id: submission.assignedTaskId, clanId }, attributes: ['id'],
+    });
+    if (!task) throw new NotFoundError('That request is not part of this round');
+
+    return require('./submissionService').handleExtensionRequest(
+      submissionId, actor?.id || clan.leadMentorId || clan.createdBy, Boolean(approved), newDueDate,
+    );
+  }
+
+  /** Every request for more time in this round that nobody has answered. */
+  async openExtensions(clanId) {
+    const clan = await models.Clan.findByPk(clanId);
+    if (!clan) throw new NotFoundError('Clan not found');
+    if (!isPoolClan(clan)) throw new ValidationError('That clan is not a selection round');
+
+    const tasks = await models.AssignedTask.scope('withPoolWork').findAll({
+      where: { clanId, status: { [Op.ne]: 'cancelled' } },
+      attributes: ['id', 'menteeId', 'dueDate', 'titleOverride', 'roadmapTaskId'],
+      include: [
+        { model: models.RoadmapTask, as: 'roadmapTask', attributes: ['title'], required: false },
+        { model: models.User, as: 'mentee', attributes: ['id', 'firstName', 'lastName', 'email'], required: false },
+      ],
+    });
+    if (!tasks.length) return [];
+
+    const waiting = await models.TaskSubmission.findAll({
+      where: {
+        assignedTaskId: { [Op.in]: tasks.map((t) => t.id) },
+        extensionRequested: true,
+        extensionStatus: 'pending',
+      },
+      order: [['version', 'DESC']],
+    });
+    const taskById = new Map(tasks.map((t) => [t.id, t]));
+    return waiting.map((sub) => {
+      const task = taskById.get(sub.assignedTaskId);
+      return {
+        id: sub.id,
+        taskId: sub.assignedTaskId,
+        taskTitle: task?.titleOverride || task?.roadmapTask?.title || 'Work',
+        dueDate: task?.dueDate || null,
+        days: sub.extensionDays,
+        reason: sub.extensionReason,
+        status: sub.extensionStatus,
+        askedAt: sub.submittedAt,
+        candidate: task?.mentee
+          ? {
+            id: task.mentee.id,
+            name: `${task.mentee.firstName || ''} ${task.mentee.lastName || ''}`.trim(),
+            email: task.mentee.email,
+          }
+          : { id: task?.menteeId || null, name: '', email: '' },
+      };
+    });
   }
 
   /**
