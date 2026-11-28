@@ -87,13 +87,36 @@ async function up({ dryRun = false } = {}) {
       { id: pool.id },
     );
 
-    // Each level's live work, in the order it was added.
+    /*
+     * Who each piece of work actually reached, read exactly as
+     * `poolService.targetsMember` reads it — the service that handed it out:
+     *
+     *   aimed at levels            → those levels
+     *   aimed at nobody, round HAS levels
+     *                              → nobody, unless an admin said `forEveryone`
+     *   aimed at nobody, round has NO levels
+     *                              → everyone, because there is nothing to aim at
+     *
+     * Getting this wrong in either direction is a round that hands out work
+     * nobody was meant to have, or drops work everybody was doing.
+     */
+    const cohortLevels = pool.cohort_id
+      ? (await q('SELECT levels FROM cohorts WHERE id = :id', { id: pool.cohort_id }))[0]?.levels || []
+      : [];
+    const roundLevels = [...new Set([
+      ...members.map((m) => m.level).filter(Boolean),
+      ...(Array.isArray(cohortLevels) ? cohortLevels.map((l) => l && l.key).filter(Boolean) : []),
+    ])];
+
     const byLevel = new Map();
+    const leftBehind = [];
     for (const item of items) {
       const levels = Array.isArray(item.levels) ? item.levels.filter(Boolean) : [];
-      // Work aimed at nobody reached nobody (that rule shipped before this), so
-      // it moves nowhere. `forEveryone` is the deliberate exception.
-      const targets = levels.length ? levels : (item.forEveryone ? ['*'] : []);
+      let targets;
+      if (levels.length) targets = levels;
+      else if (item.forEveryone || !roundLevels.length) targets = ['*'];
+      else targets = [];
+      if (!targets.length) { leftBehind.push(item); continue; }
       for (const level of targets) {
         if (!byLevel.has(level)) byLevel.set(level, []);
         byLevel.get(level).push(item);
@@ -107,9 +130,15 @@ async function up({ dryRun = false } = {}) {
     for (const [level, list] of byLevel) {
       console.log(`       ${level}: ${list.map((w) => `${w.title} (${spanOf(w)}d)`).join(', ')}`);
     }
-    const unaimed = items.filter((w) => !(Array.isArray(w.levels) && w.levels.length) && !w.forEveryone);
-    if (unaimed.length) {
-      console.log(`     ⚠ ${unaimed.length} piece(s) aimed at nobody are left behind: ${unaimed.map((w) => w.title).join(', ')}`);
+    if (leftBehind.length) {
+      console.log(`     ⚠ ${leftBehind.length} piece(s) already reached nobody and are left behind: ${leftBehind.map((w) => w.title).join(', ')}`);
+    }
+    if (byLevel.has('*')) {
+      // Work everybody had, in a round with nothing to aim at. It moves, so
+      // the people doing it keep it — but a round sets work BY LEVEL, so there
+      // is no rule it can become and nobody new will be given it.
+      console.log(`     ⚠ ${byLevel.get('*').length} piece(s) reached everyone (this round has no levels). The work moves and`);
+      console.log('       the people doing it keep it, but set levels and their work before anybody else joins.');
     }
     const levelsHeld = [...new Set(members.map((m) => m.level).filter(Boolean))];
     const orphanLevels = levelsHeld.filter((l) => !byLevel.has(l));
