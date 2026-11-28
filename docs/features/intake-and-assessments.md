@@ -48,5 +48,33 @@ placement. See migration 031/043.
   re-rolled level swaps the candidate's level-targeted pool work and emails them about it.
 - The standalone Assessments library lets you reuse an assessment across cohorts.
 
+## Proctoring
+
+An intake assessment is a proctoring host like a quiz or an interview
+(`assessment_submissions`; see `server/src/proctoring/README.md`). Two gates, and
+they are not the same gate:
+
+- **The browser's own**, in `components/apply/AssessmentRunner.tsx`: `startFromSetup`
+  refuses to call `start` until a screen share is **live** and a camera track actually
+  exists. Support is not permission — a browser that *can* share a screen on a page where
+  nobody granted it would still declare itself capable.
+- **The server's**, in `publicIntakeService.startAssessment`: it reads the capabilities the
+  browser declared and refuses with the one that is missing named (`screen` or `video`)
+  before any attempt row exists, so no clock starts for a client that cannot be proctored.
+
+The record is append-only on the attempt. Snapshots are stored images and are kept apart
+from flags; a snapshot claimed through the plain events endpoint is dropped, because that
+would be a flag-shaped hole pointing at any URL the client liked. When the clock runs out
+the server closes the attempt and writes its own `time_expired` entry, so the log ends
+with a reason rather than mid-sentence, and nothing of the applicant's is accepted after.
+
+A reviewer reads `splitProctorLog`: the snapshots, the flags with counts, and the
+interruptions totalled — opens, resumes, time away, time offline, time out of fullscreen —
+which is what tells a power cut apart from a second browser. The raw log never leaves the
+server.
+
+Covered by `server/tests/pools/intake-assessment-proctoring.test.js` (12) and
+`client-interface/tests/assessment-proctoring-gate.test.cjs` (4).
+
 ## Related
 [Authentication](./authentication.md) · [Programs, Cohorts & Clans](./programs-cohorts-clans.md) · [Authorization](./authorization-rbac.md) · [Profile & Settings](./profile-skills-settings.md) (carry-forward target)
